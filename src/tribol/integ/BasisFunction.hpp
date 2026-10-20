@@ -9,6 +9,7 @@
 #include <cmath>
 
 #include "tribol/common/Enzyme.hpp"
+#include "tribol/common/MdArray.hpp"
 #include "tribol/common/MdSpan.hpp"
 #include "tribol/common/Parameters.hpp"
 
@@ -22,16 +23,52 @@ namespace tribol {
  * (1, 0), and (0, 1). The spatial dimension is the ambient contact dimension: two for edges and three for triangles
  * and quadrilaterals.
  *
+ * GetParentNodeCoordinates() returns its small coordinate array for the common case. Its output-view overload allows a
+ * caller to reuse existing storage when a return value is undesirable in a device or differentiated kernel.
+ *
  * @tparam Element Contact face shape
  * @tparam Order Lagrange order represented by the element connectivity
  */
 template <InterfaceElementType Element, FaceOrderType Order>
 struct FaceElementTraits;
 
+namespace detail {
+
+/**
+ * @brief Stores the parent dimension and adds the owning coordinate return path shared by face element traits
+ *
+ * @tparam Derived FaceElementTraits specialization that writes its element-specific parent coordinates
+ * @tparam ParentDimension Number of coordinates in the element's parent space
+ */
+template <typename Derived, int ParentDimension>
+struct FaceElementTraitsBase {
+  static constexpr int parent_dimension = ParentDimension;
+  using ParentCoordinates = MdArray<RealT, parent_dimension>;
+
+  /**
+   * @brief Return one node's parent coordinates in an owning fixed-size array
+   *
+   * Each traits specialization remains responsible for writing its coordinates into the supplied view. Keeping that
+   * operation in the specialization allows callers to reuse storage, while this shared overload provides the concise
+   * return-value interface.
+   */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static ParentCoordinates GetParentNodeCoordinates( int local_node )
+  {
+    ParentCoordinates parent_coordinates;
+    Derived::GetParentNodeCoordinates( local_node, parent_coordinates.view() );
+    return parent_coordinates;
+  }
+};
+
+}  // namespace detail
+
 template <>
-struct FaceElementTraits<LINEAR_EDGE, LINEAR> {
+struct FaceElementTraits<LINEAR_EDGE, LINEAR>
+    : detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_EDGE, LINEAR>, 1> {
+  using Base = detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_EDGE, LINEAR>, 1>;
+  using Base::GetParentNodeCoordinates;
+
   static constexpr int node_count = 2;
-  static constexpr int parent_dimension = 1;
   static constexpr int spatial_dimension = 2;
 
   /**
@@ -42,17 +79,20 @@ struct FaceElementTraits<LINEAR_EDGE, LINEAR> {
    *
    * @pre local_node is in [0, node_count)
    */
-  TRIBOL_HOST_DEVICE static void GetParentNodeCoordinates( int local_node,
-                                                           MdSpan<RealT, parent_dimension> parent_coordinates )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void GetParentNodeCoordinates(
+      int local_node, MdSpan<RealT, parent_dimension> parent_coordinates )
   {
     parent_coordinates[0] = local_node == 0 ? -1.0 : 1.0;
   }
 };
 
 template <>
-struct FaceElementTraits<LINEAR_EDGE, QUADRATIC_LAGRANGE> {
+struct FaceElementTraits<LINEAR_EDGE, QUADRATIC_LAGRANGE>
+    : detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_EDGE, QUADRATIC_LAGRANGE>, 1> {
+  using Base = detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_EDGE, QUADRATIC_LAGRANGE>, 1>;
+  using Base::GetParentNodeCoordinates;
+
   static constexpr int node_count = 3;
-  static constexpr int parent_dimension = 1;
   static constexpr int spatial_dimension = 2;
 
   /**
@@ -65,17 +105,20 @@ struct FaceElementTraits<LINEAR_EDGE, QUADRATIC_LAGRANGE> {
    *
    * @pre local_node is in [0, node_count)
    */
-  TRIBOL_HOST_DEVICE static void GetParentNodeCoordinates( int local_node,
-                                                           MdSpan<RealT, parent_dimension> parent_coordinates )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void GetParentNodeCoordinates(
+      int local_node, MdSpan<RealT, parent_dimension> parent_coordinates )
   {
     parent_coordinates[0] = local_node == 0 ? -1.0 : ( local_node == 1 ? 1.0 : 0.0 );
   }
 };
 
 template <>
-struct FaceElementTraits<LINEAR_TRIANGLE, LINEAR> {
+struct FaceElementTraits<LINEAR_TRIANGLE, LINEAR>
+    : detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_TRIANGLE, LINEAR>, 2> {
+  using Base = detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_TRIANGLE, LINEAR>, 2>;
+  using Base::GetParentNodeCoordinates;
+
   static constexpr int node_count = 3;
-  static constexpr int parent_dimension = 2;
   static constexpr int spatial_dimension = 3;
 
   /**
@@ -86,8 +129,8 @@ struct FaceElementTraits<LINEAR_TRIANGLE, LINEAR> {
    *
    * @pre local_node is in [0, node_count)
    */
-  TRIBOL_HOST_DEVICE static void GetParentNodeCoordinates( int local_node,
-                                                           MdSpan<RealT, parent_dimension> parent_coordinates )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void GetParentNodeCoordinates(
+      int local_node, MdSpan<RealT, parent_dimension> parent_coordinates )
   {
     parent_coordinates[0] = local_node == 1 ? 1.0 : 0.0;
     parent_coordinates[1] = local_node == 2 ? 1.0 : 0.0;
@@ -95,9 +138,12 @@ struct FaceElementTraits<LINEAR_TRIANGLE, LINEAR> {
 };
 
 template <>
-struct FaceElementTraits<LINEAR_QUAD, LINEAR> {
+struct FaceElementTraits<LINEAR_QUAD, LINEAR>
+    : detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_QUAD, LINEAR>, 2> {
+  using Base = detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_QUAD, LINEAR>, 2>;
+  using Base::GetParentNodeCoordinates;
+
   static constexpr int node_count = 4;
-  static constexpr int parent_dimension = 2;
   static constexpr int spatial_dimension = 3;
 
   /**
@@ -108,8 +154,8 @@ struct FaceElementTraits<LINEAR_QUAD, LINEAR> {
    *
    * @pre local_node is in [0, node_count)
    */
-  TRIBOL_HOST_DEVICE static void GetParentNodeCoordinates( int local_node,
-                                                           MdSpan<RealT, parent_dimension> parent_coordinates )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void GetParentNodeCoordinates(
+      int local_node, MdSpan<RealT, parent_dimension> parent_coordinates )
   {
     parent_coordinates[0] = local_node == 0 || local_node == 3 ? -1.0 : 1.0;
     parent_coordinates[1] = local_node < 2 ? -1.0 : 1.0;
@@ -117,9 +163,12 @@ struct FaceElementTraits<LINEAR_QUAD, LINEAR> {
 };
 
 template <>
-struct FaceElementTraits<LINEAR_QUAD, QUADRATIC_LAGRANGE> {
+struct FaceElementTraits<LINEAR_QUAD, QUADRATIC_LAGRANGE>
+    : detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_QUAD, QUADRATIC_LAGRANGE>, 2> {
+  using Base = detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_QUAD, QUADRATIC_LAGRANGE>, 2>;
+  using Base::GetParentNodeCoordinates;
+
   static constexpr int node_count = 9;
-  static constexpr int parent_dimension = 2;
   static constexpr int spatial_dimension = 3;
 
   /**
@@ -133,8 +182,8 @@ struct FaceElementTraits<LINEAR_QUAD, QUADRATIC_LAGRANGE> {
    *
    * @pre local_node is in [0, node_count)
    */
-  TRIBOL_HOST_DEVICE static void GetParentNodeCoordinates( int local_node,
-                                                           MdSpan<RealT, parent_dimension> parent_coordinates )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void GetParentNodeCoordinates(
+      int local_node, MdSpan<RealT, parent_dimension> parent_coordinates )
   {
     constexpr RealT parent_node_coordinates[node_count][parent_dimension] = {
         { -1.0, -1.0 }, { 1.0, -1.0 }, { 1.0, 1.0 },  { -1.0, 1.0 }, { 0.0, -1.0 },
@@ -363,6 +412,34 @@ struct BasisFunction<LINEAR_QUAD, QUADRATIC_LAGRANGE> : FaceElementTraits<LINEAR
 };
 
 /**
+ * @brief Interpolate nodal values at one parent-space point using precomputed basis values
+ *
+ * The nodal-values argument provides value access as nodal_values(node, component). MdSpan supplies contiguous values,
+ * while a mesh-specific view can use the same interface to read separate component arrays through element
+ * connectivity without changing this finite-element operation.
+ *
+ * @tparam Basis Basis that defines the local node count
+ * @tparam ComponentCount Number of components in each nodal value
+ * @tparam NodalValues Lightweight view that provides nodal_values(node, component)
+ *
+ * @param basis_values Basis values indexed by local node
+ * @param nodal_values Values indexed by local node, then component
+ * @param interpolated_values Interpolated values indexed by component
+ */
+template <typename Basis, int ComponentCount, typename NodalValues>
+TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline void InterpolateNodalValues(
+    MdSpan<const RealT, Basis::node_count> basis_values, NodalValues nodal_values,
+    MdSpan<RealT, ComponentCount> interpolated_values )
+{
+  for ( int component = 0; component < ComponentCount; ++component ) {
+    interpolated_values[component] = 0.0;
+    for ( int node = 0; node < Basis::node_count; ++node ) {
+      interpolated_values[component] += basis_values[node] * nodal_values( node, component );
+    }
+  }
+}
+
+/**
  * @brief Map one parent-space point to physical space using precomputed basis values
  *
  * The coordinates view makes the node-major layout explicit as coordinates(node, physical_component).
@@ -377,12 +454,7 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline void MapToPhysical(
     MdSpan<const RealT, Basis::node_count, Basis::spatial_dimension> coordinates,
     MdSpan<RealT, Basis::spatial_dimension> physical_point )
 {
-  for ( int physical_component = 0; physical_component < Basis::spatial_dimension; ++physical_component ) {
-    physical_point[physical_component] = 0.0;
-    for ( int node = 0; node < Basis::node_count; ++node ) {
-      physical_point[physical_component] += basis_values[node] * coordinates( node, physical_component );
-    }
-  }
+  InterpolateNodalValues<Basis, Basis::spatial_dimension>( basis_values, coordinates, physical_point );
 }
 
 /**
