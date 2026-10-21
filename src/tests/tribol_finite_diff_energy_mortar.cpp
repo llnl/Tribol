@@ -38,12 +38,12 @@ TEST( EnergyMortarCoordinates, preserves_edge_fraction_smoothing_on_normalized_i
   // contract the normalized interval without changing its physical meaning.
   constexpr double smoothing_length_fraction = 0.1;
   constexpr double coordinate_tolerance = 1.0e-14;
+  // An edge fraction spans twice that distance on [-1, 1], so smoothing extends the endpoint at xi = 1 by 2 * del.
   constexpr double normalized_support_limit = 1.0 + 2.0 * smoothing_length_fraction;
   const double projections[2] = { -2.0, 2.0 };
   double bounds[2];
   ContactSmoothing::bounds_from_projections( projections, smoothing_length_fraction, bounds );
 
-  // Doubling the parent interval doubles the smoothing extension that corresponds to the same physical edge fraction.
   EXPECT_DOUBLE_EQ( bounds[0], -normalized_support_limit );
   EXPECT_DOUBLE_EQ( bounds[1], normalized_support_limit );
 
