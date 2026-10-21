@@ -1219,7 +1219,7 @@ class MfemMeshData {
     InterfaceElementType elem_type_;
 
     /**
-     * @brief Finite element order represented by the contact mesh connectivity
+     * @brief Finite-element face order on the contact meshes
      */
     FaceOrderType face_order_;
 
