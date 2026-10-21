@@ -227,11 +227,11 @@ TEST( MdArray, owns_fixed_extent_row_major_data )
 
 TEST( BasisFunction, face_element_traits_define_connectivity_order )
 {
-  using LinearEdge = tribol::FaceElementTraits<tribol::LINEAR_EDGE, tribol::LINEAR>;
-  using QuadraticEdge = tribol::FaceElementTraits<tribol::LINEAR_EDGE, tribol::QUADRATIC_LAGRANGE>;
-  using LinearTriangle = tribol::FaceElementTraits<tribol::LINEAR_TRIANGLE, tribol::LINEAR>;
-  using LinearQuad = tribol::FaceElementTraits<tribol::LINEAR_QUAD, tribol::LINEAR>;
-  using QuadraticQuad = tribol::FaceElementTraits<tribol::LINEAR_QUAD, tribol::QUADRATIC_LAGRANGE>;
+  using LinearEdge = tribol::FaceElementTraits<tribol::EDGE, tribol::LINEAR_LAGRANGE>;
+  using QuadraticEdge = tribol::FaceElementTraits<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>;
+  using LinearTriangle = tribol::FaceElementTraits<tribol::TRIANGLE, tribol::LINEAR_LAGRANGE>;
+  using LinearQuad = tribol::FaceElementTraits<tribol::QUAD, tribol::LINEAR_LAGRANGE>;
+  using QuadraticQuad = tribol::FaceElementTraits<tribol::QUAD, tribol::QUADRATIC_LAGRANGE>;
 
   static_assert( LinearEdge::node_count == 2 );
   static_assert( LinearEdge::parent_dimension == 1 );
@@ -303,21 +303,21 @@ TEST( BasisFunction, face_element_traits_define_connectivity_order )
   EXPECT_EQ( reused_parent_coordinates[0], 0.0 );
   EXPECT_EQ( reused_parent_coordinates[1], 1.0 );
 
-  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::LINEAR_EDGE, tribol::LINEAR ), 2 );
-  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::LINEAR_EDGE, tribol::QUADRATIC_LAGRANGE ), 3 );
-  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::LINEAR_TRIANGLE, tribol::LINEAR ), 3 );
-  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::LINEAR_QUAD, tribol::LINEAR ), 4 );
-  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::LINEAR_QUAD, tribol::QUADRATIC_LAGRANGE ), 9 );
-  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::LINEAR_TRIANGLE, tribol::QUADRATIC_LAGRANGE ), 0 );
+  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::EDGE, tribol::LINEAR_LAGRANGE ), 2 );
+  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::EDGE, tribol::QUADRATIC_LAGRANGE ), 3 );
+  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::TRIANGLE, tribol::LINEAR_LAGRANGE ), 3 );
+  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::QUAD, tribol::LINEAR_LAGRANGE ), 4 );
+  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::QUAD, tribol::QUADRATIC_LAGRANGE ), 9 );
+  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::TRIANGLE, tribol::QUADRATIC_LAGRANGE ), 0 );
 }
 
 TEST( BasisFunction, interpolates_nodes_and_partitions_unity )
 {
-  using LinearEdge = tribol::BasisFunction<tribol::LINEAR_EDGE, tribol::LINEAR>;
-  using QuadraticEdge = tribol::BasisFunction<tribol::LINEAR_EDGE, tribol::QUADRATIC_LAGRANGE>;
-  using LinearTriangle = tribol::BasisFunction<tribol::LINEAR_TRIANGLE, tribol::LINEAR>;
-  using LinearQuad = tribol::BasisFunction<tribol::LINEAR_QUAD, tribol::LINEAR>;
-  using QuadraticQuad = tribol::BasisFunction<tribol::LINEAR_QUAD, tribol::QUADRATIC_LAGRANGE>;
+  using LinearEdge = tribol::BasisFunction<tribol::EDGE, tribol::LINEAR_LAGRANGE>;
+  using QuadraticEdge = tribol::BasisFunction<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>;
+  using LinearTriangle = tribol::BasisFunction<tribol::TRIANGLE, tribol::LINEAR_LAGRANGE>;
+  using LinearQuad = tribol::BasisFunction<tribol::QUAD, tribol::LINEAR_LAGRANGE>;
+  using QuadraticQuad = tribol::BasisFunction<tribol::QUAD, tribol::QUADRATIC_LAGRANGE>;
 
   ExpectNodalInterpolation<LinearEdge>();
   ExpectNodalInterpolation<QuadraticEdge>();
@@ -334,7 +334,7 @@ TEST( BasisFunction, interpolates_nodes_and_partitions_unity )
 
 TEST( BasisFunction, reproduces_quadratic_polynomials )
 {
-  using QuadraticEdge = tribol::BasisFunction<tribol::LINEAR_EDGE, tribol::QUADRATIC_LAGRANGE>;
+  using QuadraticEdge = tribol::BasisFunction<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>;
   constexpr tribol::RealT edge_parent_coordinate = 0.37;
   std::array<tribol::RealT, QuadraticEdge::node_count> edge_values{};
   std::array<tribol::RealT, QuadraticEdge::node_count> edge_derivatives{};
@@ -355,7 +355,7 @@ TEST( BasisFunction, reproduces_quadratic_polynomials )
                comparison_tolerance );
   EXPECT_NEAR( interpolated_edge_derivative, 3.0 + 8.0 * edge_parent_coordinate, comparison_tolerance );
 
-  using QuadraticQuad = tribol::BasisFunction<tribol::LINEAR_QUAD, tribol::QUADRATIC_LAGRANGE>;
+  using QuadraticQuad = tribol::BasisFunction<tribol::QUAD, tribol::QUADRATIC_LAGRANGE>;
   constexpr std::array<tribol::RealT, QuadraticQuad::parent_dimension> quad_parent_coordinates{ 0.17, -0.29 };
   std::array<tribol::RealT, QuadraticQuad::node_count> quad_values{};
   std::array<tribol::RealT, QuadraticQuad::node_count * QuadraticQuad::parent_dimension> quad_derivatives{};
@@ -387,17 +387,17 @@ TEST( BasisFunction, reproduces_quadratic_polynomials )
 
 TEST( BasisFunction, parent_derivatives_match_finite_differences )
 {
-  ExpectParentDerivativesMatchFiniteDifferences<tribol::BasisFunction<tribol::LINEAR_EDGE, tribol::QUADRATIC_LAGRANGE>>(
+  ExpectParentDerivativesMatchFiniteDifferences<tribol::BasisFunction<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>>(
       { 0.23 } );
-  ExpectParentDerivativesMatchFiniteDifferences<tribol::BasisFunction<tribol::LINEAR_TRIANGLE, tribol::LINEAR>>(
+  ExpectParentDerivativesMatchFiniteDifferences<tribol::BasisFunction<tribol::TRIANGLE, tribol::LINEAR_LAGRANGE>>(
       { 0.17, 0.31 } );
-  ExpectParentDerivativesMatchFiniteDifferences<tribol::BasisFunction<tribol::LINEAR_QUAD, tribol::QUADRATIC_LAGRANGE>>(
+  ExpectParentDerivativesMatchFiniteDifferences<tribol::BasisFunction<tribol::QUAD, tribol::QUADRATIC_LAGRANGE>>(
       { -0.37, 0.28 } );
 }
 
 TEST( BasisFunction, interpolates_nodal_values_through_connectivity )
 {
-  using Basis = tribol::BasisFunction<tribol::LINEAR_EDGE, tribol::QUADRATIC_LAGRANGE>;
+  using Basis = tribol::BasisFunction<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>;
   constexpr tribol::IndexT field_component_count = 2;
   constexpr tribol::IndexT global_node_count = 5;
   constexpr std::array<tribol::IndexT, Basis::node_count> connectivity{ 3, 1, 4 };
@@ -429,7 +429,7 @@ TEST( BasisFunction, interpolates_nodal_values_through_connectivity )
 
 TEST( BasisFunction, maps_affine_linear_elements )
 {
-  using EdgeBasis = tribol::BasisFunction<tribol::LINEAR_EDGE, tribol::LINEAR>;
+  using EdgeBasis = tribol::BasisFunction<tribol::EDGE, tribol::LINEAR_LAGRANGE>;
   constexpr tribol::RealT edge_parent_coordinate = 0.25;
   constexpr std::array<tribol::RealT, EdgeBasis::node_count * EdgeBasis::spatial_dimension> edge_coordinates{
       1.0, 2.0, 5.0, 4.0 };
@@ -450,7 +450,7 @@ TEST( BasisFunction, maps_affine_linear_elements )
   EXPECT_NEAR( tribol::ComputeJacobianWeight<EdgeBasis>( edge_parent_coordinate, edge_coordinates ), std::sqrt( 5.0 ),
                comparison_tolerance );
 
-  using QuadBasis = tribol::BasisFunction<tribol::LINEAR_QUAD, tribol::LINEAR>;
+  using QuadBasis = tribol::BasisFunction<tribol::QUAD, tribol::LINEAR_LAGRANGE>;
   constexpr std::array<tribol::RealT, QuadBasis::parent_dimension> quad_parent_coordinates{ 0.2, -0.4 };
   std::array<tribol::RealT, QuadBasis::node_count * QuadBasis::spatial_dimension> quad_coordinates{};
   for ( int node = 0; node < QuadBasis::node_count; ++node ) {
@@ -484,7 +484,7 @@ TEST( BasisFunction, maps_affine_linear_elements )
 
 TEST( BasisFunction, maps_curved_quadratic_edge )
 {
-  using Basis = tribol::BasisFunction<tribol::LINEAR_EDGE, tribol::QUADRATIC_LAGRANGE>;
+  using Basis = tribol::BasisFunction<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>;
   constexpr tribol::RealT parent_coordinate = 0.25;
   constexpr std::array<tribol::RealT, Basis::node_count * Basis::spatial_dimension> coordinates{ 0.0, 0.0, 2.0,
                                                                                                  0.0, 1.0, 1.0 };
@@ -520,7 +520,7 @@ TEST( BasisFunction, maps_curved_quadratic_edge )
 
 TEST( BasisFunction, maps_curved_quadratic_quad )
 {
-  using Basis = tribol::BasisFunction<tribol::LINEAR_QUAD, tribol::QUADRATIC_LAGRANGE>;
+  using Basis = tribol::BasisFunction<tribol::QUAD, tribol::QUADRATIC_LAGRANGE>;
   constexpr std::array<tribol::RealT, Basis::parent_dimension> parent_coordinates{ 0.2, -0.3 };
   std::array<tribol::RealT, Basis::node_count * Basis::spatial_dimension> coordinates{};
   for ( int node = 0; node < Basis::node_count; ++node ) {
@@ -568,7 +568,7 @@ TEST( BasisFunction, maps_curved_quadratic_quad )
 
 TEST( BasisFunction, rejects_rank_deficient_mapping )
 {
-  using EdgeBasis = tribol::BasisFunction<tribol::LINEAR_EDGE, tribol::LINEAR>;
+  using EdgeBasis = tribol::BasisFunction<tribol::EDGE, tribol::LINEAR_LAGRANGE>;
   constexpr std::array<tribol::RealT, EdgeBasis::node_count * EdgeBasis::spatial_dimension> edge_coordinates{
       1.0, 2.0, 1.0, 2.0 };
   constexpr tribol::RealT parent_coordinate = 0.0;
@@ -584,7 +584,7 @@ TEST( BasisFunction, rejects_rank_deficient_mapping )
     EXPECT_EQ( derivative, 0.0 );
   }
 
-  using QuadBasis = tribol::BasisFunction<tribol::LINEAR_QUAD, tribol::LINEAR>;
+  using QuadBasis = tribol::BasisFunction<tribol::QUAD, tribol::LINEAR_LAGRANGE>;
   constexpr std::array<tribol::RealT, QuadBasis::parent_dimension> quad_parent_coordinates{ 0.0, 0.0 };
   constexpr std::array<tribol::RealT, QuadBasis::node_count * QuadBasis::spatial_dimension> quad_coordinates{
       -1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0 };
@@ -608,18 +608,18 @@ TEST( BasisFunction, matches_mfem_h1_basis )
   mfem::H1_QuadrilateralElement linear_quad( 1 );
   mfem::H1_QuadrilateralElement quadratic_quad( 2 );
 
-  ExpectBasisMatchesMfem<tribol::BasisFunction<tribol::LINEAR_EDGE, tribol::LINEAR>>( { 0.23 }, linear_segment );
-  ExpectBasisMatchesMfem<tribol::BasisFunction<tribol::LINEAR_EDGE, tribol::QUADRATIC_LAGRANGE>>( { -0.31 },
-                                                                                                  quadratic_segment );
-  ExpectBasisMatchesMfem<tribol::BasisFunction<tribol::LINEAR_QUAD, tribol::LINEAR>>( { 0.19, -0.43 }, linear_quad );
-  ExpectBasisMatchesMfem<tribol::BasisFunction<tribol::LINEAR_QUAD, tribol::QUADRATIC_LAGRANGE>>( { -0.23, 0.41 },
-                                                                                                  quadratic_quad );
+  ExpectBasisMatchesMfem<tribol::BasisFunction<tribol::EDGE, tribol::LINEAR_LAGRANGE>>( { 0.23 }, linear_segment );
+  ExpectBasisMatchesMfem<tribol::BasisFunction<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>>( { -0.31 },
+                                                                                           quadratic_segment );
+  ExpectBasisMatchesMfem<tribol::BasisFunction<tribol::QUAD, tribol::LINEAR_LAGRANGE>>( { 0.19, -0.43 }, linear_quad );
+  ExpectBasisMatchesMfem<tribol::BasisFunction<tribol::QUAD, tribol::QUADRATIC_LAGRANGE>>( { -0.23, 0.41 },
+                                                                                           quadratic_quad );
 }
 
 #if defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP )
 TEST( BasisFunction, evaluates_on_device )
 {
-  using Basis = tribol::BasisFunction<tribol::LINEAR_EDGE, tribol::QUADRATIC_LAGRANGE>;
+  using Basis = tribol::BasisFunction<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>;
   tribol::ArrayT<tribol::RealT, 1, tribol::MemorySpace::Device> device_values( Basis::node_count + 1 );
   auto values = device_values.view();
 

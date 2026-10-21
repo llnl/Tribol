@@ -17,7 +17,7 @@ namespace tribol {
 
 namespace {
 
-using LinearEdgeBasis = BasisFunction<LINEAR_EDGE, LINEAR>;
+using LinearEdgeBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
 // View each endpoint as one [node][physical component] row so the owning coordinates retain the basis layout.
 using LinearEdgePointView = MdSpan<const double, LinearEdgeBasis::spatial_dimension>;
 using LinearEdgeCoordinates = MdArray<double, LinearEdgeBasis::node_count, LinearEdgeBasis::spatial_dimension>;

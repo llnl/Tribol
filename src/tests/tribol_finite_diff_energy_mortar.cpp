@@ -28,7 +28,7 @@
 
 namespace tribol {
 
-using LinearEdgeBasis = BasisFunction<LINEAR_EDGE, LINEAR>;
+using LinearEdgeBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
 using LinearEdgePointView = MdSpan<const double, LinearEdgeBasis::spatial_dimension>;
 using LinearEdgeCoordinates = MdArray<double, LinearEdgeBasis::node_count, LinearEdgeBasis::spatial_dimension>;
 

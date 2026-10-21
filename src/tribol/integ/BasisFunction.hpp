@@ -63,9 +63,9 @@ struct FaceElementTraitsBase {
 }  // namespace detail
 
 template <>
-struct FaceElementTraits<LINEAR_EDGE, LINEAR>
-    : detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_EDGE, LINEAR>, 1> {
-  using Base = detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_EDGE, LINEAR>, 1>;
+struct FaceElementTraits<EDGE, LINEAR_LAGRANGE>
+    : detail::FaceElementTraitsBase<FaceElementTraits<EDGE, LINEAR_LAGRANGE>, 1> {
+  using Base = detail::FaceElementTraitsBase<FaceElementTraits<EDGE, LINEAR_LAGRANGE>, 1>;
   using Base::GetParentNodeCoordinates;
 
   static constexpr int node_count = 2;
@@ -87,9 +87,9 @@ struct FaceElementTraits<LINEAR_EDGE, LINEAR>
 };
 
 template <>
-struct FaceElementTraits<LINEAR_EDGE, QUADRATIC_LAGRANGE>
-    : detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_EDGE, QUADRATIC_LAGRANGE>, 1> {
-  using Base = detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_EDGE, QUADRATIC_LAGRANGE>, 1>;
+struct FaceElementTraits<EDGE, QUADRATIC_LAGRANGE>
+    : detail::FaceElementTraitsBase<FaceElementTraits<EDGE, QUADRATIC_LAGRANGE>, 1> {
+  using Base = detail::FaceElementTraitsBase<FaceElementTraits<EDGE, QUADRATIC_LAGRANGE>, 1>;
   using Base::GetParentNodeCoordinates;
 
   static constexpr int node_count = 3;
@@ -113,9 +113,9 @@ struct FaceElementTraits<LINEAR_EDGE, QUADRATIC_LAGRANGE>
 };
 
 template <>
-struct FaceElementTraits<LINEAR_TRIANGLE, LINEAR>
-    : detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_TRIANGLE, LINEAR>, 2> {
-  using Base = detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_TRIANGLE, LINEAR>, 2>;
+struct FaceElementTraits<TRIANGLE, LINEAR_LAGRANGE>
+    : detail::FaceElementTraitsBase<FaceElementTraits<TRIANGLE, LINEAR_LAGRANGE>, 2> {
+  using Base = detail::FaceElementTraitsBase<FaceElementTraits<TRIANGLE, LINEAR_LAGRANGE>, 2>;
   using Base::GetParentNodeCoordinates;
 
   static constexpr int node_count = 3;
@@ -138,9 +138,9 @@ struct FaceElementTraits<LINEAR_TRIANGLE, LINEAR>
 };
 
 template <>
-struct FaceElementTraits<LINEAR_QUAD, LINEAR>
-    : detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_QUAD, LINEAR>, 2> {
-  using Base = detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_QUAD, LINEAR>, 2>;
+struct FaceElementTraits<QUAD, LINEAR_LAGRANGE>
+    : detail::FaceElementTraitsBase<FaceElementTraits<QUAD, LINEAR_LAGRANGE>, 2> {
+  using Base = detail::FaceElementTraitsBase<FaceElementTraits<QUAD, LINEAR_LAGRANGE>, 2>;
   using Base::GetParentNodeCoordinates;
 
   static constexpr int node_count = 4;
@@ -163,9 +163,9 @@ struct FaceElementTraits<LINEAR_QUAD, LINEAR>
 };
 
 template <>
-struct FaceElementTraits<LINEAR_QUAD, QUADRATIC_LAGRANGE>
-    : detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_QUAD, QUADRATIC_LAGRANGE>, 2> {
-  using Base = detail::FaceElementTraitsBase<FaceElementTraits<LINEAR_QUAD, QUADRATIC_LAGRANGE>, 2>;
+struct FaceElementTraits<QUAD, QUADRATIC_LAGRANGE>
+    : detail::FaceElementTraitsBase<FaceElementTraits<QUAD, QUADRATIC_LAGRANGE>, 2> {
+  using Base = detail::FaceElementTraitsBase<FaceElementTraits<QUAD, QUADRATIC_LAGRANGE>, 2>;
   using Base::GetParentNodeCoordinates;
 
   static constexpr int node_count = 9;
@@ -201,23 +201,23 @@ struct FaceElementTraits<LINEAR_QUAD, QUADRATIC_LAGRANGE>
  */
 TRIBOL_HOST_DEVICE inline int GetFaceNodeCount( InterfaceElementType element, FaceOrderType order )
 {
-  if ( element == LINEAR_EDGE ) {
-    if ( order == LINEAR ) {
-      return FaceElementTraits<LINEAR_EDGE, LINEAR>::node_count;
+  if ( element == EDGE ) {
+    if ( order == LINEAR_LAGRANGE ) {
+      return FaceElementTraits<EDGE, LINEAR_LAGRANGE>::node_count;
     }
     if ( order == QUADRATIC_LAGRANGE ) {
-      return FaceElementTraits<LINEAR_EDGE, QUADRATIC_LAGRANGE>::node_count;
+      return FaceElementTraits<EDGE, QUADRATIC_LAGRANGE>::node_count;
     }
   }
-  if ( element == LINEAR_TRIANGLE && order == LINEAR ) {
-    return FaceElementTraits<LINEAR_TRIANGLE, LINEAR>::node_count;
+  if ( element == TRIANGLE && order == LINEAR_LAGRANGE ) {
+    return FaceElementTraits<TRIANGLE, LINEAR_LAGRANGE>::node_count;
   }
-  if ( element == LINEAR_QUAD ) {
-    if ( order == LINEAR ) {
-      return FaceElementTraits<LINEAR_QUAD, LINEAR>::node_count;
+  if ( element == QUAD ) {
+    if ( order == LINEAR_LAGRANGE ) {
+      return FaceElementTraits<QUAD, LINEAR_LAGRANGE>::node_count;
     }
     if ( order == QUADRATIC_LAGRANGE ) {
-      return FaceElementTraits<LINEAR_QUAD, QUADRATIC_LAGRANGE>::node_count;
+      return FaceElementTraits<QUAD, QUADRATIC_LAGRANGE>::node_count;
     }
   }
   return 0;
@@ -270,7 +270,7 @@ template <InterfaceElementType Element, FaceOrderType Order>
 struct BasisFunction;
 
 template <>
-struct BasisFunction<LINEAR_EDGE, LINEAR> : FaceElementTraits<LINEAR_EDGE, LINEAR> {
+struct BasisFunction<EDGE, LINEAR_LAGRANGE> : FaceElementTraits<EDGE, LINEAR_LAGRANGE> {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void Eval( MdSpan<const RealT, parent_dimension> parent_coordinates,
                                                             MdSpan<RealT, node_count> basis_values )
   {
@@ -286,7 +286,7 @@ struct BasisFunction<LINEAR_EDGE, LINEAR> : FaceElementTraits<LINEAR_EDGE, LINEA
 };
 
 template <>
-struct BasisFunction<LINEAR_EDGE, QUADRATIC_LAGRANGE> : FaceElementTraits<LINEAR_EDGE, QUADRATIC_LAGRANGE> {
+struct BasisFunction<EDGE, QUADRATIC_LAGRANGE> : FaceElementTraits<EDGE, QUADRATIC_LAGRANGE> {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void Eval( MdSpan<const RealT, parent_dimension> parent_coordinates,
                                                             MdSpan<RealT, node_count> basis_values )
   {
@@ -304,7 +304,7 @@ struct BasisFunction<LINEAR_EDGE, QUADRATIC_LAGRANGE> : FaceElementTraits<LINEAR
 };
 
 template <>
-struct BasisFunction<LINEAR_TRIANGLE, LINEAR> : FaceElementTraits<LINEAR_TRIANGLE, LINEAR> {
+struct BasisFunction<TRIANGLE, LINEAR_LAGRANGE> : FaceElementTraits<TRIANGLE, LINEAR_LAGRANGE> {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void Eval( MdSpan<const RealT, parent_dimension> parent_coordinates,
                                                             MdSpan<RealT, node_count> basis_values )
   {
@@ -326,7 +326,7 @@ struct BasisFunction<LINEAR_TRIANGLE, LINEAR> : FaceElementTraits<LINEAR_TRIANGL
 };
 
 template <>
-struct BasisFunction<LINEAR_QUAD, LINEAR> : FaceElementTraits<LINEAR_QUAD, LINEAR> {
+struct BasisFunction<QUAD, LINEAR_LAGRANGE> : FaceElementTraits<QUAD, LINEAR_LAGRANGE> {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void Eval( MdSpan<const RealT, parent_dimension> parent_coordinates,
                                                             MdSpan<RealT, node_count> basis_values )
   {
@@ -366,7 +366,7 @@ struct BasisFunction<LINEAR_QUAD, LINEAR> : FaceElementTraits<LINEAR_QUAD, LINEA
 };
 
 template <>
-struct BasisFunction<LINEAR_QUAD, QUADRATIC_LAGRANGE> : FaceElementTraits<LINEAR_QUAD, QUADRATIC_LAGRANGE> {
+struct BasisFunction<QUAD, QUADRATIC_LAGRANGE> : FaceElementTraits<QUAD, QUADRATIC_LAGRANGE> {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void Eval( MdSpan<const RealT, parent_dimension> parent_coordinates,
                                                             MdSpan<RealT, node_count> basis_values )
   {
