@@ -15,6 +15,8 @@ namespace {
 
 TEST( MdArray, owns_fixed_extent_row_major_data )
 {
+  // MdArray must own only its fixed-size elements while exposing the same compile-time shape and row-major layout as
+  // MdSpan.
   using Array = tribol::MdArray<double, 2, 3>;
   using Row = tribol::MdArray<double, 3>;
   using RowView = tribol::MdSpan<const double, 3>;
@@ -24,6 +26,8 @@ TEST( MdArray, owns_fixed_extent_row_major_data )
   static_assert( Array::size() == 6 );
   static_assert( Array::extent<0>() == 2 );
   static_assert( Array::extent<1>() == 3 );
+  // Constructor constraints make incomplete or oversized rows fail at compile time instead of producing malformed
+  // multidimensional storage.
   static_assert( std::is_constructible_v<Row, double, double, double> );
   static_assert( !std::is_constructible_v<Row, double, double> );
   static_assert( !std::is_constructible_v<Row, double, double, double, double> );
@@ -34,6 +38,7 @@ TEST( MdArray, owns_fixed_extent_row_major_data )
   static_assert( !std::is_constructible_v<Array, tribol::MdArray<double, 2>, tribol::MdArray<double, 2>> );
   static_assert( !std::is_constructible_v<Array, tribol::MdSpan<const double, 2>, tribol::MdSpan<const double, 2>> );
 
+  // Row objects and row views must both initialize the same contiguous row-major representation.
   Array values{ Row{ 0.0, 1.0, 2.0 }, Row{ 3.0, 4.0, 5.0 } };
   const double first_row[3] = { 6.0, 7.0, 8.0 };
   const double second_row[3] = { 9.0, 10.0, 11.0 };
@@ -44,10 +49,12 @@ TEST( MdArray, owns_fixed_extent_row_major_data )
   EXPECT_EQ( values_from_views( 0, 2 ), 8.0 );
   EXPECT_EQ( values_from_views( 1, 0 ), 9.0 );
 
+  // Const ownership must yield a read-only view so callers cannot discard constness through view conversion.
   const Array& read_only_values = values;
   static_assert( std::is_same_v<decltype( read_only_values.view() ), tribol::MdSpan<const double, 2, 3>> );
   EXPECT_EQ( read_only_values.view()( 1, 0 ), 3.0 );
 
+  // MdArray has value semantics, so modifying a copy must not alias the original stack storage.
   auto copied_values = values;
   copied_values( 0, 1 ) = 8.0;
   EXPECT_EQ( values( 0, 1 ), 1.0 );

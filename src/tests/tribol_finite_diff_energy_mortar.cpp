@@ -34,6 +34,8 @@ using LinearEdgeCoordinates = MdArray<double, LinearEdgeBasis::node_count, Linea
 
 TEST( EnergyMortarCoordinates, preserves_edge_fraction_smoothing_on_normalized_interval )
 {
+  // EnergyMortar now evaluates edges on [-1, 1], so a smoothing length expressed as an edge fraction must expand and
+  // contract the normalized interval without changing its physical meaning.
   constexpr double smoothing_length_fraction = 0.1;
   constexpr double coordinate_tolerance = 1.0e-14;
   constexpr double normalized_support_limit = 1.0 + 2.0 * smoothing_length_fraction;
@@ -41,11 +43,13 @@ TEST( EnergyMortarCoordinates, preserves_edge_fraction_smoothing_on_normalized_i
   double bounds[2];
   ContactSmoothing::bounds_from_projections( projections, smoothing_length_fraction, bounds );
 
+  // Doubling the parent interval doubles the smoothing extension that corresponds to the same physical edge fraction.
   EXPECT_DOUBLE_EQ( bounds[0], -normalized_support_limit );
   EXPECT_DOUBLE_EQ( bounds[1], normalized_support_limit );
 
   double smooth_bounds[2];
   ContactSmoothing::smooth_bounds( bounds, smoothing_length_fraction, smooth_bounds );
+  // Symmetric projections cover the complete edge, so smoothing must recover the exact normalized element endpoints.
   EXPECT_NEAR( smooth_bounds[0], -1.0, coordinate_tolerance );
   EXPECT_NEAR( smooth_bounds[1], 1.0, coordinate_tolerance );
 }

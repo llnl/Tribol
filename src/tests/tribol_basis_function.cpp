@@ -131,12 +131,15 @@ void ExpectBasisMatchesMfem( const std::array<tribol::RealT, Basis::parent_dimen
 
 TEST( BasisFunction, face_element_traits_define_connectivity_order )
 {
+  // FaceElementTraits is the shared contract between MeshData connectivity and basis evaluation, so each supported
+  // shape and order must expose the dimensions, node count, and local parent-node ordering expected by both.
   using LinearEdge = tribol::FaceElementTraits<tribol::EDGE, tribol::LINEAR_LAGRANGE>;
   using QuadraticEdge = tribol::FaceElementTraits<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>;
   using LinearTriangle = tribol::FaceElementTraits<tribol::TRIANGLE, tribol::LINEAR_LAGRANGE>;
   using LinearQuad = tribol::FaceElementTraits<tribol::QUAD, tribol::LINEAR_LAGRANGE>;
   using QuadraticQuad = tribol::FaceElementTraits<tribol::QUAD, tribol::QUADRATIC_LAGRANGE>;
 
+  // Compile-time dimensions let callers size stack storage without carrying runtime element metadata into kernels.
   static_assert( LinearEdge::node_count == 2 );
   static_assert( LinearEdge::parent_dimension == 1 );
   static_assert( LinearEdge::spatial_dimension == 2 );
@@ -155,6 +158,7 @@ TEST( BasisFunction, face_element_traits_define_connectivity_order )
   static_assert( QuadraticQuad::spatial_dimension == 3 );
   static_assert( std::is_same_v<QuadraticQuad::ParentCoordinates, tribol::MdArray<tribol::RealT, 2>> );
 
+  // These parent coordinates make the local node index concrete and guard the MFEM-compatible connectivity ordering.
   constexpr std::array<tribol::RealT, LinearEdge::node_count> expected_linear_edge_nodes{ -1.0, 1.0 };
   for ( int node = 0; node < LinearEdge::node_count; ++node ) {
     const auto parent_coordinates = LinearEdge::GetParentNodeCoordinates( node );
@@ -207,6 +211,7 @@ TEST( BasisFunction, face_element_traits_define_connectivity_order )
   EXPECT_EQ( reused_parent_coordinates[0], 0.0 );
   EXPECT_EQ( reused_parent_coordinates[1], 1.0 );
 
+  // MeshData uses the runtime dispatcher, so it must agree with the compile-time traits and reject unsupported pairs.
   EXPECT_EQ( tribol::GetFaceNodeCount( tribol::EDGE, tribol::LINEAR_LAGRANGE ), 2 );
   EXPECT_EQ( tribol::GetFaceNodeCount( tribol::EDGE, tribol::QUADRATIC_LAGRANGE ), 3 );
   EXPECT_EQ( tribol::GetFaceNodeCount( tribol::TRIANGLE, tribol::LINEAR_LAGRANGE ), 3 );
@@ -217,6 +222,8 @@ TEST( BasisFunction, face_element_traits_define_connectivity_order )
 
 TEST( BasisFunction, interpolates_nodes_and_partitions_unity )
 {
+  // Every supported basis must preserve nodal values exactly and preserve constant fields throughout its parent
+  // element; the derivative sums must therefore vanish as well.
   using LinearEdge = tribol::BasisFunction<tribol::EDGE, tribol::LINEAR_LAGRANGE>;
   using QuadraticEdge = tribol::BasisFunction<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>;
   using LinearTriangle = tribol::BasisFunction<tribol::TRIANGLE, tribol::LINEAR_LAGRANGE>;
@@ -238,6 +245,8 @@ TEST( BasisFunction, interpolates_nodes_and_partitions_unity )
 
 TEST( BasisFunction, reproduces_quadratic_polynomials )
 {
+  // Quadratic Lagrange bases must exactly reproduce every polynomial in their approximation space, including the
+  // parent derivatives needed by mapping and contact calculations.
   using QuadraticEdge = tribol::BasisFunction<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>;
   constexpr tribol::RealT edge_parent_coordinate = 0.37;
   std::array<tribol::RealT, QuadraticEdge::node_count> edge_values{};
@@ -266,6 +275,7 @@ TEST( BasisFunction, reproduces_quadratic_polynomials )
   QuadraticQuad::Eval( quad_parent_coordinates, quad_values );
   QuadraticQuad::EvalParentDerivatives( quad_parent_coordinates, quad_derivatives );
 
+  // The mixed terms exercise the full tensor-product space rather than only independent one-dimensional quadratics.
   auto polynomial = []( tribol::RealT x, tribol::RealT y ) {
     return 1.0 + 2.0 * x - 3.0 * y + 4.0 * x * x + 5.0 * x * y + 6.0 * y * y + 7.0 * x * x * y + 8.0 * x * y * y +
            9.0 * x * x * y * y;
@@ -291,6 +301,8 @@ TEST( BasisFunction, reproduces_quadratic_polynomials )
 
 TEST( BasisFunction, parent_derivatives_match_finite_differences )
 {
+  // Independent finite differences catch sign, scaling, and local-order mistakes in the analytical parent
+  // derivatives for both simplex and tensor-product elements.
   ExpectParentDerivativesMatchFiniteDifferences<tribol::BasisFunction<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>>(
       { 0.23 } );
   ExpectParentDerivativesMatchFiniteDifferences<tribol::BasisFunction<tribol::TRIANGLE, tribol::LINEAR_LAGRANGE>>(
@@ -301,9 +313,12 @@ TEST( BasisFunction, parent_derivatives_match_finite_differences )
 
 TEST( BasisFunction, interpolates_nodal_values_through_connectivity )
 {
+  // Field interpolation must read component arrays through element connectivity because MeshData does not store each
+  // element's nodal values in contiguous local arrays.
   using Basis = tribol::BasisFunction<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>;
   constexpr tribol::IndexT field_component_count = 2;
   constexpr tribol::IndexT global_node_count = 5;
+  // A noncontiguous, nonmonotonic map detects implementations that accidentally use the local node as a global index.
   constexpr std::array<tribol::IndexT, Basis::node_count> connectivity{ 3, 1, 4 };
 
   std::array<tribol::RealT, global_node_count> first_component{};
@@ -333,6 +348,8 @@ TEST( BasisFunction, interpolates_nodal_values_through_connectivity )
 
 TEST( BasisFunction, maps_affine_linear_elements )
 {
+  // Affine elements have constant analytical mappings, so they provide exact reference values for mapped points,
+  // Jacobians, and line or surface integration weights.
   using EdgeBasis = tribol::BasisFunction<tribol::EDGE, tribol::LINEAR_LAGRANGE>;
   constexpr tribol::RealT edge_parent_coordinate = 0.25;
   constexpr std::array<tribol::RealT, EdgeBasis::node_count * EdgeBasis::spatial_dimension> edge_coordinates{
@@ -350,6 +367,7 @@ TEST( BasisFunction, maps_affine_linear_elements )
   EXPECT_NEAR( edge_point[1], 3.25, comparison_tolerance );
   EXPECT_NEAR( edge_jacobian[0], 2.0, comparison_tolerance );
   EXPECT_NEAR( edge_jacobian[1], 1.0, comparison_tolerance );
+  // The precomputed-Jacobian and coordinate convenience overloads must produce the same physical integration weight.
   EXPECT_NEAR( tribol::ComputeJacobianWeight<EdgeBasis>( edge_jacobian ), std::sqrt( 5.0 ), comparison_tolerance );
   EXPECT_NEAR( tribol::ComputeJacobianWeight<EdgeBasis>( edge_parent_coordinate, edge_coordinates ), std::sqrt( 5.0 ),
                comparison_tolerance );
@@ -381,6 +399,7 @@ TEST( BasisFunction, maps_affine_linear_elements )
   for ( int entry = 0; entry < static_cast<int>( quad_jacobian.size() ); ++entry ) {
     EXPECT_NEAR( quad_jacobian[entry], expected_quad_jacobian[entry], comparison_tolerance );
   }
+  // The surface weight includes the out-of-plane slope, so this check exercises sqrt(det(J^T J)), not only x-y area.
   EXPECT_NEAR( tribol::ComputeJacobianWeight<QuadBasis>( quad_jacobian ), 6.5, comparison_tolerance );
   EXPECT_NEAR( tribol::ComputeJacobianWeight<QuadBasis>( quad_parent_coordinates, quad_coordinates ), 6.5,
                comparison_tolerance );
@@ -388,6 +407,8 @@ TEST( BasisFunction, maps_affine_linear_elements )
 
 TEST( BasisFunction, maps_curved_quadratic_edge )
 {
+  // A curved edge makes the Jacobian vary with the parent coordinate and verifies that quadratic geometry nodes affect
+  // mapped points, integration weights, and tangential physical derivatives.
   using Basis = tribol::BasisFunction<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>;
   constexpr tribol::RealT parent_coordinate = 0.25;
   constexpr std::array<tribol::RealT, Basis::node_count * Basis::spatial_dimension> coordinates{ 0.0, 0.0, 2.0,
@@ -412,6 +433,7 @@ TEST( BasisFunction, maps_curved_quadratic_edge )
                comparison_tolerance );
   ASSERT_TRUE( tribol::ComputePhysicalDerivatives<Basis>( jacobian, parent_derivatives, physical_derivatives ) );
 
+  // Physical derivatives are tangential ambient gradients, so multiplying by J must recover each parent derivative.
   for ( int node = 0; node < Basis::node_count; ++node ) {
     tribol::RealT recovered_parent_derivative{};
     for ( int physical_component = 0; physical_component < Basis::spatial_dimension; ++physical_component ) {
@@ -424,6 +446,8 @@ TEST( BasisFunction, maps_curved_quadratic_edge )
 
 TEST( BasisFunction, maps_curved_quadratic_quad )
 {
+  // A bowed quadratic face verifies the three-dimensional mapping and metric terms that an affine planar face cannot
+  // exercise.
   using Basis = tribol::BasisFunction<tribol::QUAD, tribol::QUADRATIC_LAGRANGE>;
   constexpr std::array<tribol::RealT, Basis::parent_dimension> parent_coordinates{ 0.2, -0.3 };
   std::array<tribol::RealT, Basis::node_count * Basis::spatial_dimension> coordinates{};
@@ -457,6 +481,7 @@ TEST( BasisFunction, maps_curved_quadratic_quad )
                comparison_tolerance );
   ASSERT_TRUE( tribol::ComputePhysicalDerivatives<Basis>( jacobian, parent_derivatives, physical_derivatives ) );
 
+  // The chain-rule identity must hold for both parent directions after lifting derivatives into ambient space.
   for ( int node = 0; node < Basis::node_count; ++node ) {
     for ( int parent_component = 0; parent_component < Basis::parent_dimension; ++parent_component ) {
       tribol::RealT recovered_parent_derivative{};
@@ -472,6 +497,8 @@ TEST( BasisFunction, maps_curved_quadratic_quad )
 
 TEST( BasisFunction, rejects_rank_deficient_mapping )
 {
+  // Collapsed geometry has no unique tangential physical derivative, so the utility must report failure and erase the
+  // entire output instead of leaving partially computed values for contact kernels to consume.
   using EdgeBasis = tribol::BasisFunction<tribol::EDGE, tribol::LINEAR_LAGRANGE>;
   constexpr std::array<tribol::RealT, EdgeBasis::node_count * EdgeBasis::spatial_dimension> edge_coordinates{
       1.0, 2.0, 1.0, 2.0 };
@@ -507,6 +534,8 @@ TEST( BasisFunction, rejects_rank_deficient_mapping )
 
 TEST( BasisFunction, matches_mfem_h1_basis )
 {
+  // Matching MFEM values and derivatives confirms that Tribol uses the same H1 local ordering while accounting for
+  // Tribol's normalized [-1, 1] edge and quadrilateral coordinates.
   mfem::H1_SegmentElement linear_segment( 1 );
   mfem::H1_SegmentElement quadratic_segment( 2 );
   mfem::H1_QuadrilateralElement linear_quad( 1 );
@@ -523,6 +552,8 @@ TEST( BasisFunction, matches_mfem_h1_basis )
 #if defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP )
 TEST( BasisFunction, evaluates_on_device )
 {
+  // Basis evaluation, fixed-size storage, and nodal interpolation must all compile and execute inside the configured
+  // CUDA or HIP kernel path rather than passing only through host-compatible annotations.
   using Basis = tribol::BasisFunction<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>;
   tribol::ArrayT<tribol::RealT, 1, tribol::MemorySpace::Device> device_values( Basis::node_count + 1 );
   auto values = device_values.view();
@@ -548,6 +579,7 @@ TEST( BasisFunction, evaluates_on_device )
     values[Basis::node_count] = interpolated_value[0];
   } );
 
+  // Evaluating at the midpoint node produces its Kronecker row, which then selects the third nodal field value.
   tribol::ArrayT<tribol::RealT, 1, tribol::MemorySpace::Host> host_values( device_values );
   EXPECT_NEAR( host_values[0], 0.0, comparison_tolerance );
   EXPECT_NEAR( host_values[1], 0.0, comparison_tolerance );

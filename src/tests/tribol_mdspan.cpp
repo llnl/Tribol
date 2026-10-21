@@ -16,6 +16,8 @@ namespace {
 
 TEST( MdSpan, provides_a_fixed_extent_row_major_view )
 {
+  // MdSpan must provide compile-time shape and const-correct views while remaining pointer-sized for inexpensive
+  // kernel argument passing.
   using MatrixView = tribol::MdSpan<double, 2, 3>;
   using VectorView = tribol::MdSpan<double, 2>;
   using ReadOnlyVectorView = tribol::MdSpan<const double, 2>;
@@ -24,6 +26,8 @@ TEST( MdSpan, provides_a_fixed_extent_row_major_view )
 
   static_assert( sizeof( MatrixView ) == sizeof( double* ) );
   static_assert( std::is_trivially_copyable_v<MatrixView> );
+  // Construction accepts storage with the exact element count and rejects const, temporary, or mismatched storage
+  // that could violate mutability or lifetime requirements.
   static_assert( std::is_constructible_v<VectorView, double( & )[2]> );
   static_assert( !std::is_constructible_v<VectorView, double( & )[3]> );
   static_assert( std::is_constructible_v<VectorView, std::array<double, 2>&> );
@@ -56,11 +60,13 @@ TEST( MdSpan, provides_a_fixed_extent_row_major_view )
   static_assert( decltype( values_by_row )::size() == 6 );
   static_assert( decltype( values_by_row )::extent<0>() == 2 );
   static_assert( decltype( values_by_row )::extent<1>() == 3 );
+  // Multidimensional and flat indexing must address the same row-major storage without copying values into the view.
   EXPECT_EQ( values_by_row( 1, 2 ), values[5] );
   EXPECT_EQ( read_only_values[3], values[3] );
   EXPECT_EQ( read_only_vector_view[1], read_only_vector_values[1] );
   EXPECT_EQ( read_only_scalar_view[0], read_only_scalar_value );
 
+  // Writes through mutable views must update each kind of caller-owned storage directly.
   values_by_row( 0, 1 ) = 8.0;
   vector_view[1] = 12.0;
   scalar_view[0] = 13.0;
