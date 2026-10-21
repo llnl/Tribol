@@ -14,13 +14,13 @@ namespace tribol {
 
 /// Stores quadrature-point locations and weights for the supported Gauss-Legendre rule.
 struct QuadPoints {
-  std::array<double, 3> qp;  ///< Quadrature-point locations in the local coordinate of the integration edge.
+  std::array<double, 3> qp;  ///< Quadrature-point locations in the normalized [-1, 1] integration-edge coordinate.
   std::array<double, 3> w;   ///< Quadrature weights mapped to the local integration interval.
 };
 
 /// Parameters controlling ENERGY_MORTAR contact evaluation.
 struct ContactParams {
-  double del;                  ///< Smoothing length used for integration bounds.
+  double del;                  ///< Smoothing length as a fraction of the integration-edge length.
   double k;                    ///< Penalty stiffness.
   int N;                       ///< Number of quadrature points.
   bool enzyme_quadrature;      ///< Whether Enzyme differentiates the quadrature construction.
@@ -81,7 +81,7 @@ struct FiniteDiffResult {
 
 /// Stores fixed quadrature data passed to differentiated kernels.
 struct Gparams {
-  std::array<double, 3> qp;    ///< Quadrature-point locations in the integration-edge local coordinate.
+  std::array<double, 3> qp;    ///< Quadrature-point locations in the normalized [-1, 1] edge coordinate.
   std::array<double, 3> w;     ///< Quadrature weights mapped to the local integration interval.
   double residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
 };
@@ -94,8 +94,8 @@ class ContactSmoothing {
  public:
   /// Clamp the projected overlap interval to the extended smoothing support.
   ///
-  /// The input `projections` contains the local projection bounds of edge B onto edge A.
-  /// The output `bounds` is restricted to the extended local range `[-0.5 - del, 0.5 + del]`.
+  /// The input `projections` contains normalized [-1, 1] projection bounds of edge B onto edge A. The output `bounds`
+  /// is restricted to the extended local range `[-1 - 2 * del, 1 + 2 * del]`.
   static void bounds_from_projections( const double* projections, double del, double* bounds );
 
   /// Smooth the integration bounds using the smoothing length `del`.
@@ -111,7 +111,8 @@ class ContactSmoothing {
 /// contact forces, stiffness contributions, and derivative checks used by the
 /// Energy Mortar contact formulation. The interface pair is assumed to contain
 /// one face from mesh1, treated as edge A/non-mortar/integration side, and one
-/// face from mesh2, treated as edge B/mortar/projection side.
+/// face from mesh2, treated as edge B/mortar/projection side. Local edge coordinates use the normalized [-1, 1]
+/// interval shared by BasisFunction.
 class EnergyMortarCalculator {
  public:
   /// Construct a contact evaluator with the supplied contact parameters.
