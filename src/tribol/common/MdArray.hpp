@@ -42,7 +42,7 @@ class MdArray {
   TRIBOL_HOST_DEVICE static constexpr IndexT size() { return span_type::size(); }
 
   /**
-   * @brief Return one compile-time extent
+   * @brief Return the number of values along one dimension
    *
    * @tparam Dimension Zero-based dimension
    */
