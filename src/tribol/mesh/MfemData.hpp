@@ -709,8 +709,9 @@ class MfemMeshData {
   /**
    * @brief Get the number of finite-element nodes in the Redecomp mesh
    *
-   * Higher-order nodal coordinates are indexed by finite-element DOF rather than geometric vertex. This count therefore
-   * matches the component arrays returned by GetRedecompCoordsPtrs() and bounds every connectivity entry.
+   * Higher-order nodal coordinates are indexed by finite-element DOF rather than geometric vertex. This count equals
+   * the length of each component array returned by GetRedecompCoordsPtrs(). Connectivity values index these arrays; use
+   * GetNodesPerElement() for the connectivity row width.
    *
    * @return int
    */
