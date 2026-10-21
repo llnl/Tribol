@@ -23,9 +23,36 @@
 
 #include "tribol/config.hpp"
 #include "tribol/common/Parameters.hpp"
+#include "tribol/integ/BasisFunction.hpp"
 #include "tribol/interface/tribol.hpp"
 
 namespace tribol {
+
+using LinearEdgeBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
+using LinearEdgePointView = MdSpan<const double, LinearEdgeBasis::spatial_dimension>;
+using LinearEdgeCoordinates = MdArray<double, LinearEdgeBasis::node_count, LinearEdgeBasis::spatial_dimension>;
+
+TEST( EnergyMortarCoordinates, preserves_edge_fraction_smoothing_on_normalized_interval )
+{
+  // EnergyMortar now evaluates edges on [-1, 1], so a smoothing length expressed as an edge fraction must expand and
+  // contract the normalized interval without changing its physical meaning.
+  constexpr double smoothing_length_fraction = 0.1;
+  constexpr double coordinate_tolerance = 1.0e-14;
+  // An edge fraction spans twice that distance on [-1, 1], so smoothing extends the endpoint at xi = 1 by 2 * del.
+  constexpr double normalized_support_limit = 1.0 + 2.0 * smoothing_length_fraction;
+  const double projections[2] = { -2.0, 2.0 };
+  double bounds[2];
+  ContactSmoothing::bounds_from_projections( projections, smoothing_length_fraction, bounds );
+
+  EXPECT_DOUBLE_EQ( bounds[0], -normalized_support_limit );
+  EXPECT_DOUBLE_EQ( bounds[1], normalized_support_limit );
+
+  double smooth_bounds[2];
+  ContactSmoothing::smooth_bounds( bounds, smoothing_length_fraction, smooth_bounds );
+  // Symmetric projections cover the complete edge, so smoothing must recover the exact normalized element endpoints.
+  EXPECT_NEAR( smooth_bounds[0], -1.0, coordinate_tolerance );
+  EXPECT_NEAR( smooth_bounds[1], 1.0, coordinate_tolerance );
+}
 
 // static ContactSmoothing smoother( ContactParams{} );
 
@@ -218,7 +245,8 @@ std::pair<double, double> EnergyMortarCalculator::eval_gtilde_fixed_qp( const In
   double A0[2], A1[2];
   endpoints( mesh1, pair.m_element_id1, A0, A1 );
 
-  const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
+  const double J = ComputeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coordinates.view() );
 
   double gt1 = 0.0, gt2 = 0.0;
 
@@ -226,13 +254,15 @@ std::pair<double, double> EnergyMortarCalculator::eval_gtilde_fixed_qp( const In
     const double xiA = qp_fixed.qp[i];
     const double w = qp_fixed.w[i];
 
-    const double N1 = 0.5 - xiA;
-    const double N2 = 0.5 + xiA;
+    double basis_values[LinearEdgeBasis::node_count];
+    LinearEdgeBasis::Eval(
+        MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &xiA, LinearEdgeBasis::parent_dimension },
+        basis_values );
 
     const double gn = compute_weighted_normal_gap( pair, mesh1, mesh2, xiA );
 
-    gt1 += w * N1 * J * gn;
-    gt2 += w * N2 * J * gn;
+    gt1 += w * basis_values[0] * J * gn;
+    gt2 += w * basis_values[1] * J * gn;
   }
 
   return { gt1, gt2 };

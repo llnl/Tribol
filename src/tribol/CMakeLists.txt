@@ -18,6 +18,8 @@ set(tribol_headers
     common/Enzyme.hpp
     common/ExecModel.hpp
     common/LoopExec.hpp
+    common/MdArray.hpp
+    common/MdSpan.hpp
     common/Parameters.hpp
 
     geom/CompGeom.hpp
@@ -26,6 +28,7 @@ set(tribol_headers
     geom/Hyperplane.hpp
     geom/NodalNormal.hpp
 
+    integ/BasisFunction.hpp
     integ/FE.hpp
     integ/Integration.hpp
 
