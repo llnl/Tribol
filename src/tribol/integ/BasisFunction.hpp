@@ -510,6 +510,9 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline void ComputeMappingJacobian(
 /**
  * @brief Compute the line or surface measure that maps parent integration weights to physical space
  *
+ * For an edge, this measure maps a parent differential to physical arc length as ds = sqrt(det(J^T J)) dxi. For a
+ * face, it maps a parent area differential to physical surface area as dA = sqrt(det(J^T J)) dxi deta.
+ *
  * @param jacobian Mapping Jacobian stored by physical component, then parent component
  * @return sqrt(det(J^T J)), which is the line or surface integration weight
  */
