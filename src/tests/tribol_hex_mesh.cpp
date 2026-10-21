@@ -75,7 +75,7 @@ TEST_F( HexMeshTest, build_and_check_hex_mesh )
 
   // sanity checks for this specific mesh
   EXPECT_EQ( this->m_mesh.mesh_constructed, true );
-  EXPECT_EQ( this->m_mesh.cellType, (int)( tribol::LINEAR_QUAD ) );
+  EXPECT_EQ( this->m_mesh.cellType, (int)( tribol::QUAD ) );
   EXPECT_EQ( this->m_mesh.numNodesPerFace, 4 );
   EXPECT_EQ( this->m_mesh.numNodesPerElement, 8 );
   EXPECT_EQ( this->m_mesh.numMortarElements, nMortarElems * nMortarElems * nMortarElems );

@@ -569,10 +569,10 @@ bool CouplingScheme::isValidMethod()
 
   // check all methods for basic validity issues for non-null meshes
   if ( !this->m_nullMeshes ) {
-    if ( ( this->m_mesh1->getElementType() != LINEAR_EDGE && this->m_mesh1->getElementType() != LINEAR_QUAD &&
-           this->m_mesh1->getElementType() != LINEAR_TRIANGLE ) ||
-         ( this->m_mesh2->getElementType() != LINEAR_EDGE && this->m_mesh2->getElementType() != LINEAR_QUAD &&
-           this->m_mesh2->getElementType() != LINEAR_TRIANGLE ) ) {
+    if ( ( this->m_mesh1->getElementType() != EDGE && this->m_mesh1->getElementType() != QUAD &&
+           this->m_mesh1->getElementType() != TRIANGLE ) ||
+         ( this->m_mesh2->getElementType() != EDGE && this->m_mesh2->getElementType() != QUAD &&
+           this->m_mesh2->getElementType() != TRIANGLE ) ) {
       this->m_couplingSchemeErrors.cs_method_error = INVALID_ELEMENT_TYPE;
       return false;
     }
@@ -1399,13 +1399,13 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                 RealT cXf1 = plane.m_cXf1;
                 RealT cYf1 = plane.m_cYf1;
                 RealT cZf1 = ( dim == 3 ) ? plane.m_cZf1 : 0.;
-                GalerkinEval( x1, cXf1, cYf1, cZf1, LINEAR, PHYSICAL, dim, dim, v1, vel_f1 );
+                GalerkinEval( x1, cXf1, cYf1, cZf1, LINEAR_LAGRANGE, PHYSICAL, dim, dim, v1, vel_f1 );
                 // interpolate nodal velocity at overlap centroid as projected
                 // onto face 2
                 RealT cXf2 = plane.m_cXf2;
                 RealT cYf2 = plane.m_cYf2;
                 RealT cZf2 = ( dim == 3 ) ? plane.m_cZf2 : 0.;
-                GalerkinEval( x2, cXf2, cYf2, cZf2, LINEAR, PHYSICAL, dim, dim, v2, vel_f2 );
+                GalerkinEval( x2, cXf2, cYf2, cZf2, LINEAR_LAGRANGE, PHYSICAL, dim, dim, v2, vel_f2 );
 
                 ////////////////////////////////////////////////
                 //                                            //

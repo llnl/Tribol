@@ -433,9 +433,9 @@ class EnzymeElementMortarTest : public testing::Test {
 
     // NOTE: This will still work for triangles since the unused nodes are ignored.
     IndexT conn[4] = { 0, 1, 2, 3 };
-    tribol::InterfaceElementType interface_element_type = tribol::InterfaceElementType::LINEAR_QUAD;
+    tribol::InterfaceElementType interface_element_type = tribol::InterfaceElementType::QUAD;
     if ( num_nodes == 3 ) {
-      interface_element_type = tribol::InterfaceElementType::LINEAR_TRIANGLE;
+      interface_element_type = tribol::InterfaceElementType::TRIANGLE;
     }
     constexpr int num_elems = 1;
 

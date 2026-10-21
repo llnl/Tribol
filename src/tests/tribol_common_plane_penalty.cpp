@@ -536,10 +536,8 @@ TEST_F( CommonPlaneTest, common_plane_2d_interpen_check )
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
 
-  tribol::registerMesh( 0, 1, 2, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
-                        tribol::MemorySpace::Host );
-  tribol::registerMesh( 1, 1, 2, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( 0, 1, 2, &conn1[0], (int)( tribol::EDGE ), &x1[0], &y1[0], nullptr, tribol::MemorySpace::Host );
+  tribol::registerMesh( 1, 1, 2, &conn2[0], (int)( tribol::EDGE ), &x2[0], &y2[0], nullptr, tribol::MemorySpace::Host );
 
   RealT fx1[2] = { 0., 0. };
   RealT fy1[2] = { 0., 0. };
@@ -618,9 +616,9 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )
   tribol::IndexT conn1[numVerts] = { 0, 1 };
   tribol::IndexT conn2[numVerts] = { 0, 1 };
 
-  tribol::registerMesh( 0, 1, numVerts, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
+  tribol::registerMesh( 0, 1, numVerts, &conn1[0], (int)( tribol::EDGE ), &x1[0], &y1[0], nullptr,
                         tribol::MemorySpace::Host );
-  tribol::registerMesh( 1, 1, numVerts, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
+  tribol::registerMesh( 1, 1, numVerts, &conn2[0], (int)( tribol::EDGE ), &x2[0], &y2[0], nullptr,
                         tribol::MemorySpace::Host );
 
   RealT fx1[numVerts] = { 0., 0. };
@@ -730,9 +728,9 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_3d )
   tribol::IndexT conn1[numVerts] = { 0, 1, 2, 3 };
   tribol::IndexT conn2[numVerts] = { 0, 1, 2, 3 };
 
-  tribol::registerMesh( 0, 1, numVerts, &conn1[0], (int)( tribol::LINEAR_QUAD ), &x1[0], &y1[0], &z1[0],
+  tribol::registerMesh( 0, 1, numVerts, &conn1[0], (int)( tribol::QUAD ), &x1[0], &y1[0], &z1[0],
                         tribol::MemorySpace::Host );
-  tribol::registerMesh( 1, 1, numVerts, &conn2[0], (int)( tribol::LINEAR_QUAD ), &x2[0], &y2[0], &z2[0],
+  tribol::registerMesh( 1, 1, numVerts, &conn2[0], (int)( tribol::QUAD ), &x2[0], &y2[0], &z2[0],
                         tribol::MemorySpace::Host );
 
   RealT fx1[numVerts] = { 0., 0., 0., 0. };

@@ -252,11 +252,11 @@ int runExample( int num_elems_1d )
   timer.start();
 
   constexpr tribol::IndexT top_mesh_id = 0;
-  tribol::registerMesh( top_mesh_id, num_contact_elems, top_fe_space.GetNDofs(), top_conn.data(), tribol::LINEAR_QUAD,
+  tribol::registerMesh( top_mesh_id, num_contact_elems, top_fe_space.GetNDofs(), top_conn.data(), tribol::QUAD,
                         top_x_coords_ptr, top_y_coords_ptr, top_z_coords_ptr, MSPACE );
   constexpr tribol::IndexT bottom_mesh_id = 1;
-  tribol::registerMesh( bottom_mesh_id, num_contact_elems, bottom_fe_space.GetNDofs(), bottom_conn.data(),
-                        tribol::LINEAR_QUAD, bottom_x_coords_ptr, bottom_y_coords_ptr, bottom_z_coords_ptr, MSPACE );
+  tribol::registerMesh( bottom_mesh_id, num_contact_elems, bottom_fe_space.GetNDofs(), bottom_conn.data(), tribol::QUAD,
+                        bottom_x_coords_ptr, bottom_y_coords_ptr, bottom_z_coords_ptr, MSPACE );
 
   constexpr tribol::RealT penalty = 5000.0;
   tribol::setKinematicConstantPenalty( top_mesh_id, penalty );

@@ -405,7 +405,7 @@ void registerMesh( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const 
 {
   MeshManager::getInstance().addData(
       mesh_id, MeshData( mesh_id, num_elements, num_nodes, connectivity,
-                         static_cast<InterfaceElementType>( element_type ), x, y, z, mem_space ) );
+                         static_cast<InterfaceElementType>( element_type ), LINEAR_LAGRANGE, x, y, z, mem_space ) );
 }  // end registerMesh()
 
 //------------------------------------------------------------------------------

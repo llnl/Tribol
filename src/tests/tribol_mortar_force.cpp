@@ -60,7 +60,7 @@ class MortarForceTest : public ::testing::Test {
     int cellType = static_cast<int>( tribol::UNDEFINED_ELEMENT );
     switch ( this->numNodesPerFace ) {
       case 4: {
-        cellType = (int)( tribol::LINEAR_QUAD );
+        cellType = (int)( tribol::QUAD );
         break;
       }
       default: {
