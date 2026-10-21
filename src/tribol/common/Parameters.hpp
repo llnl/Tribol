@@ -298,7 +298,7 @@ enum class SparseMode
  */
 enum FaceOrderType
 {
-  LINEAR,                 ///! Linear Lagrange (default)
+  LINEAR_LAGRANGE,        ///! Linear Lagrange (default)
   QUADRATIC_LAGRANGE,     ///! Quadratic 3-node edge or 9-node quadrilateral
   QUADRATIC_SERENDIPITY,  ///! Quadratic 8-node serendipity face
   CUBIC_LAGRANGE,         ///! Cubic Lagrange face
