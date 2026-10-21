@@ -707,7 +707,7 @@ class MfemMeshData {
   int GetNV() const { return GetUpdateData().redecomp_mesh_.GetNV(); }
 
   /**
-   * @brief Get the number of finite-element nodes available to both Tribol registered meshes
+   * @brief Get the number of finite-element nodes in the Redecomp mesh
    *
    * Higher-order coordinates are indexed by finite-element DOF rather than geometric vertex. This count therefore
    * matches the component arrays returned by GetRedecompCoordsPtrs() and bounds every connectivity entry.
