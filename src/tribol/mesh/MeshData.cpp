@@ -261,7 +261,7 @@ ArrayViewT<const IndexT, 2> MeshData::createConnectivity( IndexT num_elements, c
 {
   switch ( m_element_type ) {
     case EDGE: {
-      if ( m_face_order == LINEAR ) {
+      if ( m_face_order == LINEAR_LAGRANGE ) {
         return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 2 } );
       }
       if ( m_face_order == QUADRATIC_LAGRANGE ) {
@@ -270,13 +270,13 @@ ArrayViewT<const IndexT, 2> MeshData::createConnectivity( IndexT num_elements, c
       break;
     }
     case TRIANGLE: {
-      if ( m_face_order == LINEAR ) {
+      if ( m_face_order == LINEAR_LAGRANGE ) {
         return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 3 } );
       }
       break;
     }
     case QUAD: {
-      if ( m_face_order == LINEAR ) {
+      if ( m_face_order == LINEAR_LAGRANGE ) {
         return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 4 } );
       }
       if ( m_face_order == QUADRATIC_LAGRANGE ) {
@@ -341,7 +341,7 @@ bool MeshData::computeFaceData( ExecutionMode exec_mode, ElemNormalMethod elem_n
   // Quadratic connectivity includes edge and interior nodes that are not polygon corners. The current centroid, radius,
   // area, and normal formulas treat every connectivity entry as a corner, so they must not modify face data until a
   // higher-order calculation is available.
-  if ( m_face_order != LINEAR ) {
+  if ( m_face_order != LINEAR_LAGRANGE ) {
     SLIC_WARNING_ROOT( "MeshData::computeFaceData() does not support higher-order faces." );
     return false;
   }

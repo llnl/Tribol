@@ -44,13 +44,13 @@ TEST( MeshData, stores_linear_edge_data )
   constexpr std::array<tribol::RealT, linear_edge_node_count> y{ 0.0, 0.0 };
 
   tribol::MeshData mesh( mesh_id, one_element, linear_edge_node_count, connectivity.data(), tribol::EDGE,
-                         tribol::LINEAR, x.data(), y.data(), nullptr, tribol::MemorySpace::Host );
+                         tribol::LINEAR_LAGRANGE, x.data(), y.data(), nullptr, tribol::MemorySpace::Host );
   auto mesh_view = mesh.getView();
 
   EXPECT_EQ( mesh.getElementType(), tribol::EDGE );
-  EXPECT_EQ( mesh.getFaceOrder(), tribol::LINEAR );
+  EXPECT_EQ( mesh.getFaceOrder(), tribol::LINEAR_LAGRANGE );
   EXPECT_EQ( mesh.numberOfNodesPerElement(), linear_edge_node_count );
-  EXPECT_EQ( mesh_view.getFaceOrder(), tribol::LINEAR );
+  EXPECT_EQ( mesh_view.getFaceOrder(), tribol::LINEAR_LAGRANGE );
   EXPECT_EQ( mesh_view.numberOfNodesPerElement(), linear_edge_node_count );
 }
 
