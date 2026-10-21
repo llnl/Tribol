@@ -745,7 +745,7 @@ class MfemMeshData {
   InterfaceElementType GetElemType() const { return GetUpdateData().elem_type_; }
 
   /**
-   * @brief Get the order represented by the contact element connectivity
+   * @brief Get the finite-element face order for both Tribol registered meshes
    *
    * @return FaceOrderType
    */
