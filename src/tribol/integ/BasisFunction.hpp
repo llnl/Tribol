@@ -42,6 +42,9 @@ namespace detail {
  */
 template <typename Derived, int ParentDimension>
 struct FaceElementTraitsBase {
+  // Face element traits expose only compile-time data and static operations, so they do not create objects.
+  FaceElementTraitsBase() = delete;
+
   static constexpr int parent_dimension = ParentDimension;
   using ParentCoordinates = MdArray<RealT, parent_dimension>;
 
