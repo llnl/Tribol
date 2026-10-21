@@ -285,8 +285,8 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
       std::make_unique<MfemMeshData>( mesh_id_1, mesh_id_2, mesh, current_coords, std::move( b_attributes_1 ),
                                       std::move( b_attributes_2 ), exec_mode, mem_space );
   // register empty meshes so the coupling scheme is valid
-  registerMesh( mesh_id_1, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, mem_space );
-  registerMesh( mesh_id_2, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, mem_space );
+  registerMesh( mesh_id_1, 0, 0, nullptr, EDGE, nullptr, nullptr, nullptr, mem_space );
+  registerMesh( mesh_id_2, 0, 0, nullptr, EDGE, nullptr, nullptr, nullptr, mem_space );
   registerCouplingScheme( cs_id, mesh_id_1, mesh_id_2, contact_mode, contact_case, contact_method, contact_model,
                           enforcement_method, binning_method, exec_mode );
   auto& cs = CouplingSchemeManager::getInstance().at( cs_id );

@@ -37,17 +37,17 @@ void ExpectDerivedFaceDataIsEmpty( tribol::MeshData& mesh )
   EXPECT_EQ( mesh_view.hasElementAreas(), derived_face_data_is_populated );
 }
 
-TEST( MeshData, default_constructor_uses_linear_order )
+TEST( MeshData, stores_linear_edge_data )
 {
   constexpr std::array<tribol::IndexT, linear_edge_node_count> connectivity{ 0, 1 };
   constexpr std::array<tribol::RealT, linear_edge_node_count> x{ 0.0, 1.0 };
   constexpr std::array<tribol::RealT, linear_edge_node_count> y{ 0.0, 0.0 };
 
-  tribol::MeshData mesh( mesh_id, one_element, linear_edge_node_count, connectivity.data(), tribol::LINEAR_EDGE,
-                         x.data(), y.data(), nullptr, tribol::MemorySpace::Host );
+  tribol::MeshData mesh( mesh_id, one_element, linear_edge_node_count, connectivity.data(), tribol::EDGE,
+                         tribol::LINEAR, x.data(), y.data(), nullptr, tribol::MemorySpace::Host );
   auto mesh_view = mesh.getView();
 
-  EXPECT_EQ( mesh.getElementType(), tribol::LINEAR_EDGE );
+  EXPECT_EQ( mesh.getElementType(), tribol::EDGE );
   EXPECT_EQ( mesh.getFaceOrder(), tribol::LINEAR );
   EXPECT_EQ( mesh.numberOfNodesPerElement(), linear_edge_node_count );
   EXPECT_EQ( mesh_view.getFaceOrder(), tribol::LINEAR );
@@ -63,12 +63,12 @@ TEST( MeshData, stores_quadratic_edge_data )
   constexpr std::array<tribol::RealT, quadratic_edge_node_count> velocity_x{ 1.0, 2.0, 3.0 };
   constexpr std::array<tribol::RealT, quadratic_edge_node_count> velocity_y{ 3.0, 2.0, 1.0 };
 
-  tribol::MeshData mesh( mesh_id, one_element, quadratic_edge_node_count, connectivity.data(), tribol::LINEAR_EDGE,
+  tribol::MeshData mesh( mesh_id, one_element, quadratic_edge_node_count, connectivity.data(), tribol::EDGE,
                          tribol::QUADRATIC_LAGRANGE, x.data(), y.data(), nullptr, tribol::MemorySpace::Host );
   mesh.setVelocity( velocity_x.data(), velocity_y.data(), nullptr );
   auto mesh_view = mesh.getView();
 
-  EXPECT_EQ( mesh.getElementType(), tribol::LINEAR_EDGE );
+  EXPECT_EQ( mesh.getElementType(), tribol::EDGE );
   EXPECT_EQ( mesh.getFaceOrder(), tribol::QUADRATIC_LAGRANGE );
   EXPECT_EQ( mesh.spatialDimension(), edge_dimension );
   EXPECT_EQ( mesh.numberOfElements(), one_element );
@@ -114,12 +114,12 @@ TEST( MeshData, stores_quadratic_quad_data )
   constexpr std::array<tribol::RealT, quadratic_quad_node_count> velocity_z{ 3.0, 3.0, 3.0, 3.0, 3.0,
                                                                              3.0, 3.0, 3.0, 3.0 };
 
-  tribol::MeshData mesh( mesh_id, one_element, quadratic_quad_node_count, connectivity.data(), tribol::LINEAR_QUAD,
+  tribol::MeshData mesh( mesh_id, one_element, quadratic_quad_node_count, connectivity.data(), tribol::QUAD,
                          tribol::QUADRATIC_LAGRANGE, x.data(), y.data(), z.data(), tribol::MemorySpace::Host );
   mesh.setVelocity( velocity_x.data(), velocity_y.data(), velocity_z.data() );
   auto mesh_view = mesh.getView();
 
-  EXPECT_EQ( mesh.getElementType(), tribol::LINEAR_QUAD );
+  EXPECT_EQ( mesh.getElementType(), tribol::QUAD );
   EXPECT_EQ( mesh.getFaceOrder(), tribol::QUADRATIC_LAGRANGE );
   EXPECT_EQ( mesh.spatialDimension(), quad_dimension );
   EXPECT_EQ( mesh.numberOfElements(), one_element );

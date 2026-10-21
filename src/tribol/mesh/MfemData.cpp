@@ -1164,19 +1164,19 @@ void MfemMeshData::UpdateData::SetElementData()
 
     switch ( element_type ) {
       case mfem::Element::SEGMENT:
-        elem_type_ = LINEAR_EDGE;
+        elem_type_ = EDGE;
         break;
       case mfem::Element::TRIANGLE:
-        elem_type_ = LINEAR_TRIANGLE;
+        elem_type_ = TRIANGLE;
         break;
       case mfem::Element::QUADRILATERAL:
-        elem_type_ = LINEAR_QUAD;
+        elem_type_ = QUAD;
         break;
       case mfem::Element::TETRAHEDRON:
-        elem_type_ = LINEAR_TET;
+        elem_type_ = TET;
         break;
       case mfem::Element::HEXAHEDRON:
-        elem_type_ = LINEAR_HEX;
+        elem_type_ = HEX;
         break;
 
       case mfem::Element::POINT:
@@ -1192,7 +1192,7 @@ void MfemMeshData::UpdateData::SetElementData()
   } else {
     // just put something here so Tribol will not give a warning for zero element meshes.  use a 2d element so arrays
     // are sized for 3d (max supported dimension) in case they are accessed later on.
-    elem_type_ = LINEAR_QUAD;
+    elem_type_ = QUAD;
     num_verts_per_elem_ = 2;
   }
 }

@@ -22,16 +22,16 @@ namespace tribol {
 int GetVtkElementId( const InterfaceElementType type )
 {
   switch ( type ) {
-    case LINEAR_EDGE:
+    case EDGE:
       return 3;  // vtk 2-node line
       break;
-    case LINEAR_TRIANGLE:
+    case TRIANGLE:
       return 5;  // vtk 3-node triangle
       break;
-    case LINEAR_QUAD:
+    case QUAD:
       return 9;  // vtk 4-node quad
       break;
-    case LINEAR_HEX:
+    case HEX:
       return 12;  // vtk 8-node hex
       break;
     default:

@@ -460,30 +460,6 @@ class MeshData {
   };  // end class MeshData::Viewer
 
   /**
-   * @brief Construct a new MeshData object
-   *
-   * \param [in] mesh_id the ID of the contact surface
-   * \param [in] num_elements the number of elements on the contact surface
-   * \param [in] num_nodes length of the data arrays being registered
-   * \param [in] connectivity mesh connectivity array for the contact surface
-   * \param [in] element_type the cell type of the contact surface elements
-   * \param [in] x array of x-components of the mesh coordinates
-   * \param [in] y array of y-components of the mesh coordinates
-   * \param [in] z array of z-components of the mesh coordinates (3D only)
-   * \param [in] m_space Memory space of the connectivity and coordinate arrays
-   *
-   * \pre connectivity != nullptr
-   * \pre x != nullptr
-   * \pre y != nullptr
-   * \pre z != nullptr (3D only)
-   *
-   * \note connectivity is a 2D array with num_elements rows and num_nodes
-   * columns with row-major ordering
-   */
-  MeshData( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity,
-            InterfaceElementType element_type, const RealT* x, const RealT* y, const RealT* z, MemorySpace mem_space );
-
-  /**
    * @brief Construct mesh data with an explicit finite element face order
    *
    * @param mesh_id ID of the contact surface

@@ -53,8 +53,8 @@ class CouplingSchemeTest : public ::testing::Test {
     // Single element meshes are usesd in these tests out of
     // simplicity.
     m_numCells = ( numCells >= 1 ) ? 1 : 0;
-    m_lengthNodalData = 4;                         // Quad 4
-    m_elementType = (int)( tribol::LINEAR_EDGE );  // 1D edge for 2D mesh
+    m_lengthNodalData = 4;                  // Quad 4
+    m_elementType = (int)( tribol::EDGE );  // 1D edge for 2D mesh
 
     if ( m_numCells > 0 ) {
       m_connectivity = new tribol::IndexT[m_lengthNodalData];
@@ -97,8 +97,8 @@ class CouplingSchemeTest : public ::testing::Test {
     // Single element meshes are usesd in these tests out of
     // simplicity.
     m_numCells = ( numCells >= 1 ) ? 1 : 0;
-    m_lengthNodalData = 8;                         // Hex 8
-    m_elementType = (int)( tribol::LINEAR_QUAD );  // 2D face in 3D mesh
+    m_lengthNodalData = 8;                  // Hex 8
+    m_elementType = (int)( tribol::QUAD );  // 2D face in 3D mesh
 
     if ( m_numCells > 0 ) {
       m_connectivity = new tribol::IndexT[m_lengthNodalData];
@@ -482,10 +482,10 @@ TEST_F( CouplingSchemeTest, non_null_to_null_meshes )
 
   // register meshes
   tribol::registerMesh( mesh.mortarMeshId, mesh.numMortarFaces, mesh.numTotalNodes, mesh.faceConn1,
-                        (int)( tribol::LINEAR_QUAD ), mesh.x, mesh.y, mesh.z, tribol::MemorySpace::Host );
+                        (int)( tribol::QUAD ), mesh.x, mesh.y, mesh.z, tribol::MemorySpace::Host );
 
   tribol::registerMesh( mesh.nonmortarMeshId, mesh.numNonmortarFaces, mesh.numTotalNodes, mesh.faceConn2,
-                        (int)( tribol::LINEAR_QUAD ), mesh.x, mesh.y, mesh.z, tribol::MemorySpace::Host );
+                        (int)( tribol::QUAD ), mesh.x, mesh.y, mesh.z, tribol::MemorySpace::Host );
 
   // set penalty data so coupling scheme initialization passes
   RealT penalty = 1.0;
@@ -531,7 +531,7 @@ TEST_F( CouplingSchemeTest, non_null_to_null_meshes )
   ///////////////////////////////////////////////////////////////
 
   // register same mesh IDs as NULL meshes
-  int elementType = (int)( tribol::LINEAR_QUAD );
+  int elementType = (int)( tribol::QUAD );
   tribol::registerMesh( 0, 0, 0, nullptr, elementType, nullptr, nullptr, nullptr, tribol::MemorySpace::Host );
   tribol::registerMesh( 1, 0, 0, nullptr, elementType, nullptr, nullptr, nullptr, tribol::MemorySpace::Host );
 
@@ -599,11 +599,11 @@ TEST_F( CouplingSchemeTest, invalid_mesh_in_coupling_scheme )
   tribol::initRealArray( &fy2[0], numTotalNodes2, 0. );
   tribol::initRealArray( &fz2[0], numTotalNodes2, 0. );
 
-  tribol::registerMesh( id1, numFaces1, numTotalNodes1, &faceConn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0],
-                        &z1[0], tribol::MemorySpace::Host );
+  tribol::registerMesh( id1, numFaces1, numTotalNodes1, &faceConn1[0], (int)( tribol::EDGE ), &x1[0], &y1[0], &z1[0],
+                        tribol::MemorySpace::Host );
 
-  tribol::registerMesh( id2, numFaces2, numTotalNodes2, &faceConn2[0], (int)( tribol::LINEAR_QUAD ), &x2[0], &y2[0],
-                        &z2[0], tribol::MemorySpace::Host );
+  tribol::registerMesh( id2, numFaces2, numTotalNodes2, &faceConn2[0], (int)( tribol::QUAD ), &x2[0], &y2[0], &z2[0],
+                        tribol::MemorySpace::Host );
 
   // set penalty data so coupling scheme initialization passes
   RealT penalty = 1.0;
@@ -670,10 +670,10 @@ TEST_F( CouplingSchemeTest, finalize )
 
   // register meshes
   tribol::registerMesh( mesh.mortarMeshId, mesh.numMortarFaces, mesh.numTotalNodes, mesh.faceConn1,
-                        (int)( tribol::LINEAR_QUAD ), mesh.x, mesh.y, mesh.z, tribol::MemorySpace::Host );
+                        (int)( tribol::QUAD ), mesh.x, mesh.y, mesh.z, tribol::MemorySpace::Host );
 
   tribol::registerMesh( mesh.nonmortarMeshId, mesh.numNonmortarFaces, mesh.numTotalNodes, mesh.faceConn2,
-                        (int)( tribol::LINEAR_QUAD ), mesh.x, mesh.y, mesh.z, tribol::MemorySpace::Host );
+                        (int)( tribol::QUAD ), mesh.x, mesh.y, mesh.z, tribol::MemorySpace::Host );
 
   // set penalty data so coupling scheme initialization passes
   RealT penalty = 1.0;
