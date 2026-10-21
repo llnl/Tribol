@@ -39,6 +39,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- `tribol::registerMesh()` now requires a `tribol::FaceOrderType` argument after `element_type`. Existing callers must
+  pass `tribol::LINEAR_LAGRANGE` to retain the previous linear-face behavior.
 - Return negative timestep vote for non-null meshes with null velocity pointers.
 - Refactored how surface elements are characterized, now using finite element
   order and type of cell.
