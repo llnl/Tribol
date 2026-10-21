@@ -13,32 +13,6 @@
 
 namespace tribol {
 
-template <typename T, IndexT... Extents>
-class MdArray;
-
-namespace detail {
-
-template <typename Row, typename T, IndexT ColumnCount>
-inline constexpr bool is_exact_mdarray_row = std::same_as<std::remove_cvref_t<Row>, MdArray<T, ColumnCount>> ||
-                                             std::same_as<std::remove_cvref_t<Row>, MdSpan<T, ColumnCount>> ||
-                                             std::same_as<std::remove_cvref_t<Row>, MdSpan<const T, ColumnCount>>;
-
-// Only rank-two arrays accept rows, and every supplied row must match the array's column extent.
-template <IndexT... Extents>
-struct MdArrayExtents {
-  template <typename T, typename... Rows>
-  static constexpr bool have_exact_rows = false;
-};
-
-template <IndexT RowCount, IndexT ColumnCount>
-struct MdArrayExtents<RowCount, ColumnCount> {
-  template <typename T, typename... Rows>
-  static constexpr bool have_exact_rows =
-      sizeof...( Rows ) == RowCount && ( is_exact_mdarray_row<Rows, T, ColumnCount> && ... );
-};
-
-}  // namespace detail
-
 /**
  * @brief Owns a fixed-size, row-major multidimensional array without allocating memory
  *
@@ -104,7 +78,11 @@ class MdArray {
    * intermediate owning row when the values already exist in caller storage.
    */
   template <typename... Rows>
-    requires( detail::MdArrayExtents<Extents...>::template have_exact_rows<T, Rows...> )
+    requires( rank() == 2 && sizeof...( Rows ) == extent<0>() &&
+              ( ( std::same_as<std::remove_cvref_t<Rows>, MdArray<T, extent<1>()>> ||
+                  std::same_as<std::remove_cvref_t<Rows>, MdSpan<T, extent<1>()>> ||
+                  std::same_as<std::remove_cvref_t<Rows>, MdSpan<const T, extent<1>()>> ) &&
+                ... ) )
   TRIBOL_HOST_DEVICE constexpr explicit MdArray( const Rows&... rows )
   {
     IndexT row_index = 0;
