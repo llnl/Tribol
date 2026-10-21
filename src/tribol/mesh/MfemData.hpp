@@ -1229,7 +1229,7 @@ class MfemMeshData {
     int nodes_per_elem_;
 
     /**
-     * @brief Number of scalar finite-element nodes available to the coordinate component arrays
+     * @brief Number of finite-element coordinate DOFs in the Redecomp mesh
      */
     int num_nodes_;
 
