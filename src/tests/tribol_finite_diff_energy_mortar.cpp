@@ -427,7 +427,7 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
 
   EnergyMortarCalculator evaluator( params );
   const auto result =
-      evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
+      evaluator.compute_quadrature_point_penalty_data( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView() );
   EXPECT_FALSE( result.has_active_qp );
   EXPECT_EQ( result.energy, 0.0 );
   EXPECT_TRUE( std::all_of( result.force.begin(), result.force.end(), []( double force ) { return force == 0.0; } ) );
@@ -455,7 +455,7 @@ TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
 
   EnergyMortarCalculator evaluator( params );
   const auto result =
-      evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
+      evaluator.compute_quadrature_point_penalty_data( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView() );
 
   EXPECT_TRUE( result.has_active_qp );
   EXPECT_EQ( result.energy, 0.0 );
@@ -486,14 +486,14 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
   double gap_without_residual[2] = { 0.0, 0.0 };
   double tributary_area_without_residual[2] = { 0.0, 0.0 };
   EnergyMortarCalculator evaluator_without_residual( params );
-  evaluator_without_residual.compute_gtilde_and_area( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(),
+  evaluator_without_residual.compute_gtilde_and_area( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView(),
                                                       gap_without_residual, tributary_area_without_residual );
 
   params.residual_gap = 0.15;
   double gap_with_residual[2] = { 0.0, 0.0 };
   double tributary_area_with_residual[2] = { 0.0, 0.0 };
   EnergyMortarCalculator evaluator_with_residual( params );
-  evaluator_with_residual.compute_gtilde_and_area( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(),
+  evaluator_with_residual.compute_gtilde_and_area( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView(),
                                                    gap_with_residual, tributary_area_with_residual );
 
   // The residual gap shifts the gap integral without changing the projected overlap geometry.
@@ -525,7 +525,7 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
 
   EnergyMortarCalculator evaluator_without_residual( params );
   const auto inactive = evaluator_without_residual.compute_quadrature_point_penalty_data(
-      InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
+      InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView() );
   EXPECT_FALSE( inactive.has_active_qp );
   EXPECT_EQ( inactive.energy, 0.0 );
   EXPECT_TRUE(
@@ -535,7 +535,7 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
 
   params.residual_gap = 0.15;
   EnergyMortarCalculator evaluator_with_residual( params );
-  const auto active = evaluator_with_residual.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ),
+  const auto active = evaluator_with_residual.compute_quadrature_point_penalty_data( InterfacePair{ 0, 0 },
                                                                                      mesh1.getView(), mesh2.getView() );
   EXPECT_TRUE( active.has_active_qp );
   EXPECT_GT( active.energy, 0.0 );

@@ -933,12 +933,8 @@ class CompGeom {
  * \param [in] params coupling-scheme specific parameters
  * \param [in] cMethod the Tribol contact method
  * \param [in] cCase the Tribol contact Case
- * \param [in,out] isInteracting true if pair passes all computational geometry filters
  * \param [in,out] cg viewer of the computational geometry container
  * \param [in,out] plane_ct number of contact planes in the array views
- *
- * \note isInteracting is true indicating a contact candidate for intersecting or
- *       nearly intersecting face-pairs with a positive area of overlap
  *
  * \return 0 if no exception, non-zero (via FaceGeomException enum) otherwise
  *
@@ -948,8 +944,7 @@ class CompGeom {
 TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePair( InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                                 const MeshData::Viewer& mesh2, const Parameters& params,
                                                                 ContactMethod const cMethod, ContactCase const cCase,
-                                                                bool& isInteracting, CompGeom::Viewer& cg,
-                                                                IndexT* plane_ct );
+                                                                CompGeom::Viewer& cg, IndexT* plane_ct );
 
 //-----------------------------------------------------------------------------
 // Implementations
@@ -958,7 +953,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePair( InterfacePair& p
 template <typename T>
 TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePairByMethod(
     InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, const Parameters& params,
-    ContactCase TRIBOL_UNUSED_PARAM( cCase ), bool& isInteracting, CompGeom::Viewer& cg, IndexT* plane_ct )
+    ContactCase TRIBOL_UNUSED_PARAM( cCase ), CompGeom::Viewer& cg, IndexT* plane_ct )
 {
   auto dim = mesh1.spatialDimension();
   T my_plane( &pair, params, dim );
@@ -970,16 +965,14 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePairByMethod(
   }
 
   if ( face_err != NO_FACE_GEOM_EXCEPTION ) {
-    isInteracting = false;
 #ifdef TRIBOL_USE_HOST
     SLIC_DEBUG( "face_err: " << face_err );
 #endif
   } else if ( my_plane.m_inContact ) {
+    // Only method-approved geometry enters the compact plane array. Mortar methods can therefore iterate this array
+    // directly without storing a second active/inactive state on every coarse interface pair.
     auto idx = tribol::atomicInc( plane_ct );
     cg.getPlane<T>( idx ) = my_plane;
-    isInteracting = true;
-  } else {
-    isInteracting = false;
   }
 
   return face_err;
@@ -989,8 +982,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePairByMethod(
 TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePair( InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                                 const MeshData::Viewer& mesh2, const Parameters& params,
                                                                 ContactMethod cMethod, ContactCase cCase,
-                                                                bool& isInteracting, CompGeom::Viewer& cg,
-                                                                IndexT* plane_ct )
+                                                                CompGeom::Viewer& cg, IndexT* plane_ct )
 {
   FaceGeomException face_err = NO_FACE_GEOM_EXCEPTION;
 
@@ -1000,18 +992,15 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePair( InterfacePair& p
   switch ( cMethod ) {
     case MORTAR_WEIGHTS:
     case SINGLE_MORTAR: {
-      face_err =
-          CheckInterfacePairByMethod<MortarPlanePair>( pair, mesh1, mesh2, params, cCase, isInteracting, cg, plane_ct );
+      face_err = CheckInterfacePairByMethod<MortarPlanePair>( pair, mesh1, mesh2, params, cCase, cg, plane_ct );
       break;
     }
     case COMMON_PLANE: {
-      face_err =
-          CheckInterfacePairByMethod<CommonPlanePair>( pair, mesh1, mesh2, params, cCase, isInteracting, cg, plane_ct );
+      face_err = CheckInterfacePairByMethod<CommonPlanePair>( pair, mesh1, mesh2, params, cCase, cg, plane_ct );
       break;
     }
     case ALIGNED_MORTAR: {
-      face_err = CheckInterfacePairByMethod<AlignedMortarPlanePair>( pair, mesh1, mesh2, params, cCase, isInteracting,
-                                                                     cg, plane_ct );
+      face_err = CheckInterfacePairByMethod<AlignedMortarPlanePair>( pair, mesh1, mesh2, params, cCase, cg, plane_ct );
       break;
     }
     default: {

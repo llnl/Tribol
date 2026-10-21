@@ -1068,6 +1068,8 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // array of size one for counting number of planes on device
   ArrayT<IndexT> planes_ct_data( 1, 1, getAllocatorId() );
   auto planes_ct = planes_ct_data.view();
+  // Contact planes retain pointers to their source pairs. Keep the complete binned array stable and compact only the
+  // method-approved plane objects so fixed binning can reconsider pairs that are inactive during this cycle.
   // Note: A true reduction would be more efficient here.
   // However, it is not currently implemented because forAllExec would need
   // to know the execution mode at compile time to instantiate the correct reducer.
@@ -1076,13 +1078,8 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                pair_err] TRIBOL_HOST_DEVICE( IndexT i ) mutable {
                 auto& pair = pairs[i];
 
-                // call wrapper around the contact method/case specific
-                // geometry checks to determine whether to include a pair
-                // in the active set
-                bool interact = false;
-
-                FaceGeomException interact_err = CheckInterfacePair(
-                    pair, mesh1, mesh2, params, contact_method, contact_case, interact, cg_view, planes_ct.data() );
+                FaceGeomException interact_err = CheckInterfacePair( pair, mesh1, mesh2, params, contact_method,
+                                                                     contact_case, cg_view, planes_ct.data() );
 
                 // // Update pair reporting data for this coupling scheme
                 // this->updatePairReportingData( interact_err );
@@ -1091,15 +1088,8 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                 // they are not registered for contact, but we don't error out.
                 if ( interact_err != NO_FACE_GEOM_EXCEPTION ) {
                   tribol::atomicMax( &pair_err[0], 1 );
-                  pair.m_is_contact_candidate = false;
                   // TODO consider printing offending face(s) coordinates for debugging
                   // SLIC_DEBUG("Face geometry error, " << static_cast<int>(interact_err) << "for pair, " << kp << ".");
-                  // continue; // TODO SRW why do we need this? Seems like we want to update interface pair below
-                  // if-statements
-                } else if ( !interact ) {
-                  pair.m_is_contact_candidate = false;
-                } else {
-                  pair.m_is_contact_candidate = true;
                 }
               } );
 

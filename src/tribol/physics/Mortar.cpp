@@ -185,8 +185,8 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
   ElementAvgNodalNormal normal_method;
   normal_method.Compute( nonmortarMeshData );
 
-  auto pairs = cs->getInterfacePairs();
-  const IndexT numPairs = pairs.size();
+  // CheckInterfacePair stores only method-approved geometry, so the contact-plane array is compact.
+  const IndexT contact_plane_count = cs->getNumActivePairs();
 
   ////////////////////////////////////////////////////////////////////////
   //
@@ -210,22 +210,15 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
   ////////////////////////////////////////////////////////////////////
   // compute nonmortar gaps to determine active set of contact dofs //
   ////////////////////////////////////////////////////////////////////
-  int cpID = 0;
-  for ( IndexT kp = 0; kp < numPairs; ++kp ) {
-    auto& pair = pairs[kp];
-
-    if ( !pair.m_is_contact_candidate ) {
-      continue;
-    }
-
-    auto& cg_pairs = cs->getCompGeom();
-    auto& plane = cg_pairs.getMortarPlane( cpID );
+  auto& cg_pairs = cs->getCompGeom();
+  for ( IndexT contact_plane_index = 0; contact_plane_index < contact_plane_count; ++contact_plane_index ) {
+    auto& plane = cg_pairs.getMortarPlane( contact_plane_index );
 
     Array2D<RealT> overlapX( plane.m_numPolyVert, dim );
 
     // get pair indices
-    IndexT index1 = pair.m_element_id1;
-    IndexT index2 = pair.m_element_id2;
+    IndexT index1 = plane.getCpElementId1();
+    IndexT index2 = plane.getCpElementId2();
 
     // populate the current configuration nodal coordinates for the
     // two faces; stored on the contact plane object
@@ -263,8 +256,6 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
     // all nonmortar face nodes.
     elem.numActiveGaps = numNodesPerFace;
 
-    ++cpID;
-
   }  // end loop over pairs to compute nodal gaps
 
 }  // end ComputeSingleMortarGaps()
@@ -286,8 +277,8 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
   ///////////////////////////////////////////////////////
   ComputeSingleMortarGaps( cs );
 
-  auto pairs = cs->getInterfacePairs();
-  const IndexT numPairs = pairs.size();
+  // CheckInterfacePair stores only method-approved geometry, so the contact-plane array is compact.
+  const IndexT contact_plane_count = cs->getNumActivePairs();
 
   int const dim = cs->spatialDimension();
 
@@ -318,7 +309,8 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
   if ( !cs->nullMeshes() ) {
     if ( lm_options.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE ) {
       static_cast<MortarData*>( cs->getMethodData() )
-          ->reserveBlockJ( { BlockSpace::MORTAR, BlockSpace::NONMORTAR, BlockSpace::LAGRANGE_MULTIPLIER }, numPairs );
+          ->reserveBlockJ( { BlockSpace::MORTAR, BlockSpace::NONMORTAR, BlockSpace::LAGRANGE_MULTIPLIER },
+                           contact_plane_count );
     } else if ( lm_options.sparse_mode == SparseMode::MFEM_INDEX_SET ||
                 lm_options.sparse_mode == SparseMode::MFEM_LINKED_LIST ) {
       static_cast<MortarData*>( cs->getMethodData() )->allocateMfemSparseMatrix( numRows );
@@ -337,22 +329,15 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
   // compute equilibrium residual and/or Jacobian contributions //
   //                                                            //
   ////////////////////////////////////////////////////////////////
-  int cpID = 0;
-  for ( IndexT kp = 0; kp < numPairs; ++kp ) {
-    auto& pair = pairs[kp];
-
-    if ( !pair.m_is_contact_candidate ) {
-      continue;
-    }
-
-    auto& cg_pairs = cs->getCompGeom();
-    auto& plane = cg_pairs.getMortarPlane( cpID );
+  auto& cg_pairs = cs->getCompGeom();
+  for ( IndexT contact_plane_index = 0; contact_plane_index < contact_plane_count; ++contact_plane_index ) {
+    auto& plane = cg_pairs.getMortarPlane( contact_plane_index );
 
     Array2D<RealT> overlapX( plane.m_numPolyVert, dim );
 
     // get pair indices
-    IndexT index1 = pair.m_element_id1;
-    IndexT index2 = pair.m_element_id2;
+    IndexT index1 = plane.getCpElementId1();
+    IndexT index2 = plane.getCpElementId2();
 
     // get face coordinates projected onto contact plane
     plane.getFace1ProjectedCoords( mortarX_bar.data(), numNodesPerFace );
@@ -433,8 +418,6 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
         return 1;
       }
     }
-
-    ++cpID;
 
   }  // end of loop over interface pairs computing residual/Jacobian contributions
 
@@ -1108,8 +1091,8 @@ int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs )
   ////////////////////////////////
   ComputeSingleMortarGaps( cs );
 
-  auto pairs = cs->getInterfacePairs();
-  IndexT const numPairs = pairs.size();
+  // CheckInterfacePair stores only method-approved geometry, so the contact-plane array is compact.
+  const IndexT contact_plane_count = cs->getNumActivePairs();
 
   const int dim = cs->spatialDimension();
 
@@ -1129,22 +1112,15 @@ int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs )
   //                                          //
   //////////////////////////////////////////////
 
-  int cpID = 0;
-  for ( IndexT kp = 0; kp < numPairs; ++kp ) {
-    InterfacePair pair = pairs[kp];
-
-    if ( !pair.m_is_contact_candidate ) {
-      continue;
-    }
-
-    auto& cg_pairs = cs->getCompGeom();
-    auto& plane = cg_pairs.getMortarPlane( cpID );
+  auto& cg_pairs = cs->getCompGeom();
+  for ( IndexT contact_plane_index = 0; contact_plane_index < contact_plane_count; ++contact_plane_index ) {
+    auto& plane = cg_pairs.getMortarPlane( contact_plane_index );
 
     Array2D<RealT> overlapX( plane.m_numPolyVert, dim );
 
     // get pair indices
-    IndexT index1 = pair.m_element_id1;
-    IndexT index2 = pair.m_element_id2;
+    IndexT index1 = plane.getCpElementId1();
+    IndexT index2 = plane.getCpElementId2();
 
     // get face coordinates projected onto contact plane
     plane.getFace1ProjectedCoords( mortarX_bar.data(), numNodesPerFace );
@@ -1176,8 +1152,6 @@ int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs )
       return 1;
     }
     static_cast<MortarData*>( cs->getMethodData() )->assembleMortarWts( elem, sparse_mode );
-
-    ++cpID;
 
   }  // end loop over pairs to assemble mortar weights
 
