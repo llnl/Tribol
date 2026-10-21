@@ -1011,7 +1011,6 @@ void CouplingScheme::performBinning()
     m_interface_pairs = ArrayT<InterfacePair>( 0, 0, m_allocator_id );
 
     InterfacePairFinder finder( this );
-    finder.initialize();
     finder.findInterfacePairs();
 
     // For Cartesian binning, we only need to compute the binning once

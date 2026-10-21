@@ -24,7 +24,6 @@ namespace tribol {
 class SearchBase {
  public:
   virtual ~SearchBase() = default;
-  virtual void initialize() = 0;
   virtual void findInterfacePairs() = 0;
 };
 
@@ -91,8 +90,6 @@ class FilteredSearch final : public SearchBase {
   {
   }
 
-  void initialize() override { search_.initialize(); }
-
   void findInterfacePairs() override { FilterCandidatePairs( coupling_scheme_, search_.findCandidatePairs() ); }
 
  private:
@@ -111,8 +108,6 @@ template <int SpatialDimension>
 class CartesianProduct final : public SearchBase {
  public:
   explicit CartesianProduct( CouplingScheme& coupling_scheme ) : coupling_scheme_( coupling_scheme ) {}
-
-  void initialize() override {}
 
   void findInterfacePairs() override
   {
@@ -298,14 +293,9 @@ InterfacePairFinder::InterfacePairFinder( CouplingScheme* coupling_scheme ) : m_
 
 InterfacePairFinder::~InterfacePairFinder() { delete m_search; }
 
-void InterfacePairFinder::initialize()
-{
-  SLIC_ASSERT( m_search != nullptr );
-  m_search->initialize();
-}
-
 void InterfacePairFinder::findInterfacePairs()
 {
+  SLIC_ASSERT( m_search != nullptr );
   SLIC_DEBUG( "Searching for interface pairs" );
   m_search->findInterfacePairs();
   m_coupling_scheme->setBinned( true );

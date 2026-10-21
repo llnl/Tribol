@@ -164,11 +164,6 @@ class InterfacePairFinder {
   ~InterfacePairFinder();
 
   /*!
-   * Initializes structures for the candidate search
-   */
-  void initialize();
-
-  /*!
    * Computes the interacting interface pairs between the meshes
    * specified in \a m_coupling_scheme
    */

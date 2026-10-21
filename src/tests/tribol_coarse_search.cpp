@@ -31,7 +31,6 @@ template <typename Search>
 CandidateIds FindCandidateIds( tribol::MeshData& mesh1, tribol::MeshData& mesh2 )
 {
   Search search( mesh1.getView(), mesh2.getView(), proximity_scale_for_raised_nodes, no_residual_gap );
-  search.initialize();
 
   CandidateIds candidate_ids;
   for ( const auto& pair : search.findCandidatePairs() ) {
@@ -49,6 +48,16 @@ void ExpectBothSearchesFindOnlyFirstQuery( tribol::MeshData& mesh1, tribol::Mesh
   EXPECT_EQ( FindCandidateIds<tribol::GridSearch<SpatialDimension>>( mesh1, mesh2 ), expected_candidates );
   EXPECT_EQ( ( FindCandidateIds<tribol::BvhSearch<SpatialDimension, axom::SEQ_EXEC>>( mesh1, mesh2 ) ),
              expected_candidates );
+}
+
+template <typename Search>
+CandidateIds FindCandidateIds( const Search& search )
+{
+  CandidateIds candidate_ids;
+  for ( const auto& pair : search.findCandidatePairs() ) {
+    candidate_ids.emplace( pair.m_element_id1, pair.m_element_id2 );
+  }
+  return candidate_ids;
 }
 
 TEST( CoarseSearch, quadratic_edge_nodes_contribute_to_bounds )
@@ -126,6 +135,35 @@ TEST( CoarseSearch, empty_meshes_return_no_candidates )
   EXPECT_TRUE( FindCandidateIds<tribol::GridSearch<2>>( populated_mesh, empty_mesh ).empty() );
   EXPECT_TRUE( ( FindCandidateIds<tribol::BvhSearch<2, axom::SEQ_EXEC>>( empty_mesh, populated_mesh ).empty() ) );
   EXPECT_TRUE( ( FindCandidateIds<tribol::BvhSearch<2, axom::SEQ_EXEC>>( populated_mesh, empty_mesh ).empty() ) );
+}
+
+TEST( CoarseSearch, each_query_rebuilds_from_current_coordinates )
+{
+  constexpr std::array<tribol::IndexT, 3> connectivity{ 0, 1, 2 };
+  constexpr std::array<tribol::RealT, 3> mesh1_x{ 0.0, 1.0, 0.5 };
+  constexpr std::array<tribol::RealT, 3> mesh1_y{ 0.0, 0.0, 0.25 };
+  constexpr std::array<tribol::RealT, 3> mesh2_x{ 0.0, 1.0, 0.5 };
+  std::array<tribol::RealT, 3> mesh2_y{ 0.1, 0.1, 0.35 };
+
+  tribol::MeshData mesh1( mesh1_id, 1, mesh1_x.size(), connectivity.data(), tribol::EDGE, tribol::QUADRATIC_LAGRANGE,
+                          mesh1_x.data(), mesh1_y.data(), nullptr, tribol::MemorySpace::Host );
+  tribol::MeshData mesh2( mesh2_id, 1, mesh2_x.size(), connectivity.data(), tribol::EDGE, tribol::QUADRATIC_LAGRANGE,
+                          mesh2_x.data(), mesh2_y.data(), nullptr, tribol::MemorySpace::Host );
+  const CandidateIds expected_candidate{ { 0, 0 } };
+
+  // The same search object must read current coordinates on every call rather than retaining stale spatial data.
+  tribol::GridSearch<2> grid_search( mesh1.getView(), mesh2.getView(), proximity_scale_for_raised_nodes,
+                                     no_residual_gap );
+  EXPECT_EQ( FindCandidateIds( grid_search ), expected_candidate );
+  mesh2_y.fill( 5.0 );
+  EXPECT_TRUE( FindCandidateIds( grid_search ).empty() );
+
+  mesh2_y = { 0.1, 0.1, 0.35 };
+  tribol::BvhSearch<2, axom::SEQ_EXEC> bvh_search( mesh1.getView(), mesh2.getView(), proximity_scale_for_raised_nodes,
+                                                   no_residual_gap );
+  EXPECT_EQ( FindCandidateIds( bvh_search ), expected_candidate );
+  mesh2_y.fill( 5.0 );
+  EXPECT_TRUE( FindCandidateIds( bvh_search ).empty() );
 }
 
 void ExpectLegacySearchRejectsCoarseCandidate( tribol::BinningMethod binning_method )

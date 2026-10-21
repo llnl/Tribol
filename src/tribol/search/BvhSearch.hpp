@@ -27,7 +27,8 @@ namespace tribol {
  * contact checks. Callers decide which returned candidates are appropriate for their contact formulation.
  *
  * The search stores non-owning mesh views. The MeshData objects and their caller-owned arrays must remain valid for the
- * lifetime of this object.
+ * lifetime of this object. Each query builds and releases its BVH and bounding boxes so moving coordinates cannot leave
+ * stale spatial data on the search object.
  *
  * @tparam SpatialDimension Spatial dimension of the mesh coordinates
  * @tparam ExecSpace Axom execution space used to construct and query bounding boxes
@@ -40,7 +41,7 @@ class BvhSearch {
   using Point = axom::primal::Point<RealT, SpatialDimension>;
 
   /**
-   * @brief Store the meshes and proximity values used to rebuild and query the BVH
+   * @brief Store the meshes and proximity values used by each one-shot BVH search
    *
    * @param mesh1 Elements inserted into the BVH
    * @param mesh2 Elements used to query the BVH
@@ -51,70 +52,58 @@ class BvhSearch {
       : mesh1_( mesh1 ),
         mesh2_( mesh2 ),
         binning_proximity_scale_( binning_proximity_scale ),
-        residual_gap_( residual_gap ),
-        mesh1_bounding_boxes_( axom::ArrayOptions::Uninitialized{}, mesh1_.numberOfElements(),
-                               mesh1_.numberOfElements(), mesh1_.getAllocatorId() ),
-        mesh2_bounding_boxes_( axom::ArrayOptions::Uninitialized{}, mesh2_.numberOfElements(),
-                               mesh2_.numberOfElements(), mesh2_.getAllocatorId() ),
-        candidates_( axom::ArrayOptions::Uninitialized{}, 0, 0, mesh1_.getAllocatorId() ),
-        offsets_( axom::ArrayOptions::Uninitialized{}, mesh2_.numberOfElements(), mesh2_.numberOfElements(),
-                  mesh2_.getAllocatorId() ),
-        counts_( axom::ArrayOptions::Uninitialized{}, mesh2_.numberOfElements(), mesh2_.numberOfElements(),
-                 mesh2_.getAllocatorId() )
+        residual_gap_( residual_gap )
   {
     SLIC_ASSERT_MSG( mesh1_.getAllocatorId() == mesh2_.getAllocatorId(),
                      "BvhSearch meshes must use the same allocator." );
   }
 
-  /** @brief Build expanded bounding boxes from the current mesh coordinates */
-  void initialize()
-  {
-    initialized_ = true;
-    if ( mesh1_.numberOfElements() == 0 || mesh2_.numberOfElements() == 0 ) {
-      has_spatial_index_ = false;
-      return;
-    }
-
-    has_spatial_index_ = true;
-    buildMeshBoundingBoxes( mesh1_bounding_boxes_, mesh1_ );
-    buildMeshBoundingBoxes( mesh2_bounding_boxes_, mesh2_ );
-  }
-
   /**
-   * @brief Return pairs whose expanded bounding boxes intersect
+   * @brief Build a BVH and return pairs whose expanded bounding boxes intersect
    *
    * Bounding-box candidates can still include self-pairs, shared-node pairs, co-oriented faces, and pairs that fail a
    * contact method's overlap checks. Keeping those decisions outside this class allows each formulation to apply the
    * geometry checks it requires.
-   *
-   * @pre initialize() has been called for the current mesh coordinates
    */
-  ArrayT<InterfacePair> findCandidatePairs()
+  ArrayT<InterfacePair> findCandidatePairs() const
   {
-    SLIC_ASSERT_MSG( initialized_, "BvhSearch::initialize() must be called before findCandidatePairs()." );
-
     ArrayT<InterfacePair> candidate_pairs( 0, 0, mesh1_.getAllocatorId() );
-    if ( !has_spatial_index_ ) {
+    if ( mesh1_.numberOfElements() == 0 || mesh2_.numberOfElements() == 0 ) {
       return candidate_pairs;
     }
 
+    // Search storage is local because moving meshes require the BVH and bounds to be rebuilt for every query.
+    ArrayT<BoundingBox> mesh1_bounding_boxes( axom::ArrayOptions::Uninitialized{}, mesh1_.numberOfElements(),
+                                              mesh1_.numberOfElements(), mesh1_.getAllocatorId() );
+    ArrayT<BoundingBox> mesh2_bounding_boxes( axom::ArrayOptions::Uninitialized{}, mesh2_.numberOfElements(),
+                                              mesh2_.numberOfElements(), mesh2_.getAllocatorId() );
+    ArrayT<IndexT> candidates( axom::ArrayOptions::Uninitialized{}, 0, 0, mesh1_.getAllocatorId() );
+    ArrayT<IndexT> offsets( axom::ArrayOptions::Uninitialized{}, mesh2_.numberOfElements(), mesh2_.numberOfElements(),
+                            mesh2_.getAllocatorId() );
+    ArrayT<IndexT> counts( axom::ArrayOptions::Uninitialized{}, mesh2_.numberOfElements(), mesh2_.numberOfElements(),
+                           mesh2_.getAllocatorId() );
+
+    buildMeshBoundingBoxes( mesh1_bounding_boxes, mesh1_ );
+    buildMeshBoundingBoxes( mesh2_bounding_boxes, mesh2_ );
+
     Bvh bvh;
     bvh.setAllocatorID( mesh1_.getAllocatorId() );
-    bvh.initialize( mesh1_bounding_boxes_.view(), mesh1_bounding_boxes_.size() );
-    bvh.findBoundingBoxes( offsets_.view(), counts_.view(), candidates_, mesh2_.numberOfElements(),
-                           mesh2_bounding_boxes_.view() );
+    bvh.initialize( mesh1_bounding_boxes.view(), mesh1_bounding_boxes.size() );
+    bvh.findBoundingBoxes( offsets.view(), counts.view(), candidates, mesh2_.numberOfElements(),
+                           mesh2_bounding_boxes.view() );
 
-    candidate_pairs = ArrayT<InterfacePair>( axom::ArrayOptions::Uninitialized{}, candidates_.size(),
-                                             candidates_.size(), mesh1_.getAllocatorId() );
-    const auto candidates = candidates_.view();
-    const auto offsets = offsets_.view();
-    const auto counts = counts_.view();
+    candidate_pairs = ArrayT<InterfacePair>( axom::ArrayOptions::Uninitialized{}, candidates.size(), candidates.size(),
+                                             mesh1_.getAllocatorId() );
+    const auto candidate_ids = candidates.view();
+    const auto candidate_offsets = offsets.view();
+    const auto candidate_counts = counts.view();
     auto pairs = candidate_pairs.view();
-    axom::for_all<ExecSpace>( candidates_.size(), [candidates, offsets, counts, pairs] TRIBOL_HOST_DEVICE( IndexT i ) {
-      const IndexT mesh1_element = candidates[i];
-      const IndexT mesh2_element = algorithm::binarySearch( offsets, counts, i );
-      pairs[i] = InterfacePair{ mesh1_element, mesh2_element };
-    } );
+    axom::for_all<ExecSpace>(
+        candidates.size(), [candidate_ids, candidate_offsets, candidate_counts, pairs] TRIBOL_HOST_DEVICE( IndexT i ) {
+          const IndexT mesh1_element = candidate_ids[i];
+          const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, i );
+          pairs[i] = InterfacePair{ mesh1_element, mesh2_element };
+        } );
 
     return candidate_pairs;
   }
@@ -176,13 +165,6 @@ class BvhSearch {
   MeshData::Viewer mesh2_;
   RealT binning_proximity_scale_;
   RealT residual_gap_;
-  bool initialized_{ false };
-  bool has_spatial_index_{ false };
-  ArrayT<BoundingBox> mesh1_bounding_boxes_;
-  ArrayT<BoundingBox> mesh2_bounding_boxes_;
-  ArrayT<IndexT> candidates_;
-  ArrayT<IndexT> offsets_;
-  ArrayT<IndexT> counts_;
 };
 
 }  // namespace tribol
