@@ -1168,13 +1168,14 @@ mfem::ParSubMesh MfemMeshData::CreateSubmesh( const mfem::ParMesh& parent_mesh, 
 void MfemMeshData::UpdateData::SetElementData()
 {
   auto& redecomp_fes = vector_xfer_.GetRedecompFESpace();
-  const auto* typical_fe = redecomp_fes.GetTypicalFE();
-  SLIC_ERROR_ROOT_IF( typical_fe == nullptr, "Redecomp finite-element space does not provide a typical element." );
+  // MFEM returns the first local finite element when one exists and otherwise derives a representative finite element
+  // from the global mesh geometry. This allows empty MPI partitions to determine the same element metadata.
+  const auto* representative_fe = redecomp_fes.GetTypicalFE();
+  SLIC_ERROR_ROOT_IF( representative_fe == nullptr,
+                      "MFEM could not determine a finite element for the Redecomp mesh." );
 
-  // GetTypicalFE() remains valid on an empty MPI partition, so every rank derives the same connectivity width and
-  // element metadata without requiring a local element.
-  const auto element_type = typical_fe->GetGeomType();
-  nodes_per_elem_ = typical_fe->GetDof();
+  const auto element_type = representative_fe->GetGeomType();
+  nodes_per_elem_ = representative_fe->GetDof();
   num_nodes_ = redecomp_fes.GetNDofs();
 
   switch ( element_type ) {
