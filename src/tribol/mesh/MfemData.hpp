@@ -707,11 +707,10 @@ class MfemMeshData {
   int GetNV() const { return GetUpdateData().redecomp_mesh_.GetNV(); }
 
   /**
-   * @brief Get the number of finite-element nodes in the Redecomp mesh
+   * @brief Get the number of finite-element coordinate DOFs in the Redecomp mesh
    *
-   * Higher-order nodal coordinates are indexed by finite-element DOF rather than geometric vertex. This count equals
-   * the length of each component array returned by GetRedecompCoordsPtrs(). Connectivity values index these arrays; use
-   * GetNodesPerElement() for the connectivity row width.
+   * The Redecomp coordinate GridFunction stores this many DOFs for each spatial component. Connectivity values index
+   * those component blocks; use GetNodesPerElement() for the connectivity row width.
    *
    * @return int
    */
