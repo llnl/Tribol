@@ -13,6 +13,7 @@
 #include "tribol/common/ExecModel.hpp"
 
 // Axom includes
+#include "axom/core/execution/execution_space.hpp"
 #include "axom/slic.hpp"
 
 // RAJA includes
@@ -128,6 +129,45 @@ void forAllImpl( forAllType<ExecutionMode::OpenMP>, IndexT N, BODY&& body )
 }  // namespace detail
 
 #define TRIBOL_BLOCK_SIZE 256
+
+/**
+ * @brief Map a Tribol execution mode to the synchronous Axom execution space required by Axom algorithms
+ *
+ * Keeping this conversion at the Axom call boundary allows Tribol classes to expose ExecutionMode without requiring
+ * callers to select an Axom execution policy. Dynamic has no specialization because an Axom execution-space type must
+ * be selected at compile time.
+ *
+ * @tparam EXEC Tribol execution mode
+ * @tparam BLOCK_SIZE Number of threads in each CUDA or HIP block
+ */
+template <ExecutionMode EXEC, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE>
+struct toAxomExecSpace;
+
+template <int BLOCK_SIZE>
+struct toAxomExecSpace<ExecutionMode::Sequential, BLOCK_SIZE> {
+  using type = axom::SEQ_EXEC;
+};
+
+#ifdef TRIBOL_USE_OPENMP
+template <int BLOCK_SIZE>
+struct toAxomExecSpace<ExecutionMode::OpenMP, BLOCK_SIZE> {
+  using type = axom::OMP_EXEC;
+};
+#endif
+
+#ifdef TRIBOL_USE_CUDA
+template <int BLOCK_SIZE>
+struct toAxomExecSpace<ExecutionMode::Cuda, BLOCK_SIZE> {
+  using type = axom::CUDA_EXEC<BLOCK_SIZE>;
+};
+#endif
+
+#ifdef TRIBOL_USE_HIP
+template <int BLOCK_SIZE>
+struct toAxomExecSpace<ExecutionMode::Hip, BLOCK_SIZE> {
+  using type = axom::HIP_EXEC<BLOCK_SIZE>;
+};
+#endif
 
 /**
  * @brief Call a RAJA forall loop with the execution mode known at compile time

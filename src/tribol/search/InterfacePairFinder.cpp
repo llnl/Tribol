@@ -233,21 +233,21 @@ InterfacePairFinder::InterfacePairFinder( CouplingScheme* coupling_scheme ) : m_
         case 2:
           switch ( coupling_scheme->getExecutionMode() ) {
             case ExecutionMode::Sequential:
-              m_search = MakeFilteredSearch<BvhSearch<2, axom::SEQ_EXEC>>( *m_coupling_scheme );
+              m_search = MakeFilteredSearch<BvhSearch<2, ExecutionMode::Sequential>>( *m_coupling_scheme );
               break;
 #ifdef TRIBOL_USE_OPENMP
             case ExecutionMode::OpenMP:
-              m_search = MakeFilteredSearch<BvhSearch<2, axom::OMP_EXEC>>( *m_coupling_scheme );
+              m_search = MakeFilteredSearch<BvhSearch<2, ExecutionMode::OpenMP>>( *m_coupling_scheme );
               break;
 #endif
 #ifdef TRIBOL_USE_CUDA
             case ExecutionMode::Cuda:
-              m_search = MakeFilteredSearch<BvhSearch<2, axom::CUDA_EXEC<TRIBOL_BLOCK_SIZE>>>( *m_coupling_scheme );
+              m_search = MakeFilteredSearch<BvhSearch<2, ExecutionMode::Cuda>>( *m_coupling_scheme );
               break;
 #endif
 #ifdef TRIBOL_USE_HIP
             case ExecutionMode::Hip:
-              m_search = MakeFilteredSearch<BvhSearch<2, axom::HIP_EXEC<TRIBOL_BLOCK_SIZE>>>( *m_coupling_scheme );
+              m_search = MakeFilteredSearch<BvhSearch<2, ExecutionMode::Hip>>( *m_coupling_scheme );
               break;
 #endif
             default:
@@ -258,21 +258,21 @@ InterfacePairFinder::InterfacePairFinder( CouplingScheme* coupling_scheme ) : m_
         case 3:
           switch ( coupling_scheme->getExecutionMode() ) {
             case ExecutionMode::Sequential:
-              m_search = MakeFilteredSearch<BvhSearch<3, axom::SEQ_EXEC>>( *m_coupling_scheme );
+              m_search = MakeFilteredSearch<BvhSearch<3, ExecutionMode::Sequential>>( *m_coupling_scheme );
               break;
 #ifdef TRIBOL_USE_OPENMP
             case ExecutionMode::OpenMP:
-              m_search = MakeFilteredSearch<BvhSearch<3, axom::OMP_EXEC>>( *m_coupling_scheme );
+              m_search = MakeFilteredSearch<BvhSearch<3, ExecutionMode::OpenMP>>( *m_coupling_scheme );
               break;
 #endif
 #ifdef TRIBOL_USE_CUDA
             case ExecutionMode::Cuda:
-              m_search = MakeFilteredSearch<BvhSearch<3, axom::CUDA_EXEC<TRIBOL_BLOCK_SIZE>>>( *m_coupling_scheme );
+              m_search = MakeFilteredSearch<BvhSearch<3, ExecutionMode::Cuda>>( *m_coupling_scheme );
               break;
 #endif
 #ifdef TRIBOL_USE_HIP
             case ExecutionMode::Hip:
-              m_search = MakeFilteredSearch<BvhSearch<3, axom::HIP_EXEC<TRIBOL_BLOCK_SIZE>>>( *m_coupling_scheme );
+              m_search = MakeFilteredSearch<BvhSearch<3, ExecutionMode::Hip>>( *m_coupling_scheme );
               break;
 #endif
             default:

@@ -46,8 +46,9 @@ void ExpectBothSearchesFindOnlyFirstQuery( tribol::MeshData& mesh1, tribol::Mesh
 
   // Grid and BVH may enumerate intersections differently, so compare element IDs without imposing an output order.
   EXPECT_EQ( FindCandidateIds<tribol::GridSearch<SpatialDimension>>( mesh1, mesh2 ), expected_candidates );
-  EXPECT_EQ( ( FindCandidateIds<tribol::BvhSearch<SpatialDimension, axom::SEQ_EXEC>>( mesh1, mesh2 ) ),
-             expected_candidates );
+  EXPECT_EQ(
+      ( FindCandidateIds<tribol::BvhSearch<SpatialDimension, tribol::ExecutionMode::Sequential>>( mesh1, mesh2 ) ),
+      expected_candidates );
 }
 
 template <typename Search>
@@ -133,8 +134,10 @@ TEST( CoarseSearch, empty_meshes_return_no_candidates )
   // Either empty input prevents a spatial index from producing pairs, regardless of which mesh is queried.
   EXPECT_TRUE( FindCandidateIds<tribol::GridSearch<2>>( empty_mesh, populated_mesh ).empty() );
   EXPECT_TRUE( FindCandidateIds<tribol::GridSearch<2>>( populated_mesh, empty_mesh ).empty() );
-  EXPECT_TRUE( ( FindCandidateIds<tribol::BvhSearch<2, axom::SEQ_EXEC>>( empty_mesh, populated_mesh ).empty() ) );
-  EXPECT_TRUE( ( FindCandidateIds<tribol::BvhSearch<2, axom::SEQ_EXEC>>( populated_mesh, empty_mesh ).empty() ) );
+  EXPECT_TRUE( ( FindCandidateIds<tribol::BvhSearch<2, tribol::ExecutionMode::Sequential>>( empty_mesh, populated_mesh )
+                     .empty() ) );
+  EXPECT_TRUE( ( FindCandidateIds<tribol::BvhSearch<2, tribol::ExecutionMode::Sequential>>( populated_mesh, empty_mesh )
+                     .empty() ) );
 }
 
 TEST( CoarseSearch, each_query_rebuilds_from_current_coordinates )
@@ -159,8 +162,8 @@ TEST( CoarseSearch, each_query_rebuilds_from_current_coordinates )
   EXPECT_TRUE( FindCandidateIds( grid_search ).empty() );
 
   mesh2_y = { 0.1, 0.1, 0.35 };
-  tribol::BvhSearch<2, axom::SEQ_EXEC> bvh_search( mesh1.getView(), mesh2.getView(), proximity_scale_for_raised_nodes,
-                                                   no_residual_gap );
+  tribol::BvhSearch<2, tribol::ExecutionMode::Sequential> bvh_search(
+      mesh1.getView(), mesh2.getView(), proximity_scale_for_raised_nodes, no_residual_gap );
   EXPECT_EQ( FindCandidateIds( bvh_search ), expected_candidate );
   mesh2_y.fill( 5.0 );
   EXPECT_TRUE( FindCandidateIds( bvh_search ).empty() );
@@ -196,8 +199,8 @@ void ExpectLegacySearchRejectsCoarseCandidate( tribol::BinningMethod binning_met
     EXPECT_EQ( FindCandidateIds<tribol::GridSearch<2>>( mesh_manager.at( mesh1_id ), mesh_manager.at( mesh2_id ) ),
                expected_coarse_candidate );
   } else {
-    EXPECT_EQ( ( FindCandidateIds<tribol::BvhSearch<2, axom::SEQ_EXEC>>( mesh_manager.at( mesh1_id ),
-                                                                         mesh_manager.at( mesh2_id ) ) ),
+    EXPECT_EQ( ( FindCandidateIds<tribol::BvhSearch<2, tribol::ExecutionMode::Sequential>>(
+                   mesh_manager.at( mesh1_id ), mesh_manager.at( mesh2_id ) ) ),
                expected_coarse_candidate );
   }
 
