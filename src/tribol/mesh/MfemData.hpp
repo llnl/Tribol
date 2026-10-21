@@ -690,21 +690,38 @@ class MfemMeshData {
    *
    * @return IndexT
    */
-  IndexT GetMesh1NE() const { return GetUpdateData().conn_1_.size() / GetUpdateData().num_verts_per_elem_; }
+  IndexT GetMesh1NE() const { return GetUpdateData().conn_1_.shape()[0]; }
 
   /**
    * @brief Get the number of elements in the second Tribol registered mesh
    *
    * @return IndexT
    */
-  IndexT GetMesh2NE() const { return GetUpdateData().conn_2_.size() / GetUpdateData().num_verts_per_elem_; }
+  IndexT GetMesh2NE() const { return GetUpdateData().conn_2_.shape()[0]; }
 
   /**
-   * @brief Get the total number of vertices in both Tribol registered meshes
+   * @brief Get the total number of geometric vertices in both Tribol registered meshes
    *
    * @return int
    */
   int GetNV() const { return GetUpdateData().redecomp_mesh_.GetNV(); }
+
+  /**
+   * @brief Get the number of finite-element nodes available to both Tribol registered meshes
+   *
+   * Higher-order coordinates are indexed by finite-element DOF rather than geometric vertex. This count therefore
+   * matches the component arrays returned by GetRedecompCoordsPtrs() and bounds every connectivity entry.
+   *
+   * @return int
+   */
+  int GetNumNodes() const { return GetUpdateData().num_nodes_; }
+
+  /**
+   * @brief Get the number of finite-element nodes in each contact element
+   *
+   * @return int
+   */
+  int GetNodesPerElement() const { return GetUpdateData().nodes_per_elem_; }
 
   /**
    * @brief Get the connectivity for the first Tribol registered mesh
@@ -726,6 +743,13 @@ class MfemMeshData {
    * @return InterfaceElementType
    */
   InterfaceElementType GetElemType() const { return GetUpdateData().elem_type_; }
+
+  /**
+   * @brief Get the order represented by the contact element connectivity
+   *
+   * @return FaceOrderType
+   */
+  FaceOrderType GetFaceOrder() const { return GetUpdateData().face_order_; }
 
   /**
    * @brief Get pointers to component arrays of the coordinates on the
@@ -1168,14 +1192,12 @@ class MfemMeshData {
     ParentRedecompTransfer vector_xfer_;
 
     /**
-     * @brief Redecomp mesh element connectivity for the first Tribol registered
-     * mesh
+     * @brief Redecomp mesh finite-element node connectivity for the first Tribol registered mesh
      */
     Array2D<IndexT> conn_1_;
 
     /**
-     * @brief Redecomp mesh element connectivity for the second Tribol
-     * registered mesh
+     * @brief Redecomp mesh finite-element node connectivity for the second Tribol registered mesh
      */
     Array2D<IndexT> conn_2_;
 
@@ -1197,9 +1219,19 @@ class MfemMeshData {
     InterfaceElementType elem_type_;
 
     /**
-     * @brief Number of vertices on each element in the contact meshes
+     * @brief Finite element order represented by the contact mesh connectivity
      */
-    int num_verts_per_elem_;
+    FaceOrderType face_order_;
+
+    /**
+     * @brief Number of finite-element nodes on each element in the contact meshes
+     */
+    int nodes_per_elem_;
+
+    /**
+     * @brief Number of scalar finite-element nodes available to the coordinate component arrays
+     */
+    int num_nodes_;
 
     /**
      * @brief Umpire allocator ID for Tribol data
@@ -1219,7 +1251,7 @@ class MfemMeshData {
     void UpdateConnectivity( const std::set<int>& attributes_1, const std::set<int>& attributes_2 );
 
     /**
-     * @brief Sets the number of vertices per element and the element type for the redecomp mesh
+     * @brief Sets the element shape, face order, and finite-element node count for the redecomp mesh
      */
     void SetElementData();
   };

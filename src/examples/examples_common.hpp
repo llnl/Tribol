@@ -202,10 +202,10 @@ int tribol_register_and_update( tribol::TestMesh& mesh, tribol::ContactMethod me
   const int block2_id = 1;
 
   // register the two meshes with Tribol
-  tribol::registerMesh( block1_id, mesh.numMortarFaces, mesh.numTotalNodes, mesh.faceConn1, cellType, mesh.x, mesh.y,
-                        mesh.z, tribol::MemorySpace::Host );
-  tribol::registerMesh( block2_id, mesh.numNonmortarFaces, mesh.numTotalNodes, mesh.faceConn2, cellType, mesh.x, mesh.y,
-                        mesh.z, tribol::MemorySpace::Host );
+  tribol::registerMesh( block1_id, mesh.numMortarFaces, mesh.numTotalNodes, mesh.faceConn1, cellType,
+                        tribol::LINEAR_LAGRANGE, mesh.x, mesh.y, mesh.z, tribol::MemorySpace::Host );
+  tribol::registerMesh( block2_id, mesh.numNonmortarFaces, mesh.numTotalNodes, mesh.faceConn2, cellType,
+                        tribol::LINEAR_LAGRANGE, mesh.x, mesh.y, mesh.z, tribol::MemorySpace::Host );
   ///////////////////////////////////
   //                               //
   // STEP 2: register field arrays //

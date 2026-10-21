@@ -1083,25 +1083,32 @@ MfemMeshData::UpdateData::UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* 
 void MfemMeshData::UpdateData::UpdateConnectivity( const std::set<int>& attributes_1,
                                                    const std::set<int>& attributes_2 )
 {
-  // create this on host since MFEM connectivity data is stored there
+  // MFEM stores finite-element connectivity on the host, so build the registered connectivity there before copying it
+  // to Tribol's requested memory space.
   Array2D<IndexT, MemorySpace::Host> conn_1_host;
   Array2D<IndexT, MemorySpace::Host> conn_2_host;
   Array1D<int, MemorySpace::Host> elem_map_1_host;
   Array1D<int, MemorySpace::Host> elem_map_2_host;
-  conn_1_host.reserve( redecomp_mesh_.GetNE() * num_verts_per_elem_ );
-  conn_2_host.reserve( redecomp_mesh_.GetNE() * num_verts_per_elem_ );
+  conn_1_host.reserve( redecomp_mesh_.GetNE() * nodes_per_elem_ );
+  conn_2_host.reserve( redecomp_mesh_.GetNE() * nodes_per_elem_ );
   elem_map_1_host.reserve( static_cast<size_t>( redecomp_mesh_.GetNE() ) );
   elem_map_2_host.reserve( static_cast<size_t>( redecomp_mesh_.GetNE() ) );
+  auto& redecomp_fes = vector_xfer_.GetRedecompFESpace();
   for ( int e{}; e < redecomp_mesh_.GetNE(); ++e ) {
     auto elem_attrib = redecomp_mesh_.GetAttribute( e );
-    auto elem_conn = mfem::Array<int>();
-    redecomp_mesh_.GetElementVertices( e, elem_conn );
+    mfem::Array<int> elem_dofs;
+    redecomp_fes.GetElementDofs( e, elem_dofs );
+    SLIC_ERROR_ROOT_IF( elem_dofs.Size() != nodes_per_elem_,
+                        "Redecomp finite-element connectivity does not match the typical element." );
     for ( auto attribute_1 : attributes_1 ) {
       if ( attribute_1 == elem_attrib ) {
         elem_map_1_host.push_back( e );
-        conn_1_host.resize( elem_map_1_host.size(), num_verts_per_elem_ );
-        for ( int v{}; v < num_verts_per_elem_; ++v ) {
-          conn_1_host( elem_map_1_host.size() - 1, v ) = elem_conn[v];
+        conn_1_host.resize( elem_map_1_host.size(), nodes_per_elem_ );
+        for ( int local_node{}; local_node < nodes_per_elem_; ++local_node ) {
+          // MFEM encodes orientation in the sign of some DOF indices. Tribol connectivity only identifies the node,
+          // so remove that sign while retaining MFEM's local basis ordering.
+          conn_1_host( elem_map_1_host.size() - 1, local_node ) =
+              mfem::FiniteElementSpace::DecodeDof( elem_dofs[local_node] );
         }
         break;
       }
@@ -1109,9 +1116,10 @@ void MfemMeshData::UpdateData::UpdateConnectivity( const std::set<int>& attribut
     for ( auto attribute_2 : attributes_2 ) {
       if ( attribute_2 == elem_attrib ) {
         elem_map_2_host.push_back( e );
-        conn_2_host.resize( elem_map_2_host.size(), num_verts_per_elem_ );
-        for ( int v{}; v < num_verts_per_elem_; ++v ) {
-          conn_2_host( elem_map_2_host.size() - 1, v ) = elem_conn[v];
+        conn_2_host.resize( elem_map_2_host.size(), nodes_per_elem_ );
+        for ( int local_node{}; local_node < nodes_per_elem_; ++local_node ) {
+          conn_2_host( elem_map_2_host.size() - 1, local_node ) =
+              mfem::FiniteElementSpace::DecodeDof( elem_dofs[local_node] );
         }
         break;
       }
@@ -1159,41 +1167,54 @@ mfem::ParSubMesh MfemMeshData::CreateSubmesh( const mfem::ParMesh& parent_mesh, 
 
 void MfemMeshData::UpdateData::SetElementData()
 {
-  if ( redecomp_mesh_.GetNE() > 0 ) {
-    auto element_type = redecomp_mesh_.GetElementType( 0 );
+  auto& redecomp_fes = vector_xfer_.GetRedecompFESpace();
+  const auto* typical_fe = redecomp_fes.GetTypicalFE();
+  SLIC_ERROR_ROOT_IF( typical_fe == nullptr, "Redecomp finite-element space does not provide a typical element." );
 
-    switch ( element_type ) {
-      case mfem::Element::SEGMENT:
-        elem_type_ = EDGE;
-        break;
-      case mfem::Element::TRIANGLE:
-        elem_type_ = TRIANGLE;
-        break;
-      case mfem::Element::QUADRILATERAL:
-        elem_type_ = QUAD;
-        break;
-      case mfem::Element::TETRAHEDRON:
-        elem_type_ = TET;
-        break;
-      case mfem::Element::HEXAHEDRON:
-        elem_type_ = HEX;
-        break;
+  // GetTypicalFE() remains valid on an empty MPI partition, so every rank derives the same connectivity width and
+  // element metadata without requiring a local element.
+  const auto element_type = typical_fe->GetGeomType();
+  nodes_per_elem_ = typical_fe->GetDof();
+  num_nodes_ = redecomp_fes.GetNDofs();
 
-      case mfem::Element::POINT:
-        SLIC_ERROR_ROOT( "Unsupported element type!" );
-        break;
+  switch ( element_type ) {
+    case mfem::Geometry::SEGMENT:
+      elem_type_ = EDGE;
+      break;
+    case mfem::Geometry::TRIANGLE:
+      elem_type_ = TRIANGLE;
+      break;
+    case mfem::Geometry::SQUARE:
+      elem_type_ = QUAD;
+      break;
+    case mfem::Geometry::TETRAHEDRON:
+      elem_type_ = TET;
+      break;
+    case mfem::Geometry::CUBE:
+      elem_type_ = HEX;
+      break;
+    case mfem::Geometry::POINT:
+      SLIC_ERROR_ROOT( "Unsupported element type!" );
+      break;
+    default:
+      SLIC_ERROR_ROOT( "Unknown element type!" );
+      break;
+  }
 
-      default:
-        SLIC_ERROR_ROOT( "Unknown element type!" );
-        break;
-    }
-
-    num_verts_per_elem_ = mfem::Geometry::NumVerts[element_type];
-  } else {
-    // just put something here so Tribol will not give a warning for zero element meshes.  use a 2d element so arrays
-    // are sized for 3d (max supported dimension) in case they are accessed later on.
-    elem_type_ = QUAD;
-    num_verts_per_elem_ = 2;
+  switch ( redecomp_fes.FEColl()->GetOrder() ) {
+    case 1:
+      face_order_ = LINEAR_LAGRANGE;
+      break;
+    case 2:
+      face_order_ = QUADRATIC_LAGRANGE;
+      break;
+    case 3:
+      face_order_ = CUBIC_LAGRANGE;
+      break;
+    default:
+      face_order_ = UNDEFINED_ORDER_TYPE;
+      SLIC_ERROR_ROOT( "Unsupported redecomp finite-element order!" );
+      break;
   }
 }
 

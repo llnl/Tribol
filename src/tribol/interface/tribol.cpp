@@ -401,11 +401,11 @@ void enableEnzyme( IndexT cs_id, [[maybe_unused]] bool use_enzyme )
 
 //------------------------------------------------------------------------------
 void registerMesh( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity, int element_type,
-                   const RealT* x, const RealT* y, const RealT* z, MemorySpace mem_space )
+                   FaceOrderType face_order, const RealT* x, const RealT* y, const RealT* z, MemorySpace mem_space )
 {
   MeshManager::getInstance().addData(
       mesh_id, MeshData( mesh_id, num_elements, num_nodes, connectivity,
-                         static_cast<InterfaceElementType>( element_type ), LINEAR_LAGRANGE, x, y, z, mem_space ) );
+                         static_cast<InterfaceElementType>( element_type ), face_order, x, y, z, mem_space ) );
 }  // end registerMesh()
 
 //------------------------------------------------------------------------------

@@ -272,6 +272,7 @@ void enableEnzyme( IndexT cs_id, bool use_enzyme );
  * \param [in] num_nodes length of the data arrays being registered
  * \param [in] connectivity mesh connectivity array for the contact surface
  * \param [in] element_type the cell type of the contact surface elements
+ * \param [in] face_order the finite element order represented by connectivity
  * \param [in] x array of x-components of the mesh coordinates
  * \param [in] y array of y-components of the mesh coordinates
  * \param [in] z array of z-components of the mesh coordinates (3D only)
@@ -282,13 +283,12 @@ void enableEnzyme( IndexT cs_id, bool use_enzyme );
  * \pre y != nullptr
  * \pre z != nullptr (3D only)
  *
- * \note connectivity is a 2D array with num_elements rows and num_nodes columns
- * with row-major ordering
- *
- * \note This interface currently registers linear finite element faces.
+ * \note connectivity is a row-major 2D array with num_elements rows. FaceElementTraits defines the number and local
+ * node ordering of each row from element_type and face_order.
  */
 void registerMesh( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity, int element_type,
-                   const RealT* x, const RealT* y, const RealT* z = nullptr, MemorySpace m_space = MemorySpace::Host );
+                   FaceOrderType face_order, const RealT* x, const RealT* y, const RealT* z = nullptr,
+                   MemorySpace m_space = MemorySpace::Host );
 
 /*!
  * \brief Registers nodal displacements on the contact surface.
