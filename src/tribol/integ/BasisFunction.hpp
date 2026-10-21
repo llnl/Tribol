@@ -584,14 +584,15 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline RealT ComputeJacobianWeight(
 }
 
 /**
- * @brief Transform parent basis derivatives into ambient tangential physical gradients
+ * @brief Compute physical-space basis gradients tangent to the mapped element
  *
- * The transformation J(J^T J)^-1 produces the unique tangent gradient that satisfies the chain rule. Physical
- * derivatives remain node-major as physical_derivatives(node, physical_component).
+ * The mapped edge or face lies in the surrounding physical space. The transformation J(J^T J)^-1 produces the unique
+ * gradient in that space that is tangent to the mapped element and satisfies the chain rule. Physical derivatives
+ * remain node-major as physical_derivatives(node, physical_component).
  *
  * @param jacobian Mapping Jacobian stored by physical component, then parent component
  * @param parent_derivatives Parent derivatives stored by node, then parent component
- * @param physical_derivatives Output ambient derivatives stored by node, then physical component
+ * @param physical_derivatives Output tangent gradients stored by node, then physical component
  *
  * @return true when the mapping Jacobian has full parent-space rank; false after zeroing output otherwise
  */
