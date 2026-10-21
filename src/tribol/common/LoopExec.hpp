@@ -173,13 +173,13 @@ struct toAxomExecSpace<ExecutionMode::Hip, BLOCK_SIZE> {
  * @brief Call a RAJA forall loop with the execution mode known at compile time
  *
  * @tparam EXEC Execution mode for loop
- * @tparam BODY Functor type defining what to do inside the loop
- * @tparam ASYNC Can the loops be run asynchroniously?
+ * @tparam ASYNC Can the loop run asynchronously?
  * @tparam BLOCK_SIZE Block size for kernel (if applicable)
+ * @tparam BODY Functor type defining what to do inside the loop
  * @param N Number of items to iterate over
  * @param body Functor body defining what to do inside the loop
  */
-template <ExecutionMode EXEC, typename BODY, bool ASYNC = true, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE>
+template <ExecutionMode EXEC, bool ASYNC = true, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE, typename BODY>
 void forAllExec( IndexT N, BODY&& body )
 {
   detail::forAllImpl<BODY, ASYNC, BLOCK_SIZE>( detail::forAllType<EXEC>(), N, std::move( body ) );
@@ -188,7 +188,7 @@ void forAllExec( IndexT N, BODY&& body )
 /**
  * @brief Call a RAJA forall loop with the execution mode determined at run time
  *
- * @tparam ASYNC Can the loops be run asynchroniously?
+ * @tparam ASYNC Can the loop run asynchronously?
  * @tparam BLOCK_SIZE Block size for kernel (if applicable)
  * @tparam BODY Functor type defining what to do inside the loop
  * @param exec_mode Execution mode for loop

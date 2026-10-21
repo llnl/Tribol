@@ -100,12 +100,12 @@ class BvhSearch {
     const auto candidate_counts = counts.view();
     auto pairs = candidate_pairs.view();
     // This loop must finish before its local BVH query arrays are released at the end of the call.
-    forAllExec<false>( ExecMode, candidates.size(),
-                       [candidate_ids, candidate_offsets, candidate_counts, pairs] TRIBOL_HOST_DEVICE( IndexT i ) {
-                         const IndexT mesh1_element = candidate_ids[i];
-                         const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, i );
-                         pairs[i] = InterfacePair{ mesh1_element, mesh2_element };
-                       } );
+    forAllExec<ExecMode, false>(
+        candidates.size(), [candidate_ids, candidate_offsets, candidate_counts, pairs] TRIBOL_HOST_DEVICE( IndexT i ) {
+          const IndexT mesh1_element = candidate_ids[i];
+          const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, i );
+          pairs[i] = InterfacePair{ mesh1_element, mesh2_element };
+        } );
 
     return candidate_pairs;
   }
@@ -124,45 +124,44 @@ class BvhSearch {
     const RealT binning_proximity_scale = binning_proximity_scale_;
     const RealT residual_gap = residual_gap_;
     // The BVH reads these boxes immediately after this function returns, so the loop must complete before returning.
-    forAllExec<false>(
-        ExecMode, mesh.numberOfElements(),
-        [mesh, boxes, binning_proximity_scale, residual_gap] TRIBOL_HOST_DEVICE( IndexT element ) {
-          BoundingBox bounding_box;
-          Point average_position;
-          for ( int dimension = 0; dimension < SpatialDimension; ++dimension ) {
-            average_position[dimension] = 0.0;
-          }
+    forAllExec<ExecMode, false>( mesh.numberOfElements(), [mesh, boxes, binning_proximity_scale,
+                                                           residual_gap] TRIBOL_HOST_DEVICE( IndexT element ) {
+      BoundingBox bounding_box;
+      Point average_position;
+      for ( int dimension = 0; dimension < SpatialDimension; ++dimension ) {
+        average_position[dimension] = 0.0;
+      }
 
-          const IndexT node_count = mesh.numberOfNodesPerElement();
-          for ( IndexT local_node = 0; local_node < node_count; ++local_node ) {
-            const IndexT node = mesh.getGlobalNodeId( element, local_node );
-            Point position;
-            for ( int dimension = 0; dimension < SpatialDimension; ++dimension ) {
-              position[dimension] = mesh.getPosition()[dimension][node];
-              average_position[dimension] += position[dimension];
-            }
-            bounding_box.addPoint( position );
-          }
+      const IndexT node_count = mesh.numberOfNodesPerElement();
+      for ( IndexT local_node = 0; local_node < node_count; ++local_node ) {
+        const IndexT node = mesh.getGlobalNodeId( element, local_node );
+        Point position;
+        for ( int dimension = 0; dimension < SpatialDimension; ++dimension ) {
+          position[dimension] = mesh.getPosition()[dimension][node];
+          average_position[dimension] += position[dimension];
+        }
+        bounding_box.addPoint( position );
+      }
 
-          for ( int dimension = 0; dimension < SpatialDimension; ++dimension ) {
-            average_position[dimension] /= static_cast<RealT>( node_count );
-          }
+      for ( int dimension = 0; dimension < SpatialDimension; ++dimension ) {
+        average_position[dimension] /= static_cast<RealT>( node_count );
+      }
 
-          RealT squared_nodal_radius = 0.0;
-          for ( IndexT local_node = 0; local_node < node_count; ++local_node ) {
-            const IndexT node = mesh.getGlobalNodeId( element, local_node );
-            RealT squared_distance = 0.0;
-            for ( int dimension = 0; dimension < SpatialDimension; ++dimension ) {
-              const RealT distance = mesh.getPosition()[dimension][node] - average_position[dimension];
-              squared_distance += distance * distance;
-            }
-            squared_nodal_radius = squared_distance > squared_nodal_radius ? squared_distance : squared_nodal_radius;
-          }
+      RealT squared_nodal_radius = 0.0;
+      for ( IndexT local_node = 0; local_node < node_count; ++local_node ) {
+        const IndexT node = mesh.getGlobalNodeId( element, local_node );
+        RealT squared_distance = 0.0;
+        for ( int dimension = 0; dimension < SpatialDimension; ++dimension ) {
+          const RealT distance = mesh.getPosition()[dimension][node] - average_position[dimension];
+          squared_distance += distance * distance;
+        }
+        squared_nodal_radius = squared_distance > squared_nodal_radius ? squared_distance : squared_nodal_radius;
+      }
 
-          const RealT expansion = binning_proximity_scale * std::sqrt( squared_nodal_radius ) + residual_gap;
-          bounding_box.expand( expansion );
-          boxes[element] = bounding_box;
-        } );
+      const RealT expansion = binning_proximity_scale * std::sqrt( squared_nodal_radius ) + residual_gap;
+      bounding_box.expand( expansion );
+      boxes[element] = bounding_box;
+    } );
   }
 
   MeshData::Viewer mesh1_;
