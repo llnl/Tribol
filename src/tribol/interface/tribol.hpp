@@ -284,6 +284,8 @@ void enableEnzyme( IndexT cs_id, bool use_enzyme );
  *
  * \note connectivity is a 2D array with num_elements rows and num_nodes columns
  * with row-major ordering
+ *
+ * \note This interface currently registers linear finite element faces.
  */
 void registerMesh( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity, int element_type,
                    const RealT* x, const RealT* y, const RealT* z = nullptr, MemorySpace m_space = MemorySpace::Host );

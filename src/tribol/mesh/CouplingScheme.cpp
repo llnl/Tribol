@@ -569,10 +569,10 @@ bool CouplingScheme::isValidMethod()
 
   // check all methods for basic validity issues for non-null meshes
   if ( !this->m_nullMeshes ) {
-    if ( ( this->m_mesh1->getElementType() != LINEAR_EDGE && this->m_mesh1->getElementType() != LINEAR_QUAD &&
-           this->m_mesh1->getElementType() != LINEAR_TRIANGLE ) ||
-         ( this->m_mesh2->getElementType() != LINEAR_EDGE && this->m_mesh2->getElementType() != LINEAR_QUAD &&
-           this->m_mesh2->getElementType() != LINEAR_TRIANGLE ) ) {
+    if ( ( this->m_mesh1->getElementType() != EDGE && this->m_mesh1->getElementType() != QUAD &&
+           this->m_mesh1->getElementType() != TRIANGLE ) ||
+         ( this->m_mesh2->getElementType() != EDGE && this->m_mesh2->getElementType() != QUAD &&
+           this->m_mesh2->getElementType() != TRIANGLE ) ) {
       this->m_couplingSchemeErrors.cs_method_error = INVALID_ELEMENT_TYPE;
       return false;
     }

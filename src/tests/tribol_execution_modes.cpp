@@ -86,7 +86,7 @@ class ExecutionModeTest : public testing::TestWithParam<std::tuple<MemorySpace, 
     PrintExecutionMode( std::get<2>( GetParam() ) );
     constexpr IndexT cs_id = 0;
     constexpr IndexT mesh_id = 0;
-    registerMesh( mesh_id, 0, 0, nullptr, InterfaceElementType::LINEAR_QUAD, nullptr, nullptr, nullptr,
+    registerMesh( mesh_id, 0, 0, nullptr, InterfaceElementType::QUAD, nullptr, nullptr, nullptr,
                   std::get<0>( GetParam() ) );
     CouplingScheme cs( cs_id, mesh_id, mesh_id, ContactMode::SURFACE_TO_SURFACE, ContactCase::NO_CASE,
                        ContactMethod::COMMON_PLANE, ContactModel::FRICTIONLESS, EnforcementMethod::PENALTY,

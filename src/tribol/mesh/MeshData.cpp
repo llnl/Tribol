@@ -175,14 +175,6 @@ bool MeshElemData::isValidRatePenalty( PenaltyEnforcementOptions& pen_options )
 //                             //
 /////////////////////////////////
 MeshData::MeshData( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity,
-                    InterfaceElementType element_type, const RealT* x, const RealT* y, const RealT* z,
-                    MemorySpace mem_space )
-    : MeshData( mesh_id, num_elements, num_nodes, connectivity, element_type, LINEAR, x, y, z, mem_space )
-{
-}
-
-//------------------------------------------------------------------------------
-MeshData::MeshData( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity,
                     InterfaceElementType element_type, FaceOrderType face_order, const RealT* x, const RealT* y,
                     const RealT* z, MemorySpace mem_space )
     : m_mesh_id( mesh_id ),
@@ -250,11 +242,11 @@ void MeshData::setResponse( RealT* rx, RealT* ry, RealT* rz ) { m_response = cre
 int MeshData::getDimFromElementType() const
 {
   switch ( m_element_type ) {
-    case LINEAR_EDGE: {
+    case EDGE: {
       return 2;
     }
-    case LINEAR_TRIANGLE:
-    case LINEAR_QUAD: {
+    case TRIANGLE:
+    case QUAD: {
       return 3;
     }
     default: {
@@ -268,7 +260,7 @@ int MeshData::getDimFromElementType() const
 ArrayViewT<const IndexT, 2> MeshData::createConnectivity( IndexT num_elements, const IndexT* connectivity )
 {
   switch ( m_element_type ) {
-    case LINEAR_EDGE: {
+    case EDGE: {
       if ( m_face_order == LINEAR ) {
         return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 2 } );
       }
@@ -277,13 +269,13 @@ ArrayViewT<const IndexT, 2> MeshData::createConnectivity( IndexT num_elements, c
       }
       break;
     }
-    case LINEAR_TRIANGLE: {
+    case TRIANGLE: {
       if ( m_face_order == LINEAR ) {
         return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 3 } );
       }
       break;
     }
-    case LINEAR_QUAD: {
+    case QUAD: {
       if ( m_face_order == LINEAR ) {
         return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 4 } );
       }

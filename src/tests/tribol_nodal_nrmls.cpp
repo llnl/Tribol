@@ -71,7 +71,7 @@ TEST_F( NodalNormalTest, two_quad_inverted_v )
   //
   int numFaces = 2;
   int numNodesPerFace = 4;
-  int cellType = (int)( tribol::LINEAR_QUAD );
+  int cellType = (int)( tribol::QUAD );
   tribol::Array2D<tribol::IndexT> conn( numFaces, numNodesPerFace );
 
   // setup connectivity for the two faces ensuring nodes

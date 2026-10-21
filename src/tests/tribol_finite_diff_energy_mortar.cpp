@@ -382,12 +382,12 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
   IndexT conn1[2] = { 1, 0 };
-  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh1( 0, 1, 2, conn1, EDGE, LINEAR, x1, y1, nullptr, MemorySpace::Host );
 
   RealT x2[2] = { 0.2, 0.8 };
   RealT y2[2] = { 0.1, 0.1 };
   IndexT conn2[2] = { 0, 1 };
-  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR, x2, y2, nullptr, MemorySpace::Host );
 
   ContactParams params;
   params.del = 0.1;
@@ -410,12 +410,12 @@ TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
   IndexT conn1[2] = { 1, 0 };
-  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh1( 0, 1, 2, conn1, EDGE, LINEAR, x1, y1, nullptr, MemorySpace::Host );
 
   RealT x2[2] = { 0.2, 0.8 };
   RealT y2[2] = { 0.0, 0.0 };
   IndexT conn2[2] = { 0, 1 };
-  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR, x2, y2, nullptr, MemorySpace::Host );
 
   ContactParams params;
   params.del = 0.1;
@@ -440,12 +440,12 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
   IndexT conn1[2] = { 1, 0 };
-  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh1( 0, 1, 2, conn1, EDGE, LINEAR, x1, y1, nullptr, MemorySpace::Host );
 
   RealT x2[2] = { 0.2, 0.8 };
   RealT y2[2] = { 0.1, 0.1 };
   IndexT conn2[2] = { 0, 1 };
-  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR, x2, y2, nullptr, MemorySpace::Host );
 
   ContactParams params;
   params.del = 0.1;
@@ -480,12 +480,12 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
   IndexT conn1[2] = { 1, 0 };
-  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh1( 0, 1, 2, conn1, EDGE, LINEAR, x1, y1, nullptr, MemorySpace::Host );
 
   RealT x2[2] = { 0.2, 0.8 };
   RealT y2[2] = { 0.1, 0.1 };
   IndexT conn2[2] = { 0, 1 };
-  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR, x2, y2, nullptr, MemorySpace::Host );
 
   ContactParams params;
   params.del = 0.1;
@@ -521,12 +521,12 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
   IndexT conn1[2] = { 1, 0 };
-  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh1( 0, 1, 2, conn1, EDGE, LINEAR, x1, y1, nullptr, MemorySpace::Host );
 
   RealT x2[2] = { 0.2, 0.8 };
   RealT y2[2] = { -0.1, -0.1 };
   IndexT conn2[2] = { 0, 1 };
-  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR, x2, y2, nullptr, MemorySpace::Host );
 
   ContactParams params;
   params.del = 0.1;
@@ -611,19 +611,19 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
 
 TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
 {
-  // ── Geometry: two facing LINEAR_EDGE segments ────────────────────────────
+  // ── Geometry: two facing EDGE segments ────────────────────────────
   // Segment A: (0,0) -> (1,0)
   // Segment B: (0.2, 0.5) -> (0.8, 0.5)
 
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
   IndexT conn1[2] = { 1, 0 };  // reversed so nA points toward B
-  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh1( 0, 1, 2, conn1, EDGE, LINEAR, x1, y1, nullptr, MemorySpace::Host );
 
   RealT x2[2] = { 0.2, 0.8 };
   RealT y2[2] = { 0.5, 0.5 };
   IndexT conn2[2] = { 0, 1 };
-  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR, x2, y2, nullptr, MemorySpace::Host );
 
   InterfacePair pair( 0, 0 );
 
@@ -669,7 +669,7 @@ TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
 
 TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
 {
-  // ── Geometry: two facing LINEAR_EDGE segments ────────────────────────────
+  // ── Geometry: two facing EDGE segments ────────────────────────────
   // Segment A: (0,0) -> (1,0)
   // Segment B: (0.2, 0.5) -> (0.8, 0.5)
 
@@ -682,8 +682,8 @@ TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
   IndexT conn1[2] = { 1, 0 };
   IndexT conn2[2] = { 0, 1 };
 
-  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
-  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  MeshData mesh1( 0, 1, 2, conn1, EDGE, LINEAR, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR, x2, y2, nullptr, MemorySpace::Host );
 
   InterfacePair pair( 0, 0 );
 

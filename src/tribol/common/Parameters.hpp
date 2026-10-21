@@ -44,12 +44,12 @@ enum class LoggingLevel
 enum InterfaceElementType
 {
   UNDEFINED_ELEMENT,  ///! Undefined
-  LINEAR_EDGE,        ///! 1D linear edge
-  LINEAR_TRIANGLE,    ///! 2D linear triangle
-  LINEAR_QUAD,        ///! 2D linear quadrilateral
-  LINEAR_TET,         ///! 3D linear tetrahedron (volume methods and test mesh class)
-  LINEAR_HEX,         ///! 3D linear hexahedron (volume methods and test mesh class)
-  NUM_CONTACT_ELEMENTS = LINEAR_HEX
+  EDGE,               ///! 1D edge
+  TRIANGLE,           ///! 2D triangle
+  QUAD,               ///! 2D quadrilateral
+  TET,                ///! 3D tetrahedron (volume methods and test mesh class)
+  HEX,                ///! 3D hexahedron (volume methods and test mesh class)
+  NUM_CONTACT_ELEMENTS = HEX
 };
 
 /*!
