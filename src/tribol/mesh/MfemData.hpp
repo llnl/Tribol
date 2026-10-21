@@ -1251,7 +1251,7 @@ class MfemMeshData {
     void UpdateConnectivity( const std::set<int>& attributes_1, const std::set<int>& attributes_2 );
 
     /**
-     * @brief Sets the element shape, face order, and finite-element node count for the redecomp mesh
+     * @brief Sets the element type, face order, nodes per element, and coordinate DOF count for the Redecomp mesh
      */
     void SetElementData();
   };
