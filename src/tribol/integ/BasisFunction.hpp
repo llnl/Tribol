@@ -42,6 +42,9 @@ namespace detail {
  */
 template <typename Derived, int ParentDimension>
 struct FaceElementTraitsBase {
+  // Face element traits expose only compile-time data and static operations, so they do not create objects.
+  FaceElementTraitsBase() = delete;
+
   static constexpr int parent_dimension = ParentDimension;
   using ParentCoordinates = MdArray<RealT, parent_dimension>;
 
@@ -507,6 +510,9 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline void ComputeMappingJacobian(
 /**
  * @brief Compute the line or surface measure that maps parent integration weights to physical space
  *
+ * For an edge, this measure maps a parent differential to physical arc length as ds = sqrt(det(J^T J)) dxi. For a
+ * face, it maps a parent area differential to physical surface area as dA = sqrt(det(J^T J)) dxi deta.
+ *
  * @param jacobian Mapping Jacobian stored by physical component, then parent component
  * @return sqrt(det(J^T J)), which is the line or surface integration weight
  */
@@ -578,14 +584,15 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline RealT ComputeJacobianWeight(
 }
 
 /**
- * @brief Transform parent basis derivatives into ambient tangential physical gradients
+ * @brief Compute physical-space basis gradients tangent to the mapped element
  *
- * The transformation J(J^T J)^-1 produces the unique tangent gradient that satisfies the chain rule. Physical
- * derivatives remain node-major as physical_derivatives(node, physical_component).
+ * The mapped edge or face lies in the surrounding physical space. The transformation J(J^T J)^-1 produces the unique
+ * gradient in that space that is tangent to the mapped element and satisfies the chain rule. Physical derivatives
+ * remain node-major as physical_derivatives(node, physical_component).
  *
  * @param jacobian Mapping Jacobian stored by physical component, then parent component
  * @param parent_derivatives Parent derivatives stored by node, then parent component
- * @param physical_derivatives Output ambient derivatives stored by node, then physical component
+ * @param physical_derivatives Output tangent gradients stored by node, then physical component
  *
  * @return true when the mapping Jacobian has full parent-space rank; false after zeroing output otherwise
  */

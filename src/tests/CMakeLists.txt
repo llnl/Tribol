@@ -24,6 +24,8 @@ set( tribol_tests
      tribol_inv_iso.cpp
      tribol_iso_integ.cpp
      tribol_math.cpp
+     tribol_mdarray.cpp
+     tribol_mdspan.cpp
      tribol_mesh_data.cpp
      tribol_mortar_data_geom.cpp
      tribol_mortar_data_weights.cpp
