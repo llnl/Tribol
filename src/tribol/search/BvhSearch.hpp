@@ -28,9 +28,8 @@ namespace tribol {
  * BvhSearch performs only coarse spatial binning. It intentionally does not apply method-specific normal, overlap, or
  * contact checks. Callers decide which returned candidates are appropriate for their contact formulation.
  *
- * The search stores non-owning mesh views. The MeshData objects and their caller-owned arrays must remain valid for the
- * lifetime of this object. Each query builds and releases its BVH and bounding boxes so moving coordinates cannot leave
- * stale spatial data on the search object.
+ * Each call accepts current mesh views, then builds and releases its BVH and bounding boxes. The search object does not
+ * retain views that may become stale when a caller replaces mesh arrays.
  *
  * @tparam SpatialDimension Spatial dimension of the mesh coordinates
  * @tparam ExecMode Tribol execution mode used to construct and query bounding boxes
@@ -44,21 +43,14 @@ class BvhSearch {
   using Point = axom::primal::Point<RealT, SpatialDimension>;
 
   /**
-   * @brief Store the meshes and proximity values used by each one-shot BVH search
+   * @brief Store the proximity values applied by each BVH search
    *
-   * @param mesh1 Elements inserted into the BVH
-   * @param mesh2 Elements used to query the BVH
    * @param binning_proximity_scale Multiplier applied to each element's maximum nodal radius
    * @param residual_gap Additional physical distance added to each bounding-box expansion
    */
-  BvhSearch( MeshData::Viewer mesh1, MeshData::Viewer mesh2, RealT binning_proximity_scale, RealT residual_gap )
-      : mesh1_( mesh1 ),
-        mesh2_( mesh2 ),
-        binning_proximity_scale_( binning_proximity_scale ),
-        residual_gap_( residual_gap )
+  BvhSearch( RealT binning_proximity_scale, RealT residual_gap )
+      : binning_proximity_scale_( binning_proximity_scale ), residual_gap_( residual_gap )
   {
-    SLIC_ASSERT_MSG( mesh1_.getAllocatorId() == mesh2_.getAllocatorId(),
-                     "BvhSearch meshes must use the same allocator." );
   }
 
   /**
@@ -67,89 +59,87 @@ class BvhSearch {
    * Bounding-box candidates can still include self-pairs, shared-node pairs, co-oriented faces, and pairs that fail a
    * contact method's overlap checks. Keeping those decisions outside this class allows each formulation to apply the
    * geometry checks it requires.
+   *
+   * @param mesh1 Current elements inserted into the BVH
+   * @param mesh2 Current elements used to query the BVH
    */
-  ArrayT<InterfacePair> findCandidatePairs() const
+  ArrayT<InterfacePair> findCandidatePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
   {
-    ArrayT<InterfacePair> candidate_pairs( 0, 0, mesh1_.getAllocatorId() );
-    if ( mesh1_.numberOfElements() == 0 || mesh2_.numberOfElements() == 0 ) {
+    SLIC_ASSERT_MSG( mesh1.getAllocatorId() == mesh2.getAllocatorId(),
+                     "BvhSearch meshes must use the same allocator." );
+    ArrayT<InterfacePair> candidate_pairs( 0, 0, mesh1.getAllocatorId() );
+    if ( mesh1.numberOfElements() == 0 || mesh2.numberOfElements() == 0 ) {
       return candidate_pairs;
     }
 
     // Search storage is local because moving meshes require the BVH and bounds to be rebuilt for every query.
-    ArrayT<BoundingBox> mesh1_bounding_boxes( axom::ArrayOptions::Uninitialized{}, mesh1_.numberOfElements(),
-                                              mesh1_.numberOfElements(), mesh1_.getAllocatorId() );
-    ArrayT<BoundingBox> mesh2_bounding_boxes( axom::ArrayOptions::Uninitialized{}, mesh2_.numberOfElements(),
-                                              mesh2_.numberOfElements(), mesh2_.getAllocatorId() );
-    ArrayT<IndexT> candidates( axom::ArrayOptions::Uninitialized{}, 0, 0, mesh1_.getAllocatorId() );
-    ArrayT<IndexT> offsets( axom::ArrayOptions::Uninitialized{}, mesh2_.numberOfElements(), mesh2_.numberOfElements(),
-                            mesh2_.getAllocatorId() );
-    ArrayT<IndexT> counts( axom::ArrayOptions::Uninitialized{}, mesh2_.numberOfElements(), mesh2_.numberOfElements(),
-                           mesh2_.getAllocatorId() );
+    ArrayT<BoundingBox> mesh1_bounding_boxes( axom::ArrayOptions::Uninitialized{}, mesh1.numberOfElements(),
+                                              mesh1.numberOfElements(), mesh1.getAllocatorId() );
+    ArrayT<BoundingBox> mesh2_bounding_boxes( axom::ArrayOptions::Uninitialized{}, mesh2.numberOfElements(),
+                                              mesh2.numberOfElements(), mesh2.getAllocatorId() );
+    ArrayT<IndexT> candidates( axom::ArrayOptions::Uninitialized{}, 0, 0, mesh1.getAllocatorId() );
+    ArrayT<IndexT> offsets( axom::ArrayOptions::Uninitialized{}, mesh2.numberOfElements(), mesh2.numberOfElements(),
+                            mesh2.getAllocatorId() );
+    ArrayT<IndexT> counts( axom::ArrayOptions::Uninitialized{}, mesh2.numberOfElements(), mesh2.numberOfElements(),
+                           mesh2.getAllocatorId() );
 
-    buildMeshBoundingBoxes( mesh1_bounding_boxes, mesh1_ );
-    buildMeshBoundingBoxes( mesh2_bounding_boxes, mesh2_ );
+    buildMeshBoundingBoxes( mesh1_bounding_boxes, mesh1 );
+    buildMeshBoundingBoxes( mesh2_bounding_boxes, mesh2 );
 
     Bvh bvh;
-    bvh.setAllocatorID( mesh1_.getAllocatorId() );
+    bvh.setAllocatorID( mesh1.getAllocatorId() );
     bvh.initialize( mesh1_bounding_boxes.view(), mesh1_bounding_boxes.size() );
-    bvh.findBoundingBoxes( offsets.view(), counts.view(), candidates, mesh2_.numberOfElements(),
+    bvh.findBoundingBoxes( offsets.view(), counts.view(), candidates, mesh2.numberOfElements(),
                            mesh2_bounding_boxes.view() );
 
     const auto candidate_ids = candidates.view();
     const auto candidate_offsets = offsets.view();
     const auto candidate_counts = counts.view();
-    const bool same_mesh = mesh1_.meshId() == mesh2_.meshId();
+    const bool same_mesh = mesh1.meshId() == mesh2.meshId();
 
     if ( !same_mesh ) {
       candidate_pairs = ArrayT<InterfacePair>( axom::ArrayOptions::Uninitialized{}, candidates.size(),
-                                               candidates.size(), mesh1_.getAllocatorId() );
+                                               candidates.size(), mesh1.getAllocatorId() );
       auto pairs = candidate_pairs.view();
       // This loop must finish before its local BVH query arrays are released at the end of the call.
-      forAllExec<ExecMode, false>(
-          candidates.size(),
-          [candidate_ids, candidate_offsets, candidate_counts, pairs] TRIBOL_HOST_DEVICE( IndexT i ) {
-            const IndexT mesh1_element = candidate_ids[i];
-            const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, i );
-            pairs[i] = InterfacePair{ mesh1_element, mesh2_element };
-          } );
+      forAllExec<ExecMode, false>( candidates.size(), [candidate_ids, candidate_offsets, candidate_counts,
+                                                       pairs] TRIBOL_HOST_DEVICE( IndexT candidate ) {
+        const IndexT mesh1_element = candidate_ids[candidate];
+        const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, candidate );
+        pairs[candidate] = InterfacePair{ mesh1_element, mesh2_element };
+      } );
     } else {
-      ArrayT<bool> keep( axom::ArrayOptions::Uninitialized{}, candidates.size(), candidates.size(),
-                         mesh1_.getAllocatorId() );
-      ArrayT<IndexT> pair_count_data( { 0 }, mesh1_.getAllocatorId() );
-      auto keep_view = keep.view();
-      auto pair_count = pair_count_data.view();
+      ArrayT<IndexT> retained_pair_count_data( { 0 }, mesh1.getAllocatorId() );
+      auto retained_pair_count = retained_pair_count_data.view();
 
       // A same-mesh search visits both pair directions. Retain one direction while leaving self-pair policy to the
       // method-specific filter.
-      forAllExec<ExecMode, false>(
-          candidates.size(),
-          [candidate_ids, candidate_offsets, candidate_counts, keep_view, pair_count] TRIBOL_HOST_DEVICE( IndexT i ) {
-            const IndexT mesh1_element = candidate_ids[i];
-            const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, i );
-            const bool retain = mesh1_element >= mesh2_element;
-            keep_view[i] = retain;
-            if ( retain ) {
-              tribol::atomicInc( pair_count.data() );
-            }
-          } );
+      forAllExec<ExecMode, false>( candidates.size(), [candidate_ids, candidate_offsets, candidate_counts,
+                                                       retained_pair_count] TRIBOL_HOST_DEVICE( IndexT candidate ) {
+        const IndexT mesh1_element = candidate_ids[candidate];
+        const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, candidate );
+        if ( mesh1_element >= mesh2_element ) {
+          tribol::atomicInc( retained_pair_count.data() );
+        }
+      } );
 
-      ArrayT<IndexT, 1, MemorySpace::Host> pair_count_host( pair_count_data );
-      candidate_pairs = ArrayT<InterfacePair>( axom::ArrayOptions::Uninitialized{}, pair_count_host[0],
-                                               pair_count_host[0], mesh1_.getAllocatorId() );
-      pair_count_data.fill( 0 );
+      ArrayT<IndexT, 1, MemorySpace::Host> retained_pair_count_host( retained_pair_count_data );
+      candidate_pairs = ArrayT<InterfacePair>( axom::ArrayOptions::Uninitialized{}, retained_pair_count_host[0],
+                                               retained_pair_count_host[0], mesh1.getAllocatorId() );
+      retained_pair_count_data.fill( 0 );
       auto pairs = candidate_pairs.view();
 
+      // Repeating the inexpensive ID comparison avoids retaining a candidate-sized Boolean array between kernels.
       forAllExec<ExecMode, false>(
-          candidates.size(),
-          [candidate_ids, candidate_offsets, candidate_counts, keep_view, pair_count, pairs] TRIBOL_HOST_DEVICE(
-              IndexT i ) {
-            if ( !keep_view[i] ) {
+          candidates.size(), [candidate_ids, candidate_offsets, candidate_counts, retained_pair_count,
+                              pairs] TRIBOL_HOST_DEVICE( IndexT candidate ) {
+            const IndexT mesh1_element = candidate_ids[candidate];
+            const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, candidate );
+            if ( mesh1_element < mesh2_element ) {
               return;
             }
-            const IndexT mesh1_element = candidate_ids[i];
-            const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, i );
-            const IndexT out_idx = tribol::atomicInc( pair_count.data() );
-            pairs[out_idx] = InterfacePair{ mesh1_element, mesh2_element };
+            const IndexT retained_pair_index = tribol::atomicInc( retained_pair_count.data() );
+            pairs[retained_pair_index] = InterfacePair{ mesh1_element, mesh2_element };
           } );
     }
 
@@ -210,8 +200,6 @@ class BvhSearch {
     } );
   }
 
-  MeshData::Viewer mesh1_;
-  MeshData::Viewer mesh2_;
   RealT binning_proximity_scale_;
   RealT residual_gap_;
 };

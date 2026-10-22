@@ -6,7 +6,6 @@
 #ifndef SRC_TRIBOL_SEARCH_GRIDSEARCH_HPP_
 #define SRC_TRIBOL_SEARCH_GRIDSEARCH_HPP_
 
-#include <algorithm>
 #include <cmath>
 
 #include "axom/primal.hpp"
@@ -25,10 +24,9 @@ namespace tribol {
  * GridSearch performs only coarse spatial binning. It intentionally does not apply method-specific normal, overlap, or
  * contact checks. Callers decide which returned candidates are appropriate for their contact formulation.
  *
- * The search stores non-owning mesh views. The MeshData objects and their caller-owned arrays must remain valid for the
- * lifetime of this object. Each query builds and releases its grid and bounding boxes so moving coordinates cannot
- * leave stale spatial data on the search object. GridSearch is sequential because Axom's implicit grid uses
- * axom::SEQ_EXEC.
+ * Each call accepts current mesh views, then builds and releases its grid and bounding boxes. The search object does
+ * not retain views that may become stale when a caller replaces mesh arrays. GridSearch is sequential because Axom's
+ * implicit grid uses axom::SEQ_EXEC.
  *
  * @tparam SpatialDimension Spatial dimension of the mesh coordinates
  */
@@ -42,21 +40,14 @@ class GridSearch {
   using SpatialBoundingBox = typename ImplicitGrid::SpatialBoundingBox;
 
   /**
-   * @brief Store the meshes and proximity values used by each one-shot grid search
+   * @brief Store the proximity values applied by each grid search
    *
-   * @param mesh1 Elements inserted into the implicit grid
-   * @param mesh2 Elements used to query the implicit grid
    * @param binning_proximity_scale Multiplier applied to each element's longest bounding-box dimension
    * @param residual_gap Additional physical distance added to each bounding-box expansion
    */
-  GridSearch( MeshData::Viewer mesh1, MeshData::Viewer mesh2, RealT binning_proximity_scale, RealT residual_gap )
-      : mesh1_( mesh1 ),
-        mesh2_( mesh2 ),
-        binning_proximity_scale_( binning_proximity_scale ),
-        residual_gap_( residual_gap )
+  GridSearch( RealT binning_proximity_scale, RealT residual_gap )
+      : binning_proximity_scale_( binning_proximity_scale ), residual_gap_( residual_gap )
   {
-    SLIC_ASSERT_MSG( mesh1_.getAllocatorId() == mesh2_.getAllocatorId(),
-                     "GridSearch meshes must use the same allocator." );
   }
 
   /**
@@ -65,28 +56,33 @@ class GridSearch {
    * Bounding-box candidates can still include self-pairs, shared-node pairs, co-oriented faces, and pairs that fail a
    * contact method's overlap checks. Keeping those decisions outside this class allows each formulation to apply the
    * geometry checks it requires.
+   *
+   * @param mesh1 Current elements inserted into the implicit grid
+   * @param mesh2 Current elements used to query the implicit grid
    */
-  ArrayT<InterfacePair> findCandidatePairs() const
+  ArrayT<InterfacePair> findCandidatePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
   {
     constexpr RealT grid_boundary_scale = 1.0e-6;
     constexpr RealT grid_resolution_scale = 0.5;
 
-    ArrayT<InterfacePair> candidate_pairs( 0, 0, mesh1_.getAllocatorId() );
+    SLIC_ASSERT_MSG( mesh1.getAllocatorId() == mesh2.getAllocatorId(),
+                     "GridSearch meshes must use the same allocator." );
+    ArrayT<InterfacePair> candidate_pairs( 0, 0, mesh1.getAllocatorId() );
     // Empty meshes have no candidates and cannot define a useful grid resolution.
-    if ( mesh1_.numberOfElements() == 0 || mesh2_.numberOfElements() == 0 ) {
+    if ( mesh1.numberOfElements() == 0 || mesh2.numberOfElements() == 0 ) {
       return candidate_pairs;
     }
 
     // Search storage is local because moving meshes require the grid and bounds to be rebuilt for every query.
     ImplicitGrid grid;
     SpatialBoundingBox grid_bounding_box;
-    ArrayT<SpatialBoundingBox> mesh1_bounding_boxes( 0, mesh1_.numberOfElements(), mesh1_.getAllocatorId() );
-    for ( IndexT element = 0; element < mesh1_.numberOfElements(); ++element ) {
-      mesh1_bounding_boxes.emplace_back( elementBoundingBox( mesh1_, element ) );
+    ArrayT<SpatialBoundingBox> mesh1_bounding_boxes( 0, mesh1.numberOfElements(), mesh1.getAllocatorId() );
+    for ( IndexT element = 0; element < mesh1.numberOfElements(); ++element ) {
+      mesh1_bounding_boxes.emplace_back( elementBoundingBox( mesh1, element ) );
     }
 
     SpaceVector average_ranges;
-    for ( IndexT element = 0; element < mesh1_.numberOfElements(); ++element ) {
+    for ( IndexT element = 0; element < mesh1.numberOfElements(); ++element ) {
       auto& bounding_box = mesh1_bounding_boxes[element];
       inflateBoundingBox( bounding_box );
       average_ranges += bounding_box.range();
@@ -95,22 +91,21 @@ class GridSearch {
 
     // Moving the grid boundary away from element boundaries avoids ambiguous cell insertion at roundoff scale.
     grid_bounding_box.scale( 1.0 + grid_boundary_scale );
-    average_ranges /= static_cast<RealT>( mesh1_.numberOfElements() );
+    average_ranges /= static_cast<RealT>( mesh1.numberOfElements() );
 
     typename ImplicitGrid::GridCell resolution;
     const SpaceVector grid_range = grid_bounding_box.range();
     for ( int dimension = 0; dimension < SpatialDimension; ++dimension ) {
       if ( average_ranges[dimension] > 0.0 && grid_range[dimension] > 0.0 ) {
-        resolution[dimension] =
-            std::max( static_cast<IndexT>( 1 ),
-                      static_cast<IndexT>( std::ceil( grid_resolution_scale * grid_range[dimension] / average_ranges[dimension] ) ) );
+        resolution[dimension] = static_cast<IndexT>(
+            std::ceil( grid_resolution_scale * grid_range[dimension] / average_ranges[dimension] ) );
       } else {
         resolution[dimension] = 1;
       }
     }
 
-    grid.initialize( grid_bounding_box, &resolution, mesh1_.numberOfElements() );
-    for ( IndexT element = 0; element < mesh1_.numberOfElements(); ++element ) {
+    grid.initialize( grid_bounding_box, &resolution, mesh1.numberOfElements() );
+    for ( IndexT element = 0; element < mesh1.numberOfElements(); ++element ) {
       grid.insert( mesh1_bounding_boxes[element], element );
     }
 
@@ -118,8 +113,8 @@ class GridSearch {
                                        << average_ranges << "\n Computed resolution: " << resolution );
 
     using Bitset = typename ImplicitGrid::BitsetType;
-    for ( IndexT mesh2_element = 0; mesh2_element < mesh2_.numberOfElements(); ++mesh2_element ) {
-      SpatialBoundingBox bounding_box = elementBoundingBox( mesh2_, mesh2_element );
+    for ( IndexT mesh2_element = 0; mesh2_element < mesh2.numberOfElements(); ++mesh2_element ) {
+      SpatialBoundingBox bounding_box = elementBoundingBox( mesh2, mesh2_element );
       inflateBoundingBox( bounding_box );
 
       auto candidate_bits = grid.getCandidates( bounding_box );
@@ -127,7 +122,7 @@ class GridSearch {
             mesh1_element = candidate_bits.find_next( mesh1_element ) ) {
         // A same-mesh search visits both pair directions. Retain one direction while leaving self-pair policy to the
         // method-specific filter.
-        if ( mesh1_.meshId() == mesh2_.meshId() && mesh1_element < mesh2_element ) {
+        if ( mesh1.meshId() == mesh2.meshId() && mesh1_element < mesh2_element ) {
           continue;
         }
         candidate_pairs.emplace_back( InterfacePair{ mesh1_element, mesh2_element } );
@@ -161,8 +156,6 @@ class GridSearch {
     bounding_box.expand( expansion );
   }
 
-  MeshData::Viewer mesh1_;
-  MeshData::Viewer mesh2_;
   RealT binning_proximity_scale_;
   RealT residual_gap_;
 };
