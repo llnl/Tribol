@@ -333,9 +333,7 @@ shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesLM( const 
 
     double d2g_dx2_node1[64];
     double d2g_dx2_node2[64];
-    double d2A_dx2_node1[64];
-    double d2A_dx2_node2[64];
-    evaluator_->computeSecondDerivatives( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2, d2A_dx2_node1, d2A_dx2_node2 );
+    evaluator_->computeSecondDerivatives( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2 );
 
     double df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
@@ -416,7 +414,8 @@ shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesPenalty(
     double d2g_dx2_node2[64];
     double d2A_dx2_node1[64];
     double d2A_dx2_node2[64];
-    evaluator_->computeSecondDerivatives( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2, d2A_dx2_node1, d2A_dx2_node2 );
+    evaluator_->computeSecondDerivatives( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2,
+                                          d2A_dx2_node1, d2A_dx2_node2 );
 
     double df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {

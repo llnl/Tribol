@@ -1,20 +1,20 @@
-#include "EnergyMortar.hpp"
-#include <cstdio>
-#include <cstdlib>
-#include <iostream>
-#include <vector>
-#include <array>
-#include <cmath>
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
+// other Tribol Project Developers. See the top-level LICENSE file for details.
+//
+// SPDX-License-Identifier: (MIT)
+
+#include "tribol/physics/EnergyMortar.hpp"
+
 #include <algorithm>
+#include <array>
 #include <cassert>
-#include <iomanip>
+#include <cmath>
+
 #include "tribol/common/ArrayTypes.hpp"
+#include "tribol/common/Enzyme.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
-#include "tribol/common/Enzyme.hpp"
 #include "tribol/mesh/MeshData.hpp"
-#include <set>
-#include <map>
 
 namespace tribol {
 
@@ -22,11 +22,7 @@ namespace tribol {
 
 namespace {
 
-struct KernelParams {
-  int N = 3;         
-  double del = 0.1;  
-};
-
+// Compute unit normal vector pointing to the left of the directed segment coord1 -> coord2
 void findNormal( const double* coord1, const double* coord2, double* normal )
 {
   double dx = coord2[0] - coord1[0];
@@ -38,7 +34,8 @@ void findNormal( const double* coord1, const double* coord2, double* normal )
   normal[1] = -dx;
 }
 
-void determineLegendreNodes( int N, std::array<double, 3>& x )
+// Compute Gauss-Legendre quadrature nodes on reference interval [-1, 1]
+void determineLegendreNodes( int N, std::array<double, 5>& x )
 {
   if ( N == 1 ) {
     x[0] = 0.0;
@@ -67,11 +64,12 @@ void determineLegendreNodes( int N, std::array<double, 3>& x )
     x[3] = a;
     x[4] = b;
   } else {
-    assert( false && "Unsupported quadrature order" );
+    assert( false && "Unsupported quadrature order (expected 1 <= N <= 5)" );
   }
 }
 
-void determineLegendreWeights( int N, std::array<double, 3>& W )
+// Compute Gauss-Legendre quadrature weights on reference interval [-1, 1]
+void determineLegendreWeights( int N, std::array<double, 5>& W )
 {
   if ( N == 1 ) {
     W[0] = 2.0;
@@ -83,10 +81,10 @@ void determineLegendreWeights( int N, std::array<double, 3>& W )
     W[1] = 8.0 / 9.0;
     W[2] = 5.0 / 9.0;
   } else if ( N == 4 ) {
-    W[0] = ( 18 - std::sqrt( 30 ) ) / 36.0;
-    W[1] = ( 18 + std::sqrt( 30 ) ) / 36.0;
-    W[2] = ( 18 + std::sqrt( 30 ) ) / 36.0;
-    W[3] = ( 18 - std::sqrt( 30 ) ) / 36.0;
+    W[0] = ( 18.0 - std::sqrt( 30.0 ) ) / 36.0;
+    W[1] = ( 18.0 + std::sqrt( 30.0 ) ) / 36.0;
+    W[2] = ( 18.0 + std::sqrt( 30.0 ) ) / 36.0;
+    W[3] = ( 18.0 - std::sqrt( 30.0 ) ) / 36.0;
   } else if ( N == 5 ) {
     W[0] = ( 322.0 - 13.0 * std::sqrt( 70.0 ) ) / 900.0;
     W[1] = ( 322.0 + 13.0 * std::sqrt( 70.0 ) ) / 900.0;
@@ -94,10 +92,11 @@ void determineLegendreWeights( int N, std::array<double, 3>& W )
     W[3] = ( 322.0 + 13.0 * std::sqrt( 70.0 ) ) / 900.0;
     W[4] = ( 322.0 - 13.0 * std::sqrt( 70.0 ) ) / 900.0;
   } else {
-    assert( false && "Unsupported quadrature order" );
+    assert( false && "Unsupported quadrature order (expected 1 <= N <= 5)" );
   }
 }
 
+// Map a 1D parent coordinate xi in [-0.5, 0.5] to physical 2D segment coordinates
 void isoMap( const double* coord1, const double* coord2, double xi, double* mapped_coord )
 {
   double N1 = 0.5 - xi;
@@ -106,6 +105,7 @@ void isoMap( const double* coord1, const double* coord2, double xi, double* mapp
   mapped_coord[1] = N1 * coord1[1] + N2 * coord2[1];
 }
 
+// Extract physical endpoint coordinates of an element face
 inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], double P1[2] )
 {
   double P0_P1[4];
@@ -116,6 +116,7 @@ inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], 
   P1[1] = P0_P1[3];
 }
 
+// Find intersection of the ray from point p along direction nB with the line through A0 and A1
 void findIntersection( const double* A0, const double* A1, const double* p, const double* nB, double* intersection )
 {
   const double tA[2] = { A1[0] - A0[0], A1[1] - A0[1] };
@@ -144,6 +145,7 @@ void findIntersection( const double* A0, const double* A1, const double* p, cons
   intersection[1] = A0[1] + alpha * tA[1];
 }
 
+// Project endpoints of edge B onto edge A along normal nB and return parameter interval [xi_min, xi_max] on A
 void getProjections( const double* A0, const double* A1, const double* B0, const double* B1, double* projections )
 {
   double nB[2] = { 0.0, 0.0 };
@@ -175,6 +177,7 @@ void getProjections( const double* A0, const double* A1, const double* B0, const
   projections[1] = xi_max;
 }
 
+// Compute smoothed nodal gaps g_tilde and tributary areas A given fixed quadrature points/weights
 void energyMortarKernelQuad( const double* x, const void* gp_void, double* g_tilde_out, double* A_out )
 {
   const Gparams* gp = static_cast<const Gparams*>( gp_void );
@@ -184,7 +187,7 @@ void energyMortarKernelQuad( const double* x, const void* gp_void, double* g_til
   const double B1[2] = { x[6], x[7] };
 
   const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
-  const double J_ref = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+  const double J_ref = J;
 
   double nB[2];
   findNormal( B0, B1, nB );
@@ -197,7 +200,7 @@ void energyMortarKernelQuad( const double* x, const void* gp_void, double* g_til
   double g1 = 0.0, g2 = 0.0;
   double AI_1 = 0.0, AI_2 = 0.0;
 
-  for ( int i = 0; i < 3; ++i ) {
+  for ( int i = 0; i < gp->N; ++i ) {
     const double xiA = gp->qp[i];
     const double w = gp->w[i];
 
@@ -229,9 +232,9 @@ void energyMortarKernelQuad( const double* x, const void* gp_void, double* g_til
   A_out[1] = AI_2;
 }
 
-void energyMortarKernelEnzyme( const double* x, double* g_tilde_out, double* A_out )
+// Compute smoothed nodal gaps and tributary areas while differentiating through geometry-dependent quadrature
+void energyMortarKernelEnzyme( const double* x, const ContactParams* params, double* g_tilde_out, double* A_out )
 {
-  KernelParams kp;
   double A0[2] = { x[0], x[1] };
   double A1[2] = { x[2], x[3] };
   double B0[2] = { x[4], x[5] };
@@ -241,45 +244,98 @@ void energyMortarKernelEnzyme( const double* x, double* g_tilde_out, double* A_o
   getProjections( A0, A1, B0, B1, projs );
   std::array<double, 2> projections = { projs[0], projs[1] };
 
-  auto bounds = ContactSmoothing::boundsFromProjections( projections, kp.del );
-  auto xi_bounds = ContactSmoothing::smoothBounds( bounds, kp.del );
+  auto bounds = ContactSmoothing::boundsFromProjections( projections, params->del );
+  auto xi_bounds = ContactSmoothing::smoothBounds( bounds, params->del );
 
-  auto qp = EnergyMortarCalculator::computeQuadrature( xi_bounds, kp.N );
+  auto qp = EnergyMortarCalculator::computeQuadrature( xi_bounds, params->N );
 
-  Gparams gp;
-  for ( std::size_t i = 0; i < qp.qp.size(); ++i ) {
-    gp.qp[i] = qp.qp[i];
-    gp.w[i] = qp.w[i];
-  }
-
-  energyMortarKernelQuad( x, &gp, g_tilde_out, A_out );
+  energyMortarKernelQuad( x, &qp, g_tilde_out, A_out );
 }
 
-void seededGradientQuad( const double* x, const Gparams* gp, const double* seed, double* grad )
+// Scalar wrappers for second-derivative autodiff passes
+template <int OutIdx>
+void scalarKernelQuad( const double* x, const void* gp_void, double* out )
+{
+  double gt[2];
+  double A[2];
+  energyMortarKernelQuad( x, gp_void, gt, A );
+  if constexpr ( OutIdx == 0 )
+    *out = gt[0];
+  else if constexpr ( OutIdx == 1 )
+    *out = gt[1];
+  else if constexpr ( OutIdx == 2 )
+    *out = A[0];
+  else if constexpr ( OutIdx == 3 )
+    *out = A[1];
+}
+
+template <int OutIdx>
+void scalarKernelEnzyme( const double* x, const ContactParams* params, double* out )
+{
+  double gt[2];
+  double A[2];
+  energyMortarKernelEnzyme( x, params, gt, A );
+  if constexpr ( OutIdx == 0 )
+    *out = gt[0];
+  else if constexpr ( OutIdx == 1 )
+    *out = gt[1];
+  else if constexpr ( OutIdx == 2 )
+    *out = A[0];
+  else if constexpr ( OutIdx == 3 )
+    *out = A[1];
+}
+
+template <int OutIdx>
+void gradScalarQuad( const double* x, const Gparams* gp, double* grad )
 {
   double dx[8] = { 0.0 };
-  double gt[2] = { 0.0 }, dgt[2] = { seed[0], seed[1] };
-  double A[2] = { 0.0 }, dA[2] = { seed[2], seed[3] };
-
-  __enzyme_autodiff<void>( (void*)energyMortarKernelQuad, enzyme_dup, x, dx, enzyme_const, (const void*)gp, 
-                           enzyme_dup, gt, dgt, enzyme_dup, A, dA );
-
+  double out = 0.0, dout = 1.0;
+  __enzyme_autodiff<void>( (void*)scalarKernelQuad<OutIdx>, enzyme_dup, x, dx, enzyme_const, (const void*)gp,
+                           enzyme_dup, &out, &dout );
   for ( int i = 0; i < 8; ++i ) {
     grad[i] = dx[i];
   }
 }
 
-void seededGradientEnzyme( const double* x, const double* seed, double* grad )
+template <int OutIdx>
+void gradScalarEnzyme( const double* x, const ContactParams* params, double* grad )
 {
   double dx[8] = { 0.0 };
-  double gt[2] = { 0.0 }, dgt[2] = { seed[0], seed[1] };
-  double A[2] = { 0.0 }, dA[2] = { seed[2], seed[3] };
-
-  __enzyme_autodiff<void>( (void*)energyMortarKernelEnzyme, enzyme_dup, x, dx, 
-                           enzyme_dup, gt, dgt, enzyme_dup, A, dA );
-
+  double out = 0.0, dout = 1.0;
+  __enzyme_autodiff<void>( (void*)scalarKernelEnzyme<OutIdx>, enzyme_dup, x, dx, enzyme_const, params, enzyme_dup,
+                           &out, &dout );
   for ( int i = 0; i < 8; ++i ) {
     grad[i] = dx[i];
+  }
+}
+
+template <int OutIdx>
+void hessianQuad( const double* x, const Gparams* gp, double* H )
+{
+  for ( int col = 0; col < 8; ++col ) {
+    double dx[8] = { 0.0 };
+    dx[col] = 1.0;
+    double grad[8] = { 0.0 }, dgrad[8] = { 0.0 };
+    __enzyme_fwddiff<void>( (void*)gradScalarQuad<OutIdx>, enzyme_dup, x, dx, enzyme_const, (const void*)gp,
+                            enzyme_dup, grad, dgrad );
+    for ( int row = 0; row < 8; ++row ) {
+      H[row * 8 + col] = dgrad[row];
+    }
+  }
+}
+
+template <int OutIdx>
+void hessianEnzyme( const double* x, const ContactParams* params, double* H )
+{
+  for ( int col = 0; col < 8; ++col ) {
+    double dx[8] = { 0.0 };
+    dx[col] = 1.0;
+    double grad[8] = { 0.0 }, dgrad[8] = { 0.0 };
+    __enzyme_fwddiff<void>( (void*)gradScalarEnzyme<OutIdx>, enzyme_dup, x, dx, enzyme_const, params, enzyme_dup,
+                            grad, dgrad );
+    for ( int row = 0; row < 8; ++row ) {
+      H[row * 8 + col] = dgrad[row];
+    }
   }
 }
 
@@ -288,23 +344,11 @@ void seededGradientEnzyme( const double* x, const double* seed, double* grad )
 Gparams EnergyMortarCalculator::constructGparams( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                    const MeshData::Viewer& mesh2 ) const
 {
-  double A0[2], A1[2], B0[2], B1[2];
-
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
-  
   auto projs = projections( pair, mesh1, mesh2 );
   auto bounds = smoother_.boundsFromProjections( projs, p_.del );
   auto smooth_bounds = smoother_.smoothBounds( bounds, p_.del );
 
-  auto qp = EnergyMortarCalculator::computeQuadrature( smooth_bounds, p_.N );
-
-  Gparams gp;
-  for ( std::size_t i = 0; i < qp.qp.size(); ++i ) {
-    gp.qp[i] = qp.qp[i];
-    gp.w[i] = qp.w[i];
-  }
-  return gp;
+  return EnergyMortarCalculator::computeQuadrature( smooth_bounds, p_.N );
 }
 
 std::array<double, 2> EnergyMortarCalculator::projections( const InterfacePair& pair, const MeshData::Viewer& mesh1,
@@ -363,8 +407,9 @@ std::array<double, 2> ContactSmoothing::smoothBounds( const std::array<double, 2
 QuadPoints EnergyMortarCalculator::computeQuadrature( const std::array<double, 2>& xi_bounds, int N )
 {
   QuadPoints out;
-  std::array<double, 3> qpoints;
-  std::array<double, 3> weights;
+  out.N = N;
+  std::array<double, 5> qpoints{};
+  std::array<double, 5> weights{};
 
   determineLegendreNodes( N, qpoints );
   determineLegendreWeights( N, weights );
@@ -378,35 +423,6 @@ QuadPoints EnergyMortarCalculator::computeQuadrature( const std::array<double, 2
     out.w[i] = weights[i] * J;
   }
   return out;
-}
-
-double EnergyMortarCalculator::computeWeightedNormalGap( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                              const MeshData::Viewer& mesh2, double xiA ) const
-{
-  double A0[2], A1[2], B0[2], B1[2];
-
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
-
-  double nA[2] = { 0.0 };
-  double nB[2] = { 0.0 };
-  findNormal( A0, A1, nA );
-  findNormal( B0, B1, nB );
-
-  double x1[2] = { 0.0 };
-  isoMap( A0, A1, xiA, x1 );
-
-  double x2[2] = { 0.0 };
-  findIntersection( B0, B1, x1, nB, x2 );
-
-  double dx = x1[0] - x2[0];
-  double dy = x1[1] - x2[1];
-
-  double gn = -( dx * nB[0] + dy * nB[1] );  
-  double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  double eta = ( dot < 0 ) ? dot : 0.0;
-
-  return gn * eta;
 }
 
 void EnergyMortarCalculator::computeContactQuantities( const InterfacePair& pair, const MeshData::Viewer& mesh1,
@@ -438,14 +454,14 @@ void EnergyMortarCalculator::computeContactQuantities( const InterfacePair& pair
       dA2_dx[col] = dA[1];
     }
   } else {
-    energyMortarKernelEnzyme( x, gtilde, area );
+    energyMortarKernelEnzyme( x, &p_, gtilde, area );
 
     for ( int col = 0; col < 8; ++col ) {
       double dx[8] = { 0.0 }; dx[col] = 1.0;
       double gt[2] = { 0.0 }, dgt[2] = { 0.0 };
       double A[2] = { 0.0 }, dA[2] = { 0.0 };
 
-      __enzyme_fwddiff<void>( (void*)energyMortarKernelEnzyme, enzyme_dup, x, dx,
+      __enzyme_fwddiff<void>( (void*)energyMortarKernelEnzyme, enzyme_dup, x, dx, enzyme_const, &p_,
                               enzyme_dup, gt, dgt, enzyme_dup, A, dA );
 
       dgt1_dx[col] = dgt[0];
@@ -465,43 +481,22 @@ void EnergyMortarCalculator::computeSecondDerivatives( const InterfacePair& pair
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
   
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  double seeds[4][4] = { {1,0,0,0}, {0,1,0,0}, {0,0,1,0}, {0,0,0,1} };
-  double* outputs[4] = { d2gt1_dx2, d2gt2_dx2, d2A1_dx2, d2A2_dx2 };
 
   if ( !p_.enzyme_quadrature ) {
     Gparams gp = constructGparams( pair, mesh1, mesh2 );
-    for ( int out = 0; out < 4; ++out ) {
-      for ( int col = 0; col < 8; ++col ) {
-        double dx[8] = { 0.0 }; dx[col] = 1.0;
-        double seed[4]; for(int i=0;i<4;++i) seed[i] = seeds[out][i];
-        double grad[8] = { 0.0 }, dgrad[8] = { 0.0 };
-
-        __enzyme_fwddiff<void>( (void*)seededGradientQuad, enzyme_dup, x, dx, enzyme_const, (const void*)&gp,
-                                enzyme_const, seed, enzyme_dup, grad, dgrad );
-
-        for ( int row = 0; row < 8; ++row ) {
-          outputs[out][row * 8 + col] = dgrad[row];
-        }
-      }
-    }
+    if ( d2gt1_dx2 ) hessianQuad<0>( x, &gp, d2gt1_dx2 );
+    if ( d2gt2_dx2 ) hessianQuad<1>( x, &gp, d2gt2_dx2 );
+    if ( d2A1_dx2 )  hessianQuad<2>( x, &gp, d2A1_dx2 );
+    if ( d2A2_dx2 )  hessianQuad<3>( x, &gp, d2A2_dx2 );
   } else {
-    for ( int out = 0; out < 4; ++out ) {
-      for ( int col = 0; col < 8; ++col ) {
-        double dx[8] = { 0.0 }; dx[col] = 1.0;
-        double seed[4]; for(int i=0;i<4;++i) seed[i] = seeds[out][i];
-        double grad[8] = { 0.0 }, dgrad[8] = { 0.0 };
-
-        __enzyme_fwddiff<void>( (void*)seededGradientEnzyme, enzyme_dup, x, dx,
-                                enzyme_const, seed, enzyme_dup, grad, dgrad );
-
-        for ( int row = 0; row < 8; ++row ) {
-          outputs[out][row * 8 + col] = dgrad[row];
-        }
-      }
-    }
+    if ( d2gt1_dx2 ) hessianEnzyme<0>( x, &p_, d2gt1_dx2 );
+    if ( d2gt2_dx2 ) hessianEnzyme<1>( x, &p_, d2gt2_dx2 );
+    if ( d2A1_dx2 )  hessianEnzyme<2>( x, &p_, d2A1_dx2 );
+    if ( d2A2_dx2 )  hessianEnzyme<3>( x, &p_, d2A2_dx2 );
   }
 }
 
 #endif  // TRIBOL_USE_ENZYME
 
 }  // namespace tribol
+

@@ -1,3 +1,8 @@
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
+// other Tribol Project Developers. See the top-level LICENSE file for details.
+//
+// SPDX-License-Identifier: (MIT)
+
 #pragma once
 #include <vector>
 #include <array>
@@ -15,9 +20,12 @@ namespace tribol {
  * \brief Struct representing a quadrature rule (points and weights) for the Energy Mortar method.
  */
 struct QuadPoints {
-  std::array<double, 3> qp;  // qp locations
-  std::array<double, 3> w;   // weights
+  int N{ 3 };                // Number of active quadrature points (up to 5)
+  std::array<double, 5> qp;  // qp locations
+  std::array<double, 5> w;   // weights
 };
+
+using Gparams = QuadPoints;
 
 /*!
  * \brief Struct containing parameters for the Energy Mortar contact formulation.
@@ -27,14 +35,6 @@ struct ContactParams {
   double k;                // Penalty
   int N;                   // Quadrature Points
   bool enzyme_quadrature;  // Determines how enzyming is performed (default = True)
-};
-
-/*!
- * \brief Struct for grouping geometric quadrature parameters.
- */
-struct Gparams {
-  std::array<double, 3> qp;
-  std::array<double, 3> w;
 };
 
 /*!
@@ -108,11 +108,12 @@ class EnergyMortarCalculator {
    * \param [in] mesh2 Viewer for mesh 2
    * \param [out] d2gt1_dx2 Hessian of gtilde1 w.r.t coordinates
    * \param [out] d2gt2_dx2 Hessian of gtilde2 w.r.t coordinates
-   * \param [out] d2A1_dx2 Hessian of area1 w.r.t coordinates
-   * \param [out] d2A2_dx2 Hessian of area2 w.r.t coordinates
+   * \param [out] d2A1_dx2 Optional Hessian of area1 w.r.t coordinates (can be nullptr)
+   * \param [out] d2A2_dx2 Optional Hessian of area2 w.r.t coordinates (can be nullptr)
    */
   void computeSecondDerivatives( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                                 double d2gt1_dx2[64], double d2gt2_dx2[64], double d2A1_dx2[64], double d2A2_dx2[64] ) const;
+                                 double d2gt1_dx2[64], double d2gt2_dx2[64], double d2A1_dx2[64] = nullptr,
+                                 double d2A2_dx2[64] = nullptr ) const;
 
  private:
   ContactParams p_;
@@ -137,17 +138,6 @@ class EnergyMortarCalculator {
    */
   std::array<double, 2> projections( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                       const MeshData::Viewer& mesh2 ) const;
-
-  /*!
-   * \brief Computes the weighted normal gap for the interface pair at a specific point.
-   * \param [in] pair Interface pair
-   * \param [in] mesh1 Viewer for mesh 1
-   * \param [in] mesh2 Viewer for mesh 2
-   * \param [in] xiA The evaluation coordinate
-   * \return Computed weighted normal gap
-   */
-  double computeWeightedNormalGap( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                       const MeshData::Viewer& mesh2, double xiA ) const;
 };
 
 #endif  // TRIBOL_USE_ENZYME

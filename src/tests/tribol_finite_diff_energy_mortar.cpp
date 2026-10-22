@@ -4,33 +4,24 @@
 // SPDX-License-Identifier: (MIT)
 
 #include <cmath>
-#include <set>
+#include <vector>
+#include <array>
 #include "tribol/physics/EnergyMortar.hpp"
 #include <gtest/gtest.h>
-
-#ifdef TRIBOL_USE_UMPIRE
-#include "umpire/ResourceManager.hpp"
-#endif
-
-#include "mfem.hpp"
-
-#include "axom/CLI11.hpp"
-#include "axom/slic.hpp"
-
-#include "shared/mesh/MeshBuilder.hpp"
-#include "redecomp/redecomp.hpp"
 
 #include "tribol/config.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/interface/tribol.hpp"
 
+#ifdef TRIBOL_USE_ENZYME
+
 namespace tribol {
 
-TEST( GradientCheck, GtildeFDvsAD )
+TEST( GradientCheck, GtildeAndAreaFDvsAD )
 {
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
-  IndexT conn1[2] = { 1, 0 };  
+  IndexT conn1[2] = { 1, 0 };
   MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
 
   RealT x2[2] = { 0.2, 0.8 };
@@ -40,32 +31,35 @@ TEST( GradientCheck, GtildeFDvsAD )
 
   InterfacePair pair( 0, 0 );
 
-  ContactParams params_;
-  params_.del = 0.1;                 
-  params_.k = 1.0;                   
-  params_.N = 3;                     
-  params_.enzyme_quadrature = true;  
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 1.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
 
-  EnergyMortarCalculator evaluator_( params_ );
+  EnergyMortarCalculator evaluator( params );
 
   const double epsilon = 1e-7;
 
   double g_tilde[2], area[2];
   double dgt1_dx[8] = { 0.0 }, dgt2_dx[8] = { 0.0 };
   double dA1_dx[8] = { 0.0 }, dA2_dx[8] = { 0.0 };
-  evaluator_.computeContactQuantities( pair, mesh1.getView(), mesh2.getView(), g_tilde, area, dgt1_dx, dgt2_dx, dA1_dx, dA2_dx );
+  evaluator.computeContactQuantities( pair, mesh1.getView(), mesh2.getView(), g_tilde, area, dgt1_dx, dgt2_dx, dA1_dx,
+                                      dA2_dx );
 
-  auto eval_gtilde = [&]( const MeshData::Viewer& v1, const MeshData::Viewer& v2 ) -> std::pair<double, double> {
+  auto eval_quantities = [&]( const MeshData::Viewer& v1, const MeshData::Viewer& v2 ) {
     double gt[2], a[2], dgt1[8], dgt2[8], da1[8], da2[8];
-    evaluator_.computeContactQuantities( pair, v1, v2, gt, a, dgt1, dgt2, da1, da2 );
-    return { gt[0], gt[1] };
+    evaluator.computeContactQuantities( pair, v1, v2, gt, a, dgt1, dgt2, da1, da2 );
+    return std::array<double, 4>{ gt[0], gt[1], a[0], a[1] };
   };
 
   std::vector<double> fd_gradient_g1( 8, 0.0 );
   std::vector<double> fd_gradient_g2( 8, 0.0 );
+  std::vector<double> fd_gradient_A1( 8, 0.0 );
+  std::vector<double> fd_gradient_A2( 8, 0.0 );
 
-  int A_conn[2] = { static_cast<int>(conn1[0]), static_cast<int>(conn1[1]) };
-  int B_conn[2] = { static_cast<int>(conn2[0]), static_cast<int>(conn2[1]) };
+  int A_conn[2] = { static_cast<int>( conn1[0] ), static_cast<int>( conn1[1] ) };
+  int B_conn[2] = { static_cast<int>( conn2[0] ), static_cast<int>( conn2[1] ) };
 
   size_t dof_idx = 0;
 
@@ -74,41 +68,45 @@ TEST( GradientCheck, GtildeFDvsAD )
   auto x2_orig = std::vector<RealT>( x2, x2 + 2 );
   auto y2_orig = std::vector<RealT>( y2, y2 + 2 );
 
-  // A nodes 
+  // A nodes
   for ( int k = 0; k < 2; ++k ) {
     const int local_node = A_conn[k];
 
-    // x pert
+    // x perturbation
     {
       auto x_pert = x1_orig;
       x_pert[static_cast<std::size_t>( local_node )] += epsilon;
       mesh1.setPosition( x_pert.data(), y1_orig.data(), nullptr );
-      auto [g1p, g2p] = eval_gtilde( mesh1.getView(), mesh2.getView() );
+      auto qp = eval_quantities( mesh1.getView(), mesh2.getView() );
 
       x_pert[static_cast<std::size_t>( local_node )] = x1_orig[static_cast<std::size_t>( local_node )] - epsilon;
       mesh1.setPosition( x_pert.data(), y1_orig.data(), nullptr );
-      auto [g1m, g2m] = eval_gtilde( mesh1.getView(), mesh2.getView() );
+      auto qm = eval_quantities( mesh1.getView(), mesh2.getView() );
 
       mesh1.setPosition( x1_orig.data(), y1_orig.data(), nullptr );
-      fd_gradient_g1[dof_idx] = ( g1p - g1m ) / ( 2.0 * epsilon );
-      fd_gradient_g2[dof_idx] = ( g2p - g2m ) / ( 2.0 * epsilon );
+      fd_gradient_g1[dof_idx] = ( qp[0] - qm[0] ) / ( 2.0 * epsilon );
+      fd_gradient_g2[dof_idx] = ( qp[1] - qm[1] ) / ( 2.0 * epsilon );
+      fd_gradient_A1[dof_idx] = ( qp[2] - qm[2] ) / ( 2.0 * epsilon );
+      fd_gradient_A2[dof_idx] = ( qp[3] - qm[3] ) / ( 2.0 * epsilon );
       dof_idx++;
     }
 
-    // y pert
+    // y perturbation
     {
       auto y_pert = y1_orig;
       y_pert[static_cast<std::size_t>( local_node )] += epsilon;
       mesh1.setPosition( x1_orig.data(), y_pert.data(), nullptr );
-      auto [g1p, g2p] = eval_gtilde( mesh1.getView(), mesh2.getView() );
+      auto qp = eval_quantities( mesh1.getView(), mesh2.getView() );
 
       y_pert[static_cast<std::size_t>( local_node )] = y1_orig[static_cast<std::size_t>( local_node )] - epsilon;
       mesh1.setPosition( x1_orig.data(), y_pert.data(), nullptr );
-      auto [g1m, g2m] = eval_gtilde( mesh1.getView(), mesh2.getView() );
+      auto qm = eval_quantities( mesh1.getView(), mesh2.getView() );
 
       mesh1.setPosition( x1_orig.data(), y1_orig.data(), nullptr );
-      fd_gradient_g1[dof_idx] = ( g1p - g1m ) / ( 2.0 * epsilon );
-      fd_gradient_g2[dof_idx] = ( g2p - g2m ) / ( 2.0 * epsilon );
+      fd_gradient_g1[dof_idx] = ( qp[0] - qm[0] ) / ( 2.0 * epsilon );
+      fd_gradient_g2[dof_idx] = ( qp[1] - qm[1] ) / ( 2.0 * epsilon );
+      fd_gradient_A1[dof_idx] = ( qp[2] - qm[2] ) / ( 2.0 * epsilon );
+      fd_gradient_A2[dof_idx] = ( qp[3] - qm[3] ) / ( 2.0 * epsilon );
       dof_idx++;
     }
   }
@@ -117,37 +115,41 @@ TEST( GradientCheck, GtildeFDvsAD )
   for ( int k = 0; k < 2; ++k ) {
     const int local_node = B_conn[k];
 
-    // x pert
+    // x perturbation
     {
       auto x_pert = x2_orig;
       x_pert[static_cast<std::size_t>( local_node )] += epsilon;
       mesh2.setPosition( x_pert.data(), y2_orig.data(), nullptr );
-      auto [g1p, g2p] = eval_gtilde( mesh1.getView(), mesh2.getView() );
+      auto qp = eval_quantities( mesh1.getView(), mesh2.getView() );
 
       x_pert[static_cast<std::size_t>( local_node )] = x2_orig[static_cast<std::size_t>( local_node )] - epsilon;
       mesh2.setPosition( x_pert.data(), y2_orig.data(), nullptr );
-      auto [g1m, g2m] = eval_gtilde( mesh1.getView(), mesh2.getView() );
+      auto qm = eval_quantities( mesh1.getView(), mesh2.getView() );
 
       mesh2.setPosition( x2_orig.data(), y2_orig.data(), nullptr );
-      fd_gradient_g1[dof_idx] = ( g1p - g1m ) / ( 2.0 * epsilon );
-      fd_gradient_g2[dof_idx] = ( g2p - g2m ) / ( 2.0 * epsilon );
+      fd_gradient_g1[dof_idx] = ( qp[0] - qm[0] ) / ( 2.0 * epsilon );
+      fd_gradient_g2[dof_idx] = ( qp[1] - qm[1] ) / ( 2.0 * epsilon );
+      fd_gradient_A1[dof_idx] = ( qp[2] - qm[2] ) / ( 2.0 * epsilon );
+      fd_gradient_A2[dof_idx] = ( qp[3] - qm[3] ) / ( 2.0 * epsilon );
       dof_idx++;
     }
 
-    // y pert
+    // y perturbation
     {
       auto y_pert = y2_orig;
       y_pert[static_cast<std::size_t>( local_node )] += epsilon;
       mesh2.setPosition( x2_orig.data(), y_pert.data(), nullptr );
-      auto [g1p, g2p] = eval_gtilde( mesh1.getView(), mesh2.getView() );
+      auto qp = eval_quantities( mesh1.getView(), mesh2.getView() );
 
       y_pert[static_cast<std::size_t>( local_node )] = y2_orig[static_cast<std::size_t>( local_node )] - epsilon;
       mesh2.setPosition( x2_orig.data(), y_pert.data(), nullptr );
-      auto [g1m, g2m] = eval_gtilde( mesh1.getView(), mesh2.getView() );
+      auto qm = eval_quantities( mesh1.getView(), mesh2.getView() );
 
       mesh2.setPosition( x2_orig.data(), y2_orig.data(), nullptr );
-      fd_gradient_g1[dof_idx] = ( g1p - g1m ) / ( 2.0 * epsilon );
-      fd_gradient_g2[dof_idx] = ( g2p - g2m ) / ( 2.0 * epsilon );
+      fd_gradient_g1[dof_idx] = ( qp[0] - qm[0] ) / ( 2.0 * epsilon );
+      fd_gradient_g2[dof_idx] = ( qp[1] - qm[1] ) / ( 2.0 * epsilon );
+      fd_gradient_A1[dof_idx] = ( qp[2] - qm[2] ) / ( 2.0 * epsilon );
+      fd_gradient_A2[dof_idx] = ( qp[3] - qm[3] ) / ( 2.0 * epsilon );
       dof_idx++;
     }
   }
@@ -156,10 +158,12 @@ TEST( GradientCheck, GtildeFDvsAD )
   for ( size_t i = 0; i < 8; ++i ) {
     EXPECT_NEAR( fd_gradient_g1[i], dgt1_dx[i], tol ) << "gtilde1 mismatch at DOF [" << i << "]";
     EXPECT_NEAR( fd_gradient_g2[i], dgt2_dx[i], tol ) << "gtilde2 mismatch at DOF [" << i << "]";
+    EXPECT_NEAR( fd_gradient_A1[i], dA1_dx[i], tol ) << "area1 mismatch at DOF [" << i << "]";
+    EXPECT_NEAR( fd_gradient_A2[i], dA2_dx[i], tol ) << "area2 mismatch at DOF [" << i << "]";
   }
 }
 
-TEST( HessianCheck, GtildeFDvsAD )
+TEST( HessianCheck, GtildeAndAreaFDvsAD )
 {
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
@@ -175,32 +179,32 @@ TEST( HessianCheck, GtildeFDvsAD )
 
   InterfacePair pair( 0, 0 );
 
-  ContactParams params_;
-  params_.del = 0.1;
-  params_.k = 1.0;
-  params_.N = 3;
-  params_.enzyme_quadrature = true;
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 1.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
 
-  EnergyMortarCalculator evaluator_( params_ );
+  EnergyMortarCalculator evaluator( params );
 
   const double epsilon = 1e-5;
-  
+
   double hess1[64] = { 0.0 };
   double hess2[64] = { 0.0 };
   double hessA1[64] = { 0.0 };
   double hessA2[64] = { 0.0 };
-  
-  evaluator_.computeSecondDerivatives( pair, mesh1.getView(), mesh2.getView(), hess1, hess2, hessA1, hessA2 );
-  
+
+  evaluator.computeSecondDerivatives( pair, mesh1.getView(), mesh2.getView(), hess1, hess2, hessA1, hessA2 );
+
   auto x1_orig = std::vector<RealT>( x1, x1 + 2 );
   auto y1_orig = std::vector<RealT>( y1, y1 + 2 );
   auto x2_orig = std::vector<RealT>( x2, x2 + 2 );
   auto y2_orig = std::vector<RealT>( y2, y2 + 2 );
 
-  int A_conn[2] = { static_cast<int>(conn1[0]), static_cast<int>(conn1[1]) };
-  int B_conn[2] = { static_cast<int>(conn2[0]), static_cast<int>(conn2[1]) };
+  int A_conn[2] = { static_cast<int>( conn1[0] ), static_cast<int>( conn1[1] ) };
+  int B_conn[2] = { static_cast<int>( conn2[0] ), static_cast<int>( conn2[1] ) };
 
-  auto eval_from_offsets = [&]( const std::array<double, 8>& du ) -> std::pair<double, double> {
+  auto eval_from_offsets = [&]( const std::array<double, 8>& du ) {
     auto x1_t = x1_orig;
     auto y1_t = y1_orig;
     auto x2_t = x2_orig;
@@ -220,16 +224,18 @@ TEST( HessianCheck, GtildeFDvsAD )
     mesh2.setPosition( x2_t.data(), y2_t.data(), nullptr );
 
     double gt[2], a[2], dgt1[8], dgt2[8], da1[8], da2[8];
-    evaluator_.computeContactQuantities( pair, mesh1.getView(), mesh2.getView(), gt, a, dgt1, dgt2, da1, da2 );
-    return { gt[0], gt[1] };
+    evaluator.computeContactQuantities( pair, mesh1.getView(), mesh2.getView(), gt, a, dgt1, dgt2, da1, da2 );
+    return std::array<double, 4>{ gt[0], gt[1], a[0], a[1] };
   };
 
   const std::array<double, 8> zero = { 0., 0., 0., 0., 0., 0., 0., 0. };
-  const auto [g10, g20] = eval_from_offsets( zero );
-  
-  std::vector<double> fd_gradient_g1(64, 0.0);
-  std::vector<double> fd_gradient_g2(64, 0.0);
-  
+  const auto base = eval_from_offsets( zero );
+
+  std::vector<double> fd_gradient_g1( 64, 0.0 );
+  std::vector<double> fd_gradient_g2( 64, 0.0 );
+  std::vector<double> fd_gradient_A1( 64, 0.0 );
+  std::vector<double> fd_gradient_A2( 64, 0.0 );
+
   const int ndof = 8;
   for ( size_t i = 0; i < ndof; ++i ) {
     for ( size_t j = 0; j < ndof; ++j ) {
@@ -241,11 +247,13 @@ TEST( HessianCheck, GtildeFDvsAD )
         up[i] += epsilon;
         um[i] -= epsilon;
 
-        const auto [g1p, g2p] = eval_from_offsets( up );
-        const auto [g1m, g2m] = eval_from_offsets( um );
+        const auto qp = eval_from_offsets( up );
+        const auto qm = eval_from_offsets( um );
 
-        fd_gradient_g1[idx] = ( g1p - 2.0 * g10 + g1m ) / ( epsilon * epsilon );
-        fd_gradient_g2[idx] = ( g2p - 2.0 * g20 + g2m ) / ( epsilon * epsilon );
+        fd_gradient_g1[idx] = ( qp[0] - 2.0 * base[0] + qm[0] ) / ( epsilon * epsilon );
+        fd_gradient_g2[idx] = ( qp[1] - 2.0 * base[1] + qm[1] ) / ( epsilon * epsilon );
+        fd_gradient_A1[idx] = ( qp[2] - 2.0 * base[2] + qm[2] ) / ( epsilon * epsilon );
+        fd_gradient_A2[idx] = ( qp[3] - 2.0 * base[3] + qm[3] ) / ( epsilon * epsilon );
       } else {
         std::array<double, 8> upp = zero;
         std::array<double, 8> upm = zero;
@@ -261,13 +269,15 @@ TEST( HessianCheck, GtildeFDvsAD )
         umm[i] -= epsilon;
         umm[j] -= epsilon;
 
-        const auto [g1pp, g2pp] = eval_from_offsets( upp );
-        const auto [g1pm, g2pm] = eval_from_offsets( upm );
-        const auto [g1mp, g2mp] = eval_from_offsets( ump );
-        const auto [g1mm, g2mm] = eval_from_offsets( umm );
+        const auto qpp = eval_from_offsets( upp );
+        const auto qpm = eval_from_offsets( upm );
+        const auto qmp = eval_from_offsets( ump );
+        const auto qmm = eval_from_offsets( umm );
 
-        fd_gradient_g1[idx] = ( g1pp - g1pm - g1mp + g1mm ) / ( 4.0 * epsilon * epsilon );
-        fd_gradient_g2[idx] = ( g2pp - g2pm - g2mp + g2mm ) / ( 4.0 * epsilon * epsilon );
+        fd_gradient_g1[idx] = ( qpp[0] - qpm[0] - qmp[0] + qmm[0] ) / ( 4.0 * epsilon * epsilon );
+        fd_gradient_g2[idx] = ( qpp[1] - qpm[1] - qmp[1] + qmm[1] ) / ( 4.0 * epsilon * epsilon );
+        fd_gradient_A1[idx] = ( qpp[2] - qpm[2] - qmp[2] + qmm[2] ) / ( 4.0 * epsilon * epsilon );
+        fd_gradient_A2[idx] = ( qpp[3] - qpm[3] - qmp[3] + qmm[3] ) / ( 4.0 * epsilon * epsilon );
       }
     }
   }
@@ -286,8 +296,15 @@ TEST( HessianCheck, GtildeFDvsAD )
 
       EXPECT_NEAR( fd_gradient_g2[idx], hess2[idx], tol )
           << "Hessian g2 mismatch at [row=" << row << ", col=" << col << "]";
+
+      EXPECT_NEAR( fd_gradient_A1[idx], hessA1[idx], tol )
+          << "Hessian A1 mismatch at [row=" << row << ", col=" << col << "]";
+
+      EXPECT_NEAR( fd_gradient_A2[idx], hessA2[idx], tol )
+          << "Hessian A2 mismatch at [row=" << row << ", col=" << col << "]";
     }
   }
 }
-
 }  // namespace tribol
+
+#endif  // TRIBOL_USE_ENZYME
