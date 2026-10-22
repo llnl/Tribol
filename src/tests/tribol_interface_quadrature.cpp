@@ -69,6 +69,8 @@ TEST( InterfaceQuadratureData, owns_pairs_and_variable_point_ranges )
                                 const tribol::InterfacePair&> );
   static_assert( std::is_same_v<decltype( std::declval<const QuadratureView&>().getQuadraturePoint( 0, 0 ) ),
                                 const QuadraturePoint&> );
+  static_assert( std::is_same_v<decltype( std::declval<const QuadratureView&>().getQuadraturePoints( 0 ) ),
+                                tribol::ArrayViewT<const QuadraturePoint>> );
   const int host_allocator_id = tribol::getResourceAllocatorID( tribol::MemorySpace::Host );
   QuadratureData quadrature_data( 2, 3, host_allocator_id );
 
@@ -108,14 +110,31 @@ TEST( InterfaceQuadratureData, owns_pairs_and_variable_point_ranges )
 
   // An empty rule retains the one terminal offset required by the same CSR contract used for populated rules.
   QuadratureData empty_quadrature_data( 0, 0, host_allocator_id );
+  ASSERT_EQ( empty_quadrature_data.getPairOffsets().size(), 1 );
+  EXPECT_EQ( empty_quadrature_data.getPairOffsets()[0], 0 );
   const auto empty_view = empty_quadrature_data.getView();
   EXPECT_EQ( empty_view.numberOfPairs(), 0 );
   EXPECT_EQ( empty_view.numberOfQuadraturePoints(), 0 );
 
   QuadratureData default_empty_data;
+  ASSERT_EQ( default_empty_data.getPairOffsets().size(), 1 );
+  EXPECT_EQ( default_empty_data.getPairOffsets()[0], 0 );
   const auto default_view = default_empty_data.getView();
   EXPECT_EQ( default_view.numberOfPairs(), 0 );
   EXPECT_EQ( default_view.numberOfQuadraturePoints(), 0 );
+
+  QuadratureData allocator_empty_data( host_allocator_id );
+  ASSERT_EQ( allocator_empty_data.getPairOffsets().size(), 1 );
+  EXPECT_EQ( allocator_empty_data.getPairOffsets()[0], 0 );
+
+  // A pair may legitimately have no quadrature points, so its range must remain safe when point storage is empty.
+  QuadratureData zero_point_pair_data( 1, 0, host_allocator_id );
+  zero_point_pair_data.getInterfacePairs()[0] = tribol::InterfacePair{ 4, 8 };
+  zero_point_pair_data.getPairOffsets()[0] = 0;
+  zero_point_pair_data.getPairOffsets()[1] = 0;
+  const auto zero_point_pair_view = zero_point_pair_data.getView();
+  EXPECT_EQ( zero_point_pair_view.numberOfQuadraturePoints( 0 ), 0 );
+  EXPECT_TRUE( zero_point_pair_view.getQuadraturePoints( 0 ).empty() );
 }
 
 TEST( InterfaceQuadratureData, integrates_quadratic_edge_gap_like_data )

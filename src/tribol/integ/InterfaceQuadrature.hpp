@@ -146,26 +146,15 @@ class InterfaceQuadratureData {
     /** @brief Return the number of quadrature points assigned to one interface pair */
     TRIBOL_HOST_DEVICE IndexT numberOfQuadraturePoints( IndexT pair_index ) const
     {
-      assert( pair_index >= 0 && pair_index < numberOfPairs() );
-      const IndexT pair_begin = pair_offsets_[pair_index];
-      const IndexT pair_end = pair_offsets_[pair_index + 1];
-      assert( pair_begin >= 0 && pair_begin <= pair_end );
-      assert( pair_end <= numberOfQuadraturePoints() );
-      return pair_end - pair_begin;
+      return getQuadraturePoints( pair_index ).size();
     }
 
     /** @brief Return one quadrature point using its interface-pair-local index */
     TRIBOL_HOST_DEVICE const QuadraturePoint& getQuadraturePoint( IndexT pair_index, IndexT point_index ) const
     {
-      assert( pair_index >= 0 && pair_index < numberOfPairs() );
-      const IndexT pair_begin = pair_offsets_[pair_index];
-      const IndexT pair_end = pair_offsets_[pair_index + 1];
-      assert( pair_begin >= 0 && pair_begin <= pair_end );
-      const IndexT pair_point_count = pair_end - pair_begin;
-      assert( point_index >= 0 && point_index < pair_point_count );
-      assert( pair_begin + point_index < numberOfQuadraturePoints() );
-      static_cast<void>( pair_point_count );
-      return quadrature_points_[pair_begin + point_index];
+      const auto pair_points = getQuadraturePoints( pair_index );
+      assert( point_index >= 0 && point_index < pair_points.size() );
+      return pair_points[point_index];
     }
 
     /** @brief Return a contiguous view of the quadrature points assigned to one interface pair */
@@ -176,7 +165,9 @@ class InterfaceQuadratureData {
       const IndexT pair_end = pair_offsets_[pair_index + 1];
       assert( pair_begin >= 0 && pair_begin <= pair_end );
       assert( pair_end <= numberOfQuadraturePoints() );
-      return ArrayViewT<const QuadraturePoint>( quadrature_points_.data() + pair_begin, pair_end - pair_begin );
+      const auto* all_points = quadrature_points_.data();
+      const auto* pair_points = all_points == nullptr ? nullptr : all_points + pair_begin;
+      return ArrayViewT<const QuadraturePoint>( pair_points, pair_end - pair_begin );
     }
 
    private:
@@ -186,12 +177,7 @@ class InterfaceQuadratureData {
   };
 
   /** @brief Construct an empty quadrature data container */
-  InterfaceQuadratureData()
-      : interface_pairs_( 0, 0, getDefaultAllocatorID() ),
-        pair_offsets_( { 0 }, getDefaultAllocatorID() ),
-        quadrature_points_( 0, 0, getDefaultAllocatorID() )
-  {
-  }
+  InterfaceQuadratureData() : InterfaceQuadratureData( getDefaultAllocatorID() ) {}
 
   /** @brief Construct an empty quadrature data container using the specified allocator */
   explicit InterfaceQuadratureData( int allocator_id )
@@ -235,6 +221,9 @@ class InterfaceQuadratureData {
     assert( interface_pairs_.getAllocatorID() == pair_offsets_.getAllocatorID() );
     assert( interface_pairs_.getAllocatorID() == quadrature_points_.getAllocatorID() );
 #ifndef NDEBUG
+    // Caller-built offsets can assign points outside the owned point array. Validate them after taking ownership so
+    // later host/device views can use pair-local indices safely. The offsets may reside on a device, so inspect a host
+    // copy only in builds where assertions are enabled.
     ArrayT<IndexT, 1, MemorySpace::Host> offsets_host( pair_offsets_ );
     assert( offsets_host[0] == 0 );
     assert( offsets_host[offsets_host.size() - 1] == quadrature_points_.size() );
