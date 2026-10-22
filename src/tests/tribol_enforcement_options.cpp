@@ -87,10 +87,10 @@ class EnforcementOptionsTest : public ::testing::Test {
 
     // register meshes
     tribol::registerMesh( mesh->mortarMeshId, mesh->numMortarFaces, mesh->numTotalNodes, mesh->faceConn1, tribol::QUAD,
-                          mesh->x, mesh->y, mesh->z, tribol::MemorySpace::Host );
+                          tribol::LINEAR_LAGRANGE, mesh->x, mesh->y, mesh->z, tribol::MemorySpace::Host );
 
     tribol::registerMesh( mesh->nonmortarMeshId, mesh->numNonmortarFaces, mesh->numTotalNodes, mesh->faceConn2,
-                          tribol::QUAD, mesh->x, mesh->y, mesh->z, tribol::MemorySpace::Host );
+                          tribol::QUAD, tribol::LINEAR_LAGRANGE, mesh->x, mesh->y, mesh->z, tribol::MemorySpace::Host );
 
     // register nodal responses (i.e. nodal forces)
     tribol::allocRealArray( &mesh->fx1, mesh->numTotalNodes, 0. );

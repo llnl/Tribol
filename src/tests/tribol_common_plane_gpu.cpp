@@ -138,11 +138,11 @@ double runExample( int num_elems_1d )
   // Registering Tribol mesh data
 
   constexpr IndexT top_mesh_id = 0;
-  registerMesh( top_mesh_id, num_contact_elems, top_fe_space.GetNDofs(), top_conn.data(), QUAD, top_x_coords_ptr,
-                top_y_coords_ptr, top_z_coords_ptr, MSPACE );
+  registerMesh( top_mesh_id, num_contact_elems, top_fe_space.GetNDofs(), top_conn.data(), QUAD, LINEAR_LAGRANGE,
+                top_x_coords_ptr, top_y_coords_ptr, top_z_coords_ptr, MSPACE );
   constexpr IndexT bottom_mesh_id = 1;
   registerMesh( bottom_mesh_id, num_contact_elems, bottom_fe_space.GetNDofs(), bottom_conn.data(), QUAD,
-                bottom_x_coords_ptr, bottom_y_coords_ptr, bottom_z_coords_ptr, MSPACE );
+                LINEAR_LAGRANGE, bottom_x_coords_ptr, bottom_y_coords_ptr, bottom_z_coords_ptr, MSPACE );
 
   constexpr RealT penalty = 5000.0;
   setKinematicConstantPenalty( top_mesh_id, penalty );

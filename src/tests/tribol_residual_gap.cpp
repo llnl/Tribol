@@ -42,10 +42,10 @@ TEST_F( ResidualGapTest, common_plane_residual_gap )
   // Quad 2 normal points -z: 0-3-2-1 is CCW viewed from -z.
   tribol::IndexT conn2[numVerts] = { 0, 3, 2, 1 };
 
-  tribol::registerMesh( 0, numElems, numVerts, &conn1[0], static_cast<int>( tribol::QUAD ), &x1[0], &y1[0], &z1[0],
-                        tribol::MemorySpace::Host );
-  tribol::registerMesh( 1, numElems, numVerts, &conn2[0], static_cast<int>( tribol::QUAD ), &x2[0], &y2[0], &z2[0],
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( 0, numElems, numVerts, &conn1[0], static_cast<int>( tribol::QUAD ), tribol::LINEAR_LAGRANGE,
+                        &x1[0], &y1[0], &z1[0], tribol::MemorySpace::Host );
+  tribol::registerMesh( 1, numElems, numVerts, &conn2[0], static_cast<int>( tribol::QUAD ), tribol::LINEAR_LAGRANGE,
+                        &x2[0], &y2[0], &z2[0], tribol::MemorySpace::Host );
 
   RealT fx1[numVerts] = { 0., 0., 0., 0. };
   RealT fy1[numVerts] = { 0., 0., 0., 0. };
@@ -118,10 +118,10 @@ TEST_F( ResidualGapTest, mortar_residual_gap )
   tribol::IndexT conn1[numVerts] = { 0, 1, 2, 3 };
   tribol::IndexT conn2[numVerts] = { 0, 3, 2, 1 };
 
-  tribol::registerMesh( 0, numElems, numVerts, &conn1[0], (int)( tribol::QUAD ), &x1[0], &y1[0], &z1[0],
-                        tribol::MemorySpace::Host );
-  tribol::registerMesh( 1, numElems, numVerts, &conn2[0], (int)( tribol::QUAD ), &x2[0], &y2[0], &z2[0],
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( 0, numElems, numVerts, &conn1[0], (int)( tribol::QUAD ), tribol::LINEAR_LAGRANGE, &x1[0],
+                        &y1[0], &z1[0], tribol::MemorySpace::Host );
+  tribol::registerMesh( 1, numElems, numVerts, &conn2[0], (int)( tribol::QUAD ), tribol::LINEAR_LAGRANGE, &x2[0],
+                        &y2[0], &z2[0], tribol::MemorySpace::Host );
 
   RealT fx1[numVerts] = { 0., 0., 0., 0. };
   RealT fy1[numVerts] = { 0., 0., 0., 0. };
@@ -189,10 +189,10 @@ TEST_P( ResidualGapBinningTest, residual_gap_expands_search_bounds )
   tribol::IndexT conn1[numVerts] = { 0, 1, 2, 3 };
   tribol::IndexT conn2[numVerts] = { 0, 3, 2, 1 };
 
-  tribol::registerMesh( 0, numElems, numVerts, conn1, static_cast<int>( tribol::QUAD ), x1, y1, z1,
-                        tribol::MemorySpace::Host );
-  tribol::registerMesh( 1, numElems, numVerts, conn2, static_cast<int>( tribol::QUAD ), x2, y2, z2,
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( 0, numElems, numVerts, conn1, static_cast<int>( tribol::QUAD ), tribol::LINEAR_LAGRANGE, x1, y1,
+                        z1, tribol::MemorySpace::Host );
+  tribol::registerMesh( 1, numElems, numVerts, conn2, static_cast<int>( tribol::QUAD ), tribol::LINEAR_LAGRANGE, x2, y2,
+                        z2, tribol::MemorySpace::Host );
 
   RealT fx1[numVerts] = { 0.0, 0.0, 0.0, 0.0 };
   RealT fy1[numVerts] = { 0.0, 0.0, 0.0, 0.0 };

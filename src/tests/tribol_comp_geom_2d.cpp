@@ -55,8 +55,10 @@ class CompGeomTest : public ::testing::Test {
                                     tribol::BinningMethod c_binning,
                                     tribol::KinematicPenaltyCalculation c_penalty_calc )
   {
-    tribol::registerMesh( 0, 1, 2, conn_1, (int)( tribol::EDGE ), x_1, y_1, nullptr, tribol::MemorySpace::Host );
-    tribol::registerMesh( 1, 1, 2, conn_2, (int)( tribol::EDGE ), x_2, y_2, nullptr, tribol::MemorySpace::Host );
+    tribol::registerMesh( 0, 1, 2, conn_1, (int)( tribol::EDGE ), tribol::LINEAR_LAGRANGE, x_1, y_1, nullptr,
+                          tribol::MemorySpace::Host );
+    tribol::registerMesh( 1, 1, 2, conn_2, (int)( tribol::EDGE ), tribol::LINEAR_LAGRANGE, x_2, y_2, nullptr,
+                          tribol::MemorySpace::Host );
 
     tribol::registerNodalResponse( 0, fx_1, fy_1, nullptr );
     tribol::registerNodalResponse( 1, fx_2, fy_2, nullptr );
