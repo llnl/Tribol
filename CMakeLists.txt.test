@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.10)
+project(test_nc_dof)
+find_package(mfem REQUIRED PATHS /Users/ebchin/code/tribol/libs/llvm-19.1.7/mfem-4.9.0-5n4de7bdptdjwothmikesqmuwi34uegd/lib/cmake/mfem)
+add_executable(test_nc_dof test_nc_dof.cpp)
+target_link_libraries(test_nc_dof mfem)

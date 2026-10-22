@@ -1,0 +1,24 @@
+Detailed Plan for MFEM AMR (Non-Conforming Mesh) Support in Tribol
+
+1. Extend Redecomp Library for Non-Conforming (NC) Support
+   - RedecompMesh Construction:
+     * Modify RedecompMesh to detect if the parent mfem::ParMesh is non-conforming.
+     * Ensure the serial mfem::Mesh on each rank correctly represents the non-conforming structure (e.g., by maintaining the element hierarchy or correctly identifying leaf elements and their constraints).
+   - Node-Based Transfer (TransferByNodes):
+     * Primal Field Transfer (Parent -> Redecomp): Update TransferToSerial to ensure that values at hanging nodes in the parent mesh are correctly prolongated from master True DOFs before being sent to the RedecompMesh.
+     * Dual Field Transfer (Redecomp -> Parent): Update TransferToParallel for dual vectors (forces, gaps). Instead of simple local DOF copying, use the transpose of the prolongation matrix (P^T) to distribute contributions from hanging nodes back to their master True DOFs.
+
+2. Update Tribol MFEM Interface (MfemData.cpp)
+   - Dual Vector Mapping (RedecompToSubmesh):
+     * The current implementation manually zeros out non-owned DOFs using diagonal indices of the prolongation matrix. Replace this logic with a formal MultTranspose call using the ParFiniteElementSpace's prolongation matrix to correctly handle NC constraints and parallel shared DOFs.
+   - Element Thickness Computation (ComputeElementThicknesses):
+     * Verify that the algorithm for finding parent volume elements correctly handles the NC hierarchy. Ensure that for every leaf boundary element on the submesh, the corresponding leaf volume element in the parent mesh is correctly identified for det(J) calculations.
+
+3. Verify Jacobian Assembly (MfemJacobianData.cpp)
+   - Jacobian Transformation:
+     * Ensure all blocks of the block Jacobian (df/du, df/dp, dg/du) are correctly transformed from the local Redecomp space to the parallel True DOF space.
+     * Confirm that the RAP operations (J_true = P^T * J_local * P) are applied consistently across all coupling schemes, which MFEM's HypreParMatrix and RAP utilities should handle if provided with the correct NC prolongation matrices.
+
+4. Validation and Testing
+   - Baseline Testing: Run the extended src/tests/tribol_mfem_mortar_lm.cpp (which now includes NC refinement) to identify existing failures.
+   - Incremental Verification: Validate each component (primal transfer, dual transfer, Jacobian) against the NC patch test to ensure consistent contact pressure and displacement results compared to conforming meshes.

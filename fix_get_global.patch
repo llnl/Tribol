@@ -1,0 +1,44 @@
+--- src/redecomp/transfer/TransferByNodes.cpp
++++ src/redecomp/transfer/TransferByNodes.cpp
+@@ -207,17 +207,11 @@
+         parent_fes_->GetElementDofs( p2r_elem_idx[r][e], elem_dofs );
+         for ( auto elem_dof : elem_dofs ) {
+           if ( use_global_ids ) {
+             if ( parent_fes_->GetParMesh()->Nonconforming() ) {
+-              const double* crd = parent_fes_->GetParMesh()->GetVertex( elem_dof );
+-              uint64_t hash = 0;
+-              for(int d=0; d<parent_fes_->GetParMesh()->SpaceDimension(); ++d) {
+-                  uint64_t h;
+-                  std::memcpy(&h, &crd[d], sizeof(double));
+-                  hash ^= h + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+-              }
+-              elem_dof = static_cast<int>(hash);
++              const double* crd = parent_fes_->GetParMesh()->GetVertex( elem_dof );
++              int ix = std::round((crd[0] + 100.0) * 100000.0);
++              int iy = std::round((crd[1] + 100.0) * 100000.0);
++              int iz = parent_fes_->GetParMesh()->SpaceDimension() == 3 ? std::round((crd[2] + 100.0) * 100000.0) : 0;
++              elem_dof = ix + iy * 2000 + iz * 4000000;
+             } else {
+               elem_dof = parent_fes_->GetGlobalTDofNumber( elem_dof );
+             }
+--- src/redecomp/RedecompMesh.cpp
++++ src/redecomp/RedecompMesh.cpp
+@@ -231,14 +231,11 @@
+       parent_.GetElement( elem_idx[e] )->GetVertices( elem_conn );
+       for ( int v{ 0 }; v < elem_conn.Size(); ++v ) {
+         if ( parent_.Nonconforming() ) {
+            const double* crd = parent_.GetVertex( elem_conn[v] );
+-           uint64_t hash = 0;
+-           for(int d=0; d<parent_.SpaceDimension(); ++d) {
+-               uint64_t h;
+-               std::memcpy(&h, &crd[d], sizeof(double));
+-               hash ^= h + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+-           }
+-           parent_conns[parent_tot_conns[dest] + v] = static_cast<int>(hash);
++           int ix = std::round((crd[0] + 100.0) * 100000.0);
++           int iy = std::round((crd[1] + 100.0) * 100000.0);
++           int iz = parent_.SpaceDimension() == 3 ? std::round((crd[2] + 100.0) * 100000.0) : 0;
++           parent_conns[parent_tot_conns[dest] + v] = ix + iy * 2000 + iz * 4000000;
+         } else {
+            parent_conns[parent_tot_conns[dest] + v] = parent_vertex_fes.GetGlobalTDofNumber( elem_conn[v] );
+         }

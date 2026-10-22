@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.10)
+project(test_nc)
+find_package(MPI REQUIRED)
+set(MFEM_DIR "/Users/ebchin/code/tribol/libs/llvm-19.1.7/mfem-4.9.0-5n4de7bdptdjwothmikesqmuwi34uegd")
+include_directories(${MFEM_DIR}/include)
+link_directories(${MFEM_DIR}/lib)
+add_executable(test_get_global test_get_global.cpp)
+target_link_libraries(test_get_global mpi mfem ${MPI_CXX_LIBRARIES})
