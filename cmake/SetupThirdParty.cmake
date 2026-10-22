@@ -78,17 +78,7 @@ endif()
 if (TARGET axom)
     # Case: Tribol included in project that also creates an axom target, no need to recreate axom
     message(STATUS "Axom support is ON, using existing axom target")
-
-    # Add components and dependencies of axom to this export set but don't prefix it with tribol::
-    # NOTE(chapman39@llnl.gov): Cannot simply install axom, since it is an imported library
-    set(_axom_exported_targets ${axom_exported_targets})
-    install(TARGETS              ${_axom_exported_targets}
-            EXPORT               tribol-targets
-            DESTINATION          lib)
-    unset(_axom_exported_targets)
-
     set(AXOM_FOUND TRUE)
-
 elseif (AXOM_DIR)
   message(STATUS "Setting up external Axom TPL...")
   tribol_assert_path_exists( ${AXOM_DIR} )
@@ -106,26 +96,11 @@ endif()
 
 if (TARGET mfem)
     # Case: Tribol included in project that also creates an mfem target, no need to recreate mfem
-    # Note - white238: I can't seem to get this to pass install testing due to mfem being included
-    # in multiple export sets
     message(STATUS "MFEM support is ON, using existing mfem target")
-
-    # Add it to this export set but don't prefix it with tribol::
-    # NOTE: imported targets cannot be part of an export set
-    get_target_property(_is_imported mfem IMPORTED)
-    if(NOT "${_is_imported}")
-        install(TARGETS              mfem
-                EXPORT               tribol-targets
-                DESTINATION          lib)
-    endif()
-
     set(MFEM_FOUND TRUE)
 elseif (MFEM_DIR)
   message(STATUS "Setting up external MFEM TPL...")
-
   include(${PROJECT_SOURCE_DIR}/cmake/thirdparty/SetupMFEM.cmake)
-
-  list(APPEND EXPORTED_TPL_DEPS mfem)
 else()
   message(FATAL_ERROR 
      "MFEM is a required dependency for tribol. "
@@ -159,14 +134,14 @@ endif()
 #---------------------------------------------------------------------------
 set(_imported_targets
     axom
-    axom::mfem
     conduit
     conduit::conduit_mpi
     conduit::conduit
     conduit_relay_mpi
     conduit_relay_mpi_io
     conduit_blueprint
-    conduit_blueprint_mpi)
+    conduit_blueprint_mpi
+    mfem)
 
 foreach(_target ${_imported_targets})
     if(TARGET ${_target})
@@ -187,8 +162,7 @@ foreach(_target ${_imported_targets})
 endforeach()
 
 set(_mfem_targets
-    mfem
-    axom::mfem)
+    mfem)
 
 # Prevent unhelpful warnings by removing duplicate rpaths set in MFEM's config.mk MFEM_EXT_LIBS
 if(APPLE)
@@ -204,19 +178,6 @@ if(APPLE)
     unset(_link_libs)
 endif()
 unset(_mfem_targets)
-
-# export tribol-targets
-foreach(dep ${EXPORTED_TPL_DEPS})
-  # If the target is EXPORTABLE, add it to the export set
-  get_target_property(_is_imported ${dep} IMPORTED)
-  if(NOT ${_is_imported})
-      install(TARGETS              ${dep}
-              EXPORT               tribol-targets
-              DESTINATION          lib)
-      # Namespace target to avoid conflicts
-      set_target_properties(${dep} PROPERTIES EXPORT_NAME tribol::${dep})
-  endif()
-endforeach()
 
 #------------------------------------------------------------------------------
 # Caliper
