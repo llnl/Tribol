@@ -8,6 +8,22 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added the `ENERGY_MORTAR` contact method for MFEM coupling schemes built with Enzyme and Redecomp. The method supports
+  nodal and quadrature-point enforcement and provides differentiated residual and Jacobian contributions.
+- Added the `VISCOUS_TANGENTIAL` contact model and APIs for setting mesh-specific viscous damping coefficients through
+  native and MFEM coupling schemes.
+- Added nonzero residual-gap enforcement through `tribol::setResidualGap()`. Positive residual gaps shift the effective
+  contact surface away from the registered mesh surface.
+- Added GPU execution support to the MFEM interface and GPU-aware Redecomp field and matrix transfers.
+- Added support for builds that configure `axom::IndexType` as a 64-bit integer across Tribol and Redecomp.
+- Added MFEM APIs for true-dof contact force, gap, and pressure vectors and for the individual `df/dx`, `df/dp`, and
+  `dg/dx` Jacobian blocks.
+- Added higher-order contact infrastructure for quadratic Lagrange edges and 9-node quadrilaterals, including
+  GPU-capable fixed-extent `MdSpan` and `MdArray` containers, basis and mapping utilities, and quadratic `MeshData`
+  storage. Existing contact methods do not yet consume quadratic faces.
+- Added an `MfemMeshData` option that preserves higher-order H1 parent and pressure fields in Redecomp instead of
+  transferring them through a low-order-refined mesh.
+- Added optional Caliper profiling support through `TRIBOL_ENABLE_PROFILING`.
 - Added support for a linear tetrahedral mesh under the TestMesh class.
 - Added coupling scheme tests with null pointer registration.
 - Multi-rank contact API using MFEM data structures.
@@ -41,6 +57,18 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ### Changed
 - `tribol::registerMesh()` now requires a `tribol::FaceOrderType` argument after `element_type`. Existing callers must
   pass `tribol::LINEAR_LAGRANGE` to retain the previous linear-face behavior.
+- Tribol now requires C++20 or newer.
+- Renamed the public element values `LINEAR_EDGE`, `LINEAR_TRIANGLE`, `LINEAR_QUAD`, `LINEAR_TET`, and `LINEAR_HEX` to
+  `EDGE`, `TRIANGLE`, `QUAD`, `TET`, and `HEX`; element shape and finite element order are now selected separately.
+- Renamed `FaceOrderType::LINEAR` to `FaceOrderType::LINEAR_LAGRANGE` and `ContactModel::COULOMB` to
+  `ContactModel::FRICTION_COULOMB`.
+- Renamed `LoggingLevel` values from all-uppercase names to `Undefined`, `Debug`, `Info`, `Warning`, `Error`, and
+  `NumLoggingLevels`.
+- `registerMfemCouplingScheme()` now accepts an optional execution mode, and `updateMfemParallelDecomposition()` accepts
+  an optional rank count and force-rebuild flag.
+- MFEM coupling schemes now reuse their Redecomp mesh until a configurable displacement threshold is exceeded. Use
+  `setMfemRedecompTriggerDisplacement()` to change the threshold or force a rebuild when updating the decomposition.
+- MFEM element thickness calculations now use registered reference coordinates when available.
 - Return negative timestep vote for non-null meshes with null velocity pointers.
 - Refactored how surface elements are characterized, now using finite element
   order and type of cell.
@@ -80,6 +108,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Added check for face convexity. If non-convex, a full overlap calculation is triggered for common-plane.
 
 ### Fixed
+- Fixed MFEM submesh-to-parent dual transfers so shared response and gap degrees of freedom are assembled correctly.
+- Improved 2D polygon intersection robustness by using consistent length scales and centroid-angle vertex ordering.
+- Fixed Energy Mortar smoothing derivatives and memory leaks in Enzyme differentiation paths.
+- Fixed parallel Redecomp partitioning hangs when ranks contain empty element sets.
 - Allow null velocity and response pointers for various use cases
 - Tolerancing bug that produced negative timestep estimates in the presence of numerically
   zero face velocities.
