@@ -168,8 +168,15 @@ std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::ConvertToHypreParMatrix( m
   if ( !parallel_assemble ) {
     return J_full;
   } else {
-    auto J_true = std::unique_ptr<mfem::HypreParMatrix>(
-        mfem::RAP( parent_test_fes_.Dof_TrueDof_Matrix(), J_full.get(), parent_trial_fes_.Dof_TrueDof_Matrix() ) );
+    auto P_test = dynamic_cast<const mfem::HypreParMatrix*>( parent_test_fes_.GetProlongationMatrix() );
+    if ( !P_test ) {
+      P_test = parent_test_fes_.Dof_TrueDof_Matrix();
+    }
+    auto P_trial = dynamic_cast<const mfem::HypreParMatrix*>( parent_trial_fes_.GetProlongationMatrix() );
+    if ( !P_trial ) {
+      P_trial = parent_trial_fes_.Dof_TrueDof_Matrix();
+    }
+    auto J_true = std::unique_ptr<mfem::HypreParMatrix>( mfem::RAP( P_test, J_full.get(), P_trial ) );
     return J_true;
   }
 }

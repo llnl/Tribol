@@ -5,6 +5,9 @@
 
 #include "RedecompMesh.hpp"
 
+#include <map>
+#include <vector>
+
 #include "axom/slic.hpp"
 
 #include "shared/infrastructure/Profiling.hpp"
@@ -153,28 +156,14 @@ void RedecompMesh::BuildRedecomp()
   auto parent_vertex_fes =
       mfem::ParFiniteElementSpace( const_cast<mfem::ParMesh*>( &parent_ ), parent_vertex_fec.get() );
   auto vertex_transfer = TransferByNodes( parent_vertex_fes, *this );
-  // p2r = parent to redecomp
-  auto p2r_verts = vertex_transfer.P2RNodeList( true );
-  // r2p = redecomp to parent
-  auto r2p_vert_idx = MPIArray<int>( &mpi_ );
-
-  // map global parent vertex IDs to redecomp vertex IDs
-  r2p_vert_idx.SendRecvArrayEach( p2r_verts.first );
+  
+  // Use local vertex IDs. We will deduplicate based on coordinates on the receiving rank.
+  auto p2r_verts = vertex_transfer.P2RNodeList( false );
   auto n_ranks = mpi_.NRanks();
-  auto vert_idx_map = std::unordered_map<int, int>();
-  auto vert_ct = 0;
-  for ( int r{ 0 }; r < n_ranks; ++r ) {
-    for ( int v{ 0 }; v < r2p_vert_idx[r].size(); ++v ) {
-      auto vert_idx_it = vert_idx_map.emplace( r2p_vert_idx[r][v], vert_ct );
-      r2p_vert_idx[r][v] = vert_idx_it.first->second;
-      if ( vert_idx_it.second ) {
-        ++vert_ct;
-      }
-    }
-  }
+  auto r2p_vert_idx = MPIArray<int>( &mpi_ );
+  r2p_vert_idx.SendRecvArrayEach( p2r_verts.first );
 
   // send vertex coords from parent to redecomp
-  p2r_verts = vertex_transfer.P2RNodeList( false );
   auto redecomp_coords = MPIArray<double, 2>( &mpi_ );
   redecomp_coords.SendRecvEach( [this, &p2r_verts]( int dest ) {
     auto parent_coords = axom::Array<double, 2>();
@@ -190,14 +179,36 @@ void RedecompMesh::BuildRedecomp()
     return parent_coords;
   } );
 
-  // create vertices on redecomp
-  NumOfVertices = vert_idx_map.size();
-  vertices.SetSize( NumOfVertices );
+  // Deduplicate received coordinates to build global vertex list for this Redecomp rank
+  auto coord_to_id = std::map<std::vector<double>, int>();
+  auto local_to_redecomp_map = std::vector<std::unordered_map<int, int>>(n_ranks);
+  auto vert_ct = 0;
   for ( int r{ 0 }; r < n_ranks; ++r ) {
-    for ( int v{ 0 }; v < r2p_vert_idx[r].size(); ++v ) {
-      for ( int d{ 0 }; d < parent_.SpaceDimension(); ++d ) {
-        vertices[r2p_vert_idx[r][v]]( d ) = redecomp_coords[r]( v, d );
+    auto n_recv_verts = r2p_vert_idx[r].size();
+    for ( int v{ 0 }; v < n_recv_verts; ++v ) {
+      std::vector<double> crd(spaceDim);
+      for ( int d{ 0 }; d < spaceDim; ++d ) {
+        crd[d] = redecomp_coords[r]( v, d );
       }
+      auto it = coord_to_id.find(crd);
+      int final_id;
+      if ( it == coord_to_id.end() ) {
+        coord_to_id[crd] = vert_ct;
+        final_id = vert_ct;
+        ++vert_ct;
+      } else {
+        final_id = it->second;
+      }
+      local_to_redecomp_map[r][r2p_vert_idx[r][v]] = final_id;
+    }
+  }
+
+  // create vertices on redecomp
+  NumOfVertices = vert_ct;
+  vertices.SetSize( NumOfVertices );
+  for ( auto const& [crd, idx] : coord_to_id ) {
+    for ( int d{ 0 }; d < spaceDim; ++d ) {
+      vertices[idx]( d ) = crd[d];
     }
   }
 
@@ -220,9 +231,9 @@ void RedecompMesh::BuildRedecomp()
       parent_tot_conns[r] += parent_.GetElement( elem_idx[e] )->GetNVertices();
     }
   }
-  // Send and receive element connectivities
+  // Send and receive element connectivities (using local IDs)
   auto redecomp_conns = MPIArray<int>( &mpi_ );
-  redecomp_conns.SendRecvEach( [this, &parent_tot_conns, &parent_vertex_fes]( int dest ) {
+  redecomp_conns.SendRecvEach( [this, &parent_tot_conns]( int dest ) {
     auto parent_conns = axom::Array<int>( parent_tot_conns[dest], parent_tot_conns[dest] );
     parent_tot_conns[dest] = 0;
     const auto& elem_idx = p2r_elems_.first[dest];
@@ -230,7 +241,7 @@ void RedecompMesh::BuildRedecomp()
       mfem::Array<int> elem_conn;
       parent_.GetElement( elem_idx[e] )->GetVertices( elem_conn );
       for ( int v{ 0 }; v < elem_conn.Size(); ++v ) {
-        parent_conns[parent_tot_conns[dest] + v] = parent_vertex_fes.GetGlobalTDofNumber( elem_conn[v] );
+        parent_conns[parent_tot_conns[dest] + v] = elem_conn[v];
       }
       parent_tot_conns[dest] += elem_conn.Size();
     }
@@ -247,26 +258,50 @@ void RedecompMesh::BuildRedecomp()
     }
     return parent_attribs;
   } );
+  
   // Count number of elements
-  // NOTE: Don't use NumOfElements.  AddElement() will increment it.
   auto n_els = 0;
   for ( const auto& redecomp_etype : redecomp_etypes ) {
     n_els += redecomp_etype.size();
   }
   elements.SetSize( n_els );
-  // Create elements
+  
+  // Create elements and map local vertex IDs to global Redecomp vertex IDs
+  auto skipped_ct = 0;
   for ( int r{ 0 }; r < n_ranks; ++r ) {
     auto conn_ct = 0;
     for ( int e{ 0 }; e < redecomp_etypes[r].size(); ++e ) {
       auto el = NewElement( redecomp_etypes[r][e] );
       el->SetVertices( &redecomp_conns[r][conn_ct] );
       for ( int k{ 0 }; k < el->GetNVertices(); ++k ) {
-        el->GetVertices()[k] = vert_idx_map[el->GetVertices()[k]];
+        int local_v = el->GetVertices()[k];
+        el->GetVertices()[k] = local_to_redecomp_map[r][local_v];
       }
       conn_ct += el->GetNVertices();
       el->SetAttribute( redecomp_attribs[r][e] );
-      AddElement( el );
+      // Check for duplicate elements (same vertices and same attribute)
+      bool duplicate = false;
+      for (int i=0; i<NumOfElements; ++i) {
+          if (elements[i]->GetAttribute() == el->GetAttribute() && elements[i]->GetNVertices() == el->GetNVertices()) {
+              bool same_verts = true;
+              for (int k=0; k<el->GetNVertices(); ++k) {
+                  if (elements[i]->GetVertices()[k] != el->GetVertices()[k]) {
+                      same_verts = false; break;
+                  }
+              }
+              if (same_verts) { duplicate = true; break; }
+          }
+      }
+      if (!duplicate) {
+          AddElement( el );
+      } else {
+          delete el;
+          ++skipped_ct;
+      }
     }
+  }
+  if (skipped_ct > 0) {
+      std::cout << "Rank " << mpi_.MyRank() << ": Skipped " << skipped_ct << " duplicate elements in RedecompMesh." << std::endl;
   }
 
   // Finalize mesh topology

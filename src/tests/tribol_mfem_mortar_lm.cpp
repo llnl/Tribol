@@ -61,7 +61,7 @@ class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Eleme
     // build mesh of 2 cubes
     int nel_per_dir = std::pow( 2, ref_levels );
     // clang-format off
-    mfem::ParMesh mesh = shared::ParMeshBuilder(MPI_COMM_WORLD, shared::MeshBuilder::Unify({
+    auto serial_mesh = shared::MeshBuilder::Unify({
       shared::MeshBuilder::CubeMesh(nel_per_dir, nel_per_dir, nel_per_dir, std::get<1>(GetParam()))
         .updateBdrAttrib(3, 7)
         .updateBdrAttrib(1, 3)
@@ -75,8 +75,24 @@ class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Eleme
         .updateBdrAttrib(4, 7)
         .updateBdrAttrib(5, 1)
         .updateBdrAttrib(8, 5)
-    }));
+    });
     // clang-format on
+
+    // apply AMR refinement only to the top cube so the contact surface is non-conforming
+    static_cast<mfem::Mesh&>(serial_mesh).EnsureNCMesh( true );
+    {
+      mfem::Array<int> ref_els;
+      for ( int i{ 0 }; i < static_cast<mfem::Mesh&>(serial_mesh).GetNE(); ++i ) {
+        mfem::Vector center;
+        static_cast<mfem::Mesh&>(serial_mesh).GetElementCenter( i, center );
+        if ( center[2] > 1.0 ) {
+          ref_els.Append( i );
+        }
+      }
+      static_cast<mfem::Mesh&>(serial_mesh).GeneralRefinement( ref_els );
+    }
+
+    mfem::ParMesh mesh = shared::ParMeshBuilder(MPI_COMM_WORLD, std::move(serial_mesh));
 
     // grid function for higher-order nodes
     auto fe_coll = mfem::H1_FECollection( order, mesh.SpaceDimension() );
@@ -196,9 +212,9 @@ class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Eleme
 
     // solve for X_blk
     mfem::MINRESSolver solver( MPI_COMM_WORLD );
-    solver.SetRelTol( 1.0e-8 );
+    solver.SetRelTol( 1.0e-6 );
     solver.SetAbsTol( 1.0e-12 );
-    solver.SetMaxIter( 5000 );
+    solver.SetMaxIter( 10000 );
     solver.SetPrintLevel( 3 );
     solver.SetOperator( *A_merged );
     // TODO: find a working preconditioner

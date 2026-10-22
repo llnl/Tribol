@@ -63,7 +63,18 @@ void TransferByNodes::TransferToSerial( const mfem::ParGridFunction& src, mfem::
 
   // send and receive DOF values from other ranks
   auto dst_dofs = MPIArray<double, 2>( &redecomp_->getMPIUtility() );
-  auto src_ptr = src.HostRead();
+  mfem::Vector src_prolongated;
+  const double* src_ptr;
+  if ( redecomp_->getParent().Nonconforming() && src_fes->GetProlongationMatrix() ) {
+    mfem::Vector true_dofs;
+    src.GetTrueDofs( true_dofs );
+    src_prolongated.SetSize( src_fes->GetVSize() );
+    src_fes->GetProlongationMatrix()->Mult( true_dofs, src_prolongated );
+    src_ptr = src_prolongated.HostRead();
+  } else {
+    src_ptr = src.HostRead();
+  }
+
   dst_dofs.SendRecvEach( [src_ptr, src_fes, &src_nodes]( int dst_rank ) {
     auto src_dofs = axom::Array<double, 2>();
     auto n_vdofs = src_fes->GetVDim();
@@ -110,42 +121,67 @@ void TransferByNodes::TransferToParallel( const mfem::GridFunction& src, mfem::P
                       "The ParFiniteElementSpace of GridFunction dst must match the ParFiniteElementSpace "
                       "in TransferByNodes." );
 
+  bool is_nc = redecomp_->getParent().Nonconforming() && dst_fes->GetProlongationMatrix();
+
   // send and receive non-ghost DOF values from other ranks
   auto dst_dofs = MPIArray<double, 2>( &redecomp_->getMPIUtility() );
   auto src_ptr = src.HostRead();
-  dst_dofs.SendRecvEach( [src_ptr, src_fes, &src_nodes]( int dst_rank ) {
+  dst_dofs.SendRecvEach( [src_ptr, src_fes, &src_nodes, is_nc]( int dst_rank ) {
     auto src_dofs = axom::Array<double, 2>();
     auto n_vdofs = src_fes->GetVDim();
     auto n_src_dofs = src_nodes.first[dst_rank].size();
-    src_dofs.reserve( n_vdofs * n_src_dofs );
-    src_dofs.resize( axom::ArrayOptions::Uninitialized(), n_vdofs, n_src_dofs );
-    auto dof_ct = 0;
+    auto n_transfer_dofs = 0;
     for ( int j{ 0 }; j < n_src_dofs; ++j ) {
-      if ( !src_nodes.second[dst_rank][j] ) {
-        for ( int d{ 0 }; d < n_vdofs; ++d ) {
-          src_dofs( d, dof_ct ) = src_ptr[src_fes->DofToVDof( src_nodes.first[dst_rank][j], d )];
-        }
-        ++dof_ct;
+      if ( is_nc || !src_nodes.second[dst_rank][j] ) {
+        ++n_transfer_dofs;
       }
     }
-    src_dofs.shrink();
+    src_dofs.reserve( n_vdofs * n_transfer_dofs );
+    src_dofs.resize( axom::ArrayOptions::Uninitialized(), n_vdofs, n_transfer_dofs );
+    for ( int d{ 0 }; d < n_vdofs; ++d ) {
+      auto dof_ct = 0;
+      for ( int j{ 0 }; j < n_src_dofs; ++j ) {
+        if ( is_nc || !src_nodes.second[dst_rank][j] ) {
+          src_dofs( d, dof_ct ) = src_ptr[src_fes->DofToVDof( src_nodes.first[dst_rank][j], d )];
+          ++dof_ct;
+        }
+      }
+    }
     return src_dofs;
   } );
 
   // map received non-ghost DOF values to dst
   auto n_vdofs = src_fes->GetVDim();
   auto n_ranks = redecomp_->getMPIUtility().NRanks();
-  auto dst_ptr = dst.HostWrite();
+  auto dst_ptr = dst.HostReadWrite();
+
+  std::unordered_map<int, int> node_multiplicity;
+  if (is_nc) {
+      for ( int i{ 0 }; i < n_ranks; ++i ) {
+        for ( int j{ 0 }; j < dst_nodes.first[i].size(); ++j ) {
+            node_multiplicity[dst_nodes.first[i][j]]++;
+        }
+      }
+  }
+
   for ( int i{ 0 }; i < n_ranks; ++i ) {
     auto dof_ct = 0;
     for ( int j{ 0 }; j < dst_nodes.first[i].size(); ++j ) {
-      if ( !dst_nodes.second[i][j] ) {
+      if ( is_nc || !dst_nodes.second[i][j] ) {
+        auto global_dof = dst_nodes.first[i][j];
+        double multiplier = is_nc ? (1.0 / node_multiplicity[global_dof]) : 1.0;
         for ( int d{ 0 }; d < n_vdofs; ++d ) {
-          dst_ptr[dst_fes->DofToVDof( dst_nodes.first[i][j], d )] = dst_dofs[i]( d, dof_ct );
+          dst_ptr[dst_fes->DofToVDof( global_dof, d )] = dst_dofs[i]( d, dof_ct ) * multiplier;
         }
         ++dof_ct;
       }
     }
+  }
+
+  if (is_nc) {
+     mfem::Vector true_dofs(dst_fes->GetTrueVSize());
+     dst_fes->GetProlongationMatrix()->MultTranspose(dst, true_dofs);
+     dst_fes->GetProlongationMatrix()->Mult(true_dofs, dst);
   }
 }
 
