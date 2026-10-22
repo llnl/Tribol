@@ -91,7 +91,12 @@ class FilteredSearch final : public SearchBase {
   {
   }
 
-  void findInterfacePairs() override { FilterCandidatePairs( coupling_scheme_, search_.findCandidatePairs() ); }
+  void findInterfacePairs() override
+  {
+    // Fetch current views for every search because mesh arrays may be replaced between coupling updates.
+    FilterCandidatePairs( coupling_scheme_, search_.findCandidatePairs( coupling_scheme_.getMesh1().getView(),
+                                                                        coupling_scheme_.getMesh2().getView() ) );
+  }
 
  private:
   CouplingScheme& coupling_scheme_;
@@ -184,9 +189,8 @@ class CartesianProduct final : public SearchBase {
 template <typename Search>
 std::unique_ptr<SearchBase> MakeFilteredSearch( CouplingScheme& coupling_scheme )
 {
-  return std::make_unique<FilteredSearch<Search>>(
-      coupling_scheme, coupling_scheme.getMesh1().getView(), coupling_scheme.getMesh2().getView(),
-      coupling_scheme.getEffectiveBinningProximityScale(), coupling_scheme.getParameters().residual_gap );
+  return std::make_unique<FilteredSearch<Search>>( coupling_scheme, coupling_scheme.getEffectiveBinningProximityScale(),
+                                                   coupling_scheme.getParameters().residual_gap );
 }
 
 }  // namespace
