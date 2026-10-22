@@ -961,10 +961,10 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
 
   // register mesh. Note: Tribol will still work with global integer
   // ids for the connectivity and array lengths of numTotalNodes.
-  registerMesh( this->mortarMeshId, this->numMortarFaces, this->numTotalNodes, this->faceConn1, this->cellType, x, y, z,
-                MemorySpace::Host );
-  registerMesh( this->nonmortarMeshId, this->numNonmortarFaces, this->numTotalNodes, this->faceConn2, this->cellType, x,
-                y, z, MemorySpace::Host );
+  registerMesh( this->mortarMeshId, this->numMortarFaces, this->numTotalNodes, this->faceConn1, this->cellType,
+                LINEAR_LAGRANGE, x, y, z, MemorySpace::Host );
+  registerMesh( this->nonmortarMeshId, this->numNonmortarFaces, this->numTotalNodes, this->faceConn2, this->cellType,
+                LINEAR_LAGRANGE, x, y, z, MemorySpace::Host );
 
   // register nodal forces. Note, I was getting a seg fault when
   // registering the same pointer to a single set of force arrays

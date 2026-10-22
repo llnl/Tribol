@@ -37,7 +37,8 @@ class NodalNormalTest : public ::testing::Test {
   {
     // register the mesh with tribol
     const tribol::IndexT mesh_id = 0;
-    tribol::registerMesh( mesh_id, numCells, numNodes, conn, cell_type, x, y, z, tribol::MemorySpace::Host );
+    tribol::registerMesh( mesh_id, numCells, numNodes, conn, cell_type, tribol::LINEAR_LAGRANGE, x, y, z,
+                          tribol::MemorySpace::Host );
 
     // get instance of mesh in order to compute nodally averaged normals
     tribol::MeshManager& meshManager = tribol::MeshManager::getInstance();

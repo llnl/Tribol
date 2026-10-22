@@ -69,13 +69,14 @@ void SimpleCouplingSetup( const int dim, int cell_type, int contact_method, int 
 
   // register mortar mesh
   int mortarMeshId = 0;
-  tribol::registerMesh( mortarMeshId, mortar_numCells, mortar_lengthNodalData, mortar_connectivity, cell_type, mortar_x,
-                        mortar_y, mortar_z, tribol::MemorySpace::Host );
+  tribol::registerMesh( mortarMeshId, mortar_numCells, mortar_lengthNodalData, mortar_connectivity, cell_type,
+                        tribol::LINEAR_LAGRANGE, mortar_x, mortar_y, mortar_z, tribol::MemorySpace::Host );
 
   // register nonmortar mesh
   int nonmortarMeshId = 1;
   tribol::registerMesh( nonmortarMeshId, nonmortar_numCells, nonmortar_lengthNodalData, nonmortar_connectivity,
-                        cell_type, nonmortar_x, nonmortar_y, nonmortar_z, tribol::MemorySpace::Host );
+                        cell_type, tribol::LINEAR_LAGRANGE, nonmortar_x, nonmortar_y, nonmortar_z,
+                        tribol::MemorySpace::Host );
 
   // Register mortar gaps and pressures, if provided
   if ( mortar_gaps != nullptr ) {

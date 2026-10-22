@@ -45,6 +45,8 @@ constexpr int low_order = 1;
 constexpr int no_lor_factor = 0;
 constexpr int quadratic_order = 2;
 constexpr int cubic_order = 3;
+constexpr int linear_quadrilateral_node_count = 4;
+constexpr int quadratic_quadrilateral_node_count = 9;
 constexpr int x_component = 0;
 constexpr int y_component = 1;
 constexpr int z_component = 2;
@@ -92,6 +94,33 @@ void ExpectReturnedDualMatchesField( mfem::Vector& returned_dual, mfem::ParGridF
   ExpectVectorsNear( returned_true_dofs, expected_true_dofs );
 }
 
+void ExpectConnectivityMatchesFiniteElementSpace( tribol::MfemMeshData& mesh_data,
+                                                  const mfem::FiniteElementSpace& redecomp_fes,
+                                                  const std::set<int>& registered_attributes, int registered_elements,
+                                                  const tribol::IndexT* connectivity )
+{
+  const auto& redecomp_mesh = mesh_data.GetRedecompMesh();
+  int registered_element{};
+  for ( int redecomp_element{}; redecomp_element < redecomp_mesh.GetNE(); ++redecomp_element ) {
+    if ( registered_attributes.count( redecomp_mesh.GetAttribute( redecomp_element ) ) == 0 ) {
+      continue;
+    }
+
+    ASSERT_LT( registered_element, registered_elements );
+    mfem::Array<int> element_dofs;
+    redecomp_fes.GetElementDofs( redecomp_element, element_dofs );
+    ASSERT_EQ( element_dofs.Size(), mesh_data.GetNodesPerElement() );
+    for ( int local_node{}; local_node < element_dofs.Size(); ++local_node ) {
+      const auto connectivity_node = connectivity[registered_element * element_dofs.Size() + local_node];
+      EXPECT_EQ( connectivity_node, mfem::FiniteElementSpace::DecodeDof( element_dofs[local_node] ) );
+      EXPECT_GE( connectivity_node, 0 );
+      EXPECT_LT( connectivity_node, mesh_data.GetNumNodes() );
+    }
+    ++registered_element;
+  }
+  EXPECT_EQ( registered_element, registered_elements );
+}
+
 class HigherOrderMfemDataTest : public testing::TestWithParam<int> {};
 
 TEST_P( HigherOrderMfemDataTest, default_transfer_uses_lor )
@@ -114,6 +143,9 @@ TEST_P( HigherOrderMfemDataTest, default_transfer_uses_lor )
   MPI_Comm_size( MPI_COMM_WORLD, &rank_count );
   mesh_data.UpdateMfemMeshData( binning_proximity_scale, rank_count, forces_redecomp_rebuild );
   EXPECT_EQ( mesh_data.GetRedecompResponse().FESpace()->FEColl()->GetOrder(), low_order );
+  EXPECT_EQ( mesh_data.GetFaceOrder(), tribol::LINEAR_LAGRANGE );
+  EXPECT_EQ( mesh_data.GetNodesPerElement(), linear_quadrilateral_node_count );
+  EXPECT_EQ( mesh_data.GetNumNodes(), mesh_data.GetRedecompResponse().FESpace()->GetNDofs() );
 
   auto pressure_collection = std::make_unique<mfem::H1_FECollection>( order, mesh.SpaceDimension() );
   tribol::MfemSubmeshData submesh_data( mesh_data.GetSubmesh(), mesh_data.GetLORMesh(),
@@ -165,6 +197,49 @@ TEST_P( HigherOrderMfemDataTest, direct_transfer_retains_higher_order_fields )
   EXPECT_EQ( redecomp_fes->FEColl()->GetOrder(), order );
   EXPECT_EQ( redecomp_fes->GetVDim(), mesh.SpaceDimension() );
   EXPECT_GT( redecomp_fes->GetNDofs(), redecomp_mesh.GetNV() );
+  EXPECT_EQ( mesh_data.GetNumNodes(), redecomp_fes->GetNDofs() );
+
+  if ( order == quadratic_order ) {
+    EXPECT_EQ( mesh_data.GetFaceOrder(), tribol::QUADRATIC_LAGRANGE );
+    EXPECT_EQ( mesh_data.GetNodesPerElement(), quadratic_quadrilateral_node_count );
+
+    ExpectConnectivityMatchesFiniteElementSpace( mesh_data, *redecomp_fes, std::set<int>{ first_contact_attribute },
+                                                 mesh_data.GetMesh1NE(), mesh_data.GetMesh1Conn() );
+    ExpectConnectivityMatchesFiniteElementSpace( mesh_data, *redecomp_fes, std::set<int>{ second_contact_attribute },
+                                                 mesh_data.GetMesh2NE(), mesh_data.GetMesh2Conn() );
+
+    // Quadratic connectivity must include MFEM's edge and face-interior DOFs rather than stopping after geometric
+    // vertices. Finding any non-vertex DOF also guards against accidentally returning GetElementVertices().
+    int includes_higher_order_node{};
+    for ( int element{}; element < mesh_data.GetMesh1NE(); ++element ) {
+      for ( int local_node{}; local_node < mesh_data.GetNodesPerElement(); ++local_node ) {
+        includes_higher_order_node |= static_cast<int>(
+            mesh_data.GetMesh1Conn()[element * mesh_data.GetNodesPerElement() + local_node] >= redecomp_mesh.GetNV() );
+      }
+    }
+    for ( int element{}; element < mesh_data.GetMesh2NE(); ++element ) {
+      for ( int local_node{}; local_node < mesh_data.GetNodesPerElement(); ++local_node ) {
+        includes_higher_order_node |= static_cast<int>(
+            mesh_data.GetMesh2Conn()[element * mesh_data.GetNodesPerElement() + local_node] >= redecomp_mesh.GetNV() );
+      }
+    }
+    MPI_Allreduce( MPI_IN_PLACE, &includes_higher_order_node, scalar_mpi_value_count, MPI_INT, MPI_MAX,
+                   MPI_COMM_WORLD );
+    EXPECT_TRUE( includes_higher_order_node );
+
+    const auto coordinate_components = mesh_data.GetRedecompCoordsPtrs();
+    ASSERT_EQ( redecomp_nodes->FESpace()->GetNDofs(), mesh_data.GetNumNodes() );
+    for ( int component{}; component < redecomp_nodes->FESpace()->GetVDim(); ++component ) {
+      ASSERT_NE( coordinate_components[component], nullptr );
+      for ( int node{}; node < mesh_data.GetNumNodes(); ++node ) {
+        EXPECT_NEAR( coordinate_components[component][node],
+                     ( *redecomp_nodes )[redecomp_nodes->FESpace()->DofToVDof( node, component )],
+                     comparison_tolerance );
+      }
+    }
+  } else {
+    EXPECT_EQ( mesh_data.GetFaceOrder(), tribol::CUBIC_LAGRANGE );
+  }
 
   // Comparing against an independent coefficient projection checks every higher-order DOF, including edge, face, and
   // element-interior DOFs.
