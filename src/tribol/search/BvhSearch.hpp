@@ -13,6 +13,8 @@
 #include "axom/spin.hpp"
 
 #include "tribol/common/ArrayTypes.hpp"
+#include "tribol/common/Atomics.hpp"
+#include "tribol/common/ExecModel.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
@@ -93,19 +95,63 @@ class BvhSearch {
     bvh.findBoundingBoxes( offsets.view(), counts.view(), candidates, mesh2_.numberOfElements(),
                            mesh2_bounding_boxes.view() );
 
-    candidate_pairs = ArrayT<InterfacePair>( axom::ArrayOptions::Uninitialized{}, candidates.size(), candidates.size(),
-                                             mesh1_.getAllocatorId() );
     const auto candidate_ids = candidates.view();
     const auto candidate_offsets = offsets.view();
     const auto candidate_counts = counts.view();
-    auto pairs = candidate_pairs.view();
-    // This loop must finish before its local BVH query arrays are released at the end of the call.
-    forAllExec<ExecMode, false>(
-        candidates.size(), [candidate_ids, candidate_offsets, candidate_counts, pairs] TRIBOL_HOST_DEVICE( IndexT i ) {
-          const IndexT mesh1_element = candidate_ids[i];
-          const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, i );
-          pairs[i] = InterfacePair{ mesh1_element, mesh2_element };
-        } );
+    const bool same_mesh = mesh1_.meshId() == mesh2_.meshId();
+
+    if ( !same_mesh ) {
+      candidate_pairs = ArrayT<InterfacePair>( axom::ArrayOptions::Uninitialized{}, candidates.size(),
+                                               candidates.size(), mesh1_.getAllocatorId() );
+      auto pairs = candidate_pairs.view();
+      // This loop must finish before its local BVH query arrays are released at the end of the call.
+      forAllExec<ExecMode, false>(
+          candidates.size(),
+          [candidate_ids, candidate_offsets, candidate_counts, pairs] TRIBOL_HOST_DEVICE( IndexT i ) {
+            const IndexT mesh1_element = candidate_ids[i];
+            const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, i );
+            pairs[i] = InterfacePair{ mesh1_element, mesh2_element };
+          } );
+    } else {
+      ArrayT<bool> keep( axom::ArrayOptions::Uninitialized{}, candidates.size(), candidates.size(),
+                         mesh1_.getAllocatorId() );
+      ArrayT<IndexT> pair_count_data( { 0 }, mesh1_.getAllocatorId() );
+      auto keep_view = keep.view();
+      auto pair_count = pair_count_data.view();
+
+      // A same-mesh search visits both pair directions. Retain one direction while leaving self-pair policy to the
+      // method-specific filter.
+      forAllExec<ExecMode, false>(
+          candidates.size(),
+          [candidate_ids, candidate_offsets, candidate_counts, keep_view, pair_count] TRIBOL_HOST_DEVICE( IndexT i ) {
+            const IndexT mesh1_element = candidate_ids[i];
+            const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, i );
+            const bool retain = mesh1_element >= mesh2_element;
+            keep_view[i] = retain;
+            if ( retain ) {
+              tribol::atomicInc( pair_count.data() );
+            }
+          } );
+
+      ArrayT<IndexT, 1, MemorySpace::Host> pair_count_host( pair_count_data );
+      candidate_pairs = ArrayT<InterfacePair>( axom::ArrayOptions::Uninitialized{}, pair_count_host[0],
+                                               pair_count_host[0], mesh1_.getAllocatorId() );
+      pair_count_data.fill( 0 );
+      auto pairs = candidate_pairs.view();
+
+      forAllExec<ExecMode, false>(
+          candidates.size(),
+          [candidate_ids, candidate_offsets, candidate_counts, keep_view, pair_count, pairs] TRIBOL_HOST_DEVICE(
+              IndexT i ) {
+            if ( !keep_view[i] ) {
+              return;
+            }
+            const IndexT mesh1_element = candidate_ids[i];
+            const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, i );
+            const IndexT out_idx = tribol::atomicInc( pair_count.data() );
+            pairs[out_idx] = InterfacePair{ mesh1_element, mesh2_element };
+          } );
+    }
 
     return candidate_pairs;
   }

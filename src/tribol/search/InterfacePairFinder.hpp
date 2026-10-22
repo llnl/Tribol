@@ -6,6 +6,8 @@
 #ifndef SRC_TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_
 #define SRC_TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_
 
+#include <memory>
+
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
@@ -171,7 +173,7 @@ class InterfacePairFinder {
 
  private:
   CouplingScheme* m_coupling_scheme;
-  SearchBase* m_search;  // The search strategy
+  std::unique_ptr<SearchBase> m_search;  // The search strategy
 };
 
 }  // end namespace tribol

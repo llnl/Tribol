@@ -221,6 +221,43 @@ TEST( CoarseSearch, legacy_interface_pair_finder_retains_geometry_filter )
   ExpectLegacySearchRejectsCoarseCandidate( tribol::BINNING_BVH );
 }
 
+TEST( CoarseSearch, same_mesh_search_deduplicates_pairs )
+{
+  // When searching a mesh against itself, duplicate cross-pairs (i, j) with i < j must be excluded.
+  constexpr std::array<tribol::IndexT, 4> connectivity{ 0, 1, 1, 2 };
+  constexpr std::array<tribol::RealT, 3> x{ 0.0, 1.0, 2.0 };
+  constexpr std::array<tribol::RealT, 3> y{ 0.0, 0.0, 0.0 };
+
+  tribol::MeshData mesh( mesh1_id, 2, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE,
+                         x.data(), y.data(), nullptr, tribol::MemorySpace::Host );
+
+  // Both searches must return only (i, j) with i >= j.
+  const auto grid_candidates = FindCandidateIds<tribol::GridSearch<2>>( mesh, mesh );
+  const auto bvh_candidates =
+      FindCandidateIds<tribol::BvhSearch<2, tribol::ExecutionMode::Sequential>>( mesh, mesh );
+
+  EXPECT_EQ( grid_candidates, bvh_candidates );
+  for ( const auto& [elem1, elem2] : bvh_candidates ) {
+    EXPECT_GE( elem1, elem2 );
+  }
+  EXPECT_FALSE( bvh_candidates.empty() );
+}
+
+TEST( CoarseSearch, flat_elements_avoid_division_by_zero )
+{
+  // Degenerate zero-thickness elements with zero proximity expansion must not produce NaN grid resolutions.
+  constexpr std::array<tribol::IndexT, 2> connectivity{ 0, 1 };
+  constexpr std::array<tribol::RealT, 2> x{ 0.0, 0.0 };
+  constexpr std::array<tribol::RealT, 2> y{ 0.0, 0.0 };
+
+  tribol::MeshData mesh( mesh1_id, 1, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE,
+                         x.data(), y.data(), nullptr, tribol::MemorySpace::Host );
+
+  tribol::GridSearch<2> grid_search( mesh.getView(), mesh.getView(), 0.0, 0.0 );
+  const auto candidates = grid_search.findCandidatePairs();
+  EXPECT_EQ( candidates.size(), 1 );
+}
+
 }  // namespace
 
 int main( int argc, char* argv[] )

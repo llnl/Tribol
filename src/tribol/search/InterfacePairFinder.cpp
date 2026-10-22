@@ -5,6 +5,7 @@
 
 #include "tribol/search/InterfacePairFinder.hpp"
 
+#include <memory>
 #include <utility>
 
 #include "axom/slic.hpp"
@@ -123,9 +124,9 @@ class CartesianProduct final : public SearchBase {
     }
 
     ArrayT<bool> accepted( maximum_pair_count, maximum_pair_count, coupling_scheme_.getAllocatorId() );
-    ArrayT<int> accepted_count_data( { 0 }, coupling_scheme_.getAllocatorId() );
+    ArrayT<IndexT> accepted_count_data( { 0 }, coupling_scheme_.getAllocatorId() );
     bool* accepted_values = accepted.data();
-    int* accepted_count = accepted_count_data.data();
+    auto accepted_count = accepted_count_data.view();
     const auto coupling_scheme_view = coupling_scheme_.getView();
 
     forAllExec( coupling_scheme_.getExecutionMode(), maximum_pair_count,
@@ -142,11 +143,11 @@ class CartesianProduct final : public SearchBase {
 
                   accepted_values[candidate] = geomFilter( coupling_scheme_view, mesh1_element, mesh2_element );
                   if ( accepted_values[candidate] ) {
-                    tribol::atomicAdd( accepted_count, 1 );
+                    tribol::atomicInc( accepted_count.data() );
                   }
                 } );
 
-    ArrayT<int, 1, MemorySpace::Host> accepted_count_host( accepted_count_data );
+    ArrayT<IndexT, 1, MemorySpace::Host> accepted_count_host( accepted_count_data );
     auto& interface_pairs = coupling_scheme_.getInterfacePairs();
     interface_pairs.resize( accepted_count_host[0] );
 
@@ -168,7 +169,7 @@ class CartesianProduct final : public SearchBase {
                     mesh2_element = candidate - offset;
                   }
 
-                  const IndexT accepted_index = tribol::atomicInc( accepted_count );
+                  const IndexT accepted_index = tribol::atomicInc( accepted_count.data() );
                   interface_pairs_view[accepted_index] = InterfacePair{ mesh1_element, mesh2_element };
                 } );
 
@@ -181,9 +182,9 @@ class CartesianProduct final : public SearchBase {
 };
 
 template <typename Search>
-SearchBase* MakeFilteredSearch( CouplingScheme& coupling_scheme )
+std::unique_ptr<SearchBase> MakeFilteredSearch( CouplingScheme& coupling_scheme )
 {
-  return new FilteredSearch<Search>(
+  return std::make_unique<FilteredSearch<Search>>(
       coupling_scheme, coupling_scheme.getMesh1().getView(), coupling_scheme.getMesh2().getView(),
       coupling_scheme.getEffectiveBinningProximityScale(), coupling_scheme.getParameters().residual_gap );
 }
@@ -205,10 +206,10 @@ InterfacePairFinder::InterfacePairFinder( CouplingScheme* coupling_scheme ) : m_
     case BINNING_CARTESIAN_PRODUCT:
       switch ( spatial_dimension ) {
         case 2:
-          m_search = new CartesianProduct<2>( *m_coupling_scheme );
+          m_search = std::make_unique<CartesianProduct<2>>( *m_coupling_scheme );
           break;
         case 3:
-          m_search = new CartesianProduct<3>( *m_coupling_scheme );
+          m_search = std::make_unique<CartesianProduct<3>>( *m_coupling_scheme );
           break;
         default:
           SLIC_ERROR_ROOT( "Invalid dimension: " << spatial_dimension );
@@ -291,7 +292,7 @@ InterfacePairFinder::InterfacePairFinder( CouplingScheme* coupling_scheme ) : m_
   }
 }
 
-InterfacePairFinder::~InterfacePairFinder() { delete m_search; }
+InterfacePairFinder::~InterfacePairFinder() = default;
 
 void InterfacePairFinder::findInterfacePairs()
 {

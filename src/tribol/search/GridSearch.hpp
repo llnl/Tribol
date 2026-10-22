@@ -6,6 +6,7 @@
 #ifndef SRC_TRIBOL_SEARCH_GRIDSEARCH_HPP_
 #define SRC_TRIBOL_SEARCH_GRIDSEARCH_HPP_
 
+#include <algorithm>
 #include <cmath>
 
 #include "axom/primal.hpp"
@@ -99,8 +100,13 @@ class GridSearch {
     typename ImplicitGrid::GridCell resolution;
     const SpaceVector grid_range = grid_bounding_box.range();
     for ( int dimension = 0; dimension < SpatialDimension; ++dimension ) {
-      resolution[dimension] =
-          static_cast<IndexT>( std::ceil( grid_resolution_scale * grid_range[dimension] / average_ranges[dimension] ) );
+      if ( average_ranges[dimension] > 0.0 && grid_range[dimension] > 0.0 ) {
+        resolution[dimension] =
+            std::max( static_cast<IndexT>( 1 ),
+                      static_cast<IndexT>( std::ceil( grid_resolution_scale * grid_range[dimension] / average_ranges[dimension] ) ) );
+      } else {
+        resolution[dimension] = 1;
+      }
     }
 
     grid.initialize( grid_bounding_box, &resolution, mesh1_.numberOfElements() );
