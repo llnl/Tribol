@@ -255,6 +255,32 @@ ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_si
   return diagonalMatrix( comm, global_size, row_starts_array, diag_val, ordered_rows, skip_rows );
 }
 
+ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_size, HYPRE_BigInt* row_starts,
+                                           const mfem::Vector& diag_vals )
+{
+  int num_local_rows = diag_vals.Size();
+
+  mfem::Array<int> rows( num_local_rows + 1 );
+  mfem::Array<int> cols( num_local_rows );
+  rows[0] = 0;
+
+  for ( int i = 0; i < num_local_rows; ++i ) {
+    rows[i + 1] = i + 1;
+    cols[i] = i;
+  }
+
+  rows.GetMemory().SetHostPtrOwner( false );
+  cols.GetMemory().SetHostPtrOwner( false );
+
+  mfem::Vector vals = diag_vals;
+  vals.GetMemory().SetHostPtrOwner( false );
+
+  mfem::SparseMatrix inactive_diag( rows.GetData(), cols.GetData(), vals.GetData(), num_local_rows, num_local_rows,
+                                    false, false, true );
+
+  return ParSparseMat( comm, global_size, row_starts, std::move( inactive_diag ) );
+}
+
 #endif  // #ifdef TRIBOL_USE_MPI
 
 }  // namespace shared
