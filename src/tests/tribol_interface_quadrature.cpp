@@ -99,12 +99,23 @@ TEST( InterfaceQuadratureData, owns_pairs_and_variable_point_ranges )
   EXPECT_EQ( view.getQuadraturePoint( 0, 1 ).getMesh1ParentCoordinates()[0], 0.5 );
   EXPECT_EQ( view.getQuadraturePoint( 1, 0 ).getWeight(), 1.2 );
 
+  auto pair0_points = view.getQuadraturePoints( 0 );
+  EXPECT_EQ( pair0_points.size(), 2 );
+  EXPECT_EQ( pair0_points[1].getMesh1ParentCoordinates()[0], 0.5 );
+  auto pair1_points = view.getQuadraturePoints( 1 );
+  EXPECT_EQ( pair1_points.size(), 1 );
+  EXPECT_EQ( pair1_points[0].getWeight(), 1.2 );
+
   // An empty rule retains the one terminal offset required by the same CSR contract used for populated rules.
   QuadratureData empty_quadrature_data( 0, 0, host_allocator_id );
-  empty_quadrature_data.getPairOffsets()[0] = 0;
   const auto empty_view = empty_quadrature_data.getView();
   EXPECT_EQ( empty_view.numberOfPairs(), 0 );
   EXPECT_EQ( empty_view.numberOfQuadraturePoints(), 0 );
+
+  QuadratureData default_empty_data;
+  const auto default_view = default_empty_data.getView();
+  EXPECT_EQ( default_view.numberOfPairs(), 0 );
+  EXPECT_EQ( default_view.numberOfQuadraturePoints(), 0 );
 }
 
 TEST( InterfaceQuadratureData, integrates_quadratic_edge_gap_like_data )

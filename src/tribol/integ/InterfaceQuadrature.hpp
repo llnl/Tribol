@@ -13,6 +13,7 @@
 
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/Enzyme.hpp"
+#include "tribol/common/ExecModel.hpp"
 #include "tribol/common/MdArray.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 
@@ -146,7 +147,11 @@ class InterfaceQuadratureData {
     TRIBOL_HOST_DEVICE IndexT numberOfQuadraturePoints( IndexT pair_index ) const
     {
       assert( pair_index >= 0 && pair_index < numberOfPairs() );
-      return pair_offsets_[pair_index + 1] - pair_offsets_[pair_index];
+      const IndexT pair_begin = pair_offsets_[pair_index];
+      const IndexT pair_end = pair_offsets_[pair_index + 1];
+      assert( pair_begin >= 0 && pair_begin <= pair_end );
+      assert( pair_end <= numberOfQuadraturePoints() );
+      return pair_end - pair_begin;
     }
 
     /** @brief Return one quadrature point using its interface-pair-local index */
@@ -154,10 +159,24 @@ class InterfaceQuadratureData {
     {
       assert( pair_index >= 0 && pair_index < numberOfPairs() );
       const IndexT pair_begin = pair_offsets_[pair_index];
-      const IndexT pair_point_count = pair_offsets_[pair_index + 1] - pair_begin;
+      const IndexT pair_end = pair_offsets_[pair_index + 1];
+      assert( pair_begin >= 0 && pair_begin <= pair_end );
+      const IndexT pair_point_count = pair_end - pair_begin;
       assert( point_index >= 0 && point_index < pair_point_count );
+      assert( pair_begin + point_index < numberOfQuadraturePoints() );
       static_cast<void>( pair_point_count );
       return quadrature_points_[pair_begin + point_index];
+    }
+
+    /** @brief Return a contiguous view of the quadrature points assigned to one interface pair */
+    TRIBOL_HOST_DEVICE ArrayViewT<const QuadraturePoint> getQuadraturePoints( IndexT pair_index ) const
+    {
+      assert( pair_index >= 0 && pair_index < numberOfPairs() );
+      const IndexT pair_begin = pair_offsets_[pair_index];
+      const IndexT pair_end = pair_offsets_[pair_index + 1];
+      assert( pair_begin >= 0 && pair_begin <= pair_end );
+      assert( pair_end <= numberOfQuadraturePoints() );
+      return ArrayViewT<const QuadraturePoint>( quadrature_points_.data() + pair_begin, pair_end - pair_begin );
     }
 
    private:
@@ -166,17 +185,37 @@ class InterfaceQuadratureData {
     ArrayViewT<const QuadraturePoint> quadrature_points_;
   };
 
+  /** @brief Construct an empty quadrature data container */
+  InterfaceQuadratureData()
+      : interface_pairs_( 0, 0, getDefaultAllocatorID() ),
+        pair_offsets_( { 0 }, getDefaultAllocatorID() ),
+        quadrature_points_( 0, 0, getDefaultAllocatorID() )
+  {
+  }
+
+  /** @brief Construct an empty quadrature data container using the specified allocator */
+  explicit InterfaceQuadratureData( int allocator_id )
+      : interface_pairs_( 0, 0, allocator_id ),
+        pair_offsets_( { 0 }, allocator_id ),
+        quadrature_points_( 0, 0, allocator_id )
+  {
+  }
+
   /**
    * @brief Allocate uninitialized storage for a known number of pairs and points
    *
    * Callers fill every pair, point, and offset before requesting a viewer. The offset array has number_of_pairs + 1
-   * entries and must begin at zero, end at number_of_points, and remain nondecreasing.
+   * entries and must begin at zero, end at number_of_points, and remain nondecreasing. For zero pairs, pair_offsets
+   * is initialized with a single zero entry.
    */
   InterfaceQuadratureData( IndexT number_of_pairs, IndexT number_of_points, int allocator_id )
       : interface_pairs_( axom::ArrayOptions::Uninitialized{}, number_of_pairs, number_of_pairs, allocator_id ),
         pair_offsets_( axom::ArrayOptions::Uninitialized{}, number_of_pairs + 1, number_of_pairs + 1, allocator_id ),
         quadrature_points_( axom::ArrayOptions::Uninitialized{}, number_of_points, number_of_points, allocator_id )
   {
+    if ( number_of_pairs == 0 ) {
+      pair_offsets_.fill( 0 );
+    }
   }
 
   /**
@@ -195,6 +234,14 @@ class InterfaceQuadratureData {
     assert( pair_offsets_.size() == interface_pairs_.size() + 1 );
     assert( interface_pairs_.getAllocatorID() == pair_offsets_.getAllocatorID() );
     assert( interface_pairs_.getAllocatorID() == quadrature_points_.getAllocatorID() );
+#ifndef NDEBUG
+    ArrayT<IndexT, 1, MemorySpace::Host> offsets_host( pair_offsets_ );
+    assert( offsets_host[0] == 0 );
+    assert( offsets_host[offsets_host.size() - 1] == quadrature_points_.size() );
+    for ( IndexT i = 0; i < interface_pairs_.size(); ++i ) {
+      assert( offsets_host[i] <= offsets_host[i + 1] );
+    }
+#endif
   }
 
   InterfaceQuadratureData( const InterfaceQuadratureData& ) = delete;
