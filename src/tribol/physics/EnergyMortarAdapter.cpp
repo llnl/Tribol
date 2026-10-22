@@ -111,8 +111,12 @@ void EnergyMortarAdapter::updateNodalGaps()
 
     double g_tilde_elem[2];
     double A_elem[2];
+    double dg_dx_node1[8];
+    double dg_dx_node2[8];
+    double dA_dx_node1[8];
+    double dA_dx_node2[8];
 
-    evaluator_->compute_gtilde_and_area( flipped_pair, mesh1_view, mesh2_view, g_tilde_elem, A_elem );
+    evaluator_->computeContactQuantities( flipped_pair, mesh1_view, mesh2_view, g_tilde_elem, A_elem, dg_dx_node1, dg_dx_node2, dA_dx_node1, dA_dx_node2 );
 
     if ( A_elem[0] <= 0.0 && A_elem[1] <= 0.0 ) {
       continue;
@@ -127,11 +131,6 @@ void EnergyMortarAdapter::updateNodalGaps()
     redecomp_area( A_conn[0] ) += A_elem[0];
     redecomp_area( A_conn[1] ) += A_elem[1];
 
-    // compute g_tilde first derivative
-    double dg_dx_node1[8];
-    double dg_dx_node2[8];
-    // TODO: make grad_gtilde return directly in dg_tilde_dx_blocks format
-    evaluator_->grad_gtilde( flipped_pair, mesh1_view, mesh2_view, dg_dx_node1, dg_dx_node2 );
     double dg_tilde_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
       dg_tilde_dx_blocks[0][i * 2] = dg_dx_node1[node_idx[i]];
@@ -142,10 +141,6 @@ void EnergyMortarAdapter::updateNodalGaps()
     dg_lm_nm.append( elem1, elem1, dg_tilde_dx_blocks[0], 8 );
     dg_lm_m.append( elem1, elem2, dg_tilde_dx_blocks[1], 8 );
 
-    double dA_dx_node1[8];
-    double dA_dx_node2[8];
-    // TODO: make grad_trib_area return directly in dA_dx_blocks format
-    evaluator_->grad_trib_area( flipped_pair, mesh1_view, mesh2_view, dA_dx_node1, dA_dx_node2 );
     double dA_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
       dA_dx_blocks[0][i * 2] = dA_dx_node1[node_idx[i]];
@@ -338,7 +333,9 @@ shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesLM( const 
 
     double d2g_dx2_node1[64];
     double d2g_dx2_node2[64];
-    evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2 );
+    double d2A_dx2_node1[64];
+    double d2A_dx2_node2[64];
+    evaluator_->computeSecondDerivatives( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2, d2A_dx2_node1, d2A_dx2_node2 );
 
     double df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
@@ -417,11 +414,9 @@ shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesPenalty(
 
     double d2g_dx2_node1[64];
     double d2g_dx2_node2[64];
-    evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2 );
-
     double d2A_dx2_node1[64];
     double d2A_dx2_node2[64];
-    evaluator_->compute_d2A_d2u( flipped_pair, mesh1_view, mesh2_view, d2A_dx2_node1, d2A_dx2_node2 );
+    evaluator_->computeSecondDerivatives( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2, d2A_dx2_node1, d2A_dx2_node2 );
 
     double df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
