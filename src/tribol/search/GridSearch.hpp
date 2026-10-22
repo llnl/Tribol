@@ -101,9 +101,8 @@ class GridSearch {
     const SpaceVector grid_range = grid_bounding_box.range();
     for ( int dimension = 0; dimension < SpatialDimension; ++dimension ) {
       if ( average_ranges[dimension] > 0.0 && grid_range[dimension] > 0.0 ) {
-        resolution[dimension] =
-            std::max( static_cast<IndexT>( 1 ),
-                      static_cast<IndexT>( std::ceil( grid_resolution_scale * grid_range[dimension] / average_ranges[dimension] ) ) );
+        resolution[dimension] = static_cast<IndexT>(
+            std::ceil( grid_resolution_scale * grid_range[dimension] / average_ranges[dimension] ) );
       } else {
         resolution[dimension] = 1;
       }

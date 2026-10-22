@@ -27,16 +27,20 @@ constexpr tribol::IndexT mesh2_id = 29;
 constexpr tribol::RealT proximity_scale_for_raised_nodes = 0.2;
 constexpr tribol::RealT no_residual_gap = 0.0;
 
+CandidateIds GetCandidateIds( const tribol::ArrayT<tribol::InterfacePair>& candidate_pairs )
+{
+  CandidateIds candidate_ids;
+  for ( const auto& pair : candidate_pairs ) {
+    candidate_ids.emplace( pair.m_element_id1, pair.m_element_id2 );
+  }
+  return candidate_ids;
+}
+
 template <typename Search>
 CandidateIds FindCandidateIds( tribol::MeshData& mesh1, tribol::MeshData& mesh2 )
 {
   Search search( mesh1.getView(), mesh2.getView(), proximity_scale_for_raised_nodes, no_residual_gap );
-
-  CandidateIds candidate_ids;
-  for ( const auto& pair : search.findCandidatePairs() ) {
-    candidate_ids.emplace( pair.m_element_id1, pair.m_element_id2 );
-  }
-  return candidate_ids;
+  return GetCandidateIds( search.findCandidatePairs() );
 }
 
 template <int SpatialDimension>
@@ -54,11 +58,7 @@ void ExpectBothSearchesFindOnlyFirstQuery( tribol::MeshData& mesh1, tribol::Mesh
 template <typename Search>
 CandidateIds FindCandidateIds( const Search& search )
 {
-  CandidateIds candidate_ids;
-  for ( const auto& pair : search.findCandidatePairs() ) {
-    candidate_ids.emplace( pair.m_element_id1, pair.m_element_id2 );
-  }
-  return candidate_ids;
+  return GetCandidateIds( search.findCandidatePairs() );
 }
 
 TEST( CoarseSearch, quadratic_edge_nodes_contribute_to_bounds )
@@ -223,35 +223,38 @@ TEST( CoarseSearch, legacy_interface_pair_finder_retains_geometry_filter )
 
 TEST( CoarseSearch, same_mesh_search_deduplicates_pairs )
 {
-  // When searching a mesh against itself, duplicate cross-pairs (i, j) with i < j must be excluded.
+  // When searching a mesh against itself, each intersecting pair must appear in only one mirrored direction.
   constexpr std::array<tribol::IndexT, 4> connectivity{ 0, 1, 1, 2 };
   constexpr std::array<tribol::RealT, 3> x{ 0.0, 1.0, 2.0 };
   constexpr std::array<tribol::RealT, 3> y{ 0.0, 0.0, 0.0 };
 
-  tribol::MeshData mesh( mesh1_id, 2, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE,
-                         x.data(), y.data(), nullptr, tribol::MemorySpace::Host );
+  tribol::MeshData mesh( mesh1_id, 2, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(),
+                         y.data(), nullptr, tribol::MemorySpace::Host );
 
-  // Both searches must return only (i, j) with i >= j.
-  const auto grid_candidates = FindCandidateIds<tribol::GridSearch<2>>( mesh, mesh );
-  const auto bvh_candidates =
-      FindCandidateIds<tribol::BvhSearch<2, tribol::ExecutionMode::Sequential>>( mesh, mesh );
+  tribol::GridSearch<2> grid_search( mesh.getView(), mesh.getView(), proximity_scale_for_raised_nodes,
+                                     no_residual_gap );
+  tribol::BvhSearch<2, tribol::ExecutionMode::Sequential> bvh_search(
+      mesh.getView(), mesh.getView(), proximity_scale_for_raised_nodes, no_residual_gap );
+  const auto grid_candidates = grid_search.findCandidatePairs();
+  const auto bvh_candidates = bvh_search.findCandidatePairs();
+  const CandidateIds expected_candidates{ { 0, 0 }, { 1, 0 }, { 1, 1 } };
 
-  EXPECT_EQ( grid_candidates, bvh_candidates );
-  for ( const auto& [elem1, elem2] : bvh_candidates ) {
-    EXPECT_GE( elem1, elem2 );
-  }
-  EXPECT_FALSE( bvh_candidates.empty() );
+  // Comparing raw counts with the unique ID set ensures neither search returns an identical pair more than once.
+  EXPECT_EQ( grid_candidates.size(), expected_candidates.size() );
+  EXPECT_EQ( bvh_candidates.size(), expected_candidates.size() );
+  EXPECT_EQ( GetCandidateIds( grid_candidates ), expected_candidates );
+  EXPECT_EQ( GetCandidateIds( bvh_candidates ), expected_candidates );
 }
 
 TEST( CoarseSearch, flat_elements_avoid_division_by_zero )
 {
-  // Degenerate zero-thickness elements with zero proximity expansion must not produce NaN grid resolutions.
+  // A valid line element has zero range normal to the line, which must still produce a valid grid resolution.
   constexpr std::array<tribol::IndexT, 2> connectivity{ 0, 1 };
-  constexpr std::array<tribol::RealT, 2> x{ 0.0, 0.0 };
+  constexpr std::array<tribol::RealT, 2> x{ 0.0, 1.0 };
   constexpr std::array<tribol::RealT, 2> y{ 0.0, 0.0 };
 
-  tribol::MeshData mesh( mesh1_id, 1, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE,
-                         x.data(), y.data(), nullptr, tribol::MemorySpace::Host );
+  tribol::MeshData mesh( mesh1_id, 1, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(),
+                         y.data(), nullptr, tribol::MemorySpace::Host );
 
   tribol::GridSearch<2> grid_search( mesh.getView(), mesh.getView(), 0.0, 0.0 );
   const auto candidates = grid_search.findCandidatePairs();
