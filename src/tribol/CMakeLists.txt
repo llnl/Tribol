@@ -77,6 +77,7 @@ set(tribol_sources
 
     physics/AlignedMortar.cpp
     physics/CommonPlane.cpp
+    physics/ModularFormulation.cpp
     physics/Mortar.cpp
     physics/Physics.cpp
      

@@ -6,121 +6,148 @@
 #ifndef SRC_TRIBOL_PHYSICS_MODULARFORMULATION_HPP_
 #define SRC_TRIBOL_PHYSICS_MODULARFORMULATION_HPP_
 
+#include "tribol/config.hpp"
+
 #include "tribol/physics/ContactFormulation.hpp"
+#include "tribol/mesh/MfemData.hpp"
+#include "tribol/common/Parameters.hpp"
+#include "tribol/common/ArrayTypes.hpp"
+
+#include "mfem.hpp"
+
+#include <memory>
+#include <vector>
+#include <array>
 
 namespace tribol {
 
-template <typename IntegrationRule, typename PointwiseGapAndNormal, typename ForceAndGapMethod>
+#ifdef TRIBOL_USE_ENZYME
+
 class ModularFormulation : public ContactFormulation {
  public:
-  ModularFormulation( IntegrationRule&& integration_rule, PointwiseGapAndNormal&& pointwise_gap_and_normal,
-                      ForceAndGapMethod&& force_and_gap_method )
-      : integration_rule_( std::move( integration_rule ) ),
-        pointwise_gap_and_normal_( std::move( pointwise_gap_and_normal ) ),
-        force_and_gap_method_( std::move( force_and_gap_method ) )
-  {
-  }
-
   /**
-   * @brief Sets the initial set of candidate interface pairs
+   * @brief Constructor
    *
-   * @param pairs View of the coarse-binned interface pairs
-   * @param check_level In general, higher values mean more checks and 0 means don't do checks. See
-   * IntegrationRule::findPairsInContact() for details.
+   * @param submesh_data Reference to Tribol's MFEM submesh data
+   * @param jac_data Reference to Tribol's MFEM Jacobian data
+   * @param mesh1 Non-mortar mesh (swapped internally to mesh2_ for literature consistency)
+   * @param mesh2 Mortar mesh (swapped internally to mesh1_ for literature consistency)
+   * @param k Penalty stiffness
+   * @param delta Smoothing length
+   * @param N Quadrature order
    */
+  ModularFormulation( MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, MeshData& mesh1, MeshData& mesh2,
+                      double k, double delta, int N );
+
+  virtual ~ModularFormulation() = default;
+
+  // --- ContactFormulation Interface Implementation ---
+
   void setInterfacePairs( ArrayT<InterfacePair>&& pairs, int check_level ) override;
 
-  /**
-   * @brief Updates the integration rule
-   *
-   * Determines overlapping contact pairs and computes necessary integration data (e.g. quadrature points, weights).
-   *
-   * @note Requires setInterfacePairs() to be called first.
-   */
   void updateIntegrationRule() override;
 
-  /**
-   * @brief Updates nodal gaps
-   *
-   * @note Requires updateIntegrationRule() to be called first.
-   */
   void updateNodalGaps() override;
 
-  /**
-   * @brief Updates nodal forces/residual
-   *
-   * @note Requires updateNodalGaps() to be called first.
-   */
   void updateNodalForces() override;
 
-  /**
-   * @brief Computes the maximum allowable timestep for the formulation
-   *
-   * @return maximum allowable timestep
-   */
   RealT computeTimeStep() override;
 
+  RealT getEnergy() const override { return energy_; }
+
 #ifdef BUILD_REDECOMP
-  /**
-   * @brief Adds computed forces to the provided MFEM vector
-   *
-   * @param [in,out] forces MFEM vector to add forces to
-   *
-   * @note Requires updateNodalForces() to be called first.
-   */
-  void getMfemForce( mfem::Vector& forces ) const override;
+  const mfem::HypreParVector& getMfemForce() const override { return force_vec_.get(); }
 
-  /**
-   * @brief Populates the provided MFEM vector with gap values
-   *
-   * Resizes the vector if necessary, zeros it out, and sets gap values.
-   *
-   * @param [out] gaps MFEM vector to store gaps in
-   *
-   * @note Requires updateNodalGaps() to be called first.
-   */
-  void getMfemGap( mfem::Vector& gaps ) const override;
+  const mfem::HypreParVector& getMfemGap() const override { return gap_vec_.get(); }
 
-  /**
-   * @brief Returns a reference to the MFEM pressure grid function
-   *
-   * @return mfem::ParGridFunction& Reference to the pressure grid function
-   */
-  mfem::ParGridFunction& getMfemPressure() override;
+  mfem::HypreParVector& getMfemPressure() override { return pressure_vec_.get(); }
 
-  /**
-   * @brief Get the derivative of force with respect to displacement
-   *
-   * @return Unique pointer to MFEM HypreParMatrix
-   *
-   * @note Requires updateNodalForces() to be called first.
-   */
-  std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx() const = 0;
+  std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx() const override;
 
-  /**
-   * @brief Get the derivative of gap with respect to displacement
-   *
-   * @return Unique pointer to MFEM HypreParMatrix
-   *
-   * @note Requires updateNodalGaps() to be called first.
-   */
   std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx() const override;
 
-  /**
-   * @brief Get the derivative of force with respect to pressure
-   *
-   * @return Unique pointer to mfem::HypreParMatrix
-   *
-   * @note Requires updateNodalForces() to be called first.
-   */
   std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const override;
 #endif
 
  private:
-  IntegrationRule integration_rule_;
-  PointwiseGapAndNormal pointwise_gap_and_normal_;
-  ForceAndGapMethod force_and_gap_method_;
+  struct ContactParams {
+    double del;
+    double k;
+    int N;
+  };
+
+  struct QuadPoints {
+    std::vector<double> qp;
+    std::vector<double> w;
+  };
+
+  struct NodalContactData {
+    std::array<double, 2> AI;
+    std::array<double, 2> g_tilde;
+  };
+
+  // --- Physics Member Functions ---
+
+  void gtilde_and_area( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+                        double gtilde[2], double area[2] ) const;
+
+  void grad_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+                    double dgt1_dx[8], double dgt2_dx[8] ) const;
+
+  void grad_trib_area( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+                       double dA1_dx[8], double dA2_dx[8] ) const;
+
+  void d2_g2tilde( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+                   double dgt1_dx[64], double dgt2_dx[64] ) const;
+
+  void compute_d2A_d2u( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+                        double dgt1_dx[64], double dgt2_dx[64] ) const;
+
+  std::array<double, 2> bounds_from_projections( const std::array<double, 2>& proj ) const;
+
+  std::array<double, 2> smooth_bounds( const std::array<double, 2>& bounds ) const;
+
+  QuadPoints compute_quadrature( const std::array<double, 2>& xi_bounds ) const;
+
+  std::array<double, 2> projections( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                     const MeshData::Viewer& mesh2 ) const;
+
+  double gap( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+              double xiA ) const;
+
+  NodalContactData compute_nodal_contact_data( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                               const MeshData::Viewer& mesh2 ) const;
+
+  std::array<double, 2> compute_pressures( const NodalContactData& ncd ) const;
+
+  // --- Member Variables ---
+
+  double area_tol_{ 1.0e-14 };
+  bool tied_contact_ = false;
+
+  MfemSubmeshData& submesh_data_;
+  MfemJacobianData& jac_data_;
+  MeshData& mesh1_;
+  MeshData& mesh2_;
+  ContactParams params_;
+
+  // Stored InterfacePairs
+  ArrayT<InterfacePair> pairs_;
+
+  // These store the assembled nodal values
+  shared::ParVector g_tilde_vec_;
+  shared::ParVector A_vec_;
+  shared::ParVector gap_vec_;
+  mutable shared::ParSparseMat dg_tilde_dx_;
+  shared::ParSparseMat dA_dx_;
+
+  shared::ParVector pressure_vec_;  // This holds p = k * g / A
+  RealT energy_;
+  shared::ParVector force_vec_;
+  mutable shared::ParSparseMat df_dx_;
 };
+
+#endif  // TRIBOL_USE_ENZYME
 
 }  // namespace tribol
 
