@@ -29,8 +29,8 @@ void ExpectBothSearchesFindCandidates( tribol::MeshData& mesh1, tribol::MeshData
                                        const CandidateIds& expected_candidates )
 {
   tribol::GridSearch<SpatialDimension> grid_search( proximity_scale_for_raised_nodes, no_residual_gap );
-  tribol::BvhSearch<SpatialDimension, tribol::ExecutionMode::Sequential> bvh_search(
-      proximity_scale_for_raised_nodes, no_residual_gap );
+  tribol::BvhSearch<SpatialDimension, tribol::ExecutionMode::Sequential> bvh_search( proximity_scale_for_raised_nodes,
+                                                                                     no_residual_gap );
 
   const auto grid_candidates = grid_search.findCandidatePairs( mesh1.getView(), mesh2.getView() );
   const auto bvh_candidates = bvh_search.findCandidatePairs( mesh1.getView(), mesh2.getView() );
@@ -115,9 +115,9 @@ TEST( CoarseSearch, quadratic_quad_nodes_contribute_to_bounds )
                           tribol::QUADRATIC_LAGRANGE, mesh2_x.data(), mesh2_y.data(), mesh2_z.data(),
                           tribol::MemorySpace::Host );
 
-  tribol::MeshData corner_only_mesh1( mesh1_id, 1, corner_connectivity.size(), corner_connectivity.data(),
-                                      tribol::QUAD, tribol::LINEAR_LAGRANGE, mesh1_x.data(), mesh1_y.data(),
-                                      mesh1_z.data(), tribol::MemorySpace::Host );
+  tribol::MeshData corner_only_mesh1( mesh1_id, 1, corner_connectivity.size(), corner_connectivity.data(), tribol::QUAD,
+                                      tribol::LINEAR_LAGRANGE, mesh1_x.data(), mesh1_y.data(), mesh1_z.data(),
+                                      tribol::MemorySpace::Host );
 
   // The corner-only control remains in the z=0 plane and cannot reach the nearby query. Finding that query only after
   // adding the raised center node proves that both searches include the quadratic node in their element bounds.
@@ -157,12 +157,10 @@ TEST( CoarseSearch, nonconforming_quadratic_edge_meshes_find_expected_candidates
   constexpr std::array<tribol::RealT, 6> mesh2_x{ 0.5, 1.5, 1.0, 4.5, 5.5, 5.0 };
   constexpr std::array<tribol::RealT, 6> mesh2_y{ 1.1, 1.1, 1.2, 1.1, 1.1, 1.2 };
 
-  tribol::MeshData mesh1( mesh1_id, 2, mesh1_x.size(), connectivity.data(), tribol::EDGE,
-                          tribol::QUADRATIC_LAGRANGE, mesh1_x.data(), mesh1_y.data(), nullptr,
-                          tribol::MemorySpace::Host );
-  tribol::MeshData mesh2( mesh2_id, 2, mesh2_x.size(), connectivity.data(), tribol::EDGE,
-                          tribol::QUADRATIC_LAGRANGE, mesh2_x.data(), mesh2_y.data(), nullptr,
-                          tribol::MemorySpace::Host );
+  tribol::MeshData mesh1( mesh1_id, 2, mesh1_x.size(), connectivity.data(), tribol::EDGE, tribol::QUADRATIC_LAGRANGE,
+                          mesh1_x.data(), mesh1_y.data(), nullptr, tribol::MemorySpace::Host );
+  tribol::MeshData mesh2( mesh2_id, 2, mesh2_x.size(), connectivity.data(), tribol::EDGE, tribol::QUADRATIC_LAGRANGE,
+                          mesh2_x.data(), mesh2_y.data(), nullptr, tribol::MemorySpace::Host );
 
   // Each raised mesh-1 midpoint is near only its corresponding shifted mesh-2 edge. Cross-element pairs remain far
   // enough apart that the searches must return exactly the two corresponding element IDs.
