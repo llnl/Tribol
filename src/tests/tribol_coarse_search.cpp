@@ -109,8 +109,8 @@ TEST( CoarseSearch, quadratic_edge_nodes_contribute_to_bounds )
 
 TEST( CoarseSearch, quadratic_quad_nodes_contribute_to_bounds )
 {
-  // Mesh 2 has one query near the raised center node and one spatially distant query. The coarse bounds must include
-  // the center node to find the nearby query without also finding the distant query.
+  // Mesh 1 is a unit quadrilateral in z=0 with its center node raised to z=2. Mesh 2 has a small query centered over
+  // that node at z=2.1 and a second query around (4.5, 4.5, 5). The bounds must find only the first query.
   constexpr std::array<tribol::IndexT, 4> corner_connectivity{ 0, 1, 2, 3 };
   constexpr std::array<tribol::IndexT, 9> mesh1_connectivity{ 0, 1, 2, 3, 4, 5, 6, 7, 8 };
   constexpr std::array<tribol::RealT, 9> mesh1_x{ 0.0, 1.0, 1.0, 0.0, 0.5, 1.0, 0.5, 0.0, 0.5 };
