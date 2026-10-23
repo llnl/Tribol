@@ -31,7 +31,7 @@ class SearchBase {
 namespace {
 
 /**
- * @brief Apply the legacy geometry checks to candidates returned by a standalone coarse search
+ * @brief Apply geomFilter() to candidates returned by a standalone coarse search
  *
  * GridSearch and BvhSearch deliberately know only about spatial bounds. InterfacePairFinder retains existing behavior
  * by applying geomFilter() before it exposes pairs to legacy contact methods.
