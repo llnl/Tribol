@@ -707,10 +707,10 @@ class MfemMeshData {
   int GetNV() const { return GetUpdateData().redecomp_mesh_.GetNV(); }
 
   /**
-   * @brief Get the number of finite-element nodes available to both Tribol registered meshes
+   * @brief Get the number of finite-element coordinate DOFs in the Redecomp mesh
    *
-   * Higher-order coordinates are indexed by finite-element DOF rather than geometric vertex. This count therefore
-   * matches the component arrays returned by GetRedecompCoordsPtrs() and bounds every connectivity entry.
+   * The Redecomp coordinate GridFunction stores this many DOFs for each spatial component. Connectivity values index
+   * those component blocks; use GetNodesPerElement() for the connectivity row width.
    *
    * @return int
    */
@@ -745,7 +745,7 @@ class MfemMeshData {
   InterfaceElementType GetElemType() const { return GetUpdateData().elem_type_; }
 
   /**
-   * @brief Get the order represented by the contact element connectivity
+   * @brief Get the finite-element face order for both Tribol registered meshes
    *
    * @return FaceOrderType
    */
@@ -1219,7 +1219,7 @@ class MfemMeshData {
     InterfaceElementType elem_type_;
 
     /**
-     * @brief Finite element order represented by the contact mesh connectivity
+     * @brief Finite-element face order on the contact meshes
      */
     FaceOrderType face_order_;
 
@@ -1229,7 +1229,7 @@ class MfemMeshData {
     int nodes_per_elem_;
 
     /**
-     * @brief Number of scalar finite-element nodes available to the coordinate component arrays
+     * @brief Number of finite-element coordinate DOFs in the Redecomp mesh
      */
     int num_nodes_;
 
@@ -1251,7 +1251,7 @@ class MfemMeshData {
     void UpdateConnectivity( const std::set<int>& attributes_1, const std::set<int>& attributes_2 );
 
     /**
-     * @brief Sets the element shape, face order, and finite-element node count for the redecomp mesh
+     * @brief Sets the element type, face order, nodes per element, and coordinate DOF count for the Redecomp mesh
      */
     void SetElementData();
   };
