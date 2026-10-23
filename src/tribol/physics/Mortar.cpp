@@ -277,7 +277,7 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
   ///////////////////////////////////////////////////////
   ComputeSingleMortarGaps( cs );
 
-  // CheckInterfacePair stores only method-approved geometry, so the contact-plane array is compact.
+  // Number of stored mortar planes that contribute to the residual and/or Jacobian terms.
   const IndexT contact_plane_count = cs->getNumActivePairs();
 
   int const dim = cs->spatialDimension();
