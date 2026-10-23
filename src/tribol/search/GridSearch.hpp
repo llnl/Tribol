@@ -55,7 +55,8 @@ class GridSearch {
    *
    * Bounding-box candidates can still include shared-node pairs, co-oriented faces, and pairs that fail a contact
    * method's overlap checks. Same-mesh searches remove exact self-pairs and retain one direction for mirrored pairs.
-   * Keeping the remaining decisions outside this class allows each formulation to apply the geometry checks it requires.
+   * Keeping the remaining decisions outside this class allows each formulation to apply the geometry checks it
+   * requires.
    *
    * @param mesh1 Current elements inserted into the implicit grid
    * @param mesh2 Current elements used to query the implicit grid
