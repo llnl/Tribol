@@ -33,8 +33,8 @@ class MeshData;
  * This class provides a polymorphic interface for contact algorithms, allowing for modular implementation of new
  * physics and formulations.
  *
- * Each stage receives current non-owning mesh views and search settings. Implementations own their method-specific pair
- * search and compute missing prerequisites so callers can request a stage without first calling earlier stages.
+ * Each stage receives current non-owning mesh views. Implementations retain their method and search configuration and
+ * compute missing prerequisites so callers can request a stage without first calling earlier stages.
  */
 class ContactFormulation {
  public:
@@ -49,7 +49,7 @@ class ContactFormulation {
    * Determines overlapping contact pairs and computes necessary integration data (e.g. quadrature points, weights).
    * Implementations compute any missing pair data needed by this request. Some formulations may treat this as a no-op.
    *
-   * @param input Current meshes and pair-search settings
+   * @param input Current meshes
    */
   virtual void updateIntegrationRule( const ContactFormulationInput& input ) = 0;
 
@@ -58,7 +58,7 @@ class ContactFormulation {
    *
    * Implementations compute any missing pair or integration data needed by this request.
    *
-   * @param input Current meshes and pair-search settings
+   * @param input Current meshes
    */
   virtual void updateNodalGaps( const ContactFormulationInput& input ) = 0;
 
@@ -67,7 +67,7 @@ class ContactFormulation {
    *
    * Implementations compute any missing pair, integration, or gap data needed by this request.
    *
-   * @param input Current meshes and pair-search settings
+   * @param input Current meshes
    */
   virtual void updateNodalForces( const ContactFormulationInput& input ) = 0;
 
@@ -95,26 +95,11 @@ class ContactFormulation {
   virtual RealT getEnergy() const = 0;
 
   /**
-   * @brief Update mesh references used by the formulation (optional)
-   *
-   * Some workflows re-register meshes each cycle (e.g. MFEM + redecomp), which can replace the underlying MeshData
-   * instances. Formulations that cache mesh pointers/references can override this to refresh their internal handles.
-   *
-   * @note Called by CouplingScheme during initialization each update cycle.
-   */
-  virtual void updateMeshes( MeshData& /*mesh1*/, MeshData& /*mesh2*/ ) {}
-
-  /**
    * @brief Update constant penalty stiffness
    *
    * Used to dynamically update the constant penalty stiffness after the formulation has been instantiated.
    */
   virtual void updateConstantPenaltyStiffness( double /*mesh1_penalty*/, double /*mesh2_penalty*/ ) {}
-
-  /**
-   * @brief Update the residual-gap offset on formulations that cache contact parameters
-   */
-  virtual void setResidualGap( RealT /*residual_gap*/ ) {}
 
 #ifdef BUILD_REDECOMP
   /**

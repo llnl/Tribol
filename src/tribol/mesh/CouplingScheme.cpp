@@ -1034,10 +1034,7 @@ void CouplingScheme::performBinning()
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
   if ( m_formulation ) {
-    const ContactFormulationInput input( getMesh1().getView(), getMesh2().getView(), getExecutionMode(),
-                                         getBinningMethod(), getEffectiveBinningProximityScale(),
-                                         getParameters().residual_gap, getParameters().auto_contact_check,
-                                         hasFixedBinning() );
+    const ContactFormulationInput input( getMesh1().getView(), getMesh2().getView() );
     // A force request computes any missing pair and gap data, so callers do not have to issue stages in order.
     m_formulation->updateNodalForces( input );
     setBinned( true );
@@ -1075,12 +1072,11 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // array of size one for counting number of planes on device
   ArrayT<IndexT> planes_ct_data( 1, 1, getAllocatorId() );
   auto planes_ct = planes_ct_data.view();
-  // Check every binned pair and leave the pair array unchanged. Fixed binning reruns geometry checks on this array, so a
-  // pair that does not create a contact plane this cycle can still create one after the meshes move. Contact planes keep
-  // pointers to their source entries, so the array must not be resized or reordered until interface physics finishes.
-  // Note: A true reduction would be more efficient here.
-  // However, it is not currently implemented because forAllExec would need
-  // to know the execution mode at compile time to instantiate the correct reducer.
+  // Check every binned pair and leave the pair array unchanged. Fixed binning reruns geometry checks on this array, so
+  // a pair that does not create a contact plane this cycle can still create one after the meshes move. Contact planes
+  // keep pointers to their source entries, so the array must not be resized or reordered until interface physics
+  // finishes. Note: A true reduction would be more efficient here. However, it is not currently implemented because
+  // forAllExec would need to know the execution mode at compile time to instantiate the correct reducer.
   forAllExec( getExecutionMode(), numPairs,
               [pairs, mesh1, mesh2, params, contact_method, contact_case, cg_view, planes_ct,
                pair_err] TRIBOL_HOST_DEVICE( IndexT i ) mutable {
@@ -1157,6 +1153,13 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 void CouplingScheme::updateContactFormulation()
 {
   if ( m_contactMethod == ENERGY_MORTAR ) {
+    // Formulation construction captures search configuration, so valid current meshes are required before invoking
+    // the factory. Setters that change search configuration update its derived values before rebuilding here.
+    // Status 2 selects a usable but nonoptimal execution mode, so only status 1 prevents formulation construction.
+    if ( !setMeshPointers() || checkExecutionModeData() == 1 ) {
+      SLIC_ERROR_ROOT( "ENERGY_MORTAR formulation configuration requires valid registered meshes." );
+      return;
+    }
     this->setContactFormulation( createContactFormulation( this ) );
   } else {
     SLIC_WARNING_ROOT(
@@ -1172,13 +1175,12 @@ bool CouplingScheme::init()
     // validity checks are done in the constructors of ContactFormulations
     this->m_isValid = true;
     // the validity checks also set mesh pointers and allocator id, so these calls are still needed
-    if ( !setMeshPointers() || checkExecutionModeData() != 0 ) {
+    // Status 2 selects a usable but nonoptimal execution mode, so only status 1 prevents initialization.
+    if ( !setMeshPointers() || checkExecutionModeData() == 1 ) {
       // TODO: consider design; should these checks be specific to a contact formulation or are they specific to
       // ENERGY_MORTAR?
       return false;
     }
-    // pass the new meshes to the formulation
-    m_formulation->updateMeshes( *m_mesh1, *m_mesh2 );
   } else {
     this->m_isValid = this->isValidCouplingScheme();
   }
@@ -1187,13 +1189,7 @@ bool CouplingScheme::init()
     // set individual coupling scheme logging level
     this->setSlicLoggingLevel();
 
-    // set effective binning proximity, based on binning proximity scale and LOR factor
-    this->m_effective_binning_proximity_scale = this->getParameters().binning_proximity_scale;
-#ifdef BUILD_REDECOMP
-    if ( this->hasMfemData() && this->getMfemMeshData()->GetLORFactor() > 1 ) {
-      this->m_effective_binning_proximity_scale *= static_cast<RealT>( this->getMfemMeshData()->GetLORFactor() );
-    }
-#endif
+    updateEffectiveBinningProximityScale();
 
     // compute the face data
     // different element normals for enzyme + mortar (matching Puso and Laursen)
@@ -1215,6 +1211,17 @@ bool CouplingScheme::init()
   } else {
     return false;
   }
+}
+
+//------------------------------------------------------------------------------
+void CouplingScheme::updateEffectiveBinningProximityScale()
+{
+  m_effective_binning_proximity_scale = getParameters().binning_proximity_scale;
+#ifdef BUILD_REDECOMP
+  if ( hasMfemData() && getMfemMeshData()->GetLORFactor() > 1 ) {
+    m_effective_binning_proximity_scale *= static_cast<RealT>( getMfemMeshData()->GetLORFactor() );
+  }
+#endif
 }
 
 //------------------------------------------------------------------------------

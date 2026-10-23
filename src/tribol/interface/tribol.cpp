@@ -349,6 +349,11 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale )
   }
 
   cs->getParameters().binning_proximity_scale = binning_proximity_scale;
+  // The formulation captures the effective scale, so update the LOR-adjusted value before rebuilding it.
+  cs->updateEffectiveBinningProximityScale();
+  if ( cs->hasContactFormulation() ) {
+    cs->updateContactFormulation();
+  }
 
 }  // end setBinningProximityScale()
 
@@ -363,8 +368,8 @@ void setResidualGap( IndexT cs_id, RealT residual_gap )
   SLIC_ERROR_ROOT_IF( residual_gap < 0.0, "tribol::setResidualGap(): residual gap must be nonnegative." );
 
   cs->getParameters().residual_gap = residual_gap;
-  if ( cs->getContactFormulation() ) {
-    cs->getContactFormulation()->setResidualGap( residual_gap );
+  if ( cs->hasContactFormulation() ) {
+    cs->updateContactFormulation();
   }
 
 }  // end setResidualGap()
