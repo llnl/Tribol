@@ -55,6 +55,15 @@ void ExpectBothSearchesFindOnlyFirstQuery( tribol::MeshData& mesh1, tribol::Mesh
       expected_candidates );
 }
 
+template <int SpatialDimension>
+void ExpectBothSearchesFindNoCandidates( tribol::MeshData& mesh1, tribol::MeshData& mesh2 )
+{
+  EXPECT_TRUE( FindCandidateIds<tribol::GridSearch<SpatialDimension>>( mesh1, mesh2 ).empty() );
+  EXPECT_TRUE(
+      ( FindCandidateIds<tribol::BvhSearch<SpatialDimension, tribol::ExecutionMode::Sequential>>( mesh1, mesh2 )
+            .empty() ) );
+}
+
 template <typename Search>
 CandidateIds FindCandidateIds( const Search& search, tribol::MeshData& mesh1, tribol::MeshData& mesh2 )
 {
@@ -63,8 +72,9 @@ CandidateIds FindCandidateIds( const Search& search, tribol::MeshData& mesh1, tr
 
 TEST( CoarseSearch, quadratic_edge_nodes_contribute_to_bounds )
 {
-  // The raised midpoint is the only mesh-1 node near the first query edge. Finding that query confirms that all three
-  // finite-element nodes contribute to the bound; excluding the distant query confirms that the bound remains local.
+  // Mesh 2 has one query near the raised midpoint and one spatially distant query. The coarse bounds must include the
+  // midpoint to find the nearby query without also finding the distant query.
+  constexpr std::array<tribol::IndexT, 2> endpoint_connectivity{ 0, 1 };
   constexpr std::array<tribol::IndexT, 3> mesh1_connectivity{ 0, 1, 2 };
   constexpr std::array<tribol::RealT, 3> mesh1_x{ 0.0, 1.0, 0.5 };
   constexpr std::array<tribol::RealT, 3> mesh1_y{ 0.0, 0.0, 2.0 };
@@ -79,6 +89,14 @@ TEST( CoarseSearch, quadratic_edge_nodes_contribute_to_bounds )
   tribol::MeshData mesh2( mesh2_id, 2, mesh2_x.size(), mesh2_connectivity.data(), tribol::EDGE,
                           tribol::QUADRATIC_LAGRANGE, mesh2_x.data(), mesh2_y.data(), nullptr,
                           tribol::MemorySpace::Host );
+
+  tribol::MeshData endpoint_only_mesh1( mesh1_id, 1, endpoint_connectivity.size(), endpoint_connectivity.data(),
+                                        tribol::EDGE, tribol::LINEAR_LAGRANGE, mesh1_x.data(), mesh1_y.data(), nullptr,
+                                        tribol::MemorySpace::Host );
+
+  // The endpoint-only control remains on y=0 and cannot reach the nearby query. Finding that query only after adding
+  // the raised midpoint proves that both searches include the quadratic node in their element bounds.
+  ExpectBothSearchesFindNoCandidates<2>( endpoint_only_mesh1, mesh2 );
 
   // MeshData rejects computeFaceData() for quadratic geometry because its derived quantities use linear face formulas.
   // Grid and BVH must therefore build bounds from connectivity and nodal coordinates without those derived arrays.
@@ -121,9 +139,7 @@ TEST( CoarseSearch, quadratic_quad_nodes_contribute_to_bounds )
 
   // The corner-only control remains in the z=0 plane and cannot reach the nearby query. Finding that query only after
   // adding the raised center node proves that both searches include the quadratic node in their element bounds.
-  EXPECT_TRUE( FindCandidateIds<tribol::GridSearch<3>>( corner_only_mesh1, mesh2 ).empty() );
-  EXPECT_TRUE( ( FindCandidateIds<tribol::BvhSearch<3, tribol::ExecutionMode::Sequential>>( corner_only_mesh1, mesh2 )
-                     .empty() ) );
+  ExpectBothSearchesFindNoCandidates<3>( corner_only_mesh1, mesh2 );
 
   // Higher-order MeshData does not compute the linear face data below. Both searches must build bounds directly from
   // all nodal coordinates so quadratic faces can participate without calling computeFaceData().
@@ -145,12 +161,8 @@ TEST( CoarseSearch, empty_meshes_return_no_candidates )
                                    x.data(), y.data(), nullptr, tribol::MemorySpace::Host );
 
   // Either empty input prevents a spatial index from producing pairs, regardless of which mesh is queried.
-  EXPECT_TRUE( FindCandidateIds<tribol::GridSearch<2>>( empty_mesh, populated_mesh ).empty() );
-  EXPECT_TRUE( FindCandidateIds<tribol::GridSearch<2>>( populated_mesh, empty_mesh ).empty() );
-  EXPECT_TRUE( ( FindCandidateIds<tribol::BvhSearch<2, tribol::ExecutionMode::Sequential>>( empty_mesh, populated_mesh )
-                     .empty() ) );
-  EXPECT_TRUE( ( FindCandidateIds<tribol::BvhSearch<2, tribol::ExecutionMode::Sequential>>( populated_mesh, empty_mesh )
-                     .empty() ) );
+  ExpectBothSearchesFindNoCandidates<2>( empty_mesh, populated_mesh );
+  ExpectBothSearchesFindNoCandidates<2>( populated_mesh, empty_mesh );
 }
 
 TEST( CoarseSearch, each_query_uses_current_mesh_views )
