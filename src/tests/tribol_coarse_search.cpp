@@ -207,7 +207,8 @@ TEST( CoarseSearch, each_query_uses_current_mesh_views )
 TEST( CoarseSearch, same_mesh_search_returns_one_direction_per_pair )
 {
   // Passing the same mesh in both search roles models auto-contact coarse search. Keep one direction for each
-  // intersecting element pair so { 1, 0 } is returned without duplicate { 0, 1 }; method filtering handles self-pairs.
+  // intersecting element pair so { 1, 0 } is returned without duplicate { 0, 1 }. Exact self-pairs are never valid
+  // contact candidates, while method-specific filtering decides whether to retain the shared-node pair.
   constexpr std::array<tribol::IndexT, 4> connectivity{ 0, 1, 1, 2 };
   constexpr std::array<tribol::RealT, 3> x{ 0.0, 1.0, 2.0 };
   constexpr std::array<tribol::RealT, 3> y{ 0.0, 0.0, 0.0 };
@@ -215,7 +216,7 @@ TEST( CoarseSearch, same_mesh_search_returns_one_direction_per_pair )
   tribol::MeshData mesh( mesh1_id, 2, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(),
                          y.data(), nullptr, tribol::MemorySpace::Host );
 
-  const CandidateIds expected_candidates{ { 0, 0 }, { 1, 0 }, { 1, 1 } };
+  const CandidateIds expected_candidates{ { 1, 0 } };
   ExpectBothSearchesFindCandidates<2>( mesh, mesh, expected_candidates );
 }
 
@@ -226,11 +227,13 @@ TEST( CoarseSearch, flat_elements_avoid_division_by_zero )
   constexpr std::array<tribol::RealT, 2> x{ 0.0, 1.0 };
   constexpr std::array<tribol::RealT, 2> y{ 0.0, 0.0 };
 
-  tribol::MeshData mesh( mesh1_id, 1, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(),
-                         y.data(), nullptr, tribol::MemorySpace::Host );
+  tribol::MeshData mesh1( mesh1_id, 1, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(),
+                          y.data(), nullptr, tribol::MemorySpace::Host );
+  tribol::MeshData mesh2( mesh2_id, 1, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(),
+                          y.data(), nullptr, tribol::MemorySpace::Host );
 
   tribol::GridSearch<2> grid_search( 0.0, 0.0 );
-  const auto candidates = grid_search.findCandidatePairs( mesh.getView(), mesh.getView() );
+  const auto candidates = grid_search.findCandidatePairs( mesh1.getView(), mesh2.getView() );
   EXPECT_EQ( candidates.size(), 1 );
 }
 

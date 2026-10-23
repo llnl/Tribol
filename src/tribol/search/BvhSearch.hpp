@@ -56,9 +56,9 @@ class BvhSearch {
   /**
    * @brief Build a BVH and return pairs whose expanded bounding boxes intersect
    *
-   * Bounding-box candidates can still include self-pairs, shared-node pairs, co-oriented faces, and pairs that fail a
-   * contact method's overlap checks. Keeping those decisions outside this class allows each formulation to apply the
-   * geometry checks it requires.
+   * Bounding-box candidates can still include shared-node pairs, co-oriented faces, and pairs that fail a contact
+   * method's overlap checks. Same-mesh searches remove exact self-pairs and retain one direction for mirrored pairs.
+   * Keeping the remaining decisions outside this class allows each formulation to apply the geometry checks it requires.
    *
    * @param mesh1 Current elements inserted into the BVH
    * @param mesh2 Current elements used to query the BVH
@@ -112,13 +112,13 @@ class BvhSearch {
       ArrayT<IndexT> retained_pair_count_data( { 0 }, mesh1.getAllocatorId() );
       auto retained_pair_count = retained_pair_count_data.view();
 
-      // A same-mesh search visits both pair directions. Retain one direction while leaving self-pair policy to the
-      // method-specific filter.
+      // A same-mesh search visits both pair directions. Exact self-pairs cannot represent contact, so retain only one
+      // direction of each pair with different element IDs.
       forAllExec<ExecMode, false>( candidates.size(), [candidate_ids, candidate_offsets, candidate_counts,
                                                        retained_pair_count] TRIBOL_HOST_DEVICE( IndexT candidate ) {
         const IndexT mesh1_element = candidate_ids[candidate];
         const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, candidate );
-        if ( mesh1_element >= mesh2_element ) {
+        if ( mesh1_element > mesh2_element ) {
           tribol::atomicInc( retained_pair_count.data() );
         }
       } );
@@ -135,7 +135,7 @@ class BvhSearch {
                               pairs] TRIBOL_HOST_DEVICE( IndexT candidate ) {
             const IndexT mesh1_element = candidate_ids[candidate];
             const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, candidate );
-            if ( mesh1_element < mesh2_element ) {
+            if ( mesh1_element <= mesh2_element ) {
               return;
             }
             const IndexT retained_pair_index = tribol::atomicInc( retained_pair_count.data() );
