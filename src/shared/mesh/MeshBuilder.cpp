@@ -1,6 +1,7 @@
 #include "MeshBuilder.hpp"
 
 #include <cmath>
+#include <numbers>
 
 #include "axom/slic.hpp"
 #include "axom/primal.hpp"
@@ -29,7 +30,6 @@ MeshBuilder MeshBuilder::Cylinder2D( int n_radial_els, int n_hoop_els, double in
   mfem::Mesh mesh = mfem::Mesh::MakeCartesian2D( n_radial_els, n_hoop_els, mfem::Element::QUADRILATERAL );
   mesh.EnsureNodes();
   mfem::GridFunction& nodes = *mesh.GetNodes();
-  const double pi = std::acos( -1.0 );
   for ( int i = 0; i < mesh.GetNV(); ++i ) {
     int vdof_x = nodes.FESpace()->DofToVDof( i, 0 );
     int vdof_y = nodes.FESpace()->DofToVDof( i, 1 );
@@ -38,7 +38,7 @@ MeshBuilder MeshBuilder::Cylinder2D( int n_radial_els, int n_hoop_els, double in
     double y = nodes( vdof_y );
 
     double r = inner_radius + x * ( outer_radius - inner_radius );
-    double theta = y * 2.0 * pi;
+    double theta = y * 2.0 * std::numbers::pi_v<double>;
 
     nodes( vdof_x ) = r * std::cos( theta );
     nodes( vdof_y ) = r * std::sin( theta );
@@ -51,7 +51,6 @@ MeshBuilder MeshBuilder::HalfCylinder2D( int n_radial_els, int n_hoop_els, doubl
   mfem::Mesh mesh = mfem::Mesh::MakeCartesian2D( n_radial_els, n_hoop_els, mfem::Element::QUADRILATERAL );
   mesh.EnsureNodes();
   mfem::GridFunction& nodes = *mesh.GetNodes();
-  const double pi = std::acos( -1.0 );
   for ( int i = 0; i < mesh.GetNV(); ++i ) {
     int vdof_x = nodes.FESpace()->DofToVDof( i, 0 );
     int vdof_y = nodes.FESpace()->DofToVDof( i, 1 );
@@ -60,7 +59,7 @@ MeshBuilder MeshBuilder::HalfCylinder2D( int n_radial_els, int n_hoop_els, doubl
     double y = nodes( vdof_y );
 
     double r = inner_radius + x * ( outer_radius - inner_radius );
-    double theta = pi + y * pi;
+    double theta = std::numbers::pi_v<double> + y * std::numbers::pi_v<double>;
 
     nodes( vdof_x ) = r * std::cos( theta );
     nodes( vdof_y ) = r * std::sin( theta );
