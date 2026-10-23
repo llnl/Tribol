@@ -566,7 +566,7 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   params.residual_gap = GetParam();
 
   EnergyMortarCalculator evaluator( params );
-  const InterfacePair pair( 0, 0 );
+  const InterfacePair pair{ 0, 0 };
   const auto analytical = evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() );
   ASSERT_GT( analytical.energy, 0.0 );
 
@@ -655,7 +655,7 @@ TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
   IndexT conn2[2] = { 0, 1 };
   MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
 
-  InterfacePair pair( 0, 0 );
+  InterfacePair pair{ 0, 0 };
 
   // ── Evaluator setup ──────────────────────────────────────────────────────
   ContactParams params_;
@@ -715,7 +715,7 @@ TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
   MeshData mesh1( 0, 1, 2, conn1, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
   MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
 
-  InterfacePair pair( 0, 0 );
+  InterfacePair pair{ 0, 0 };
 
   // ── Evaluator setup ──────────────────────────────────────────────────────
   ContactParams params_;
