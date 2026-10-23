@@ -90,8 +90,9 @@ TEST( CoarseSearch, quadratic_edge_nodes_contribute_to_bounds )
 
 TEST( CoarseSearch, quadratic_quad_nodes_contribute_to_bounds )
 {
-  // The raised center node is the only mesh-1 node near the first query quadrilateral. The coarse bounds must include
-  // that node while still excluding a second quadrilateral that is spatially distant.
+  // Mesh 2 has one query near the raised center node and one spatially distant query. The coarse bounds must include
+  // the center node to find the nearby query without also finding the distant query.
+  constexpr std::array<tribol::IndexT, 4> corner_connectivity{ 0, 1, 2, 3 };
   constexpr std::array<tribol::IndexT, 9> mesh1_connectivity{ 0, 1, 2, 3, 4, 5, 6, 7, 8 };
   constexpr std::array<tribol::RealT, 9> mesh1_x{ 0.0, 1.0, 1.0, 0.0, 0.5, 1.0, 0.5, 0.0, 0.5 };
   constexpr std::array<tribol::RealT, 9> mesh1_y{ 0.0, 0.0, 1.0, 1.0, 0.0, 0.5, 1.0, 0.5, 0.5 };
@@ -112,6 +113,16 @@ TEST( CoarseSearch, quadratic_quad_nodes_contribute_to_bounds )
   tribol::MeshData mesh2( mesh2_id, 2, mesh2_x.size(), mesh2_connectivity.data(), tribol::QUAD,
                           tribol::QUADRATIC_LAGRANGE, mesh2_x.data(), mesh2_y.data(), mesh2_z.data(),
                           tribol::MemorySpace::Host );
+
+  tribol::MeshData corner_only_mesh1( mesh1_id, 1, corner_connectivity.size(), corner_connectivity.data(),
+                                      tribol::QUAD, tribol::LINEAR_LAGRANGE, mesh1_x.data(), mesh1_y.data(),
+                                      mesh1_z.data(), tribol::MemorySpace::Host );
+
+  // The corner-only control remains in the z=0 plane and cannot reach the nearby query. Finding that query only after
+  // adding the raised center node proves that both searches include the quadratic node in their element bounds.
+  EXPECT_TRUE( FindCandidateIds<tribol::GridSearch<3>>( corner_only_mesh1, mesh2 ).empty() );
+  EXPECT_TRUE( ( FindCandidateIds<tribol::BvhSearch<3, tribol::ExecutionMode::Sequential>>( corner_only_mesh1, mesh2 )
+                     .empty() ) );
 
   // Higher-order MeshData does not compute the linear face data below. Both searches must build bounds directly from
   // all nodal coordinates so quadratic faces can participate without calling computeFaceData().
