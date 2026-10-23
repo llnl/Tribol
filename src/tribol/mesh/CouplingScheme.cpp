@@ -1067,8 +1067,9 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // array of size one for counting number of planes on device
   ArrayT<IndexT> planes_ct_data( 1, 1, getAllocatorId() );
   auto planes_ct = planes_ct_data.view();
-  // Contact planes retain pointers to their source pairs. Keep the complete binned array stable and compact only the
-  // method-approved plane objects so fixed binning can reconsider pairs that are inactive during this cycle.
+  // Check every binned pair and leave the pair array unchanged. Fixed binning reruns geometry checks on this array, so a
+  // pair that does not create a contact plane this cycle can still create one after the meshes move. Contact planes keep
+  // pointers to their source entries, so the array must not be resized or reordered until interface physics finishes.
   // Note: A true reduction would be more efficient here.
   // However, it is not currently implemented because forAllExec would need
   // to know the execution mode at compile time to instantiate the correct reducer.
