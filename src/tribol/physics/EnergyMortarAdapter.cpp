@@ -4,12 +4,79 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "tribol/physics/EnergyMortarAdapter.hpp"
+
 #include <axom/slic/interface/slic_macros.hpp>
+
+#include "tribol/common/Atomics.hpp"
+#include "tribol/common/LoopExec.hpp"
 #include "tribol/mesh/MfemData.hpp"
+#include "tribol/physics/InterfacePairChecks.hpp"
+#include "tribol/search/BvhSearch.hpp"
+#include "tribol/search/GridSearch.hpp"
 
 namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
+
+namespace {
+
+/** @brief Run the two-dimensional BVH search with the execution mode selected by the coupling scheme */
+ArrayT<InterfacePair> findBvhCandidatePairs( const ContactFormulationInput& input )
+{
+  const RealT proximity_scale = input.getEffectiveBinningProximityScale();
+  const RealT residual_gap = input.getResidualGap();
+
+  switch ( input.getExecutionMode() ) {
+    case ExecutionMode::Sequential:
+      return BvhSearch<2, ExecutionMode::Sequential>( proximity_scale, residual_gap )
+          .findCandidatePairs( input.getMesh1(), input.getMesh2() );
+#ifdef TRIBOL_USE_OPENMP
+    case ExecutionMode::OpenMP:
+      return BvhSearch<2, ExecutionMode::OpenMP>( proximity_scale, residual_gap )
+          .findCandidatePairs( input.getMesh1(), input.getMesh2() );
+#endif
+#ifdef TRIBOL_USE_CUDA
+    case ExecutionMode::Cuda:
+      return BvhSearch<2, ExecutionMode::Cuda>( proximity_scale, residual_gap )
+          .findCandidatePairs( input.getMesh1(), input.getMesh2() );
+#endif
+#ifdef TRIBOL_USE_HIP
+    case ExecutionMode::Hip:
+      return BvhSearch<2, ExecutionMode::Hip>( proximity_scale, residual_gap )
+          .findCandidatePairs( input.getMesh1(), input.getMesh2() );
+#endif
+    default:
+      SLIC_ERROR_ROOT( "ENERGY_MORTAR cannot run BVH search with the selected execution mode." );
+      return ArrayT<InterfacePair>( 0, 0, input.getMesh1().getAllocatorId() );
+  }
+}
+
+/** @brief Return spatial candidates without applying checks owned by ENERGY_MORTAR */
+ArrayT<InterfacePair> findEnergyMortarCandidatePairs( const ContactFormulationInput& input )
+{
+  SLIC_ERROR_ROOT_IF( input.getMesh1().spatialDimension() != 2 || input.getMesh2().spatialDimension() != 2,
+                      "ENERGY_MORTAR pair search requires two-dimensional meshes." );
+
+  switch ( input.getBinningMethod() ) {
+    case BINNING_GRID:
+      if ( isOnDevice( input.getExecutionMode() ) ) {
+        SLIC_WARNING_ROOT( "BINNING_GRID is not supported on GPU. Switching ENERGY_MORTAR search to BINNING_BVH." );
+        return findBvhCandidatePairs( input );
+      }
+      return GridSearch<2>( input.getEffectiveBinningProximityScale(), input.getResidualGap() )
+          .findCandidatePairs( input.getMesh1(), input.getMesh2() );
+    case BINNING_BVH:
+      return findBvhCandidatePairs( input );
+    case BINNING_CARTESIAN_PRODUCT:
+      SLIC_ERROR_ROOT( "ENERGY_MORTAR formulations do not support BINNING_CARTESIAN_PRODUCT." );
+      return ArrayT<InterfacePair>( 0, 0, input.getMesh1().getAllocatorId() );
+    default:
+      SLIC_ERROR_ROOT( "ENERGY_MORTAR received an invalid binning method." );
+      return ArrayT<InterfacePair>( 0, 0, input.getMesh1().getAllocatorId() );
+  }
+}
+
+}  // namespace
 
 template <template <typename> class EnforcementLocation>
 EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
@@ -67,23 +134,100 @@ void EnergyMortarAdapter<EnforcementLocation>::setResidualGap( RealT residual_ga
 }
 
 template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::setInterfacePairs( ArrayT<InterfacePair>&& pairs, int /*check_level*/ )
+void EnergyMortarAdapter<EnforcementLocation>::updateIntegrationRule( const ContactFormulationInput& /*input*/ )
 {
-  // TODO: Consider design and how this interacts with binning and CG
-  pairs_ = std::move( pairs );
-}
-
-template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::updateIntegrationRule()
-{
-  SLIC_WARNING_ROOT( "Update integration rule not implemmented for any method" );
+  SLIC_WARNING_ROOT( "Update integration rule not implemented for ENERGY_MORTAR." );
   // TODO: break out integration rule as a separate method
 }
 
+template <template <typename> class EnforcementLocation>
+void EnergyMortarAdapter<EnforcementLocation>::refreshInterfacePairs( const ContactFormulationInput& input )
+{
+  // A fixed search result may legitimately contain no pairs, so size alone cannot identify initialized state.
+  if ( input.reusesFixedPairs() && interface_pairs_are_initialized_ ) {
+    return;
+  }
+
+  pairs_ = filterCandidatePairs( findEnergyMortarCandidatePairs( input ), input );
+  interface_pairs_are_initialized_ = true;
+}
+
+template <template <typename> class EnforcementLocation>
+ArrayT<InterfacePair> EnergyMortarAdapter<EnforcementLocation>::filterCandidatePairs(
+    ArrayT<InterfacePair>&& candidate_pairs, const ContactFormulationInput& input ) const
+{
+  const IndexT candidate_count = candidate_pairs.size();
+  const int allocator_id = input.getMesh1().getAllocatorId();
+  ArrayT<bool> accepted( axom::ArrayOptions::Uninitialized{}, candidate_count, candidate_count, allocator_id );
+  ArrayT<IndexT> accepted_count_data( { 0 }, allocator_id );
+
+  const auto mesh1 = input.getMesh1();
+  const auto mesh2 = input.getMesh2();
+  const auto candidates = candidate_pairs.view();
+  auto accepted_values = accepted.view();
+  auto accepted_count = accepted_count_data.view();
+  const bool checks_shared_nodes = input.checksSharedNodes();
+  const RealT smoothing_fraction = params_.del;
+
+  // This loop evaluates every method-specific check once. The later compaction loop only reads the saved decision.
+  forAllExec( input.getExecutionMode(), candidate_count,
+              [mesh1, mesh2, candidates, accepted_values, accepted_count, checks_shared_nodes,
+               smoothing_fraction] TRIBOL_HOST_DEVICE( IndexT candidate_index ) {
+                const InterfacePair& pair = candidates[candidate_index];
+                bool accepts_pair =
+                    !InterfacePairChecks::IsSameElementPair( mesh1, pair.element_id1_, mesh2, pair.element_id2_ );
+                if ( accepts_pair && checks_shared_nodes ) {
+                  accepts_pair =
+                      !InterfacePairChecks::ElementsShareNode( mesh1, pair.element_id1_, mesh2, pair.element_id2_ );
+                }
+                if ( accepts_pair ) {
+                  accepts_pair = InterfacePairChecks::LinearEdgeNormalsAreOpposing( mesh1, pair.element_id1_, mesh2,
+                                                                                    pair.element_id2_ );
+                }
+
+                RealT projection_bounds[2];
+                if ( accepts_pair ) {
+                  // ENERGY_MORTAR integrates on Tribol mesh 2, so the projection reverses the coarse-pair mesh roles.
+                  accepts_pair = InterfacePairChecks::ComputeLinearEdgeProjectionBounds(
+                      mesh2, pair.element_id2_, mesh1, pair.element_id1_, MdSpan<RealT, 2>{ projection_bounds } );
+                }
+                if ( accepts_pair ) {
+                  accepts_pair = InterfacePairChecks::ProjectionIntervalOverlapsSmoothedSupport(
+                      MdSpan<const RealT, 2>{ projection_bounds }, smoothing_fraction );
+                }
+
+                accepted_values[candidate_index] = accepts_pair;
+                if ( accepts_pair ) {
+                  tribol::atomicInc( accepted_count.data() );
+                }
+              } );
+
+  ArrayT<IndexT, 1, MemorySpace::Host> accepted_count_host( accepted_count_data );
+  ArrayT<InterfacePair> accepted_pairs( axom::ArrayOptions::Uninitialized{}, accepted_count_host[0],
+                                        accepted_count_host[0], allocator_id );
+
+  accepted_count_data.fill( 0 );
+  auto accepted_pairs_view = accepted_pairs.view();
+  forAllExec(
+      input.getExecutionMode(), candidate_count,
+      [candidates, accepted_values, accepted_count, accepted_pairs_view] TRIBOL_HOST_DEVICE( IndexT candidate_index ) {
+        if ( !accepted_values[candidate_index] ) {
+          return;
+        }
+        const IndexT accepted_index = tribol::atomicInc( accepted_count.data() );
+        accepted_pairs_view[accepted_index] = candidates[candidate_index];
+      } );
+
+  SLIC_INFO( "ENERGY_MORTAR accepted " << accepted_pairs.size() << " of " << candidate_count
+                                       << " spatial candidate pairs." );
+  return accepted_pairs;
+}
+
 template <typename Adapter>
-void Nodal<Adapter>::updateNodalGaps()
+void Nodal<Adapter>::updateNodalGaps( const ContactFormulationInput& input )
 {
   auto* adapter = static_cast<Adapter*>( this );
+  adapter->refreshInterfacePairs( input );
 
   // NOTE: user should have called updateMfemParallelDecomposition() with updated coords before calling this
 
@@ -126,7 +270,7 @@ void Nodal<Adapter>::updateNodalGaps()
   for ( const auto& pair : adapter->pairs_ ) {
     // These need to be flipped, since the pairs are determined with element 1 associated with mesh 1, and we flipped
     // the mesh numbers to be consistent with the literature and since the underlying method integrates on element 1
-    InterfacePair flipped_pair( pair.element_id2_, pair.element_id1_ );
+    InterfacePair flipped_pair{ pair.element_id2_, pair.element_id1_ };
     const auto elem1 = static_cast<int>( flipped_pair.element_id1_ );
     const auto elem2 = static_cast<int>( flipped_pair.element_id2_ );
 
@@ -231,11 +375,10 @@ void Nodal<Adapter>::updateNodalGaps()
 }
 
 template <typename Adapter>
-void Nodal<Adapter>::updateNodalForces()
+void Nodal<Adapter>::updateNodalForces( const ContactFormulationInput& input )
 {
   auto* adapter = static_cast<Adapter*>( this );
-
-  // NOTE: user should have called updateNodalGaps() with updated coords before calling this
+  updateNodalGaps( input );
 
   if ( adapter->use_penalty_ ) {
     // Penalty mode: p = k * (g_tilde / A)
@@ -359,7 +502,7 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* ad
   auto mesh2_view = adapter->mesh2_->getView();
 
   for ( auto& pair : adapter->pairs_ ) {
-    InterfacePair flipped_pair( pair.element_id2_, pair.element_id1_ );
+    InterfacePair flipped_pair{ pair.element_id2_, pair.element_id1_ };
     const auto elem1 = static_cast<int>( flipped_pair.element_id1_ );
     const auto node11 = mesh1_view.getConnectivity()( elem1, 0 );
     const auto node12 = mesh1_view.getConnectivity()( elem1, 1 );
@@ -434,7 +577,7 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
   auto mesh2_view = adapter->mesh2_->getView();
 
   for ( auto& pair : adapter->pairs_ ) {
-    InterfacePair flipped_pair( pair.element_id2_, pair.element_id1_ );
+    InterfacePair flipped_pair{ pair.element_id2_, pair.element_id1_ };
     const auto elem1 = static_cast<int>( flipped_pair.element_id1_ );
     const auto node11 = mesh1_view.getConnectivity()( elem1, 0 );
     const auto node12 = mesh1_view.getConnectivity()( elem1, 1 );
@@ -488,9 +631,10 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
 }
 
 template <typename Adapter>
-void QuadraturePoint<Adapter>::updateNodalForces()
+void QuadraturePoint<Adapter>::updateNodalForces( const ContactFormulationInput& input )
 {
   auto* adapter = static_cast<Adapter*>( this );
+  adapter->refreshInterfacePairs( input );
 
   SLIC_ERROR_ROOT_IF( !adapter->use_penalty_,
                       "ENERGY_MORTAR quadrature-point enforcement requires penalty enforcement." );
@@ -528,7 +672,7 @@ void QuadraturePoint<Adapter>::updateNodalForces()
   auto mesh2_view = adapter->mesh2_->getView();
 
   for ( const auto& pair : adapter->pairs_ ) {
-    InterfacePair flipped_pair( pair.element_id2_, pair.element_id1_ );
+    InterfacePair flipped_pair{ pair.element_id2_, pair.element_id1_ };
     const auto elem1 = static_cast<int>( flipped_pair.element_id1_ );
     const auto elem2 = static_cast<int>( flipped_pair.element_id2_ );
     const auto qp_data =

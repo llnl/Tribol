@@ -819,6 +819,12 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
 
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setInterfacePairs(): invalid coupling scheme index." );
 
+  // Formulations own pair search and filtering so externally supplied pairs cannot bypass method-specific checks.
+  if ( cs->hasContactFormulation() || cs->getContactMethod() == ENERGY_MORTAR ) {
+    SLIC_ERROR_ROOT( "tribol::setInterfacePairs() is not supported for formulation-backed contact methods." );
+    return;
+  }
+
   auto& pairs = cs->getInterfacePairs();
   pairs.clear();
   pairs.reserve( numPairs );

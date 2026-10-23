@@ -39,7 +39,8 @@
  *   u_y(x,y) = eps_yy * y
  *   u_x(x,y) = eps_xx * x
  */
-class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int, tribol::EnforcementLocation>> {
+class MfemMortarEnergyPatchTest
+    : public testing::TestWithParam<std::tuple<int, tribol::EnforcementLocation, tribol::BinningMethod>> {
  protected:
   tribol::RealT max_disp_;
   double l2_err_vec_;
@@ -57,6 +58,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int, 
   {
     int ref_levels = std::get<0>( GetParam() );
     tribol::EnforcementLocation enforcement_location = std::get<1>( GetParam() );
+    tribol::BinningMethod binning_method = std::get<2>( GetParam() );
     int order = 1;
 
     auto mortar_attrs = std::set<int>( { 5 } );
@@ -175,7 +177,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int, 
 
     tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
                                         tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
-                                        tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID );
+                                        tribol::FRICTIONLESS, tribol::PENALTY, binning_method );
     tribol::setEnforcementLocation( cs_id, enforcement_location );
     tribol::setMfemKinematicConstantPenalty( cs_id, 100.0, 100.0 );
 
@@ -361,7 +363,10 @@ TEST_P( MfemMortarEnergyPatchTest, check_patch_test )
 INSTANTIATE_TEST_SUITE_P( tribol, MfemMortarEnergyPatchTest,
                           testing::Combine( testing::Values( 2 ),
                                             testing::Values( tribol::EnforcementLocation::Nodal,
-                                                             tribol::EnforcementLocation::QuadraturePoint ) ) );
+                                                             tribol::EnforcementLocation::QuadraturePoint ),
+                                            // Both standalone searches must supply equivalent candidates to the same
+                                            // ENERGY_MORTAR checks and produce the same physical patch response.
+                                            testing::Values( tribol::BINNING_GRID, tribol::BINNING_BVH ) ) );
 
 //------------------------------------------------------------------------------
 #include "axom/slic/core/SimpleLogger.hpp"

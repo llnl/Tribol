@@ -10,8 +10,7 @@
 #include <stdexcept>
 
 #include "tribol/common/Parameters.hpp"
-#include "tribol/common/ArrayTypes.hpp"
-#include "tribol/mesh/InterfacePairs.hpp"
+#include "tribol/physics/ContactFormulationInput.hpp"
 
 #include <memory>
 
@@ -34,9 +33,8 @@ class MeshData;
  * This class provides a polymorphic interface for contact algorithms, allowing for modular implementation of new
  * physics and formulations.
  *
- * NOTE (EBC): This class is still a work-in-progress. It's eventual design should incorporate specific choices for
- * coarse binning and take in the relevant input data in the constructor directly (i.e. Tribol mesh data, mfem meshes,
- * etc.)
+ * Each stage receives current non-owning mesh views and search settings. Implementations own their method-specific pair
+ * search and compute missing prerequisites so callers can request a stage without first calling earlier stages.
  */
 class ContactFormulation {
  public:
@@ -46,38 +44,32 @@ class ContactFormulation {
   virtual ~ContactFormulation() = default;
 
   /**
-   * @brief Sets the initial set of candidate interface pairs
-   *
-   * @param pairs View of the coarse-binned interface pairs
-   * @param check_level In general, higher values mean more checks and 0 means don't do checks. See specific methods for
-   * details.
-   */
-  virtual void setInterfacePairs( ArrayT<InterfacePair>&& pairs, int check_level ) = 0;
-
-  /**
    * @brief Updates the integration rule
    *
    * Determines overlapping contact pairs and computes necessary integration data (e.g. quadrature points, weights).
+   * Implementations compute any missing pair data needed by this request. Some formulations may treat this as a no-op.
    *
-   * @note Many formulations require setInterfacePairs() to be called first.
-   * Some formulations may treat this as a no-op.
+   * @param input Current meshes and pair-search settings
    */
-  virtual void updateIntegrationRule() = 0;
+  virtual void updateIntegrationRule( const ContactFormulationInput& input ) = 0;
 
   /**
    * @brief Updates nodal gaps
    *
-   * @note Many formulations require updateIntegrationRule() to be called first.
-   * Some formulations assemble gaps directly from the stored interface pairs.
+   * Implementations compute any missing pair or integration data needed by this request.
+   *
+   * @param input Current meshes and pair-search settings
    */
-  virtual void updateNodalGaps() = 0;
+  virtual void updateNodalGaps( const ContactFormulationInput& input ) = 0;
 
   /**
    * @brief Updates nodal forces/residual
    *
-   * @note Many formulations require updateNodalGaps() to be called first.
+   * Implementations compute any missing pair, integration, or gap data needed by this request.
+   *
+   * @param input Current meshes and pair-search settings
    */
-  virtual void updateNodalForces() = 0;
+  virtual void updateNodalForces( const ContactFormulationInput& input ) = 0;
 
   /**
    * @brief Reports if formulation has a maximum allowable timestep calculation

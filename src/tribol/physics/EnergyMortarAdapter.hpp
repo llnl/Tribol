@@ -43,10 +43,10 @@ template <typename Adapter>
 class Nodal : public ContactFormulation {
  public:
   /** @brief Assemble nodal gaps, tributary areas, and their derivatives. */
-  void updateNodalGaps() override;
+  void updateNodalGaps( const ContactFormulationInput& input ) override;
 
   /** @brief Assemble nodal contact forces and their derivatives. */
-  void updateNodalForces() override;
+  void updateNodalForces( const ContactFormulationInput& input ) override;
 
   const mfem::HypreParVector& getMfemGap() const override
   {
@@ -114,10 +114,10 @@ template <typename Adapter>
 class QuadraturePoint : public ContactFormulation {
  public:
   /** @brief No-op because this location does not assemble nodal gaps. */
-  void updateNodalGaps() override {}
+  void updateNodalGaps( const ContactFormulationInput& /*input*/ ) override {}
 
   /** @brief Assemble penalty force and stiffness directly at quadrature points. */
-  void updateNodalForces() override;
+  void updateNodalForces( const ContactFormulationInput& input ) override;
 
  protected:
   void init( Adapter* /*adapter*/ ) {}
@@ -154,20 +154,12 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   virtual ~EnergyMortarAdapter() = default;
 
   /**
-   * @brief Set interface pairs identified in coarse binning for this update
-   *
-   * @param pairs Candidate interface pairs (ownership transferred)
-   * @param check_level Level of validation to apply to the pairs (currently unused)
-   */
-  void setInterfacePairs( ArrayT<InterfacePair>&& pairs, int check_level ) override;
-
-  /**
    * @brief Update internal integration rule data
    *
    * @note This is currently a no-op. ENERGY_MORTAR directly assembles gap/force quantities over the stored interface
    * pairs in updateNodalGaps() and updateNodalForces().
    */
-  void updateIntegrationRule() override;
+  void updateIntegrationRule( const ContactFormulationInput& input ) override;
 
   /**
    * @brief Reports if formulation has a maximum allowable timestep calculation
@@ -246,6 +238,18 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
 
  private:
   /**
+   * @brief Refresh method-approved pairs unless the caller permits reuse of an initialized fixed pair set
+   *
+   * Coarse search supplies spatial candidates. ENERGY_MORTAR then applies its topology, orientation, and projected-
+   * support checks before any element calculation sees the pairs.
+   */
+  void refreshInterfacePairs( const ContactFormulationInput& input );
+
+  /** @brief Apply ENERGY_MORTAR checks and compact accepted spatial candidates */
+  ArrayT<InterfacePair> filterCandidatePairs( ArrayT<InterfacePair>&& candidate_pairs,
+                                              const ContactFormulationInput& input ) const;
+
+  /**
    * @brief Controls penalty vs. Lagrange multiplier (LM) mode
    *
    * - true: penalty mode, dual vector is pressure
@@ -313,6 +317,9 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @brief Interface pairs used for the current update
    */
   ArrayT<InterfacePair> pairs_;
+
+  /** @brief Distinguishes an initialized empty fixed pair set from a pair set that has not been searched */
+  bool interface_pairs_are_initialized_ = false;
 
   /**
    * @brief Contact constraint energy associated with the current state

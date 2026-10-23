@@ -1004,6 +1004,11 @@ int CouplingScheme::checkExecutionModeData()
 //------------------------------------------------------------------------------
 void CouplingScheme::performBinning()
 {
+  // Contact formulations own their candidate search because each formulation decides which coarse pairs are usable.
+  if ( m_formulation ) {
+    return;
+  }
+
   // Find the interacting pairs for this coupling scheme. Will not use
   // binning if setInterfacePairs has been called.
   if ( !this->hasFixedBinning() ) {
@@ -1029,11 +1034,14 @@ void CouplingScheme::performBinning()
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
   if ( m_formulation ) {
-    if ( m_interface_pairs.size() > 0 || !hasFixedBinning() ) {
-      m_formulation->setInterfacePairs( std::move( m_interface_pairs ), 0 );
-    }
-    m_formulation->updateNodalGaps();
-    m_formulation->updateNodalForces();
+    const ContactFormulationInput input( getMesh1().getView(), getMesh2().getView(), getExecutionMode(),
+                                         getBinningMethod(), getEffectiveBinningProximityScale(),
+                                         getParameters().residual_gap, getParameters().auto_contact_check,
+                                         hasFixedBinning() );
+    // A force request computes any missing pair and gap data, so callers do not have to issue stages in order.
+    m_formulation->updateNodalForces( input );
+    setBinned( true );
+    setFixedBinningPerCase();
     if ( m_formulation->hasTimeStepCalculation() ) {
       dt = m_formulation->computeTimeStep();
     }
