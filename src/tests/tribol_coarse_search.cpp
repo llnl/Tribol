@@ -80,9 +80,10 @@ TEST( CoarseSearch, quadratic_edge_nodes_contribute_to_bounds )
                           tribol::QUADRATIC_LAGRANGE, mesh2_x.data(), mesh2_y.data(), nullptr,
                           tribol::MemorySpace::Host );
 
-  // Coarse search must use connectivity and coordinates directly because higher-order MeshData intentionally has no
-  // derived centroid, radius, area, or normal data.
+  // MeshData rejects computeFaceData() for quadratic geometry because its derived quantities use linear face formulas.
+  // Grid and BVH must therefore build bounds from connectivity and nodal coordinates without those derived arrays.
   EXPECT_FALSE( mesh1.getView().hasElementCentroids() );
+  EXPECT_FALSE( mesh1.getView().hasElementAreas() );
   EXPECT_FALSE( mesh1.getView().hasElementNormals() );
   EXPECT_FALSE( mesh1.getView().hasFaceRadius() );
   ExpectBothSearchesFindOnlyFirstQuery<2>( mesh1, mesh2 );
