@@ -51,7 +51,7 @@ void FilterCandidatePairs( CouplingScheme& coupling_scheme, ArrayT<InterfacePair
       coupling_scheme.getExecutionMode(), candidate_count,
       [accepted_view, accepted_count, candidate_view, coupling_scheme_view] TRIBOL_HOST_DEVICE( IndexT candidate ) {
         const auto& pair = candidate_view[candidate];
-        accepted_view[candidate] = geomFilter( coupling_scheme_view, pair.m_element_id1, pair.m_element_id2 );
+        accepted_view[candidate] = geomFilter( coupling_scheme_view, pair.element_id1_, pair.element_id2_ );
         if ( accepted_view[candidate] ) {
           tribol::atomicInc( accepted_count.data() );
         }
