@@ -149,7 +149,7 @@ TEST( CoarseSearch, quadratic_quad_nodes_contribute_to_bounds )
   ExpectBothSearchesFindOnlyFirstQuery<3>( mesh1, mesh2 );
 }
 
-TEST( CoarseSearch, either_empty_input_returns_no_candidates )
+TEST( CoarseSearch, either_empty_quadratic_input_returns_no_candidates )
 {
   constexpr std::array<tribol::IndexT, 3> connectivity{ 0, 1, 2 };
   constexpr std::array<tribol::RealT, 3> x{ 0.0, 1.0, 0.5 };
