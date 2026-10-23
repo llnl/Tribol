@@ -126,9 +126,9 @@ void Nodal<Adapter>::updateNodalGaps()
   for ( const auto& pair : adapter->pairs_ ) {
     // These need to be flipped, since the pairs are determined with element 1 associated with mesh 1, and we flipped
     // the mesh numbers to be consistent with the literature and since the underlying method integrates on element 1
-    InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
-    const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
-    const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
+    InterfacePair flipped_pair( pair.element_id2_, pair.element_id1_ );
+    const auto elem1 = static_cast<int>( flipped_pair.element_id1_ );
+    const auto elem2 = static_cast<int>( flipped_pair.element_id2_ );
 
     double g_tilde_elem[2];
     double A_elem[2];
@@ -359,11 +359,11 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* ad
   auto mesh2_view = adapter->mesh2_->getView();
 
   for ( auto& pair : adapter->pairs_ ) {
-    InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
-    const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
+    InterfacePair flipped_pair( pair.element_id2_, pair.element_id1_ );
+    const auto elem1 = static_cast<int>( flipped_pair.element_id1_ );
     const auto node11 = mesh1_view.getConnectivity()( elem1, 0 );
     const auto node12 = mesh1_view.getConnectivity()( elem1, 1 );
-    const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
+    const auto elem2 = static_cast<int>( flipped_pair.element_id2_ );
 
     const RealT lambda1 = redecomp_lambda( node11 );
     const RealT lambda2 = redecomp_lambda( node12 );
@@ -434,11 +434,11 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
   auto mesh2_view = adapter->mesh2_->getView();
 
   for ( auto& pair : adapter->pairs_ ) {
-    InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
-    const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
+    InterfacePair flipped_pair( pair.element_id2_, pair.element_id1_ );
+    const auto elem1 = static_cast<int>( flipped_pair.element_id1_ );
     const auto node11 = mesh1_view.getConnectivity()( elem1, 0 );
     const auto node12 = mesh1_view.getConnectivity()( elem1, 1 );
-    const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
+    const auto elem2 = static_cast<int>( flipped_pair.element_id2_ );
 
     const RealT pressure1 = 2.0 * redecomp_pressure( node11 );
     const RealT pressure2 = 2.0 * redecomp_pressure( node12 );
@@ -528,9 +528,9 @@ void QuadraturePoint<Adapter>::updateNodalForces()
   auto mesh2_view = adapter->mesh2_->getView();
 
   for ( const auto& pair : adapter->pairs_ ) {
-    InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
-    const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
-    const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
+    InterfacePair flipped_pair( pair.element_id2_, pair.element_id1_ );
+    const auto elem1 = static_cast<int>( flipped_pair.element_id1_ );
+    const auto elem2 = static_cast<int>( flipped_pair.element_id2_ );
     const auto qp_data =
         adapter->evaluator_->compute_quadrature_point_penalty_data( flipped_pair, mesh1_view, mesh2_view );
 

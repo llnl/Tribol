@@ -101,8 +101,8 @@ FiniteDiffResult EnergyMortarCalculator::validate_g_tilde( const InterfacePair& 
   result.g_tilde1_baseline = g1_base;
   result.g_tilde2_baseline = g2_base;
 
-  auto A_conn = viewer1.getConnectivity()( static_cast<std::size_t>( pair.m_element_id1 ) );
-  auto B_conn = viewer2.getConnectivity()( static_cast<std::size_t>( pair.m_element_id2 ) );
+  auto A_conn = viewer1.getConnectivity()( static_cast<std::size_t>( pair.element_id1_ ) );
+  auto B_conn = viewer2.getConnectivity()( static_cast<std::size_t>( pair.element_id2_ ) );
 
   result.node_ids = { static_cast<int>( A_conn[0] ), static_cast<int>( A_conn[1] ), static_cast<int>( B_conn[0] ),
                       static_cast<int>( B_conn[1] ) };
@@ -243,7 +243,7 @@ std::pair<double, double> EnergyMortarCalculator::eval_gtilde_fixed_qp( const In
                                                                         const QuadPoints& qp_fixed ) const
 {
   double A0[2], A1[2];
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
 
   const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
   const double J = ComputeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coordinates.view() );
@@ -283,8 +283,8 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
   result.fd_gradient_g1.assign( ndof * ndof, 0.0 );
   result.fd_gradient_g2.assign( ndof * ndof, 0.0 );
 
-  auto A_conn = viewer1.getConnectivity()( static_cast<std::size_t>( pair.m_element_id1 ) );
-  auto B_conn = viewer2.getConnectivity()( static_cast<std::size_t>( pair.m_element_id2 ) );
+  auto A_conn = viewer1.getConnectivity()( static_cast<std::size_t>( pair.element_id1_ ) );
+  auto B_conn = viewer2.getConnectivity()( static_cast<std::size_t>( pair.element_id2_ ) );
 
   result.node_ids = { static_cast<int>( A_conn[0] ), static_cast<int>( A_conn[1] ), static_cast<int>( B_conn[0] ),
                       static_cast<int>( B_conn[1] ) };

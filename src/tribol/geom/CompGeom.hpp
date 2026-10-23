@@ -296,28 +296,28 @@ class ContactPlanePair : public CompGeomPair {
    *
    * \return Face id
    */
-  TRIBOL_HOST_DEVICE inline IndexT getCpElementId1() const { return m_pair->m_element_id1; }
+  TRIBOL_HOST_DEVICE inline IndexT getCpElementId1() const { return m_pair->element_id1_; }
 
   /*!
    * \brief Get the id of the second element that forms the contact plane
    *
    * \return Face id
    */
-  TRIBOL_HOST_DEVICE inline IndexT getCpElementId2() const { return m_pair->m_element_id2; }
+  TRIBOL_HOST_DEVICE inline IndexT getCpElementId2() const { return m_pair->element_id2_; }
 
   /*!
    * \brief Set the first contact plane element id
    *
    * \param [in] element_id element id
    */
-  void setCpElementId1( IndexT element_id ) { m_pair->m_element_id1 = element_id; }
+  void setCpElementId1( IndexT element_id ) { m_pair->element_id1_ = element_id; }
 
   /*!
    * \brief Set the second contact plane element id
    *
    * \param [in] element_id element id
    */
-  void setCpElementId2( IndexT element_id ) { m_pair->m_element_id2 = element_id; }
+  void setCpElementId2( IndexT element_id ) { m_pair->element_id2_ = element_id; }
 
   /// @}
 };
@@ -1559,8 +1559,8 @@ TRIBOL_HOST_DEVICE inline void CommonPlanePair::resetPlanePointAndCentroidGap( c
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE inline void CommonPlanePair::computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
 {
-  IndexT fId1 = m_pair->m_element_id1;
-  IndexT fId2 = m_pair->m_element_id2;
+  IndexT fId1 = m_pair->element_id1_;
+  IndexT fId2 = m_pair->element_id2_;
   m_nZ = 0.0;
 
   // INTERMEDIATE (I.E. COMMON) PLANE normal calculation:
@@ -1592,7 +1592,7 @@ TRIBOL_HOST_DEVICE inline void MortarPlanePair::computeNormal( const MeshData::V
                                                                const MeshData::Viewer& m2 )
 {
   // mesh id 2 is the projection/mortar plane
-  IndexT fId2 = m_pair->m_element_id2;
+  IndexT fId2 = m_pair->element_id2_;
   m_nZ = 0.0;
 
   // the projection plane is the nonmortar (i.e. mesh id 2) surface so
@@ -1621,7 +1621,7 @@ TRIBOL_HOST_DEVICE inline void AlignedMortarPlanePair::computeNormal( const Mesh
                                                                       const MeshData::Viewer& m2 )
 {
   // side 2 is the mortar/projection plane
-  IndexT fId2 = m_pair->m_element_id2;
+  IndexT fId2 = m_pair->element_id2_;
   m_nZ = 0.0;
 
   // the projection plane is the nonmortar (i.e. mesh id 2) surface so
@@ -1651,8 +1651,8 @@ TRIBOL_HOST_DEVICE inline void CommonPlanePair::computePlanePoint( const MeshDat
 {
   // compute the cp centroid as the average of the two face's centers.
   // This is the default method of computing the cp centroid
-  IndexT fId1 = m_pair->m_element_id1;
-  IndexT fId2 = m_pair->m_element_id2;
+  IndexT fId1 = m_pair->element_id1_;
+  IndexT fId2 = m_pair->element_id2_;
 
   // INTERMEDIATE (I.E. COMMON) PLANE point calculation:
   // average two face vertex averaged centroids
@@ -1672,7 +1672,7 @@ TRIBOL_HOST_DEVICE inline void MortarPlanePair::computePlanePoint( const MeshDat
                                                                    const MeshData::Viewer& m2 )
 {
   // take side 2 as the projection plane
-  IndexT fId2 = m_pair->m_element_id2;
+  IndexT fId2 = m_pair->element_id2_;
 
   // MORTAR calculation using the vertex averaged
   // centroid of the nonmortar face
@@ -1693,7 +1693,7 @@ TRIBOL_HOST_DEVICE inline void AlignedMortarPlanePair::computePlanePoint(
     const MeshData::Viewer& TRIBOL_UNUSED_PARAM( m1 ), const MeshData::Viewer& m2 )
 {
   // take side 2 as the projection plane
-  IndexT fId2 = m_pair->m_element_id2;
+  IndexT fId2 = m_pair->element_id2_;
 
   // set plane centroid to mesh 2 face centroid (i.e. non-mortar)
   m_cX = m2.getElementCentroids()[0][fId2];
@@ -1907,8 +1907,8 @@ TRIBOL_HOST_DEVICE inline void CommonPlanePair::centroidGap( const MeshData::Vie
   }
 
   bool is_parallel = false;
-  IndexT fId1 = m_pair->m_element_id1;
-  IndexT fId2 = m_pair->m_element_id2;
+  IndexT fId1 = m_pair->element_id1_;
+  IndexT fId2 = m_pair->element_id2_;
 
   // get face normmals
   constexpr int max_dim = 3;
@@ -2093,7 +2093,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
           }
 
           SLIC_ERROR( "CommonPlanePair::computeOverlap3D(): too many segment-face intersections; "
-                      << "check for degenerate face " << m_pair->m_element_id1 << "on mesh " << mesh[i]->meshId()
+                      << "check for degenerate face " << m_pair->element_id1_ << "on mesh " << mesh[i]->meshId()
                       << "." );
 #endif
           return DEGENERATE_OVERLAP;

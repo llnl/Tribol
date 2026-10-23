@@ -31,7 +31,7 @@ CandidateIds GetCandidateIds( const tribol::ArrayT<tribol::InterfacePair>& candi
 {
   CandidateIds candidate_ids;
   for ( const auto& pair : candidate_pairs ) {
-    candidate_ids.emplace( pair.m_element_id1, pair.m_element_id2 );
+    candidate_ids.emplace( pair.element_id1_, pair.element_id2_ );
   }
   return candidate_ids;
 }
