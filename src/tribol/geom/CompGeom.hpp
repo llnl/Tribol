@@ -969,8 +969,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePairByMethod(
     SLIC_DEBUG( "face_err: " << face_err );
 #endif
   } else if ( my_plane.m_inContact ) {
-    // Only method-approved geometry enters the compact plane array. Mortar methods can therefore iterate this array
-    // directly without storing a second active/inactive state on every coarse interface pair.
+    // Increment the count only when storing a plane so plane_ct remains the number of initialized entries.
     auto idx = tribol::atomicInc( plane_ct );
     cg.getPlane<T>( idx ) = my_plane;
   }
