@@ -80,7 +80,10 @@ void FilterCandidatePairs( CouplingScheme& coupling_scheme, ArrayT<InterfacePair
 }
 
 /**
- * @brief Adapts a standalone coarse search to InterfacePairFinder's legacy filtered output
+ * @brief Store geomFilter()-approved coarse-search candidates in the coupling scheme
+ *
+ * GridSearch and BvhSearch return spatial candidates without method-specific checks. Existing contact methods read
+ * CouplingScheme::getInterfacePairs(), so this adapter applies geomFilter() and stores only accepted candidates there.
  *
  * @tparam Search GridSearch or BvhSearch specialization
  */
