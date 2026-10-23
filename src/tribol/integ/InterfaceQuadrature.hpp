@@ -23,7 +23,7 @@ namespace tribol {
  * @brief Stores one interface quadrature point in the parent coordinates of both contact elements
  *
  * Parent coordinates follow the conventions documented by FaceElementTraits. The first and second coordinate arrays
- * correspond to InterfacePair::m_element_id1 and InterfacePair::m_element_id2, respectively. Keeping both arrays on
+ * correspond to InterfacePair::element_id1_ and InterfacePair::element_id2_, respectively. Keeping both arrays on
  * the point allows a caller to pass either fixed-extent view directly to the matching BasisFunction specialization.
  *
  * The weight contains the complete physical line or surface integration measure. Reusing a stored point therefore

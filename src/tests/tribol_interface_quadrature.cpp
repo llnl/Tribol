@@ -96,8 +96,8 @@ TEST( InterfaceQuadratureData, owns_pairs_and_variable_point_ranges )
   EXPECT_EQ( view.numberOfQuadraturePoints(), 3 );
   EXPECT_EQ( view.numberOfQuadraturePoints( 0 ), 2 );
   EXPECT_EQ( view.numberOfQuadraturePoints( 1 ), 1 );
-  EXPECT_EQ( view.getInterfacePair( 0 ).m_element_id1, 4 );
-  EXPECT_EQ( view.getInterfacePair( 1 ).m_element_id2, 11 );
+  EXPECT_EQ( view.getInterfacePair( 0 ).element_id1_, 4 );
+  EXPECT_EQ( view.getInterfacePair( 1 ).element_id2_, 11 );
   EXPECT_EQ( view.getQuadraturePoint( 0, 1 ).getMesh1ParentCoordinates()[0], 0.5 );
   EXPECT_EQ( view.getQuadraturePoint( 1, 0 ).getWeight(), 1.2 );
 
