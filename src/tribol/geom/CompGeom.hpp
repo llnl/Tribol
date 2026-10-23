@@ -31,7 +31,7 @@ class CompGeomPair {
   {
   }
 
-  virtual ~CompGeomPair() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE virtual ~CompGeomPair() = default;
 
  public:
   int m_dim;
@@ -54,6 +54,8 @@ class ContactPlanePair : public CompGeomPair {
    *
    */
   TRIBOL_HOST_DEVICE inline ContactPlanePair( InterfacePair* pair, const Parameters& params, const int dim );
+
+  TRIBOL_DEFAULT_HOST_DEVICE ~ContactPlanePair() = default;
 
   /*!
    * \brief Compute a local basis on the contact plane
@@ -343,7 +345,7 @@ class CommonPlanePair : public ContactPlanePair {
    * \brief Destructor
    *
    */
-  ~CommonPlanePair() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE ~CommonPlanePair() = default;
 
   /*!
    * \brief check to see if common plane face-pairs are interacting
@@ -537,7 +539,7 @@ class MortarPlanePair : public ContactPlanePair {
    * \brief Destructor
    *
    */
-  ~MortarPlanePair() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE ~MortarPlanePair() = default;
   /*!
    * \brief check to see if mortar plane face-pairs are interacting
    *
@@ -634,7 +636,7 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    * \brief Destructor
    *
    */
-  ~AlignedMortarPlanePair() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE ~AlignedMortarPlanePair() = default;
 
   /*!
    * \brief check to see if aligned mortar plane face-pairs are interacting
@@ -969,8 +971,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePairByMethod(
     SLIC_DEBUG( "face_err: " << face_err );
 #endif
   } else if ( my_plane.m_inContact ) {
-    // Only method-approved geometry enters the compact plane array. Mortar methods can therefore iterate this array
-    // directly without storing a second active/inactive state on every coarse interface pair.
+    // Increment the count only when storing a plane so plane_ct remains the number of initialized entries.
     auto idx = tribol::atomicInc( plane_ct );
     cg.getPlane<T>( idx ) = my_plane;
   }

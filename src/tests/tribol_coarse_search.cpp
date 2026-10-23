@@ -11,12 +11,9 @@
 
 #include "axom/slic/core/SimpleLogger.hpp"
 
-#include "tribol/interface/tribol.hpp"
-#include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/search/BvhSearch.hpp"
 #include "tribol/search/GridSearch.hpp"
-#include "tribol/utils/DataManager.hpp"
 
 namespace {
 
@@ -27,44 +24,39 @@ constexpr tribol::IndexT mesh2_id = 29;
 constexpr tribol::RealT proximity_scale_for_raised_nodes = 0.2;
 constexpr tribol::RealT no_residual_gap = 0.0;
 
-CandidateIds GetCandidateIds( const tribol::ArrayT<tribol::InterfacePair>& candidate_pairs )
-{
-  CandidateIds candidate_ids;
-  for ( const auto& pair : candidate_pairs ) {
-    candidate_ids.emplace( pair.element_id1_, pair.element_id2_ );
-  }
-  return candidate_ids;
-}
-
-template <typename Search>
-CandidateIds FindCandidateIds( tribol::MeshData& mesh1, tribol::MeshData& mesh2 )
-{
-  Search search( proximity_scale_for_raised_nodes, no_residual_gap );
-  return GetCandidateIds( search.findCandidatePairs( mesh1.getView(), mesh2.getView() ) );
-}
-
 template <int SpatialDimension>
-void ExpectBothSearchesFindOnlyFirstQuery( tribol::MeshData& mesh1, tribol::MeshData& mesh2 )
+void ExpectBothSearchesFindCandidates( tribol::MeshData& mesh1, tribol::MeshData& mesh2,
+                                       const CandidateIds& expected_candidates )
 {
-  const CandidateIds expected_candidates{ { 0, 0 } };
+  tribol::GridSearch<SpatialDimension> grid_search( proximity_scale_for_raised_nodes, no_residual_gap );
+  tribol::BvhSearch<SpatialDimension, tribol::ExecutionMode::Sequential> bvh_search(
+      proximity_scale_for_raised_nodes, no_residual_gap );
 
+  const auto grid_candidates = grid_search.findCandidatePairs( mesh1.getView(), mesh2.getView() );
+  const auto bvh_candidates = bvh_search.findCandidatePairs( mesh1.getView(), mesh2.getView() );
+
+  CandidateIds grid_candidate_ids;
+  for ( const auto& pair : grid_candidates ) {
+    grid_candidate_ids.emplace( pair.element_id1_, pair.element_id2_ );
+  }
+  CandidateIds bvh_candidate_ids;
+  for ( const auto& pair : bvh_candidates ) {
+    bvh_candidate_ids.emplace( pair.element_id1_, pair.element_id2_ );
+  }
+
+  // Compare raw counts before the ID sets so duplicate element pairs cannot be hidden by set insertion.
+  EXPECT_EQ( grid_candidates.size(), expected_candidates.size() );
+  EXPECT_EQ( bvh_candidates.size(), expected_candidates.size() );
   // Grid and BVH may enumerate intersections differently, so compare element IDs without imposing an output order.
-  EXPECT_EQ( FindCandidateIds<tribol::GridSearch<SpatialDimension>>( mesh1, mesh2 ), expected_candidates );
-  EXPECT_EQ(
-      ( FindCandidateIds<tribol::BvhSearch<SpatialDimension, tribol::ExecutionMode::Sequential>>( mesh1, mesh2 ) ),
-      expected_candidates );
-}
-
-template <typename Search>
-CandidateIds FindCandidateIds( const Search& search, tribol::MeshData& mesh1, tribol::MeshData& mesh2 )
-{
-  return GetCandidateIds( search.findCandidatePairs( mesh1.getView(), mesh2.getView() ) );
+  EXPECT_EQ( grid_candidate_ids, expected_candidates );
+  EXPECT_EQ( bvh_candidate_ids, expected_candidates );
 }
 
 TEST( CoarseSearch, quadratic_edge_nodes_contribute_to_bounds )
 {
-  // The raised midpoint is the only mesh-1 node near the first query edge. Finding that query confirms that all three
-  // finite-element nodes contribute to the bound; excluding the distant query confirms that the bound remains local.
+  // Mesh 2 has one query near the raised midpoint and one spatially distant query. The coarse bounds must include the
+  // midpoint to find the nearby query without also finding the distant query.
+  constexpr std::array<tribol::IndexT, 2> endpoint_connectivity{ 0, 1 };
   constexpr std::array<tribol::IndexT, 3> mesh1_connectivity{ 0, 1, 2 };
   constexpr std::array<tribol::RealT, 3> mesh1_x{ 0.0, 1.0, 0.5 };
   constexpr std::array<tribol::RealT, 3> mesh1_y{ 0.0, 0.0, 2.0 };
@@ -80,18 +72,28 @@ TEST( CoarseSearch, quadratic_edge_nodes_contribute_to_bounds )
                           tribol::QUADRATIC_LAGRANGE, mesh2_x.data(), mesh2_y.data(), nullptr,
                           tribol::MemorySpace::Host );
 
-  // Coarse search must use connectivity and coordinates directly because higher-order MeshData intentionally has no
-  // derived centroid, radius, area, or normal data.
+  tribol::MeshData endpoint_only_mesh1( mesh1_id, 1, endpoint_connectivity.size(), endpoint_connectivity.data(),
+                                        tribol::EDGE, tribol::LINEAR_LAGRANGE, mesh1_x.data(), mesh1_y.data(), nullptr,
+                                        tribol::MemorySpace::Host );
+
+  // The endpoint-only control remains on y=0 and cannot reach the nearby query. Finding that query only after adding
+  // the raised midpoint proves that both searches include the quadratic node in their element bounds.
+  ExpectBothSearchesFindCandidates<2>( endpoint_only_mesh1, mesh2, {} );
+
+  // MeshData rejects computeFaceData() for quadratic geometry because its derived quantities use linear face formulas.
+  // Grid and BVH must therefore build bounds from connectivity and nodal coordinates without those derived arrays.
   EXPECT_FALSE( mesh1.getView().hasElementCentroids() );
+  EXPECT_FALSE( mesh1.getView().hasElementAreas() );
   EXPECT_FALSE( mesh1.getView().hasElementNormals() );
   EXPECT_FALSE( mesh1.getView().hasFaceRadius() );
-  ExpectBothSearchesFindOnlyFirstQuery<2>( mesh1, mesh2 );
+  ExpectBothSearchesFindCandidates<2>( mesh1, mesh2, { { 0, 0 } } );
 }
 
 TEST( CoarseSearch, quadratic_quad_nodes_contribute_to_bounds )
 {
-  // The raised center node is the only mesh-1 node near the first query quadrilateral. The coarse bounds must include
-  // that node while still excluding a second quadrilateral that is spatially distant.
+  // Mesh 1 is a unit quadrilateral in z=0 with its center node raised to z=2. Mesh 2 has a small query centered over
+  // that node at z=2.1 and a second query around (4.5, 4.5, 5). The bounds must find only the first query.
+  constexpr std::array<tribol::IndexT, 4> corner_connectivity{ 0, 1, 2, 3 };
   constexpr std::array<tribol::IndexT, 9> mesh1_connectivity{ 0, 1, 2, 3, 4, 5, 6, 7, 8 };
   constexpr std::array<tribol::RealT, 9> mesh1_x{ 0.0, 1.0, 1.0, 0.0, 0.5, 1.0, 0.5, 0.0, 0.5 };
   constexpr std::array<tribol::RealT, 9> mesh1_y{ 0.0, 0.0, 1.0, 1.0, 0.0, 0.5, 1.0, 0.5, 0.5 };
@@ -113,14 +115,23 @@ TEST( CoarseSearch, quadratic_quad_nodes_contribute_to_bounds )
                           tribol::QUADRATIC_LAGRANGE, mesh2_x.data(), mesh2_y.data(), mesh2_z.data(),
                           tribol::MemorySpace::Host );
 
-  // No method-independent face normal exists for this higher-order data, so BVH must use the same nodal inputs as Grid.
+  tribol::MeshData corner_only_mesh1( mesh1_id, 1, corner_connectivity.size(), corner_connectivity.data(),
+                                      tribol::QUAD, tribol::LINEAR_LAGRANGE, mesh1_x.data(), mesh1_y.data(),
+                                      mesh1_z.data(), tribol::MemorySpace::Host );
+
+  // The corner-only control remains in the z=0 plane and cannot reach the nearby query. Finding that query only after
+  // adding the raised center node proves that both searches include the quadratic node in their element bounds.
+  ExpectBothSearchesFindCandidates<3>( corner_only_mesh1, mesh2, {} );
+
+  // Higher-order MeshData does not compute the linear face data below. Both searches must build bounds directly from
+  // all nodal coordinates so quadratic faces can participate without calling computeFaceData().
   EXPECT_FALSE( mesh1.getView().hasElementCentroids() );
   EXPECT_FALSE( mesh1.getView().hasElementNormals() );
   EXPECT_FALSE( mesh1.getView().hasFaceRadius() );
-  ExpectBothSearchesFindOnlyFirstQuery<3>( mesh1, mesh2 );
+  ExpectBothSearchesFindCandidates<3>( mesh1, mesh2, { { 0, 0 } } );
 }
 
-TEST( CoarseSearch, empty_meshes_return_no_candidates )
+TEST( CoarseSearch, either_empty_quadratic_input_returns_no_candidates )
 {
   constexpr std::array<tribol::IndexT, 3> connectivity{ 0, 1, 2 };
   constexpr std::array<tribol::RealT, 3> x{ 0.0, 1.0, 0.5 };
@@ -132,12 +143,30 @@ TEST( CoarseSearch, empty_meshes_return_no_candidates )
                                    x.data(), y.data(), nullptr, tribol::MemorySpace::Host );
 
   // Either empty input prevents a spatial index from producing pairs, regardless of which mesh is queried.
-  EXPECT_TRUE( FindCandidateIds<tribol::GridSearch<2>>( empty_mesh, populated_mesh ).empty() );
-  EXPECT_TRUE( FindCandidateIds<tribol::GridSearch<2>>( populated_mesh, empty_mesh ).empty() );
-  EXPECT_TRUE( ( FindCandidateIds<tribol::BvhSearch<2, tribol::ExecutionMode::Sequential>>( empty_mesh, populated_mesh )
-                     .empty() ) );
-  EXPECT_TRUE( ( FindCandidateIds<tribol::BvhSearch<2, tribol::ExecutionMode::Sequential>>( populated_mesh, empty_mesh )
-                     .empty() ) );
+  ExpectBothSearchesFindCandidates<2>( empty_mesh, populated_mesh, {} );
+  ExpectBothSearchesFindCandidates<2>( populated_mesh, empty_mesh, {} );
+}
+
+TEST( CoarseSearch, nonconforming_quadratic_edge_meshes_find_expected_candidates )
+{
+  // Each mesh contains two quadratic edges. Mesh 2 starts half an edge to the right, placing its first endpoint over
+  // the midpoint of the corresponding mesh-1 edge instead of matching the endpoint locations.
+  constexpr std::array<tribol::IndexT, 6> connectivity{ 0, 1, 2, 3, 4, 5 };
+  constexpr std::array<tribol::RealT, 6> mesh1_x{ 0.0, 1.0, 0.5, 4.0, 5.0, 4.5 };
+  constexpr std::array<tribol::RealT, 6> mesh1_y{ 0.0, 0.0, 1.0, 0.0, 0.0, 1.0 };
+  constexpr std::array<tribol::RealT, 6> mesh2_x{ 0.5, 1.5, 1.0, 4.5, 5.5, 5.0 };
+  constexpr std::array<tribol::RealT, 6> mesh2_y{ 1.1, 1.1, 1.2, 1.1, 1.1, 1.2 };
+
+  tribol::MeshData mesh1( mesh1_id, 2, mesh1_x.size(), connectivity.data(), tribol::EDGE,
+                          tribol::QUADRATIC_LAGRANGE, mesh1_x.data(), mesh1_y.data(), nullptr,
+                          tribol::MemorySpace::Host );
+  tribol::MeshData mesh2( mesh2_id, 2, mesh2_x.size(), connectivity.data(), tribol::EDGE,
+                          tribol::QUADRATIC_LAGRANGE, mesh2_x.data(), mesh2_y.data(), nullptr,
+                          tribol::MemorySpace::Host );
+
+  // Each raised mesh-1 midpoint is near only its corresponding shifted mesh-2 edge. Cross-element pairs remain far
+  // enough apart that the searches must return exactly the two corresponding element IDs.
+  ExpectBothSearchesFindCandidates<2>( mesh1, mesh2, { { 0, 0 }, { 1, 1 } } );
 }
 
 TEST( CoarseSearch, each_query_uses_current_mesh_views )
@@ -157,74 +186,29 @@ TEST( CoarseSearch, each_query_uses_current_mesh_views )
   tribol::MeshData distant_mesh2( mesh2_id, 1, mesh2_x.size(), connectivity.data(), tribol::EDGE,
                                   tribol::QUADRATIC_LAGRANGE, mesh2_x.data(), distant_mesh2_y.data(), nullptr,
                                   tribol::MemorySpace::Host );
-  const CandidateIds expected_candidate{ { 0, 0 } };
 
   // The same search object must accept replacement mesh arrays on each call rather than retaining stale views.
   tribol::GridSearch<2> grid_search( proximity_scale_for_raised_nodes, no_residual_gap );
-  EXPECT_EQ( FindCandidateIds( grid_search, mesh1, nearby_mesh2 ), expected_candidate );
-  EXPECT_TRUE( FindCandidateIds( grid_search, mesh1, distant_mesh2 ).empty() );
+  const auto nearby_grid_candidates = grid_search.findCandidatePairs( mesh1.getView(), nearby_mesh2.getView() );
+  ASSERT_EQ( nearby_grid_candidates.size(), 1 );
+  EXPECT_EQ( nearby_grid_candidates[0].element_id1_, 0 );
+  EXPECT_EQ( nearby_grid_candidates[0].element_id2_, 0 );
+  EXPECT_TRUE( grid_search.findCandidatePairs( mesh1.getView(), distant_mesh2.getView() ).empty() );
 
   tribol::BvhSearch<2, tribol::ExecutionMode::Sequential> bvh_search( proximity_scale_for_raised_nodes,
                                                                       no_residual_gap );
-  EXPECT_EQ( FindCandidateIds( bvh_search, mesh1, nearby_mesh2 ), expected_candidate );
-  EXPECT_TRUE( FindCandidateIds( bvh_search, mesh1, distant_mesh2 ).empty() );
+  const auto nearby_bvh_candidates = bvh_search.findCandidatePairs( mesh1.getView(), nearby_mesh2.getView() );
+  ASSERT_EQ( nearby_bvh_candidates.size(), 1 );
+  EXPECT_EQ( nearby_bvh_candidates[0].element_id1_, 0 );
+  EXPECT_EQ( nearby_bvh_candidates[0].element_id2_, 0 );
+  EXPECT_TRUE( bvh_search.findCandidatePairs( mesh1.getView(), distant_mesh2.getView() ).empty() );
 }
 
-void ExpectLegacySearchRejectsCoarseCandidate( tribol::BinningMethod binning_method )
+TEST( CoarseSearch, same_mesh_search_returns_one_direction_per_pair )
 {
-  constexpr std::array<tribol::IndexT, 2> connectivity{ 0, 1 };
-  constexpr std::array<tribol::RealT, 2> x{ 0.0, 1.0 };
-  constexpr std::array<tribol::RealT, 2> y{ 0.0, 0.0 };
-  std::array<tribol::RealT, 2> response_x{};
-  std::array<tribol::RealT, 2> response_y{};
-
-  tribol::finalize();
-  tribol::registerMesh( mesh1_id, 1, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(),
-                        y.data(), nullptr, tribol::MemorySpace::Host );
-  tribol::registerMesh( mesh2_id, 1, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(),
-                        y.data(), nullptr, tribol::MemorySpace::Host );
-  tribol::registerNodalResponse( mesh1_id, response_x.data(), response_y.data(), nullptr );
-  tribol::registerNodalResponse( mesh2_id, response_x.data(), response_y.data(), nullptr );
-  tribol::setKinematicConstantPenalty( mesh1_id, 1.0 );
-  tribol::setKinematicConstantPenalty( mesh2_id, 1.0 );
-
-  constexpr tribol::IndexT coupling_scheme_id = 41;
-  tribol::registerCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
-                                  tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, binning_method,
-                                  tribol::ExecutionMode::Sequential );
-  tribol::setPenaltyOptions( coupling_scheme_id, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
-
-  auto& mesh_manager = tribol::MeshManager::getInstance();
-  const CandidateIds expected_coarse_candidate{ { 0, 0 } };
-  if ( binning_method == tribol::BINNING_GRID ) {
-    EXPECT_EQ( FindCandidateIds<tribol::GridSearch<2>>( mesh_manager.at( mesh1_id ), mesh_manager.at( mesh2_id ) ),
-               expected_coarse_candidate );
-  } else {
-    EXPECT_EQ( ( FindCandidateIds<tribol::BvhSearch<2, tribol::ExecutionMode::Sequential>>(
-                   mesh_manager.at( mesh1_id ), mesh_manager.at( mesh2_id ) ) ),
-               expected_coarse_candidate );
-  }
-
-  auto& coupling_scheme = tribol::CouplingSchemeManager::getInstance().at( coupling_scheme_id );
-  ASSERT_TRUE( coupling_scheme.init() );
-  coupling_scheme.performBinning();
-
-  // The coincident boxes overlap, but matching face normals are invalid for legacy surface contact. This check confirms
-  // that InterfacePairFinder still applies geomFilter() after the standalone search returns its coarse candidate.
-  EXPECT_TRUE( coupling_scheme.getInterfacePairs().empty() );
-  tribol::finalize();
-}
-
-TEST( CoarseSearch, legacy_interface_pair_finder_retains_geometry_filter )
-{
-  // Exercise both adapters because GridSearch and BvhSearch now share the same legacy filtering stage.
-  ExpectLegacySearchRejectsCoarseCandidate( tribol::BINNING_GRID );
-  ExpectLegacySearchRejectsCoarseCandidate( tribol::BINNING_BVH );
-}
-
-TEST( CoarseSearch, same_mesh_search_deduplicates_pairs )
-{
-  // When searching a mesh against itself, each intersecting pair must appear in only one mirrored direction.
+  // Passing the same mesh in both search roles models auto-contact coarse search. Keep one direction for each
+  // intersecting element pair so { 1, 0 } is returned without duplicate { 0, 1 }. Exact self-pairs are never valid
+  // contact candidates, while method-specific filtering decides whether to retain the shared-node pair.
   constexpr std::array<tribol::IndexT, 4> connectivity{ 0, 1, 1, 2 };
   constexpr std::array<tribol::RealT, 3> x{ 0.0, 1.0, 2.0 };
   constexpr std::array<tribol::RealT, 3> y{ 0.0, 0.0, 0.0 };
@@ -232,32 +216,26 @@ TEST( CoarseSearch, same_mesh_search_deduplicates_pairs )
   tribol::MeshData mesh( mesh1_id, 2, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(),
                          y.data(), nullptr, tribol::MemorySpace::Host );
 
-  tribol::GridSearch<2> grid_search( proximity_scale_for_raised_nodes, no_residual_gap );
-  tribol::BvhSearch<2, tribol::ExecutionMode::Sequential> bvh_search( proximity_scale_for_raised_nodes,
-                                                                      no_residual_gap );
-  const auto grid_candidates = grid_search.findCandidatePairs( mesh.getView(), mesh.getView() );
-  const auto bvh_candidates = bvh_search.findCandidatePairs( mesh.getView(), mesh.getView() );
-  const CandidateIds expected_candidates{ { 0, 0 }, { 1, 0 }, { 1, 1 } };
-
-  // Comparing raw counts with the unique ID set ensures neither search returns an identical pair more than once.
-  EXPECT_EQ( grid_candidates.size(), expected_candidates.size() );
-  EXPECT_EQ( bvh_candidates.size(), expected_candidates.size() );
-  EXPECT_EQ( GetCandidateIds( grid_candidates ), expected_candidates );
-  EXPECT_EQ( GetCandidateIds( bvh_candidates ), expected_candidates );
+  const CandidateIds expected_candidates{ { 1, 0 } };
+  ExpectBothSearchesFindCandidates<2>( mesh, mesh, expected_candidates );
 }
 
-TEST( CoarseSearch, flat_elements_avoid_division_by_zero )
+TEST( CoarseSearch, grid_handles_zero_range_without_expansion )
 {
-  // A valid line element has zero range normal to the line, which must still produce a valid grid resolution.
+  // Coincident horizontal edges have zero y-range, and zero proximity and residual-gap expansion leaves that range
+  // unchanged. GridSearch must assign one cell in y instead of dividing by zero while computing the grid resolution.
+  constexpr tribol::RealT no_proximity_expansion = 0.0;
   constexpr std::array<tribol::IndexT, 2> connectivity{ 0, 1 };
   constexpr std::array<tribol::RealT, 2> x{ 0.0, 1.0 };
   constexpr std::array<tribol::RealT, 2> y{ 0.0, 0.0 };
 
-  tribol::MeshData mesh( mesh1_id, 1, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(),
-                         y.data(), nullptr, tribol::MemorySpace::Host );
+  tribol::MeshData mesh1( mesh1_id, 1, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(),
+                          y.data(), nullptr, tribol::MemorySpace::Host );
+  tribol::MeshData mesh2( mesh2_id, 1, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(),
+                          y.data(), nullptr, tribol::MemorySpace::Host );
 
-  tribol::GridSearch<2> grid_search( 0.0, 0.0 );
-  const auto candidates = grid_search.findCandidatePairs( mesh.getView(), mesh.getView() );
+  tribol::GridSearch<2> grid_search( no_proximity_expansion, no_residual_gap );
+  const auto candidates = grid_search.findCandidatePairs( mesh1.getView(), mesh2.getView() );
   EXPECT_EQ( candidates.size(), 1 );
 }
 

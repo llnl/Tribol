@@ -31,10 +31,12 @@ class SearchBase {
 namespace {
 
 /**
- * @brief Apply the legacy geometry checks to candidates returned by a standalone coarse search
+ * @brief Apply geomFilter() to candidates returned by a standalone coarse search
  *
  * GridSearch and BvhSearch deliberately know only about spatial bounds. InterfacePairFinder retains existing behavior
  * by applying geomFilter() before it exposes pairs to legacy contact methods.
+ * This adapter serves existing linear-mesh methods because geomFilter() relies on face data computed only for linear
+ * elements.
  */
 void FilterCandidatePairs( CouplingScheme& coupling_scheme, ArrayT<InterfacePair>&& candidate_pairs )
 {
@@ -78,7 +80,10 @@ void FilterCandidatePairs( CouplingScheme& coupling_scheme, ArrayT<InterfacePair
 }
 
 /**
- * @brief Adapts a standalone coarse search to InterfacePairFinder's legacy filtered output
+ * @brief Store geomFilter()-approved coarse-search candidates in the coupling scheme
+ *
+ * GridSearch and BvhSearch return spatial candidates without method-specific checks. Existing contact methods read
+ * CouplingScheme::getInterfacePairs(), so this adapter applies geomFilter() and stores only accepted candidates there.
  *
  * @tparam Search GridSearch or BvhSearch specialization
  */
