@@ -156,7 +156,7 @@ void ComputeAlignedMortarGaps( CouplingScheme* cs )
   ElementAvgNodalNormal normal_method;
   normal_method.Compute( nonmortarMeshData );
 
-  // CheckInterfacePair stores only method-approved geometry, so the contact-plane array is compact.
+  // Number of stored aligned-mortar planes that contribute to the gap calculation.
   const IndexT contact_plane_count = cs->getNumActivePairs();
 
   ////////////////////////////////////////////////////////////////////////
@@ -231,7 +231,7 @@ int ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
   ///////////////////////////////////////////////////////
   ComputeAlignedMortarGaps( cs );
 
-  // CheckInterfacePair stores only method-approved geometry, so the contact-plane array is compact.
+  // Number of stored aligned-mortar planes that contribute to the residual and/or Jacobian terms.
   const IndexT contact_plane_count = cs->getNumActivePairs();
   auto& cg_pairs = cs->getCompGeom();
   // auto planes = cg_pairs.getAlignedMortarPlanePairs();

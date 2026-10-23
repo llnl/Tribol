@@ -24,6 +24,7 @@ set( tribol_tests
      tribol_hex_mesh.cpp
      tribol_interface_quadrature.cpp
      tribol_interface_pair_checks.cpp
+     tribol_interface_pair_finder.cpp
      tribol_inv_iso.cpp
      tribol_iso_integ.cpp
      tribol_math.cpp

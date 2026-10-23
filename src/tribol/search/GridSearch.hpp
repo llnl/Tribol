@@ -53,9 +53,9 @@ class GridSearch {
   /**
    * @brief Build an implicit grid and return the spatial candidates found for the second mesh
    *
-   * Bounding-box candidates can still include self-pairs, shared-node pairs, co-oriented faces, and pairs that fail a
-   * contact method's overlap checks. Keeping those decisions outside this class allows each formulation to apply the
-   * geometry checks it requires.
+   * Bounding-box candidates can still include shared-node pairs, co-oriented faces, and pairs that fail a contact
+   * method's overlap checks. Same-mesh searches remove exact self-pairs and retain one direction for mirrored pairs.
+   * Keeping the remaining decisions outside this class allows each formulation to apply the geometry checks it requires.
    *
    * @param mesh1 Current elements inserted into the implicit grid
    * @param mesh2 Current elements used to query the implicit grid
@@ -120,9 +120,9 @@ class GridSearch {
       auto candidate_bits = grid.getCandidates( bounding_box );
       for ( IndexT mesh1_element = candidate_bits.find_first(); mesh1_element != Bitset::npos;
             mesh1_element = candidate_bits.find_next( mesh1_element ) ) {
-        // A same-mesh search visits both pair directions. Retain one direction while leaving self-pair policy to the
-        // method-specific filter.
-        if ( mesh1.meshId() == mesh2.meshId() && mesh1_element < mesh2_element ) {
+        // A same-mesh search visits both pair directions. Exact self-pairs cannot represent contact, so retain only one
+        // direction of each pair with different element IDs.
+        if ( mesh1.meshId() == mesh2.meshId() && mesh1_element <= mesh2_element ) {
           continue;
         }
         candidate_pairs.emplace_back( InterfacePair{ mesh1_element, mesh2_element } );
