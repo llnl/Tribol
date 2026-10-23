@@ -113,7 +113,8 @@ TEST( CoarseSearch, quadratic_quad_nodes_contribute_to_bounds )
                           tribol::QUADRATIC_LAGRANGE, mesh2_x.data(), mesh2_y.data(), mesh2_z.data(),
                           tribol::MemorySpace::Host );
 
-  // No method-independent face normal exists for this higher-order data, so BVH must use the same nodal inputs as Grid.
+  // Higher-order MeshData does not compute the linear face data below. Both searches must build bounds directly from
+  // all nodal coordinates so quadratic faces can participate without calling computeFaceData().
   EXPECT_FALSE( mesh1.getView().hasElementCentroids() );
   EXPECT_FALSE( mesh1.getView().hasElementNormals() );
   EXPECT_FALSE( mesh1.getView().hasFaceRadius() );
