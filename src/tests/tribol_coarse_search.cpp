@@ -11,12 +11,9 @@
 
 #include "axom/slic/core/SimpleLogger.hpp"
 
-#include "tribol/interface/tribol.hpp"
-#include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/search/BvhSearch.hpp"
 #include "tribol/search/GridSearch.hpp"
-#include "tribol/utils/DataManager.hpp"
 
 namespace {
 
@@ -205,58 +202,6 @@ TEST( CoarseSearch, each_query_uses_current_mesh_views )
                                                                       no_residual_gap );
   EXPECT_EQ( FindCandidateIds( bvh_search, mesh1, nearby_mesh2 ), expected_candidate );
   EXPECT_TRUE( FindCandidateIds( bvh_search, mesh1, distant_mesh2 ).empty() );
-}
-
-void ExpectLegacySearchRejectsCoarseCandidate( tribol::BinningMethod binning_method )
-{
-  constexpr std::array<tribol::IndexT, 2> connectivity{ 0, 1 };
-  constexpr std::array<tribol::RealT, 2> x{ 0.0, 1.0 };
-  constexpr std::array<tribol::RealT, 2> y{ 0.0, 0.0 };
-  std::array<tribol::RealT, 2> response_x{};
-  std::array<tribol::RealT, 2> response_y{};
-
-  tribol::finalize();
-  tribol::registerMesh( mesh1_id, 1, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(),
-                        y.data(), nullptr, tribol::MemorySpace::Host );
-  tribol::registerMesh( mesh2_id, 1, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(),
-                        y.data(), nullptr, tribol::MemorySpace::Host );
-  tribol::registerNodalResponse( mesh1_id, response_x.data(), response_y.data(), nullptr );
-  tribol::registerNodalResponse( mesh2_id, response_x.data(), response_y.data(), nullptr );
-  tribol::setKinematicConstantPenalty( mesh1_id, 1.0 );
-  tribol::setKinematicConstantPenalty( mesh2_id, 1.0 );
-
-  constexpr tribol::IndexT coupling_scheme_id = 41;
-  tribol::registerCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
-                                  tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, binning_method,
-                                  tribol::ExecutionMode::Sequential );
-  tribol::setPenaltyOptions( coupling_scheme_id, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
-
-  auto& mesh_manager = tribol::MeshManager::getInstance();
-  const CandidateIds expected_coarse_candidate{ { 0, 0 } };
-  if ( binning_method == tribol::BINNING_GRID ) {
-    EXPECT_EQ( FindCandidateIds<tribol::GridSearch<2>>( mesh_manager.at( mesh1_id ), mesh_manager.at( mesh2_id ) ),
-               expected_coarse_candidate );
-  } else {
-    EXPECT_EQ( ( FindCandidateIds<tribol::BvhSearch<2, tribol::ExecutionMode::Sequential>>(
-                   mesh_manager.at( mesh1_id ), mesh_manager.at( mesh2_id ) ) ),
-               expected_coarse_candidate );
-  }
-
-  auto& coupling_scheme = tribol::CouplingSchemeManager::getInstance().at( coupling_scheme_id );
-  ASSERT_TRUE( coupling_scheme.init() );
-  coupling_scheme.performBinning();
-
-  // The coincident boxes overlap, but matching face normals are invalid for legacy surface contact. This check confirms
-  // that InterfacePairFinder still applies geomFilter() after the standalone search returns its coarse candidate.
-  EXPECT_TRUE( coupling_scheme.getInterfacePairs().empty() );
-  tribol::finalize();
-}
-
-TEST( CoarseSearch, legacy_interface_pair_finder_retains_geometry_filter )
-{
-  // Exercise both adapters because GridSearch and BvhSearch now share the same legacy filtering stage.
-  ExpectLegacySearchRejectsCoarseCandidate( tribol::BINNING_GRID );
-  ExpectLegacySearchRejectsCoarseCandidate( tribol::BINNING_BVH );
 }
 
 TEST( CoarseSearch, same_mesh_search_deduplicates_pairs )
