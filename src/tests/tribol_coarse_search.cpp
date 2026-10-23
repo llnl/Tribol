@@ -44,24 +44,14 @@ CandidateIds FindCandidateIds( tribol::MeshData& mesh1, tribol::MeshData& mesh2 
 }
 
 template <int SpatialDimension>
-void ExpectBothSearchesFindOnlyFirstQuery( tribol::MeshData& mesh1, tribol::MeshData& mesh2 )
+void ExpectBothSearchesFindCandidates( tribol::MeshData& mesh1, tribol::MeshData& mesh2,
+                                       const CandidateIds& expected_candidates )
 {
-  const CandidateIds expected_candidates{ { 0, 0 } };
-
   // Grid and BVH may enumerate intersections differently, so compare element IDs without imposing an output order.
   EXPECT_EQ( FindCandidateIds<tribol::GridSearch<SpatialDimension>>( mesh1, mesh2 ), expected_candidates );
   EXPECT_EQ(
       ( FindCandidateIds<tribol::BvhSearch<SpatialDimension, tribol::ExecutionMode::Sequential>>( mesh1, mesh2 ) ),
       expected_candidates );
-}
-
-template <int SpatialDimension>
-void ExpectBothSearchesFindNoCandidates( tribol::MeshData& mesh1, tribol::MeshData& mesh2 )
-{
-  EXPECT_TRUE( FindCandidateIds<tribol::GridSearch<SpatialDimension>>( mesh1, mesh2 ).empty() );
-  EXPECT_TRUE(
-      ( FindCandidateIds<tribol::BvhSearch<SpatialDimension, tribol::ExecutionMode::Sequential>>( mesh1, mesh2 )
-            .empty() ) );
 }
 
 template <typename Search>
@@ -96,7 +86,7 @@ TEST( CoarseSearch, quadratic_edge_nodes_contribute_to_bounds )
 
   // The endpoint-only control remains on y=0 and cannot reach the nearby query. Finding that query only after adding
   // the raised midpoint proves that both searches include the quadratic node in their element bounds.
-  ExpectBothSearchesFindNoCandidates<2>( endpoint_only_mesh1, mesh2 );
+  ExpectBothSearchesFindCandidates<2>( endpoint_only_mesh1, mesh2, {} );
 
   // MeshData rejects computeFaceData() for quadratic geometry because its derived quantities use linear face formulas.
   // Grid and BVH must therefore build bounds from connectivity and nodal coordinates without those derived arrays.
@@ -104,7 +94,7 @@ TEST( CoarseSearch, quadratic_edge_nodes_contribute_to_bounds )
   EXPECT_FALSE( mesh1.getView().hasElementAreas() );
   EXPECT_FALSE( mesh1.getView().hasElementNormals() );
   EXPECT_FALSE( mesh1.getView().hasFaceRadius() );
-  ExpectBothSearchesFindOnlyFirstQuery<2>( mesh1, mesh2 );
+  ExpectBothSearchesFindCandidates<2>( mesh1, mesh2, { { 0, 0 } } );
 }
 
 TEST( CoarseSearch, quadratic_quad_nodes_contribute_to_bounds )
@@ -139,14 +129,14 @@ TEST( CoarseSearch, quadratic_quad_nodes_contribute_to_bounds )
 
   // The corner-only control remains in the z=0 plane and cannot reach the nearby query. Finding that query only after
   // adding the raised center node proves that both searches include the quadratic node in their element bounds.
-  ExpectBothSearchesFindNoCandidates<3>( corner_only_mesh1, mesh2 );
+  ExpectBothSearchesFindCandidates<3>( corner_only_mesh1, mesh2, {} );
 
   // Higher-order MeshData does not compute the linear face data below. Both searches must build bounds directly from
   // all nodal coordinates so quadratic faces can participate without calling computeFaceData().
   EXPECT_FALSE( mesh1.getView().hasElementCentroids() );
   EXPECT_FALSE( mesh1.getView().hasElementNormals() );
   EXPECT_FALSE( mesh1.getView().hasFaceRadius() );
-  ExpectBothSearchesFindOnlyFirstQuery<3>( mesh1, mesh2 );
+  ExpectBothSearchesFindCandidates<3>( mesh1, mesh2, { { 0, 0 } } );
 }
 
 TEST( CoarseSearch, either_empty_quadratic_input_returns_no_candidates )
@@ -161,8 +151,30 @@ TEST( CoarseSearch, either_empty_quadratic_input_returns_no_candidates )
                                    x.data(), y.data(), nullptr, tribol::MemorySpace::Host );
 
   // Either empty input prevents a spatial index from producing pairs, regardless of which mesh is queried.
-  ExpectBothSearchesFindNoCandidates<2>( empty_mesh, populated_mesh );
-  ExpectBothSearchesFindNoCandidates<2>( populated_mesh, empty_mesh );
+  ExpectBothSearchesFindCandidates<2>( empty_mesh, populated_mesh, {} );
+  ExpectBothSearchesFindCandidates<2>( populated_mesh, empty_mesh, {} );
+}
+
+TEST( CoarseSearch, nonconforming_quadratic_edge_meshes_find_expected_candidates )
+{
+  // Each mesh contains two quadratic edges. Mesh 2 starts half an edge to the right, placing its first endpoint over
+  // the midpoint of the corresponding mesh-1 edge instead of matching the endpoint locations.
+  constexpr std::array<tribol::IndexT, 6> connectivity{ 0, 1, 2, 3, 4, 5 };
+  constexpr std::array<tribol::RealT, 6> mesh1_x{ 0.0, 1.0, 0.5, 4.0, 5.0, 4.5 };
+  constexpr std::array<tribol::RealT, 6> mesh1_y{ 0.0, 0.0, 1.0, 0.0, 0.0, 1.0 };
+  constexpr std::array<tribol::RealT, 6> mesh2_x{ 0.5, 1.5, 1.0, 4.5, 5.5, 5.0 };
+  constexpr std::array<tribol::RealT, 6> mesh2_y{ 1.1, 1.1, 1.2, 1.1, 1.1, 1.2 };
+
+  tribol::MeshData mesh1( mesh1_id, 2, mesh1_x.size(), connectivity.data(), tribol::EDGE,
+                          tribol::QUADRATIC_LAGRANGE, mesh1_x.data(), mesh1_y.data(), nullptr,
+                          tribol::MemorySpace::Host );
+  tribol::MeshData mesh2( mesh2_id, 2, mesh2_x.size(), connectivity.data(), tribol::EDGE,
+                          tribol::QUADRATIC_LAGRANGE, mesh2_x.data(), mesh2_y.data(), nullptr,
+                          tribol::MemorySpace::Host );
+
+  // Each raised mesh-1 midpoint is near only its corresponding shifted mesh-2 edge. Cross-element pairs remain far
+  // enough apart that the searches must return exactly the two corresponding element IDs.
+  ExpectBothSearchesFindCandidates<2>( mesh1, mesh2, { { 0, 0 }, { 1, 1 } } );
 }
 
 TEST( CoarseSearch, each_query_uses_current_mesh_views )
