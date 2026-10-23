@@ -220,9 +220,11 @@ TEST( CoarseSearch, same_mesh_search_returns_one_direction_per_pair )
   ExpectBothSearchesFindCandidates<2>( mesh, mesh, expected_candidates );
 }
 
-TEST( CoarseSearch, flat_elements_avoid_division_by_zero )
+TEST( CoarseSearch, grid_handles_zero_range_without_expansion )
 {
-  // A valid line element has zero range normal to the line, which must still produce a valid grid resolution.
+  // Coincident horizontal edges have zero y-range, and zero proximity and residual-gap expansion leaves that range
+  // unchanged. GridSearch must assign one cell in y instead of dividing by zero while computing the grid resolution.
+  constexpr tribol::RealT no_proximity_expansion = 0.0;
   constexpr std::array<tribol::IndexT, 2> connectivity{ 0, 1 };
   constexpr std::array<tribol::RealT, 2> x{ 0.0, 1.0 };
   constexpr std::array<tribol::RealT, 2> y{ 0.0, 0.0 };
@@ -232,7 +234,7 @@ TEST( CoarseSearch, flat_elements_avoid_division_by_zero )
   tribol::MeshData mesh2( mesh2_id, 1, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(),
                           y.data(), nullptr, tribol::MemorySpace::Host );
 
-  tribol::GridSearch<2> grid_search( 0.0, 0.0 );
+  tribol::GridSearch<2> grid_search( no_proximity_expansion, no_residual_gap );
   const auto candidates = grid_search.findCandidatePairs( mesh1.getView(), mesh2.getView() );
   EXPECT_EQ( candidates.size(), 1 );
 }
