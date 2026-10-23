@@ -35,6 +35,8 @@ namespace {
  *
  * GridSearch and BvhSearch deliberately know only about spatial bounds. InterfacePairFinder retains existing behavior
  * by applying geomFilter() before it exposes pairs to legacy contact methods.
+ * This adapter serves existing linear-mesh methods because geomFilter() relies on face data computed only for linear
+ * elements.
  */
 void FilterCandidatePairs( CouplingScheme& coupling_scheme, ArrayT<InterfacePair>&& candidate_pairs )
 {
