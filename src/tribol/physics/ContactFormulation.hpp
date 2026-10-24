@@ -10,7 +10,7 @@
 #include <stdexcept>
 
 #include "tribol/common/Parameters.hpp"
-#include "tribol/physics/ContactFormulationInput.hpp"
+#include "tribol/mesh/MeshData.hpp"
 
 #include <memory>
 
@@ -25,7 +25,6 @@ namespace tribol {
 
 // Forward declaration
 class MethodData;
-class MeshData;
 
 /*!
  * \brief Base class for contact formulations.
@@ -34,7 +33,8 @@ class MeshData;
  * physics and formulations.
  *
  * Each stage receives current non-owning mesh views. Implementations retain their method and search configuration and
- * compute missing prerequisites so callers can request a stage without first calling earlier stages.
+ * compute missing prerequisites so callers can request a stage without first calling earlier stages. The caller owns
+ * the mesh arrays and must keep them alive for the duration of each request.
  */
 class ContactFormulation {
  public:
@@ -49,27 +49,30 @@ class ContactFormulation {
    * Determines overlapping contact pairs and computes necessary integration data (e.g. quadrature points, weights).
    * Implementations compute any missing pair data needed by this request. Some formulations may treat this as a no-op.
    *
-   * @param input Current meshes
+   * @param mesh1 Current first mesh in Tribol coupling-scheme order
+   * @param mesh2 Current second mesh in Tribol coupling-scheme order
    */
-  virtual void updateIntegrationRule( const ContactFormulationInput& input ) = 0;
+  virtual void updateIntegrationRule( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) = 0;
 
   /**
    * @brief Updates nodal gaps
    *
    * Implementations compute any missing pair or integration data needed by this request.
    *
-   * @param input Current meshes
+   * @param mesh1 Current first mesh in Tribol coupling-scheme order
+   * @param mesh2 Current second mesh in Tribol coupling-scheme order
    */
-  virtual void updateNodalGaps( const ContactFormulationInput& input ) = 0;
+  virtual void updateNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) = 0;
 
   /**
    * @brief Updates nodal forces/residual
    *
    * Implementations compute any missing pair, integration, or gap data needed by this request.
    *
-   * @param input Current meshes
+   * @param mesh1 Current first mesh in Tribol coupling-scheme order
+   * @param mesh2 Current second mesh in Tribol coupling-scheme order
    */
-  virtual void updateNodalForces( const ContactFormulationInput& input ) = 0;
+  virtual void updateNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) = 0;
 
   /**
    * @brief Reports if formulation has a maximum allowable timestep calculation

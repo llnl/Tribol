@@ -47,7 +47,6 @@ set(tribol_headers
     physics/CommonPlane.hpp
     physics/ContactFormulation.hpp
     physics/ContactFormulationFactory.hpp
-    physics/ContactFormulationInput.hpp
     physics/Mortar.hpp
     physics/EnergyMortar.hpp
     physics/EnergyMortarAdapter.hpp

@@ -44,10 +44,10 @@ template <typename Adapter>
 class Nodal : public ContactFormulation {
  public:
   /** @brief Assemble nodal gaps, tributary areas, and their derivatives. */
-  void updateNodalGaps( const ContactFormulationInput& input ) override;
+  void updateNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) override;
 
   /** @brief Assemble nodal contact forces and their derivatives. */
-  void updateNodalForces( const ContactFormulationInput& input ) override;
+  void updateNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) override;
 
   const mfem::HypreParVector& getMfemGap() const override
   {
@@ -82,11 +82,13 @@ class Nodal : public ContactFormulation {
    * displacement true-dofs.
    *
    * @param adapter ENERGY_MORTAR adapter containing the interface pairs and derivative evaluator
-   * @param input Current meshes in Tribol coupling-scheme order
+   * @param mesh1 Current first mesh in Tribol coupling-scheme order
+   * @param mesh2 Current second mesh in Tribol coupling-scheme order
    * @param redecomp_lambda Lagrange multiplier field on the redecomposed contact mesh
    * @return Assembled parent displacement true-dof matrix
    */
-  static shared::ParSparseMat computeDfDxSecondDerivativesLM( Adapter* adapter, const ContactFormulationInput& input,
+  static shared::ParSparseMat computeDfDxSecondDerivativesLM( Adapter* adapter, MeshData::Viewer mesh1,
+                                                              MeshData::Viewer mesh2,
                                                               const mfem::GridFunction& redecomp_lambda );
 
   /**
@@ -96,14 +98,15 @@ class Nodal : public ContactFormulation {
    * and assembled on the parent displacement true-dofs.
    *
    * @param adapter ENERGY_MORTAR adapter containing the interface pairs and derivative evaluator
-   * @param input Current meshes in Tribol coupling-scheme order
+   * @param mesh1 Current first mesh in Tribol coupling-scheme order
+   * @param mesh2 Current second mesh in Tribol coupling-scheme order
    * @param redecomp_pressure Penalty pressure field on the redecomposed contact mesh
    * @param redecomp_g_tilde Weighted-gap field on the redecomposed contact mesh
    * @param redecomp_A Tributary-area field on the redecomposed contact mesh
    * @return Assembled parent displacement true-dof matrix
    */
-  static shared::ParSparseMat computeDfDxSecondDerivativesPenalty( Adapter* adapter,
-                                                                   const ContactFormulationInput& input,
+  static shared::ParSparseMat computeDfDxSecondDerivativesPenalty( Adapter* adapter, MeshData::Viewer mesh1,
+                                                                   MeshData::Viewer mesh2,
                                                                    const mfem::GridFunction& redecomp_pressure,
                                                                    const mfem::GridFunction& redecomp_g_tilde,
                                                                    const mfem::GridFunction& redecomp_A );
@@ -118,10 +121,10 @@ template <typename Adapter>
 class QuadraturePoint : public ContactFormulation {
  public:
   /** @brief No-op because this location does not assemble nodal gaps. */
-  void updateNodalGaps( const ContactFormulationInput& /*input*/ ) override {}
+  void updateNodalGaps( MeshData::Viewer /*mesh1*/, MeshData::Viewer /*mesh2*/ ) override {}
 
   /** @brief Assemble penalty force and stiffness directly at quadrature points. */
-  void updateNodalForces( const ContactFormulationInput& input ) override;
+  void updateNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) override;
 
  protected:
   void init( Adapter* /*adapter*/ ) {}
@@ -169,7 +172,7 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @note This is currently a no-op. ENERGY_MORTAR directly assembles gap/force quantities over the stored interface
    * pairs in updateNodalGaps() and updateNodalForces().
    */
-  void updateIntegrationRule( const ContactFormulationInput& input ) override;
+  void updateIntegrationRule( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) override;
 
   /**
    * @brief Reports if formulation has a maximum allowable timestep calculation
@@ -234,11 +237,11 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * Coarse search supplies spatial candidates. ENERGY_MORTAR then applies its topology, orientation, and projected-
    * support checks before any element calculation sees the pairs.
    */
-  void refreshInterfacePairs( const ContactFormulationInput& input );
+  void refreshInterfacePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 );
 
   /** @brief Apply ENERGY_MORTAR checks and compact accepted spatial candidates */
-  ArrayT<InterfacePair> filterCandidatePairs( ArrayT<InterfacePair>&& candidate_pairs,
-                                              const ContactFormulationInput& input ) const;
+  ArrayT<InterfacePair> filterCandidatePairs( ArrayT<InterfacePair>&& candidate_pairs, MeshData::Viewer mesh1,
+                                              MeshData::Viewer mesh2 ) const;
 
   /**
    * @brief Controls penalty vs. Lagrange multiplier (LM) mode

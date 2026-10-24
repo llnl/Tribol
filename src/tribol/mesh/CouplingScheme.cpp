@@ -1034,9 +1034,8 @@ void CouplingScheme::performBinning()
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
   if ( m_formulation ) {
-    const ContactFormulationInput input( getMesh1().getView(), getMesh2().getView() );
     // A force request computes any missing pair and gap data, so callers do not have to issue stages in order.
-    m_formulation->updateNodalForces( input );
+    m_formulation->updateNodalForces( getMesh1().getView(), getMesh2().getView() );
     setBinned( true );
     setFixedBinningPerCase();
     if ( m_formulation->hasTimeStepCalculation() ) {
