@@ -827,10 +827,10 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
   for ( int i = 0; i < numPairs; ++i ) {
     // perform initial face-pair validity checks to add valid face-pairs
     // to interface pair manager. Note, further computational geometry
-    // filtering will be performed on each face-pair indendifying
+    // filtering will be performed on each face-pair identifying
     // contact candidates.
     if ( geomFilter( cs->getView(), pairIndex1[i], pairIndex2[i] ) ) {
-      pairs.emplace_back( pairIndex1[i], pairIndex2[i], true );
+      pairs.emplace_back( InterfacePair{ pairIndex1[i], pairIndex2[i] } );
     }
   }
 

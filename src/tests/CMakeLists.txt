@@ -16,11 +16,13 @@ set( tribol_tests
      tribol_common_plane_gpu.cpp
      tribol_comp_geom_2d.cpp
      tribol_comp_geom_3d.cpp
+     tribol_coarse_search.cpp
      tribol_coupling_scheme.cpp
      tribol_coupling_scheme_manager.cpp
      tribol_enforcement_options.cpp
      tribol_execution_modes.cpp
      tribol_hex_mesh.cpp
+     tribol_interface_pair_finder.cpp
      tribol_inv_iso.cpp
      tribol_iso_integ.cpp
      tribol_math.cpp

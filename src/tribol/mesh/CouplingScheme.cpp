@@ -1011,7 +1011,6 @@ void CouplingScheme::performBinning()
     m_interface_pairs = ArrayT<InterfacePair>( 0, 0, m_allocator_id );
 
     InterfacePairFinder finder( this );
-    finder.initialize();
     finder.findInterfacePairs();
 
     // For Cartesian binning, we only need to compute the binning once
@@ -1068,21 +1067,18 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // array of size one for counting number of planes on device
   ArrayT<IndexT> planes_ct_data( 1, 1, getAllocatorId() );
   auto planes_ct = planes_ct_data.view();
-  // Note: A true reduction would be more efficient here.
-  // However, it is not currently implemented because forAllExec would need
-  // to know the execution mode at compile time to instantiate the correct reducer.
+  // Check every binned pair and leave the pair array unchanged. Fixed binning reruns geometry checks on this array, so
+  // a pair that does not create a contact plane this cycle can still create one after the meshes move. Contact planes
+  // keep pointers to their source entries, so the array must not be resized or reordered until interface physics
+  // finishes. Note: A true reduction would be more efficient here. However, it is not currently implemented because
+  // forAllExec would need to know the execution mode at compile time to instantiate the correct reducer.
   forAllExec( getExecutionMode(), numPairs,
               [pairs, mesh1, mesh2, params, contact_method, contact_case, cg_view, planes_ct,
                pair_err] TRIBOL_HOST_DEVICE( IndexT i ) mutable {
                 auto& pair = pairs[i];
 
-                // call wrapper around the contact method/case specific
-                // geometry checks to determine whether to include a pair
-                // in the active set
-                bool interact = false;
-
-                FaceGeomException interact_err = CheckInterfacePair(
-                    pair, mesh1, mesh2, params, contact_method, contact_case, interact, cg_view, planes_ct.data() );
+                FaceGeomException interact_err = CheckInterfacePair( pair, mesh1, mesh2, params, contact_method,
+                                                                     contact_case, cg_view, planes_ct.data() );
 
                 // // Update pair reporting data for this coupling scheme
                 // this->updatePairReportingData( interact_err );
@@ -1091,15 +1087,8 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                 // they are not registered for contact, but we don't error out.
                 if ( interact_err != NO_FACE_GEOM_EXCEPTION ) {
                   tribol::atomicMax( &pair_err[0], 1 );
-                  pair.m_is_contact_candidate = false;
                   // TODO consider printing offending face(s) coordinates for debugging
                   // SLIC_DEBUG("Face geometry error, " << static_cast<int>(interact_err) << "for pair, " << kp << ".");
-                  // continue; // TODO SRW why do we need this? Seems like we want to update interface pair below
-                  // if-statements
-                } else if ( !interact ) {
-                  pair.m_is_contact_candidate = false;
-                } else {
-                  pair.m_is_contact_candidate = true;
                 }
               } );
 

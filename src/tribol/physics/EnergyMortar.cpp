@@ -625,8 +625,8 @@ Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, co
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
   const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
   double nB[2] = { 0.0 };
   find_normal( B0, B1, nB );
@@ -678,10 +678,10 @@ std::array<double, 2> EnergyMortarCalculator::projections( const InterfacePair& 
 {
   double A0[2];
   double A1[2];
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
   double B0[2];
   double B1[2];
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   double projs[2];
   get_projections( A0, A1, B0, B1, projs );
@@ -752,8 +752,8 @@ double EnergyMortarCalculator::compute_weighted_normal_gap( const InterfacePair&
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   double nA[2] = { 0.0 };
   double nB[2] = { 0.0 };
@@ -789,7 +789,7 @@ NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const Inter
 {
   double A0[2];
   double A1[2];
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
 
   const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
   const double J = ComputeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coordinates.view() );
@@ -856,8 +856,8 @@ void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshD
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
 
@@ -893,8 +893,8 @@ void EnergyMortarCalculator::grad_trib_area( const InterfacePair& pair, const Me
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
 
@@ -921,8 +921,8 @@ void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshDa
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
 
@@ -958,8 +958,8 @@ void EnergyMortarCalculator::compute_d2A_d2u( const InterfacePair& pair, const M
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
 
@@ -995,8 +995,8 @@ double EnergyMortarCalculator::compute_quadrature_point_penalty_energy( const In
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
   const KernelParams kp{ p_.N, p_.del, p_.k, p_.residual_gap };
@@ -1011,8 +1011,8 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
   const KernelParams kp{ p_.N, p_.del, p_.k, p_.residual_gap };
