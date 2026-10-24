@@ -30,6 +30,9 @@ namespace tribol {
  * BvhSearch performs only coarse spatial binning. It intentionally does not apply method-specific normal, overlap, or
  * contact checks. Callers decide which returned candidates are appropriate for their contact formulation.
  *
+ * The nodal bounding boxes assume each element's geometry lies within the convex hull of its nodes. This assumption
+ * may fail for higher-order (e.g. quadratic) meshes, so the boxes may not enclose the full element geometry.
+ *
  * Each call accepts current mesh views, then builds and releases its BVH and bounding boxes. The search object does not
  * retain views that may become stale when a caller replaces mesh arrays.
  *
