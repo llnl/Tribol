@@ -1050,7 +1050,7 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
   int cs_id = 100;
   int mesh1_id = 100;
   int mesh2_id = 101;
-  tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
+  tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, nonmortar_attrs, mortar_attrs,
                                       tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::ENERGY_MORTAR,
                                       tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID );
   tribol::setEnforcementLocation( cs_id, tribol::EnforcementLocation::QuadraturePoint );
@@ -1060,6 +1060,13 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
 
   // Build internal MfemData
   tribol::updateMfemParallelDecomposition();
+
+  auto* cs = tribol::CouplingSchemeManager::getInstance().findData( cs_id );
+  ASSERT_NE( cs, nullptr );
+  EXPECT_TRUE( cs->getMesh1().getNodalFields().m_is_node_gap_set );
+  EXPECT_TRUE( cs->getMesh1().getNodalFields().m_is_node_pressure_set );
+  EXPECT_FALSE( cs->getMesh2().getNodalFields().m_is_node_gap_set );
+  EXPECT_FALSE( cs->getMesh2().getNodalFields().m_is_node_pressure_set );
 
   double dt = 1.0;
   tribol::update( 1, 1.0, dt );

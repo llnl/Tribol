@@ -337,6 +337,8 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
     }
   }
   cs.setMfemMeshData( std::move( mfem_data ) );
+  // Attaching MFEM data makes the LOR factor available for the effective coarse-search scale.
+  cs.updateEffectiveBinningProximityScale();
   if ( contact_method == ENERGY_MORTAR ) {
     cs.updateContactFormulation();
   }
@@ -353,12 +355,17 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the LOR factor." );
   cs->getMfemMeshData()->SetLORFactor( lor_factor );
+  // The formulation captures the effective scale, so update the LOR-adjusted value before rebuilding it.
+  cs->updateEffectiveBinningProximityScale();
 
   if ( cs->getMfemSubmeshData() ) {
     cs->getMfemSubmeshData()->SetLORMesh( cs->getMfemMeshData()->GetLORMesh() );
   }
   if ( cs->hasMfemJacobianData() && cs->getMfemSubmeshData() ) {
     cs->setMfemJacobianData( std::make_unique<MfemJacobianData>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData() ) );
+  }
+  if ( cs->hasContactFormulation() ) {
+    cs->updateContactFormulation();
   }
 }
 
@@ -811,10 +818,12 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         // updates submesh-native grid functions and transfer operators on
         // the new redecomp mesh
         submesh_data->UpdateMfemSubmeshData( mfem_data->GetRedecompMesh(), new_redecomp );
+        // ContactFormulation uses mesh 1 as non-mortar; legacy mortar methods use mesh 2.
+        const auto nonmortar_mesh_id = mesh_ids[cs.hasContactFormulation() ? 0 : 1];
         auto g_ptrs = submesh_data->GetRedecompGapPtrs();
-        registerMortarGaps( mesh_ids[1], g_ptrs[0] );
+        registerMortarGaps( nonmortar_mesh_id, g_ptrs[0] );
         auto p_ptrs = submesh_data->GetRedecompPressurePtrs();
-        registerMortarPressures( mesh_ids[1], p_ptrs[0] );
+        registerMortarPressures( nonmortar_mesh_id, p_ptrs[0] );
         if ( ( cs.hasMfemJacobianData() || cs.getContactMethod() == ENERGY_MORTAR ) && new_redecomp ) {
           // updates Jacobian transfer operator for new redecomp mesh
           cs.getMfemJacobianData()->UpdateJacobianXfer();

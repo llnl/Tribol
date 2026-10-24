@@ -517,6 +517,9 @@ void registerCouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, int
  * \param [in] pairType2  cell type of the second cell in the pair list
  * \param [in] pairIndex2 index of the second cell in the pair list
  *
+ * \note This operation is available only for legacy contact methods. ContactFormulation implementations own their pair
+ * search and reject manually supplied pairs.
+ *
  */
 void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* mesh_id1, IndexT const* pairType1,
                         IndexT const* pairIndex1, IndexT const* mesh_id2, IndexT const* pairType2,

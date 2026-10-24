@@ -20,6 +20,8 @@
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/utils/Algorithm.hpp"
 
+#include "tribol/search/CoarseSearch.hpp"
+
 namespace tribol {
 
 /**
@@ -38,7 +40,7 @@ namespace tribol {
  * @tparam ExecMode Tribol execution mode used to construct and query bounding boxes
  */
 template <int SpatialDimension, ExecutionMode ExecMode>
-class BvhSearch {
+class BvhSearch : public CoarseSearch {
  public:
   using AxomExecSpace = typename toAxomExecSpace<ExecMode>::type;
   using Bvh = axom::spin::BVH<SpatialDimension, AxomExecSpace, RealT>;
@@ -67,7 +69,7 @@ class BvhSearch {
    * @param mesh1 Current elements inserted into the BVH
    * @param mesh2 Current elements used to query the BVH
    */
-  ArrayT<InterfacePair> findCandidatePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
+  ArrayT<InterfacePair> findCandidatePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
   {
     SLIC_ASSERT_MSG( mesh1.getAllocatorId() == mesh2.getAllocatorId(),
                      "BvhSearch meshes must use the same allocator." );

@@ -11,6 +11,7 @@
 #include "tribol/physics/EnergyMortar.hpp"
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/common/Parameters.hpp"
+#include "tribol/search/CoarseSearch.hpp"
 
 #include "mfem.hpp"
 
@@ -43,10 +44,10 @@ template <typename Adapter>
 class Nodal : public ContactFormulation {
  public:
   /** @brief Assemble nodal gaps, tributary areas, and their derivatives. */
-  void updateNodalGaps() override;
+  void updateNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) override;
 
   /** @brief Assemble nodal contact forces and their derivatives. */
-  void updateNodalForces() override;
+  void updateNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) override;
 
   const mfem::HypreParVector& getMfemGap() const override
   {
@@ -81,10 +82,13 @@ class Nodal : public ContactFormulation {
    * displacement true-dofs.
    *
    * @param adapter ENERGY_MORTAR adapter containing the interface pairs and derivative evaluator
+   * @param mesh1 Current first mesh in Tribol coupling-scheme order
+   * @param mesh2 Current second mesh in Tribol coupling-scheme order
    * @param redecomp_lambda Lagrange multiplier field on the redecomposed contact mesh
    * @return Assembled parent displacement true-dof matrix
    */
-  static shared::ParSparseMat computeDfDxSecondDerivativesLM( Adapter* adapter,
+  static shared::ParSparseMat computeDfDxSecondDerivativesLM( Adapter* adapter, MeshData::Viewer mesh1,
+                                                              MeshData::Viewer mesh2,
                                                               const mfem::GridFunction& redecomp_lambda );
 
   /**
@@ -94,12 +98,15 @@ class Nodal : public ContactFormulation {
    * and assembled on the parent displacement true-dofs.
    *
    * @param adapter ENERGY_MORTAR adapter containing the interface pairs and derivative evaluator
+   * @param mesh1 Current first mesh in Tribol coupling-scheme order
+   * @param mesh2 Current second mesh in Tribol coupling-scheme order
    * @param redecomp_pressure Penalty pressure field on the redecomposed contact mesh
    * @param redecomp_g_tilde Weighted-gap field on the redecomposed contact mesh
    * @param redecomp_A Tributary-area field on the redecomposed contact mesh
    * @return Assembled parent displacement true-dof matrix
    */
-  static shared::ParSparseMat computeDfDxSecondDerivativesPenalty( Adapter* adapter,
+  static shared::ParSparseMat computeDfDxSecondDerivativesPenalty( Adapter* adapter, MeshData::Viewer mesh1,
+                                                                   MeshData::Viewer mesh2,
                                                                    const mfem::GridFunction& redecomp_pressure,
                                                                    const mfem::GridFunction& redecomp_g_tilde,
                                                                    const mfem::GridFunction& redecomp_A );
@@ -114,10 +121,10 @@ template <typename Adapter>
 class QuadraturePoint : public ContactFormulation {
  public:
   /** @brief No-op because this location does not assemble nodal gaps. */
-  void updateNodalGaps() override {}
+  void updateNodalGaps( MeshData::Viewer /*mesh1*/, MeshData::Viewer /*mesh2*/ ) override {}
 
   /** @brief Assemble penalty force and stiffness directly at quadrature points. */
-  void updateNodalForces() override;
+  void updateNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) override;
 
  protected:
   void init( Adapter* /*adapter*/ ) {}
@@ -132,6 +139,10 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @param mesh_data MFEM mesh data for the parent/primary variables
    * @param submesh_data MFEM submesh data for the dual variables (pressure/gap/LM)
    * @param jac_data MFEM Jacobian transfer data
+   * @param execution_mode Execution mode used by filtering loops
+   * @param search Coarse search whose ownership is transferred to this formulation; must be non-null
+   * @param checks_shared_nodes Whether auto-contact rejects pairs that share a finite-element node
+   * @param uses_fixed_pairs Whether an initialized pair set is reused on later requests
    * @param k Penalty stiffness
    * @param delta Smoothing length
    * @param N Quadrature order
@@ -141,12 +152,13 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @param residual_gap Nonnegative gap offset subtracted from the kinematic gap. Positive values enforce separation
    *        between the contact surfaces.
    *
-   * @note The ENERGY_MORTAR implementation follows the literature convention of integrating on a non-mortar side and
-   * mapping to a mortar side. To maintain that convention within Tribol, the adapter may internally flip mesh roles
-   * relative to the order of the meshes provided here.
+   * @note Mesh 1 is the non-mortar integration side; mesh 2 is the mortar projection side. Mesh views, candidate
+   * pairs, and MFEM element maps all use this order.
    */
-  EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k,
-                       double delta, int N, bool enzyme_quadrature, bool use_penalty = true, RealT residual_gap = 0.0 );
+  EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
+                       ExecutionMode execution_mode, std::unique_ptr<CoarseSearch> search, bool checks_shared_nodes,
+                       bool uses_fixed_pairs, double k, double delta, int N, bool enzyme_quadrature,
+                       bool use_penalty = true, RealT residual_gap = 0.0 );
 
   /**
    * @brief Default destructor
@@ -154,20 +166,12 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   virtual ~EnergyMortarAdapter() = default;
 
   /**
-   * @brief Set interface pairs identified in coarse binning for this update
-   *
-   * @param pairs Candidate interface pairs (ownership transferred)
-   * @param check_level Level of validation to apply to the pairs (currently unused)
-   */
-  void setInterfacePairs( ArrayT<InterfacePair>&& pairs, int check_level ) override;
-
-  /**
    * @brief Update internal integration rule data
    *
    * @note This is currently a no-op. ENERGY_MORTAR directly assembles gap/force quantities over the stored interface
    * pairs in updateNodalGaps() and updateNodalForces().
    */
-  void updateIntegrationRule() override;
+  void updateIntegrationRule( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) override;
 
   /**
    * @brief Reports if formulation has a maximum allowable timestep calculation
@@ -193,31 +197,12 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   RealT getEnergy() const override { return energy_; }
 
   /**
-   * @brief Refresh mesh handles used by this formulation
-   *
-   * Some workflows re-register meshes each cycle (e.g. MFEM + redecomp), potentially replacing the underlying MeshData
-   * instances in MeshManager. This method updates the adapter's cached mesh pointers so subsequent assembly uses valid
-   * mesh views.
-   *
-   * @param mesh1 First Tribol mesh for the coupling scheme
-   * @param mesh2 Second Tribol mesh for the coupling scheme
-   */
-  void updateMeshes( MeshData& mesh1, MeshData& mesh2 ) override;
-
-  /**
    * @brief Update constant penalty stiffness
    *
    * @param mesh1_penalty Penalty stiffness for mesh 1.
    * @param mesh2_penalty Penalty stiffness for mesh 2.
    */
   void updateConstantPenaltyStiffness( double mesh1_penalty, double mesh2_penalty ) override;
-
-  /**
-   * @brief Update residual-gap offset
-   *
-   * @param residual_gap User-defined gap offset
-   */
-  void setResidualGap( RealT residual_gap ) override;
 
 #ifdef BUILD_REDECOMP
   /**
@@ -246,12 +231,36 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
 
  private:
   /**
+   * @brief Refresh method-approved pairs unless this formulation reuses an initialized fixed pair set
+   *
+   * Coarse search supplies spatial candidates. ENERGY_MORTAR then applies its topology, orientation, and projected-
+   * support checks before any element calculation sees the pairs.
+   */
+  void refreshInterfacePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 );
+
+  /** @brief Apply ENERGY_MORTAR checks and compact accepted spatial candidates */
+  ArrayT<InterfacePair> filterCandidatePairs( ArrayT<InterfacePair>&& candidate_pairs, MeshData::Viewer mesh1,
+                                              MeshData::Viewer mesh2 ) const;
+
+  /**
    * @brief Controls penalty vs. Lagrange multiplier (LM) mode
    *
    * - true: penalty mode, dual vector is pressure
    * - false: LM mode, dual vector is the multiplier `lambda`
    */
   bool use_penalty_;
+
+  /** @brief Execution mode selected when this formulation is constructed */
+  const ExecutionMode execution_mode_;
+
+  /** @brief Coarse search supplied by the caller and owned by this formulation */
+  std::unique_ptr<CoarseSearch> search_;
+
+  /** @brief Whether auto-contact rejects pairs that share any finite-element node */
+  const bool checks_shared_nodes_;
+
+  /** @brief Whether later requests reuse the first initialized pair set */
+  const bool uses_fixed_pairs_;
 
   /**
    * @brief Tolerance used to avoid division by zero for area-weighted quantities
@@ -279,24 +288,6 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    */
   MfemJacobianData& jac_data_;
 
-  // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep
-  // consistent with mesh1_ being non-mortar and mesh2_ being mortar as is
-  // typical in the literature, but different from Tribol convention.
-
-  /**
-   * @brief Pointer to the non-mortar side mesh used by ENERGY_MORTAR
-   *
-   * @note This is refreshed via updateMeshes() to handle mesh re-registration.
-   */
-  MeshData* mesh1_ = nullptr;
-
-  /**
-   * @brief Pointer to the mortar side mesh used by ENERGY_MORTAR
-   *
-   * @note This is refreshed via updateMeshes() to handle mesh re-registration.
-   */
-  MeshData* mesh2_ = nullptr;
-
   /**
    * @brief Contact parameters (penalty, smoothing, quadrature)
    */
@@ -313,6 +304,9 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @brief Interface pairs used for the current update
    */
   ArrayT<InterfacePair> pairs_;
+
+  /** @brief Distinguishes an initialized empty fixed pair set from a pair set that has not been searched */
+  bool interface_pairs_are_initialized_ = false;
 
   /**
    * @brief Contact constraint energy associated with the current state

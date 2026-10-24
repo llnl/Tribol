@@ -32,6 +32,9 @@ namespace tribol {
  * require Jacobian calculations, and is still experimental. The low-order refinement factor equals the order of the
  * Nodes grid function, but can be overridden using setMfemLowOrderRefinedFactor().
  *
+ * Mortar methods implemented through ContactFormulation use the first mesh as the non-mortar integration surface
+ * and the second as the mortar projection surface. Legacy SINGLE_MORTAR uses the opposite surface order.
+ *
  * @param [in] cs_id Index to use for the coupling scheme
  * @param [in] mesh_id_1 The first ID of the contact surface mesh
  * @param [in] mesh_id_2 The second ID of the contact surface mesh

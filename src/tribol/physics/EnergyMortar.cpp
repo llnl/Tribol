@@ -3,6 +3,7 @@
 #include "axom/slic.hpp"
 #include "tribol/common/Enzyme.hpp"
 #include "tribol/integ/BasisFunction.hpp"
+#include "tribol/search/InterfacePairChecks.hpp"
 
 #include <algorithm>
 #include <array>
@@ -175,29 +176,8 @@ TRIBOL_ENZYME_INLINE void find_intersection( const double* A0, const double* A1,
 TRIBOL_ENZYME_INLINE void get_projections( const double* A0, const double* A1, const double* B0, const double* B1,
                                            double* projections )
 {
-  double nB[2] = { 0.0, 0.0 };
-  find_normal( B0, B1, nB );
-
-  const double dxA = A1[0] - A0[0];
-  const double dyA = A1[1] - A0[1];
-  const double len2A = dxA * dxA + dyA * dyA;
-
-  double q0[2] = { 0.0, 0.0 };
-  find_intersection( A0, A1, B0, nB, q0 );
-  // Convert the physical projection point on A to the normalized local coordinate xi in [-1, 1].
-  const double alphaA0 = ( ( q0[0] - A0[0] ) * dxA + ( q0[1] - A0[1] ) * dyA ) / len2A;
-  const double xi0 = 2.0 * alphaA0 - 1.0;
-
-  double q1[2] = { 0.0, 0.0 };
-  find_intersection( A0, A1, B1, nB, q1 );
-  const double alphaA1 = ( ( q1[0] - A0[0] ) * dxA + ( q1[1] - A0[1] ) * dyA ) / len2A;
-  const double xi1 = 2.0 * alphaA1 - 1.0;
-
-  double xi_min = std::min( xi0, xi1 );
-  double xi_max = std::max( xi0, xi1 );
-
-  projections[0] = xi_min;
-  projections[1] = xi_max;
+  // Filtering and integration must use the same projection construction or they can disagree near support endpoints.
+  InterfacePairChecks::computeLinearEdgeProjectionBounds( A0, A1, B0, B1, MdSpan<double, 2>{ projections, 2 } );
 }
 
 // Isolate each endpoint to avoid incorrect loop-local tape reuse in Enzyme reverse mode.
