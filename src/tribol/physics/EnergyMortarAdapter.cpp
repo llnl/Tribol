@@ -110,23 +110,23 @@ ArrayT<InterfacePair> EnergyMortarAdapter<EnforcementLocation>::filterCandidateP
                smoothing_fraction] TRIBOL_HOST_DEVICE( IndexT candidate_index ) {
                 const InterfacePair& pair = candidates[candidate_index];
                 bool accepts_pair =
-                    !InterfacePairChecks::IsSameElementPair( mesh1, pair.element_id1_, mesh2, pair.element_id2_ );
+                    !InterfacePairChecks::isSameElementPair( mesh1, pair.element_id1_, mesh2, pair.element_id2_ );
                 if ( accepts_pair && checks_shared_nodes ) {
                   accepts_pair =
-                      !InterfacePairChecks::ElementsShareNode( mesh1, pair.element_id1_, mesh2, pair.element_id2_ );
+                      !InterfacePairChecks::elementsShareNode( mesh1, pair.element_id1_, mesh2, pair.element_id2_ );
                 }
                 if ( accepts_pair ) {
-                  accepts_pair = InterfacePairChecks::LinearEdgeNormalsAreOpposing( mesh1, pair.element_id1_, mesh2,
+                  accepts_pair = InterfacePairChecks::linearEdgeNormalsAreOpposing( mesh1, pair.element_id1_, mesh2,
                                                                                     pair.element_id2_ );
                 }
 
                 RealT projection_bounds[2];
                 if ( accepts_pair ) {
-                  accepts_pair = InterfacePairChecks::ComputeLinearEdgeProjectionBounds(
+                  accepts_pair = InterfacePairChecks::computeLinearEdgeProjectionBounds(
                       mesh1, pair.element_id1_, mesh2, pair.element_id2_, MdSpan<RealT, 2>{ projection_bounds } );
                 }
                 if ( accepts_pair ) {
-                  accepts_pair = InterfacePairChecks::ProjectionIntervalOverlapsSmoothedSupport(
+                  accepts_pair = InterfacePairChecks::projectionIntervalOverlapsSmoothedSupport(
                       MdSpan<const RealT, 2>{ projection_bounds }, smoothing_fraction );
                 }
 

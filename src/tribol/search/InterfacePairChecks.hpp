@@ -26,14 +26,14 @@ namespace tribol {
 struct InterfacePairChecks {
  public:
   /** @brief Return whether both IDs identify the same element on the same mesh */
-  TRIBOL_HOST_DEVICE static bool IsSameElementPair( const MeshData::Viewer& mesh1, IndexT element_id1,
+  TRIBOL_HOST_DEVICE static bool isSameElementPair( const MeshData::Viewer& mesh1, IndexT element_id1,
                                                     const MeshData::Viewer& mesh2, IndexT element_id2 )
   {
     return mesh1.meshId() == mesh2.meshId() && element_id1 == element_id2;
   }
 
   /** @brief Return whether two elements contain any common finite-element node */
-  TRIBOL_HOST_DEVICE static bool ElementsShareNode( const MeshData::Viewer& mesh1, IndexT element_id1,
+  TRIBOL_HOST_DEVICE static bool elementsShareNode( const MeshData::Viewer& mesh1, IndexT element_id1,
                                                     const MeshData::Viewer& mesh2, IndexT element_id2 )
   {
     for ( IndexT local_node1 = 0; local_node1 < mesh1.numberOfNodesPerElement(); ++local_node1 ) {
@@ -53,20 +53,20 @@ struct InterfacePairChecks {
    * Normals are computed directly from endpoint coordinates so formulations do not require MeshData::computeFaceData()
    * before filtering candidates. Degenerate edges do not define an orientation and return false.
    */
-  TRIBOL_HOST_DEVICE static bool LinearEdgeNormalsAreOpposing( const MeshData::Viewer& mesh1, IndexT element_id1,
+  TRIBOL_HOST_DEVICE static bool linearEdgeNormalsAreOpposing( const MeshData::Viewer& mesh1, IndexT element_id1,
                                                                const MeshData::Viewer& mesh2, IndexT element_id2 )
   {
     RealT edge1_point0[2];
     RealT edge1_point1[2];
     RealT edge2_point0[2];
     RealT edge2_point1[2];
-    GetLinearEdgeEndpoints( mesh1, element_id1, edge1_point0, edge1_point1 );
-    GetLinearEdgeEndpoints( mesh2, element_id2, edge2_point0, edge2_point1 );
+    getLinearEdgeEndpoints( mesh1, element_id1, edge1_point0, edge1_point1 );
+    getLinearEdgeEndpoints( mesh2, element_id2, edge2_point0, edge2_point1 );
 
     RealT edge1_normal[2];
     RealT edge2_normal[2];
-    if ( !ComputeLinearEdgeNormal( edge1_point0, edge1_point1, edge1_normal ) ||
-         !ComputeLinearEdgeNormal( edge2_point0, edge2_point1, edge2_normal ) ) {
+    if ( !computeLinearEdgeNormal( edge1_point0, edge1_point1, edge1_normal ) ||
+         !computeLinearEdgeNormal( edge2_point0, edge2_point1, edge2_normal ) ) {
       return false;
     }
     return edge1_normal[0] * edge2_normal[0] + edge1_normal[1] * edge2_normal[1] < 0.0;
@@ -89,12 +89,12 @@ struct InterfacePairChecks {
    * @return true when both edges are nondegenerate; false otherwise
    */
   template <typename Value>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static bool ComputeLinearEdgeProjectionBounds(
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static bool computeLinearEdgeProjectionBounds(
       const Value* integration_point0, const Value* integration_point1, const Value* projected_point0,
       const Value* projected_point1, MdSpan<Value, 2> projection_bounds )
   {
     Value projected_normal[2];
-    if ( !ComputeLinearEdgeNormal( projected_point0, projected_point1, projected_normal ) ) {
+    if ( !computeLinearEdgeNormal( projected_point0, projected_point1, projected_normal ) ) {
       projection_bounds[0] = Value{};
       projection_bounds[1] = Value{};
       return false;
@@ -111,14 +111,14 @@ struct InterfacePairChecks {
     }
 
     Value projected_intersection0[2];
-    FindLineIntersection( integration_point0, integration_point1, projected_point0, projected_normal,
+    findLineIntersection( integration_point0, integration_point1, projected_point0, projected_normal,
                           projected_intersection0 );
     const Value integration_fraction0 = ( ( projected_intersection0[0] - integration_point0[0] ) * integration_x +
                                           ( projected_intersection0[1] - integration_point0[1] ) * integration_y ) /
                                         integration_length_squared;
 
     Value projected_intersection1[2];
-    FindLineIntersection( integration_point0, integration_point1, projected_point1, projected_normal,
+    findLineIntersection( integration_point0, integration_point1, projected_point1, projected_normal,
                           projected_intersection1 );
     const Value integration_fraction1 = ( ( projected_intersection1[0] - integration_point0[0] ) * integration_x +
                                           ( projected_intersection1[1] - integration_point0[1] ) * integration_y ) /
@@ -141,7 +141,7 @@ struct InterfacePairChecks {
    * @param projection_bounds Two normalized bounds written in increasing order
    * @return true when both edges are nondegenerate; false otherwise
    */
-  TRIBOL_HOST_DEVICE static bool ComputeLinearEdgeProjectionBounds( const MeshData::Viewer& integration_mesh,
+  TRIBOL_HOST_DEVICE static bool computeLinearEdgeProjectionBounds( const MeshData::Viewer& integration_mesh,
                                                                     IndexT integration_element,
                                                                     const MeshData::Viewer& projected_mesh,
                                                                     IndexT projected_element,
@@ -151,9 +151,9 @@ struct InterfacePairChecks {
     RealT integration_point1[2];
     RealT projected_point0[2];
     RealT projected_point1[2];
-    GetLinearEdgeEndpoints( integration_mesh, integration_element, integration_point0, integration_point1 );
-    GetLinearEdgeEndpoints( projected_mesh, projected_element, projected_point0, projected_point1 );
-    return ComputeLinearEdgeProjectionBounds( integration_point0, integration_point1, projected_point0,
+    getLinearEdgeEndpoints( integration_mesh, integration_element, integration_point0, integration_point1 );
+    getLinearEdgeEndpoints( projected_mesh, projected_element, projected_point0, projected_point1 );
+    return computeLinearEdgeProjectionBounds( integration_point0, integration_point1, projected_point0,
                                               projected_point1, projection_bounds );
   }
 
@@ -164,7 +164,7 @@ struct InterfacePairChecks {
    * so the supported interval is `[-1 - 2 * smoothing_fraction, 1 + 2 * smoothing_fraction]`. Merely touching a support
    * endpoint produces no integration measure and returns false.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static bool ProjectionIntervalOverlapsSmoothedSupport(
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static bool projectionIntervalOverlapsSmoothedSupport(
       MdSpan<const RealT, 2> projection_bounds, RealT smoothing_fraction )
   {
     const RealT support_extension = 2.0 * smoothing_fraction;
@@ -177,7 +177,7 @@ struct InterfacePairChecks {
   inline static constexpr RealT minimum_edge_length_ = 1.0e-14;
   inline static constexpr RealT minimum_projection_determinant_ = 1.0e-12;
 
-  TRIBOL_HOST_DEVICE static void GetLinearEdgeEndpoints( const MeshData::Viewer& mesh, IndexT element_id, RealT* point0,
+  TRIBOL_HOST_DEVICE static void getLinearEdgeEndpoints( const MeshData::Viewer& mesh, IndexT element_id, RealT* point0,
                                                          RealT* point1 )
   {
     const IndexT node0 = mesh.getGlobalNodeId( element_id, 0 );
@@ -189,7 +189,7 @@ struct InterfacePairChecks {
   }
 
   template <typename Value>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static bool ComputeLinearEdgeNormal( const Value* point0, const Value* point1,
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static bool computeLinearEdgeNormal( const Value* point0, const Value* point1,
                                                                                Value* normal )
   {
     const Value edge_x = point1[0] - point0[0];
@@ -206,7 +206,7 @@ struct InterfacePairChecks {
   }
 
   template <typename Value>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void FindLineIntersection( const Value* line_point0,
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void findLineIntersection( const Value* line_point0,
                                                                             const Value* line_point1,
                                                                             const Value* projected_point,
                                                                             const Value* projection_direction,

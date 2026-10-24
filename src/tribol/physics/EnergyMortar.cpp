@@ -177,7 +177,7 @@ TRIBOL_ENZYME_INLINE void get_projections( const double* A0, const double* A1, c
                                            double* projections )
 {
   // Filtering and integration must use the same projection construction or they can disagree near support endpoints.
-  InterfacePairChecks::ComputeLinearEdgeProjectionBounds( A0, A1, B0, B1, MdSpan<double, 2>{ projections, 2 } );
+  InterfacePairChecks::computeLinearEdgeProjectionBounds( A0, A1, B0, B1, MdSpan<double, 2>{ projections, 2 } );
 }
 
 // Isolate each endpoint to avoid incorrect loop-local tape reuse in Enzyme reverse mode.

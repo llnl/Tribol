@@ -31,10 +31,10 @@ TEST( InterfacePairChecks, identifies_same_and_topologically_adjacent_elements )
                          x.data(), y.data(), nullptr, tribol::MemorySpace::Host );
   const auto mesh_view = mesh.getView();
 
-  EXPECT_TRUE( tribol::InterfacePairChecks::IsSameElementPair( mesh_view, 0, mesh_view, 0 ) );
-  EXPECT_FALSE( tribol::InterfacePairChecks::IsSameElementPair( mesh_view, 0, mesh_view, 1 ) );
-  EXPECT_TRUE( tribol::InterfacePairChecks::ElementsShareNode( mesh_view, 0, mesh_view, 1 ) );
-  EXPECT_FALSE( tribol::InterfacePairChecks::ElementsShareNode( mesh_view, 0, mesh_view, 2 ) );
+  EXPECT_TRUE( tribol::InterfacePairChecks::isSameElementPair( mesh_view, 0, mesh_view, 0 ) );
+  EXPECT_FALSE( tribol::InterfacePairChecks::isSameElementPair( mesh_view, 0, mesh_view, 1 ) );
+  EXPECT_TRUE( tribol::InterfacePairChecks::elementsShareNode( mesh_view, 0, mesh_view, 1 ) );
+  EXPECT_FALSE( tribol::InterfacePairChecks::elementsShareNode( mesh_view, 0, mesh_view, 2 ) );
 }
 
 TEST( InterfacePairChecks, requires_opposing_nondegenerate_edge_normals )
@@ -63,11 +63,11 @@ TEST( InterfacePairChecks, requires_opposing_nondegenerate_edge_normals )
                                tribol::MemorySpace::Host );
 
   EXPECT_TRUE(
-      tribol::InterfacePairChecks::LinearEdgeNormalsAreOpposing( lower.getView(), 0, upper_reversed.getView(), 0 ) );
+      tribol::InterfacePairChecks::linearEdgeNormalsAreOpposing( lower.getView(), 0, upper_reversed.getView(), 0 ) );
   EXPECT_FALSE(
-      tribol::InterfacePairChecks::LinearEdgeNormalsAreOpposing( lower.getView(), 0, upper_forward.getView(), 0 ) );
+      tribol::InterfacePairChecks::linearEdgeNormalsAreOpposing( lower.getView(), 0, upper_forward.getView(), 0 ) );
   EXPECT_FALSE(
-      tribol::InterfacePairChecks::LinearEdgeNormalsAreOpposing( lower.getView(), 0, degenerate.getView(), 0 ) );
+      tribol::InterfacePairChecks::linearEdgeNormalsAreOpposing( lower.getView(), 0, degenerate.getView(), 0 ) );
 }
 
 TEST( InterfacePairChecks, computes_normalized_projection_intervals )
@@ -80,7 +80,7 @@ TEST( InterfacePairChecks, computes_normalized_projection_intervals )
                                       const std::array<tribol::RealT, 2>& projected_point1,
                                       const std::array<tribol::RealT, 2>& expected_bounds ) {
     tribol::RealT projection_bounds[2];
-    ASSERT_TRUE( tribol::InterfacePairChecks::ComputeLinearEdgeProjectionBounds(
+    ASSERT_TRUE( tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds(
         integration_point0, integration_point1, projected_point0.data(), projected_point1.data(),
         tribol::MdSpan<tribol::RealT, 2>{ projection_bounds } ) );
     EXPECT_NEAR( projection_bounds[0], expected_bounds[0], comparison_tolerance );
@@ -102,7 +102,7 @@ TEST( InterfacePairChecks, rejects_degenerate_projection_edges )
   const tribol::RealT collapsed_point[2]{ 0.5, 0.1 };
   tribol::RealT projection_bounds[2]{ 3.0, 4.0 };
 
-  EXPECT_FALSE( tribol::InterfacePairChecks::ComputeLinearEdgeProjectionBounds(
+  EXPECT_FALSE( tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds(
       valid_point0, valid_point1, collapsed_point, collapsed_point,
       tribol::MdSpan<tribol::RealT, 2>{ projection_bounds } ) );
   EXPECT_EQ( projection_bounds[0], 0.0 );
@@ -110,7 +110,7 @@ TEST( InterfacePairChecks, rejects_degenerate_projection_edges )
 
   projection_bounds[0] = 3.0;
   projection_bounds[1] = 4.0;
-  EXPECT_FALSE( tribol::InterfacePairChecks::ComputeLinearEdgeProjectionBounds(
+  EXPECT_FALSE( tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds(
       collapsed_point, collapsed_point, valid_point0, valid_point1,
       tribol::MdSpan<tribol::RealT, 2>{ projection_bounds } ) );
   EXPECT_EQ( projection_bounds[0], 0.0 );
@@ -128,12 +128,12 @@ TEST( InterfacePairChecks, requires_positive_overlap_with_smoothed_support )
   const tribol::RealT zero_measure_touch[2]{ 1.2, 2.0 };
 
   EXPECT_TRUE(
-      tribol::InterfacePairChecks::ProjectionIntervalOverlapsSmoothedSupport( ordinary_overlap, smoothing_fraction ) );
-  EXPECT_TRUE( tribol::InterfacePairChecks::ProjectionIntervalOverlapsSmoothedSupport( smoothing_only_overlap,
+      tribol::InterfacePairChecks::projectionIntervalOverlapsSmoothedSupport( ordinary_overlap, smoothing_fraction ) );
+  EXPECT_TRUE( tribol::InterfacePairChecks::projectionIntervalOverlapsSmoothedSupport( smoothing_only_overlap,
                                                                                        smoothing_fraction ) );
-  EXPECT_FALSE( tribol::InterfacePairChecks::ProjectionIntervalOverlapsSmoothedSupport( separated_interval,
+  EXPECT_FALSE( tribol::InterfacePairChecks::projectionIntervalOverlapsSmoothedSupport( separated_interval,
                                                                                         smoothing_fraction ) );
-  EXPECT_FALSE( tribol::InterfacePairChecks::ProjectionIntervalOverlapsSmoothedSupport( zero_measure_touch,
+  EXPECT_FALSE( tribol::InterfacePairChecks::projectionIntervalOverlapsSmoothedSupport( zero_measure_touch,
                                                                                         smoothing_fraction ) );
 }
 
@@ -159,9 +159,9 @@ TEST( InterfacePairChecks, matches_energy_mortar_integration_edge )
   const tribol::RealT integration_point1[2]{ 2.0, 0.0 };
   const tribol::RealT projected_point0[2]{ 0.5, 0.2 };
   const tribol::RealT projected_point1[2]{ 1.5, 0.2 };
-  ASSERT_TRUE( tribol::InterfacePairChecks::ComputeLinearEdgeProjectionBounds(
+  ASSERT_TRUE( tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds(
       integration_mesh.getView(), 0, projected_mesh.getView(), 0, mesh_bounds ) );
-  ASSERT_TRUE( tribol::InterfacePairChecks::ComputeLinearEdgeProjectionBounds(
+  ASSERT_TRUE( tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds(
       integration_point0, integration_point1, projected_point0, projected_point1,
       tribol::MdSpan<tribol::RealT, 2>{ endpoint_bounds } ) );
 
@@ -190,13 +190,13 @@ TEST( InterfacePairChecks, evaluates_projection_support_on_device )
 #endif
   tribol::forAllExec( device_execution_mode, 1, [=] TRIBOL_HOST_DEVICE( tribol::IndexT ) {
     tribol::RealT projection_bounds[2];
-    const bool has_projection = tribol::InterfacePairChecks::ComputeLinearEdgeProjectionBounds(
+    const bool has_projection = tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds(
         coordinates.data(), coordinates.data() + 2, coordinates.data() + 4, coordinates.data() + 6,
         tribol::MdSpan<tribol::RealT, 2>{ projection_bounds } );
     results[0] = projection_bounds[0];
     results[1] = projection_bounds[1];
     results[2] = has_projection &&
-                 tribol::InterfacePairChecks::ProjectionIntervalOverlapsSmoothedSupport( projection_bounds, 0.0 );
+                 tribol::InterfacePairChecks::projectionIntervalOverlapsSmoothedSupport( projection_bounds, 0.0 );
   } );
 
   tribol::ArrayT<tribol::RealT, 1, tribol::MemorySpace::Host> host_results( device_results );
