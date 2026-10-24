@@ -7,32 +7,35 @@
 
 #include <axom/slic/interface/slic_macros.hpp>
 
+#include <utility>
+
 #include "tribol/common/Atomics.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/mesh/MfemData.hpp"
-#include "tribol/physics/InterfacePairChecks.hpp"
-#include "tribol/search/BvhSearch.hpp"
-#include "tribol/search/GridSearch.hpp"
+#include "tribol/search/InterfacePairChecks.hpp"
 
 namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
 template <template <typename> class EnforcementLocation>
-EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter(
-    MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, ExecutionMode execution_mode,
-    BinningMethod binning_method, RealT binning_proximity_scale, bool checks_shared_nodes, bool uses_fixed_pairs,
-    double k, double delta, int N, bool enzyme_quadrature, bool use_penalty, RealT residual_gap )
+EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
+                                                               MfemJacobianData& jac_data, ExecutionMode execution_mode,
+                                                               std::unique_ptr<CoarseSearch> search,
+                                                               bool checks_shared_nodes, bool uses_fixed_pairs,
+                                                               double k, double delta, int N, bool enzyme_quadrature,
+                                                               bool use_penalty, RealT residual_gap )
     : use_penalty_( use_penalty ),
       execution_mode_( execution_mode ),
-      binning_method_( binning_method ),
-      binning_proximity_scale_( binning_proximity_scale ),
+      search_( std::move( search ) ),
       checks_shared_nodes_( checks_shared_nodes ),
       uses_fixed_pairs_( uses_fixed_pairs ),
       mesh_data_( mesh_data ),
       submesh_data_( submesh_data ),
       jac_data_( jac_data )
 {
+  SLIC_ASSERT_MSG( search_ != nullptr, "ENERGY_MORTAR requires a coarse search object." );
+
   params_.k = k;
   params_.del = delta;
   params_.N = N;
@@ -79,63 +82,10 @@ void EnergyMortarAdapter<EnforcementLocation>::refreshInterfacePairs( const Cont
     return;
   }
 
-  pairs_ = filterCandidatePairs( findCandidatePairs( input ), input );
-  interface_pairs_are_initialized_ = true;
-}
-
-template <template <typename> class EnforcementLocation>
-ArrayT<InterfacePair> EnergyMortarAdapter<EnforcementLocation>::findCandidatePairs(
-    const ContactFormulationInput& input ) const
-{
   SLIC_ERROR_ROOT_IF( input.getMesh1().spatialDimension() != 2 || input.getMesh2().spatialDimension() != 2,
                       "ENERGY_MORTAR pair search requires two-dimensional meshes." );
-
-  switch ( binning_method_ ) {
-    case BINNING_GRID:
-      if ( isOnDevice( execution_mode_ ) ) {
-        SLIC_WARNING_ROOT( "BINNING_GRID is not supported on GPU. Switching ENERGY_MORTAR search to BINNING_BVH." );
-        return findBvhCandidatePairs( input );
-      }
-      return GridSearch<2>( binning_proximity_scale_, params_.residual_gap )
-          .findCandidatePairs( input.getMesh1(), input.getMesh2() );
-    case BINNING_BVH:
-      return findBvhCandidatePairs( input );
-    case BINNING_CARTESIAN_PRODUCT:
-      SLIC_ERROR_ROOT( "ENERGY_MORTAR formulations do not support BINNING_CARTESIAN_PRODUCT." );
-      return ArrayT<InterfacePair>( 0, 0, input.getMesh1().getAllocatorId() );
-    default:
-      SLIC_ERROR_ROOT( "ENERGY_MORTAR received an invalid binning method." );
-      return ArrayT<InterfacePair>( 0, 0, input.getMesh1().getAllocatorId() );
-  }
-}
-
-template <template <typename> class EnforcementLocation>
-ArrayT<InterfacePair> EnergyMortarAdapter<EnforcementLocation>::findBvhCandidatePairs(
-    const ContactFormulationInput& input ) const
-{
-  switch ( execution_mode_ ) {
-    case ExecutionMode::Sequential:
-      return BvhSearch<2, ExecutionMode::Sequential>( binning_proximity_scale_, params_.residual_gap )
-          .findCandidatePairs( input.getMesh1(), input.getMesh2() );
-#ifdef TRIBOL_USE_OPENMP
-    case ExecutionMode::OpenMP:
-      return BvhSearch<2, ExecutionMode::OpenMP>( binning_proximity_scale_, params_.residual_gap )
-          .findCandidatePairs( input.getMesh1(), input.getMesh2() );
-#endif
-#ifdef TRIBOL_USE_CUDA
-    case ExecutionMode::Cuda:
-      return BvhSearch<2, ExecutionMode::Cuda>( binning_proximity_scale_, params_.residual_gap )
-          .findCandidatePairs( input.getMesh1(), input.getMesh2() );
-#endif
-#ifdef TRIBOL_USE_HIP
-    case ExecutionMode::Hip:
-      return BvhSearch<2, ExecutionMode::Hip>( binning_proximity_scale_, params_.residual_gap )
-          .findCandidatePairs( input.getMesh1(), input.getMesh2() );
-#endif
-    default:
-      SLIC_ERROR_ROOT( "ENERGY_MORTAR cannot run BVH search with the configured execution mode." );
-      return ArrayT<InterfacePair>( 0, 0, input.getMesh1().getAllocatorId() );
-  }
+  pairs_ = filterCandidatePairs( search_->findCandidatePairs( input.getMesh1(), input.getMesh2() ), input );
+  interface_pairs_are_initialized_ = true;
 }
 
 template <template <typename> class EnforcementLocation>

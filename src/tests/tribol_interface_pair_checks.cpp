@@ -13,7 +13,7 @@
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/physics/InterfacePairChecks.hpp"
+#include "tribol/search/InterfacePairChecks.hpp"
 
 namespace {
 

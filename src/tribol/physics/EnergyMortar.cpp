@@ -3,7 +3,7 @@
 #include "axom/slic.hpp"
 #include "tribol/common/Enzyme.hpp"
 #include "tribol/integ/BasisFunction.hpp"
-#include "tribol/physics/InterfacePairChecks.hpp"
+#include "tribol/search/InterfacePairChecks.hpp"
 
 #include <algorithm>
 #include <array>

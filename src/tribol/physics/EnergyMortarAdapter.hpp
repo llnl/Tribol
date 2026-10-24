@@ -11,6 +11,7 @@
 #include "tribol/physics/EnergyMortar.hpp"
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/common/Parameters.hpp"
+#include "tribol/search/CoarseSearch.hpp"
 
 #include "mfem.hpp"
 
@@ -135,9 +136,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @param mesh_data MFEM mesh data for the parent/primary variables
    * @param submesh_data MFEM submesh data for the dual variables (pressure/gap/LM)
    * @param jac_data MFEM Jacobian transfer data
-   * @param execution_mode Execution mode used by search and filtering loops
-   * @param binning_method Coarse-search method used by this formulation
-   * @param binning_proximity_scale Element-size multiplier used to expand coarse-search bounds
+   * @param execution_mode Execution mode used by filtering loops
+   * @param search Coarse search whose ownership is transferred to this formulation; must be non-null
    * @param checks_shared_nodes Whether auto-contact rejects pairs that share a finite-element node
    * @param uses_fixed_pairs Whether an initialized pair set is reused on later requests
    * @param k Penalty stiffness
@@ -154,9 +154,9 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * relative to the order of the meshes provided here.
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
-                       ExecutionMode execution_mode, BinningMethod binning_method, RealT binning_proximity_scale,
-                       bool checks_shared_nodes, bool uses_fixed_pairs, double k, double delta, int N,
-                       bool enzyme_quadrature, bool use_penalty = true, RealT residual_gap = 0.0 );
+                       ExecutionMode execution_mode, std::unique_ptr<CoarseSearch> search, bool checks_shared_nodes,
+                       bool uses_fixed_pairs, double k, double delta, int N, bool enzyme_quadrature,
+                       bool use_penalty = true, RealT residual_gap = 0.0 );
 
   /**
    * @brief Default destructor
@@ -236,12 +236,6 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    */
   void refreshInterfacePairs( const ContactFormulationInput& input );
 
-  /** @brief Return spatial candidates from the configured ENERGY_MORTAR coarse search */
-  ArrayT<InterfacePair> findCandidatePairs( const ContactFormulationInput& input ) const;
-
-  /** @brief Run the two-dimensional BVH specialization selected by this formulation's execution mode */
-  ArrayT<InterfacePair> findBvhCandidatePairs( const ContactFormulationInput& input ) const;
-
   /** @brief Apply ENERGY_MORTAR checks and compact accepted spatial candidates */
   ArrayT<InterfacePair> filterCandidatePairs( ArrayT<InterfacePair>&& candidate_pairs,
                                               const ContactFormulationInput& input ) const;
@@ -257,11 +251,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   /** @brief Execution mode selected when this formulation is constructed */
   const ExecutionMode execution_mode_;
 
-  /** @brief Coarse-search method selected when this formulation is constructed */
-  const BinningMethod binning_method_;
-
-  /** @brief Element-size multiplier applied when this formulation constructs coarse-search bounds */
-  const RealT binning_proximity_scale_;
+  /** @brief Coarse search supplied by the caller and owned by this formulation */
+  std::unique_ptr<CoarseSearch> search_;
 
   /** @brief Whether auto-contact rejects pairs that share any finite-element node */
   const bool checks_shared_nodes_;

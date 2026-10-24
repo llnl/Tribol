@@ -13,6 +13,7 @@
 
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/search/BvhSearch.hpp"
+#include "tribol/search/CoarseSearchFactory.hpp"
 #include "tribol/search/GridSearch.hpp"
 
 namespace {
@@ -28,12 +29,14 @@ template <int SpatialDimension>
 void ExpectBothSearchesFindCandidates( tribol::MeshData& mesh1, tribol::MeshData& mesh2,
                                        const CandidateIds& expected_candidates )
 {
-  tribol::GridSearch<SpatialDimension> grid_search( proximity_scale_for_raised_nodes, no_residual_gap );
-  tribol::BvhSearch<SpatialDimension, tribol::ExecutionMode::Sequential> bvh_search( proximity_scale_for_raised_nodes,
-                                                                                     no_residual_gap );
-
-  const auto grid_candidates = grid_search.findCandidatePairs( mesh1.getView(), mesh2.getView() );
-  const auto bvh_candidates = bvh_search.findCandidatePairs( mesh1.getView(), mesh2.getView() );
+  auto grid = tribol::createCoarseSearch( SpatialDimension, tribol::BINNING_GRID, tribol::ExecutionMode::Sequential,
+                                          proximity_scale_for_raised_nodes, no_residual_gap );
+  auto bvh = tribol::createCoarseSearch( SpatialDimension, tribol::BINNING_BVH, tribol::ExecutionMode::Sequential,
+                                         proximity_scale_for_raised_nodes, no_residual_gap );
+  ASSERT_NE( grid, nullptr );
+  ASSERT_NE( bvh, nullptr );
+  const auto grid_candidates = grid->findCandidatePairs( mesh1.getView(), mesh2.getView() );
+  const auto bvh_candidates = bvh->findCandidatePairs( mesh1.getView(), mesh2.getView() );
 
   CandidateIds grid_candidate_ids;
   for ( const auto& pair : grid_candidates ) {

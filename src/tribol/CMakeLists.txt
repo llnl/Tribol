@@ -48,14 +48,16 @@ set(tribol_headers
     physics/ContactFormulation.hpp
     physics/ContactFormulationFactory.hpp
     physics/ContactFormulationInput.hpp
-    physics/InterfacePairChecks.hpp
     physics/Mortar.hpp
     physics/EnergyMortar.hpp
     physics/EnergyMortarAdapter.hpp
     physics/Physics.hpp
 
+    search/CoarseSearch.hpp
+    search/CoarseSearchFactory.hpp
     search/BvhSearch.hpp
     search/GridSearch.hpp
+    search/InterfacePairChecks.hpp
     search/InterfacePairFinder.hpp
 
     utils/Algorithm.hpp
@@ -93,6 +95,7 @@ set(tribol_sources
     physics/EnergyMortarAdapter.cpp
     physics/Physics.cpp
      
+    search/CoarseSearchFactory.cpp
     search/InterfacePairFinder.cpp
 
     utils/ContactPlaneOutput.cpp
