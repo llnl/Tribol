@@ -122,9 +122,8 @@ ArrayT<InterfacePair> EnergyMortarAdapter<EnforcementLocation>::filterCandidateP
 
                 RealT projection_bounds[2];
                 if ( accepts_pair ) {
-                  // ENERGY_MORTAR integrates on Tribol mesh 2, so the projection reverses the coarse-pair mesh roles.
                   accepts_pair = InterfacePairChecks::ComputeLinearEdgeProjectionBounds(
-                      mesh2, pair.element_id2_, mesh1, pair.element_id1_, MdSpan<RealT, 2>{ projection_bounds } );
+                      mesh1, pair.element_id1_, mesh2, pair.element_id2_, MdSpan<RealT, 2>{ projection_bounds } );
                 }
                 if ( accepts_pair ) {
                   accepts_pair = InterfacePairChecks::ProjectionIntervalOverlapsSmoothedSupport(
@@ -178,8 +177,8 @@ void Nodal<Adapter>::updateNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer m
       use_lor ? *adapter->submesh_data_.GetLORMeshFESpace() : adapter->submesh_data_.GetSubmeshFESpace();
   const auto& displacement_redecomp_fes = *adapter->mesh_data_.GetRedecompResponse().FESpace();
   const auto& pressure_redecomp_fes = *adapter->submesh_data_.GetRedecompGap().FESpace();
-  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap1();
-  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap2();
+  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap1();
+  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap2();
 
   PackedPairJacobianContribs dg_lm_nm( pressure_surface_fes, displacement_surface_fes, pressure_redecomp_fes,
                                        displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
@@ -197,23 +196,21 @@ void Nodal<Adapter>::updateNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer m
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
-  // ENERGY_MORTAR integrates on Tribol mesh 2, so element calculations reverse the coupling-scheme mesh order.
   // Compute local contributions
   for ( const auto& pair : adapter->pairs_ ) {
-    InterfacePair flipped_pair{ pair.element_id2_, pair.element_id1_ };
-    const auto elem1 = static_cast<int>( flipped_pair.element_id1_ );
-    const auto elem2 = static_cast<int>( flipped_pair.element_id2_ );
+    const auto elem1 = static_cast<int>( pair.element_id1_ );
+    const auto elem2 = static_cast<int>( pair.element_id2_ );
 
     double g_tilde_elem[2];
     double A_elem[2];
 
-    adapter->evaluator_->compute_gtilde_and_area( flipped_pair, mesh2, mesh1, g_tilde_elem, A_elem );
+    adapter->evaluator_->compute_gtilde_and_area( pair, mesh1, mesh2, g_tilde_elem, A_elem );
 
     if ( A_elem[0] <= 0.0 && A_elem[1] <= 0.0 ) {
       continue;
     }
 
-    auto A_conn = mesh2.getConnectivity()( elem1 );
+    auto A_conn = mesh1.getConnectivity()( elem1 );
 
     // Add to nodes of Element A
     redecomp_gap( A_conn[0] ) += g_tilde_elem[0];
@@ -226,7 +223,7 @@ void Nodal<Adapter>::updateNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer m
     double dg_dx_node1[8];
     double dg_dx_node2[8];
     // TODO: make grad_gtilde return directly in dg_tilde_dx_blocks format
-    adapter->evaluator_->grad_gtilde( flipped_pair, mesh2, mesh1, dg_dx_node1, dg_dx_node2 );
+    adapter->evaluator_->grad_gtilde( pair, mesh1, mesh2, dg_dx_node1, dg_dx_node2 );
     double dg_tilde_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
       dg_tilde_dx_blocks[0][i * 2] = dg_dx_node1[node_idx[i]];
@@ -240,7 +237,7 @@ void Nodal<Adapter>::updateNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer m
     double dA_dx_node1[8];
     double dA_dx_node2[8];
     // TODO: make grad_trib_area return directly in dA_dx_blocks format
-    adapter->evaluator_->grad_trib_area( flipped_pair, mesh2, mesh1, dA_dx_node1, dA_dx_node2 );
+    adapter->evaluator_->grad_trib_area( pair, mesh1, mesh2, dA_dx_node1, dA_dx_node2 );
     double dA_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
       dA_dx_blocks[0][i * 2] = dA_dx_node1[node_idx[i]];
@@ -410,8 +407,8 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* ad
   const auto& displacement_surface_fes =
       use_lor ? *adapter->mesh_data_.GetLORMeshFESpace() : adapter->mesh_data_.GetSubmeshFESpace();
   const auto& displacement_redecomp_fes = *adapter->mesh_data_.GetRedecompResponse().FESpace();
-  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap1();
-  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap2();
+  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap1();
+  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap2();
 
   PackedPairJacobianContribs df_nm_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
                                        displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
@@ -429,20 +426,18 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* ad
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
-  // ENERGY_MORTAR integrates on Tribol mesh 2, so element calculations reverse the coupling-scheme mesh order.
   for ( auto& pair : adapter->pairs_ ) {
-    InterfacePair flipped_pair{ pair.element_id2_, pair.element_id1_ };
-    const auto elem1 = static_cast<int>( flipped_pair.element_id1_ );
-    const auto node11 = mesh2.getConnectivity()( elem1, 0 );
-    const auto node12 = mesh2.getConnectivity()( elem1, 1 );
-    const auto elem2 = static_cast<int>( flipped_pair.element_id2_ );
+    const auto elem1 = static_cast<int>( pair.element_id1_ );
+    const auto node11 = mesh1.getConnectivity()( elem1, 0 );
+    const auto node12 = mesh1.getConnectivity()( elem1, 1 );
+    const auto elem2 = static_cast<int>( pair.element_id2_ );
 
     const RealT lambda1 = redecomp_lambda( node11 );
     const RealT lambda2 = redecomp_lambda( node12 );
 
     double d2g_dx2_node1[64];
     double d2g_dx2_node2[64];
-    adapter->evaluator_->d2_g2tilde( flipped_pair, mesh2, mesh1, d2g_dx2_node1, d2g_dx2_node2 );
+    adapter->evaluator_->d2_g2tilde( pair, mesh1, mesh2, d2g_dx2_node1, d2g_dx2_node2 );
 
     double df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
@@ -483,8 +478,8 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
   const auto& displacement_surface_fes =
       use_lor ? *adapter->mesh_data_.GetLORMeshFESpace() : adapter->mesh_data_.GetSubmeshFESpace();
   const auto& displacement_redecomp_fes = *adapter->mesh_data_.GetRedecompResponse().FESpace();
-  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap1();
-  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap2();
+  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap1();
+  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap2();
 
   PackedPairJacobianContribs df_nm_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
                                        displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
@@ -502,13 +497,11 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
-  // ENERGY_MORTAR integrates on Tribol mesh 2, so element calculations reverse the coupling-scheme mesh order.
   for ( auto& pair : adapter->pairs_ ) {
-    InterfacePair flipped_pair{ pair.element_id2_, pair.element_id1_ };
-    const auto elem1 = static_cast<int>( flipped_pair.element_id1_ );
-    const auto node11 = mesh2.getConnectivity()( elem1, 0 );
-    const auto node12 = mesh2.getConnectivity()( elem1, 1 );
-    const auto elem2 = static_cast<int>( flipped_pair.element_id2_ );
+    const auto elem1 = static_cast<int>( pair.element_id1_ );
+    const auto node11 = mesh1.getConnectivity()( elem1, 0 );
+    const auto node12 = mesh1.getConnectivity()( elem1, 1 );
+    const auto elem2 = static_cast<int>( pair.element_id2_ );
 
     const RealT pressure1 = 2.0 * redecomp_pressure( node11 );
     const RealT pressure2 = 2.0 * redecomp_pressure( node12 );
@@ -522,11 +515,11 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
 
     double d2g_dx2_node1[64];
     double d2g_dx2_node2[64];
-    adapter->evaluator_->d2_g2tilde( flipped_pair, mesh2, mesh1, d2g_dx2_node1, d2g_dx2_node2 );
+    adapter->evaluator_->d2_g2tilde( pair, mesh1, mesh2, d2g_dx2_node1, d2g_dx2_node2 );
 
     double d2A_dx2_node1[64];
     double d2A_dx2_node2[64];
-    adapter->evaluator_->compute_d2A_d2u( flipped_pair, mesh2, mesh1, d2A_dx2_node1, d2A_dx2_node2 );
+    adapter->evaluator_->compute_d2A_d2u( pair, mesh1, mesh2, d2A_dx2_node1, d2A_dx2_node2 );
 
     double df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
@@ -570,8 +563,8 @@ void QuadraturePoint<Adapter>::updateNodalForces( MeshData::Viewer mesh1, MeshDa
   const auto& displacement_surface_fes =
       use_lor ? *adapter->mesh_data_.GetLORMeshFESpace() : adapter->mesh_data_.GetSubmeshFESpace();
   const auto& displacement_redecomp_fes = *adapter->mesh_data_.GetRedecompResponse().FESpace();
-  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap1();
-  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap2();
+  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap1();
+  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap2();
 
   PackedPairJacobianContribs df_nm_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
                                        displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
@@ -594,12 +587,10 @@ void QuadraturePoint<Adapter>::updateNodalForces( MeshData::Viewer mesh1, MeshDa
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
-  // ENERGY_MORTAR integrates on Tribol mesh 2, so element calculations reverse the coupling-scheme mesh order.
   for ( const auto& pair : adapter->pairs_ ) {
-    InterfacePair flipped_pair{ pair.element_id2_, pair.element_id1_ };
-    const auto elem1 = static_cast<int>( flipped_pair.element_id1_ );
-    const auto elem2 = static_cast<int>( flipped_pair.element_id2_ );
-    const auto qp_data = adapter->evaluator_->compute_quadrature_point_penalty_data( flipped_pair, mesh2, mesh1 );
+    const auto elem1 = static_cast<int>( pair.element_id1_ );
+    const auto elem2 = static_cast<int>( pair.element_id2_ );
+    const auto qp_data = adapter->evaluator_->compute_quadrature_point_penalty_data( pair, mesh1, mesh2 );
 
     if ( !qp_data.has_active_qp ) {
       continue;
@@ -607,8 +598,8 @@ void QuadraturePoint<Adapter>::updateNodalForces( MeshData::Viewer mesh1, MeshDa
 
     adapter->energy_ += qp_data.energy;
 
-    auto A_conn = mesh2.getConnectivity()( elem1 );
-    auto B_conn = mesh1.getConnectivity()( elem2 );
+    auto A_conn = mesh1.getConnectivity()( elem1 );
+    auto B_conn = mesh2.getConnectivity()( elem2 );
     redecomp_force( A_conn[0] ) += qp_data.force[0];
     redecomp_force( scalar_size + A_conn[0] ) += qp_data.force[1];
     redecomp_force( A_conn[1] ) += qp_data.force[2];

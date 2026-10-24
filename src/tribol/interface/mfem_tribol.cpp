@@ -818,10 +818,12 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         // updates submesh-native grid functions and transfer operators on
         // the new redecomp mesh
         submesh_data->UpdateMfemSubmeshData( mfem_data->GetRedecompMesh(), new_redecomp );
+        // ContactFormulation uses mesh 1 as non-mortar; legacy mortar methods use mesh 2.
+        const auto nonmortar_mesh_id = mesh_ids[cs.hasContactFormulation() ? 0 : 1];
         auto g_ptrs = submesh_data->GetRedecompGapPtrs();
-        registerMortarGaps( mesh_ids[1], g_ptrs[0] );
+        registerMortarGaps( nonmortar_mesh_id, g_ptrs[0] );
         auto p_ptrs = submesh_data->GetRedecompPressurePtrs();
-        registerMortarPressures( mesh_ids[1], p_ptrs[0] );
+        registerMortarPressures( nonmortar_mesh_id, p_ptrs[0] );
         if ( ( cs.hasMfemJacobianData() || cs.getContactMethod() == ENERGY_MORTAR ) && new_redecomp ) {
           // updates Jacobian transfer operator for new redecomp mesh
           cs.getMfemJacobianData()->UpdateJacobianXfer();

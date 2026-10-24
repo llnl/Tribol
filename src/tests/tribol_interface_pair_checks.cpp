@@ -137,10 +137,10 @@ TEST( InterfacePairChecks, requires_positive_overlap_with_smoothed_support )
                                                                                         smoothing_fraction ) );
 }
 
-TEST( InterfacePairChecks, matches_energy_mortar_flipped_integration_edge )
+TEST( InterfacePairChecks, matches_energy_mortar_integration_edge )
 {
-  // Tribol stores mesh 1 first, while EnergyMortar integrates on mesh 2. The mesh overload must match the raw endpoint
-  // calculation after those roles are reversed.
+  // ENERGY_MORTAR integrates on the first (non-mortar) mesh and projects the second (mortar) mesh onto it.
+  // The mesh overload must match the raw endpoint calculation in the same order.
   constexpr std::array<tribol::IndexT, 2> connectivity{ 0, 1 };
   constexpr std::array<tribol::RealT, 2> projected_x{ 0.5, 1.5 };
   constexpr std::array<tribol::RealT, 2> projected_y{ 0.2, 0.2 };

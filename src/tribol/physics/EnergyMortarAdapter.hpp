@@ -152,9 +152,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @param residual_gap Nonnegative gap offset subtracted from the kinematic gap. Positive values enforce separation
    *        between the contact surfaces.
    *
-   * @note The ENERGY_MORTAR implementation follows the literature convention of integrating on a non-mortar side and
-   * mapping to a mortar side. To maintain that convention within Tribol, the adapter may internally flip mesh roles
-   * relative to the order of the meshes provided here.
+   * @note Mesh 1 is the non-mortar integration side; mesh 2 is the mortar projection side. Mesh views, candidate
+   * pairs, and MFEM element maps all use this order.
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
                        ExecutionMode execution_mode, std::unique_ptr<CoarseSearch> search, bool checks_shared_nodes,

@@ -30,7 +30,8 @@ class MethodData;
  * \brief Base class for contact formulations.
  *
  * This class provides a polymorphic interface for contact algorithms, allowing for modular implementation of new
- * physics and formulations.
+ * physics and formulations. Mortar formulations use mesh 1 as the non-mortar integration surface and mesh 2 as the
+ * mortar projection surface.
  *
  * Each stage receives current non-owning mesh views. Implementations retain their method and search configuration and
  * compute missing prerequisites so callers can request a stage without first calling earlier stages. The caller owns
