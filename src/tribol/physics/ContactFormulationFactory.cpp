@@ -8,6 +8,7 @@
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/search/CoarseSearchFactory.hpp"
+#include "tribol/search/ProjectedEdgeSearch.hpp"
 
 #include <utility>
 
@@ -51,20 +52,18 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     const auto execution_mode = cs->getExecutionMode();
     const auto binning_method = cs->getBinningMethod();
     const auto binning_proximity_scale = cs->getEffectiveBinningProximityScale();
-    auto search = createCoarseSearch( cs->spatialDimension(), binning_method, execution_mode, binning_proximity_scale,
-                                      residual_gap );
-    const bool checks_shared_nodes = cs->getContactCase() == AUTO;
+    auto coarse_search = createCoarseSearch( cs->spatialDimension(), binning_method, execution_mode,
+                                             binning_proximity_scale, residual_gap );
+    auto refined_search = std::make_unique<ProjectedEdgeSearch>( execution_mode, delta, cs->getContactCase() == AUTO );
     const bool uses_fixed_pairs = cs->getContactCase() == NO_SLIDING || cs->hasFixedBinning();
     if ( enforcement_location == EnforcementLocation::QuadraturePoint ) {
       return std::make_unique<EnergyMortarAdapter<QuadraturePoint>>(
-          *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), execution_mode,
-          std::move( search ), checks_shared_nodes, uses_fixed_pairs, k, delta, N, enzyme_quadrature, use_penalty,
-          residual_gap );
+          *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( coarse_search ),
+          std::move( refined_search ), uses_fixed_pairs, k, delta, N, enzyme_quadrature, use_penalty, residual_gap );
     } else {
-      return std::make_unique<EnergyMortarAdapter<Nodal>>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
-                                                           *cs->getMfemJacobianData(), execution_mode,
-                                                           std::move( search ), checks_shared_nodes, uses_fixed_pairs,
-                                                           k, delta, N, enzyme_quadrature, use_penalty, residual_gap );
+      return std::make_unique<EnergyMortarAdapter<Nodal>>(
+          *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( coarse_search ),
+          std::move( refined_search ), uses_fixed_pairs, k, delta, N, enzyme_quadrature, use_penalty, residual_gap );
     }
 #else
     SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );

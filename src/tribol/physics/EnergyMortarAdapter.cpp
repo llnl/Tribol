@@ -9,32 +9,27 @@
 
 #include <utility>
 
-#include "tribol/common/Atomics.hpp"
-#include "tribol/common/LoopExec.hpp"
 #include "tribol/mesh/MfemData.hpp"
-#include "tribol/search/InterfacePairChecks.hpp"
 
 namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
 template <template <typename> class EnforcementLocation>
-EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
-                                                               MfemJacobianData& jac_data, ExecutionMode execution_mode,
-                                                               std::unique_ptr<CoarseSearch> search,
-                                                               bool checks_shared_nodes, bool uses_fixed_pairs,
-                                                               double k, double delta, int N, bool enzyme_quadrature,
-                                                               bool use_penalty, RealT residual_gap )
+EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter(
+    MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
+    std::unique_ptr<CoarseSearch> coarse_search, std::unique_ptr<RefinedSearch> refined_search, bool uses_fixed_pairs,
+    double k, double delta, int N, bool enzyme_quadrature, bool use_penalty, RealT residual_gap )
     : use_penalty_( use_penalty ),
-      execution_mode_( execution_mode ),
-      search_( std::move( search ) ),
-      checks_shared_nodes_( checks_shared_nodes ),
+      coarse_search_( std::move( coarse_search ) ),
+      refined_search_( std::move( refined_search ) ),
       uses_fixed_pairs_( uses_fixed_pairs ),
       mesh_data_( mesh_data ),
       submesh_data_( submesh_data ),
       jac_data_( jac_data )
 {
-  SLIC_ASSERT_MSG( search_ != nullptr, "ENERGY_MORTAR requires a coarse search object." );
+  SLIC_ASSERT_MSG( coarse_search_ != nullptr, "ENERGY_MORTAR requires a coarse search object." );
+  SLIC_ASSERT_MSG( refined_search_ != nullptr, "ENERGY_MORTAR requires a refined search object." );
 
   params_.k = k;
   params_.del = delta;
@@ -83,78 +78,9 @@ void EnergyMortarAdapter<EnforcementLocation>::refreshInterfacePairs( MeshData::
     return;
   }
 
-  SLIC_ERROR_ROOT_IF( mesh1.spatialDimension() != 2 || mesh2.spatialDimension() != 2,
-                      "ENERGY_MORTAR pair search requires two-dimensional meshes." );
-  pairs_ = filterCandidatePairs( search_->findCandidatePairs( mesh1, mesh2 ), mesh1, mesh2 );
+  const auto candidates = coarse_search_->findCandidatePairs( mesh1, mesh2 );
+  pairs_ = refined_search_->filterCandidatePairs( candidates, mesh1, mesh2 );
   interface_pairs_are_initialized_ = true;
-}
-
-template <template <typename> class EnforcementLocation>
-ArrayT<InterfacePair> EnergyMortarAdapter<EnforcementLocation>::filterCandidatePairs(
-    ArrayT<InterfacePair>&& candidate_pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
-{
-  const IndexT candidate_count = candidate_pairs.size();
-  const int allocator_id = mesh1.getAllocatorId();
-  ArrayT<bool> accepted( axom::ArrayOptions::Uninitialized{}, candidate_count, candidate_count, allocator_id );
-  ArrayT<IndexT> accepted_count_data( { 0 }, allocator_id );
-
-  const auto candidates = candidate_pairs.view();
-  auto accepted_values = accepted.view();
-  auto accepted_count = accepted_count_data.view();
-  const bool checks_shared_nodes = checks_shared_nodes_;
-  const RealT smoothing_fraction = params_.del;
-
-  // This loop evaluates every method-specific check once. The later compaction loop only reads the saved decision.
-  forAllExec( execution_mode_, candidate_count,
-              [mesh1, mesh2, candidates, accepted_values, accepted_count, checks_shared_nodes,
-               smoothing_fraction] TRIBOL_HOST_DEVICE( IndexT candidate_index ) {
-                const InterfacePair& pair = candidates[candidate_index];
-                bool accepts_pair =
-                    !InterfacePairChecks::isSameElementPair( mesh1, pair.element_id1_, mesh2, pair.element_id2_ );
-                if ( accepts_pair && checks_shared_nodes ) {
-                  accepts_pair =
-                      !InterfacePairChecks::elementsShareNode( mesh1, pair.element_id1_, mesh2, pair.element_id2_ );
-                }
-                if ( accepts_pair ) {
-                  accepts_pair = InterfacePairChecks::linearEdgeNormalsAreOpposing( mesh1, pair.element_id1_, mesh2,
-                                                                                    pair.element_id2_ );
-                }
-
-                RealT projection_bounds[2];
-                if ( accepts_pair ) {
-                  accepts_pair = InterfacePairChecks::computeLinearEdgeProjectionBounds(
-                      mesh1, pair.element_id1_, mesh2, pair.element_id2_, MdSpan<RealT, 2>{ projection_bounds } );
-                }
-                if ( accepts_pair ) {
-                  accepts_pair = InterfacePairChecks::projectionIntervalOverlapsSmoothedSupport(
-                      MdSpan<const RealT, 2>{ projection_bounds }, smoothing_fraction );
-                }
-
-                accepted_values[candidate_index] = accepts_pair;
-                if ( accepts_pair ) {
-                  tribol::atomicInc( accepted_count.data() );
-                }
-              } );
-
-  ArrayT<IndexT, 1, MemorySpace::Host> accepted_count_host( accepted_count_data );
-  ArrayT<InterfacePair> accepted_pairs( axom::ArrayOptions::Uninitialized{}, accepted_count_host[0],
-                                        accepted_count_host[0], allocator_id );
-
-  accepted_count_data.fill( 0 );
-  auto accepted_pairs_view = accepted_pairs.view();
-  forAllExec(
-      execution_mode_, candidate_count,
-      [candidates, accepted_values, accepted_count, accepted_pairs_view] TRIBOL_HOST_DEVICE( IndexT candidate_index ) {
-        if ( !accepted_values[candidate_index] ) {
-          return;
-        }
-        const IndexT accepted_index = tribol::atomicInc( accepted_count.data() );
-        accepted_pairs_view[accepted_index] = candidates[candidate_index];
-      } );
-
-  SLIC_INFO( "ENERGY_MORTAR accepted " << accepted_pairs.size() << " of " << candidate_count
-                                       << " spatial candidate pairs." );
-  return accepted_pairs;
 }
 
 template <typename Adapter>

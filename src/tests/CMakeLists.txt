@@ -23,6 +23,7 @@ set( tribol_tests
      tribol_execution_modes.cpp
      tribol_hex_mesh.cpp
      tribol_interface_quadrature.cpp
+     tribol_refined_search.cpp
      tribol_interface_pair_checks.cpp
      tribol_interface_pair_finder.cpp
      tribol_inv_iso.cpp

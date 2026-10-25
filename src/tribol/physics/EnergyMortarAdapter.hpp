@@ -12,6 +12,7 @@
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/search/CoarseSearch.hpp"
+#include "tribol/search/RefinedSearch.hpp"
 
 #include "mfem.hpp"
 
@@ -139,9 +140,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @param mesh_data MFEM mesh data for the parent/primary variables
    * @param submesh_data MFEM submesh data for the dual variables (pressure/gap/LM)
    * @param jac_data MFEM Jacobian transfer data
-   * @param execution_mode Execution mode used by filtering loops
-   * @param search Coarse search whose ownership is transferred to this formulation; must be non-null
-   * @param checks_shared_nodes Whether auto-contact rejects pairs that share a finite-element node
+   * @param coarse_search Coarse search whose ownership is transferred to this formulation; must be non-null
+   * @param refined_search Refined search whose ownership is transferred to this formulation; must be non-null
    * @param uses_fixed_pairs Whether an initialized pair set is reused on later requests
    * @param k Penalty stiffness
    * @param delta Smoothing length
@@ -156,7 +156,7 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * pairs, and MFEM element maps all use this order.
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
-                       ExecutionMode execution_mode, std::unique_ptr<CoarseSearch> search, bool checks_shared_nodes,
+                       std::unique_ptr<CoarseSearch> coarse_search, std::unique_ptr<RefinedSearch> refined_search,
                        bool uses_fixed_pairs, double k, double delta, int N, bool enzyme_quadrature,
                        bool use_penalty = true, RealT residual_gap = 0.0 );
 
@@ -238,10 +238,6 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    */
   void refreshInterfacePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 );
 
-  /** @brief Apply ENERGY_MORTAR checks and compact accepted spatial candidates */
-  ArrayT<InterfacePair> filterCandidatePairs( ArrayT<InterfacePair>&& candidate_pairs, MeshData::Viewer mesh1,
-                                              MeshData::Viewer mesh2 ) const;
-
   /**
    * @brief Controls penalty vs. Lagrange multiplier (LM) mode
    *
@@ -250,14 +246,11 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    */
   bool use_penalty_;
 
-  /** @brief Execution mode selected when this formulation is constructed */
-  const ExecutionMode execution_mode_;
-
   /** @brief Coarse search supplied by the caller and owned by this formulation */
-  std::unique_ptr<CoarseSearch> search_;
+  std::unique_ptr<CoarseSearch> coarse_search_;
 
-  /** @brief Whether auto-contact rejects pairs that share any finite-element node */
-  const bool checks_shared_nodes_;
+  /** @brief Refined search supplied by the caller and owned by this formulation */
+  std::unique_ptr<RefinedSearch> refined_search_;
 
   /** @brief Whether later requests reuse the first initialized pair set */
   const bool uses_fixed_pairs_;

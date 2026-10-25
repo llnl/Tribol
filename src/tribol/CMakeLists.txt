@@ -58,6 +58,8 @@ set(tribol_headers
     search/GridSearch.hpp
     search/InterfacePairChecks.hpp
     search/InterfacePairFinder.hpp
+    search/RefinedSearch.hpp
+    search/ProjectedEdgeSearch.hpp
 
     utils/Algorithm.hpp
     utils/ContactPlaneOutput.hpp
@@ -96,6 +98,7 @@ set(tribol_sources
      
     search/CoarseSearchFactory.cpp
     search/InterfacePairFinder.cpp
+    search/ProjectedEdgeSearch.cpp
 
     utils/ContactPlaneOutput.cpp
     utils/Math.cpp
