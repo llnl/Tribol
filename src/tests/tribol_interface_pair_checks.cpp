@@ -3,9 +3,17 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+/**
+ * @file
+ * @brief Test individual element-pair checks for shared nodes, edge normals, projection bounds, and support overlap.
+ *
+ * Geometry cases run directly on the host. Projection and support checks also run inside a loop on every enabled
+ * execution backend. Filtering whole candidate arrays is covered in tribol_refined_search.cpp.
+ */
+
 #include <array>
 
-#include <gtest/gtest.h>
+#include "ExecutionTest.hpp"
 
 #include "axom/slic/core/SimpleLogger.hpp"
 
@@ -171,24 +179,17 @@ TEST( InterfacePairChecks, matches_energy_mortar_integration_edge )
   EXPECT_NEAR( mesh_bounds[1], endpoint_bounds[1], comparison_tolerance );
 }
 
-#if defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP )
-TEST( InterfacePairChecks, evaluates_projection_support_on_device )
-{
-  // Projection and support checks must compile and execute in the same device loop used to test coarse candidates.
-  const int host_allocator_id = tribol::getResourceAllocatorID( tribol::MemorySpace::Host );
-  const int device_allocator_id = tribol::getResourceAllocatorID( tribol::MemorySpace::Device );
-  tribol::ArrayT<tribol::RealT> host_coordinates( { 0.0, 0.0, 2.0, 0.0, 0.5, 0.2, 1.5, 0.2 }, host_allocator_id );
-  tribol::ArrayT<tribol::RealT> device_coordinates( host_coordinates, device_allocator_id );
-  tribol::ArrayT<tribol::RealT> device_results( 3, 3, device_allocator_id );
-  auto coordinates = device_coordinates.view();
-  auto results = device_results.view();
+class InterfacePairChecksExecutionTest : public tribol::detail::ExecutionTest {};
 
-#if defined( TRIBOL_USE_CUDA )
-  constexpr tribol::ExecutionMode device_execution_mode = tribol::ExecutionMode::Cuda;
-#else
-  constexpr tribol::ExecutionMode device_execution_mode = tribol::ExecutionMode::Hip;
-#endif
-  tribol::forAllExec( device_execution_mode, 1, [=] TRIBOL_HOST_DEVICE( tribol::IndexT ) {
+// Check projection bounds and support overlap inside a loop on each enabled CPU or GPU backend.
+TEST_P( InterfacePairChecksExecutionTest, evaluates_projection_support )
+{
+  const auto input_coordinates = copyToExecutionSpace<tribol::RealT>( { 0.0, 0.0, 2.0, 0.0, 0.5, 0.2, 1.5, 0.2 } );
+  tribol::ArrayT<tribol::RealT> output( 3, 3, allocatorId() );
+  const auto coordinates = input_coordinates.view();
+  auto results = output.view();
+
+  tribol::forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( tribol::IndexT ) {
     tribol::RealT projection_bounds[2];
     const bool has_projection = tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds(
         coordinates.data(), coordinates.data() + 2, coordinates.data() + 4, coordinates.data() + 6,
@@ -199,12 +200,13 @@ TEST( InterfacePairChecks, evaluates_projection_support_on_device )
                  tribol::InterfacePairChecks::projectionIntervalOverlapsSmoothedSupport( projection_bounds, 0.0 );
   } );
 
-  tribol::ArrayT<tribol::RealT, 1, tribol::MemorySpace::Host> host_results( device_results );
+  tribol::ArrayT<tribol::RealT, 1, tribol::MemorySpace::Host> host_results( output );
   EXPECT_NEAR( host_results[0], -0.5, comparison_tolerance );
   EXPECT_NEAR( host_results[1], 0.5, comparison_tolerance );
   EXPECT_EQ( host_results[2], 1.0 );
 }
-#endif
+
+INSTANTIATE_TEST_SUITE_P( execution, InterfacePairChecksExecutionTest, tribol::detail::enabledExecutionModes() );
 
 }  // namespace
 
