@@ -46,20 +46,19 @@ class ContactFormulation {
   virtual ~ContactFormulation() = default;
 
   /**
-   * @brief Return an owned integration rule for the current geometry without retaining calculation data
+   * @brief Return an owned quadrature rule for the current geometry without retaining calculation data
    *
    * Mesh 1 is the non-mortar integration side; mesh 2 is the mortar projection side. Returned parent coordinates and
    * physical weights contain values only, not geometry sensitivities. No previous calculation stage is required.
-   * Implementations that cannot expose an integration rule throw std::logic_error.
+   * Implementations that cannot expose a quadrature rule throw std::logic_error.
    */
-  virtual InterfaceQuadratureData generateIntegrationRule( MeshData::Viewer /*mesh1*/,
-                                                           MeshData::Viewer /*mesh2*/ ) const
+  virtual InterfaceQuadratureData generateQuadrature( MeshData::Viewer /*mesh1*/, MeshData::Viewer /*mesh2*/ ) const
   {
-    throw std::logic_error( "Integration-rule generation is not supported by this formulation." );
+    throw std::logic_error( "Quadrature generation is not supported by this formulation." );
   }
 
   /**
-   * @brief Updates the integration rule
+   * @brief Updates the quadrature rule
    *
    * Determines overlapping contact pairs and computes necessary integration data (e.g. quadrature points, weights).
    * Implementations compute any missing pair data needed by this request. Some formulations may treat this as a no-op.
@@ -67,7 +66,7 @@ class ContactFormulation {
    * @param mesh1 Current first mesh in Tribol coupling-scheme order
    * @param mesh2 Current second mesh in Tribol coupling-scheme order
    */
-  virtual void updateIntegrationRule( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) = 0;
+  virtual void updateQuadrature( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) = 0;
 
   /**
    * @brief Updates nodal gaps

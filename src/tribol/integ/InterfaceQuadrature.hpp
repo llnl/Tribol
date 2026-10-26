@@ -47,11 +47,11 @@ class InterfaceQuadraturePointView {
 };
 
 /**
- * @brief Owns an integration rule with a runtime parent dimension (1 for edges, 2 for surfaces)
+ * @brief Owns quadrature data with a runtime parent dimension (1 for edges, 2 for surfaces)
  *
  * Pair i owns points [offsets[i], offsets[i+1]). Coordinates are contiguous [point, parent coordinate] arrays, so
- * runtime ownership requires no per-point allocation. Viewers and point views borrow these arrays; the owning rule
- * must outlive them. Reusing a rule as constant data freezes its geometry-dependent coordinates and physical weights.
+ * runtime ownership requires no per-point allocation. Viewers and point views borrow these arrays; the owning data
+ * must outlive them. Reusing these values as constant data freezes the geometry-dependent coordinates and weights.
  * Differentiated calculations must rebuild those quantities when their derivatives contribute to the result.
  */
 class InterfaceQuadratureData {

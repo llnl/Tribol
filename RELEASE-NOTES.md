@@ -10,6 +10,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ### Added
 - Added reusable edge projection geometry and `ProjectedEdgeSearch<Projection>`. Search owns its projection
   configuration, which can also be supplied to integration methods.
+- Added reusable, allocation-free quadrature generators with bounded output storage. Batch generation reports an
+  error when a pair exceeds its point capacity. `setQuadratureOrder()` requests a polynomial degree on each reference
+  base region. ENERGY_MORTAR supports orders 0-5, selecting one, two, or three Gauss-Legendre points; the default
+  order 5 retains three-point integration.
 - Added the `ENERGY_MORTAR` contact method for MFEM coupling schemes built with Enzyme and Redecomp. The method supports
   nodal and quadrature-point enforcement and provides differentiated residual and Jacobian contributions.
 - Added the `VISCOUS_TANGENTIAL` contact model and APIs for setting mesh-specific viscous damping coefficients through
@@ -57,6 +61,16 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Renamed `ContactFormulation::generateIntegrationRule()` and `updateIntegrationRule()` to `generateQuadrature()` and
+  `updateQuadrature()`. Quadrature generators use `QuadratureRule` names; point-data containers use `Quadrature` names.
+- `EnergyMortarAdapter` and `EnergyMortarCalculator` take a `QuadratureRule` template parameter, defaulting to the
+  three-point edge rule. The adapter owns the generator and its calculator borrows it. Energy Mortar selects smoothed
+  projected overlap intervals separately.
+  `ContactParams` no longer carries a runtime quadrature count or smoothing length.
+- `EdgeQuadratureRule<NumPoints>` places Gauss points on a supplied source-edge interval without requiring an FE
+  basis or a contact method. `SmoothProjectedEdgeInterval` finds and smooths projected overlap bounds independently.
+  Projection onto target edges preserves the source weights. Pair generation shares bounded allocation and packing
+  through `generatePairQuadrature()`. Surface-region representations beyond edge intervals remain future work.
 - `tribol::registerMesh()` now requires a `tribol::FaceOrderType` argument after `element_type`. Existing callers must
   pass `tribol::LINEAR_LAGRANGE` to retain the previous linear-face behavior.
 - Tribol now requires C++20 or newer.

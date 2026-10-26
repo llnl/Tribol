@@ -30,9 +30,16 @@ set(tribol_headers
     geom/NodalNormal.hpp
 
     integ/BasisFunction.hpp
+    integ/EdgeQuadratureProjection.hpp
+    integ/EdgeQuadratureRule.hpp
     integ/FE.hpp
-    integ/InterfaceQuadrature.hpp
+    integ/GeneratePairQuadrature.hpp
     integ/Integration.hpp
+    integ/InterfaceQuadrature.hpp
+    integ/PairQuadrature.hpp
+    integ/Quadrature.hpp
+    integ/QuadratureRuleFactory.hpp
+    integ/SmoothProjectedEdgeInterval.hpp
 
     interface/mfem_tribol.hpp
     interface/simple_tribol.hpp

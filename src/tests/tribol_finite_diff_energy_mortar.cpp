@@ -6,7 +6,9 @@
 #include <algorithm>
 #include <cmath>
 #include <set>
+#include <type_traits>
 #include "tribol/physics/EnergyMortar.hpp"
+#include "tribol/integ/EdgeQuadratureProjection.hpp"
 #include <gtest/gtest.h>
 
 #ifdef TRIBOL_USE_UMPIRE
@@ -26,35 +28,13 @@
 #include "tribol/integ/BasisFunction.hpp"
 #include "tribol/interface/tribol.hpp"
 
+// Checks local Energy Mortar response and finite-difference derivatives. Selected-rule coverage includes one, two,
+// and three points with frozen and varying reference quadrature; portable rule values are tested separately.
 namespace tribol {
 
 using LinearEdgeBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
 using LinearEdgePointView = MdSpan<const double, LinearEdgeBasis::spatial_dimension>;
 using LinearEdgeCoordinates = MdArray<double, LinearEdgeBasis::node_count, LinearEdgeBasis::spatial_dimension>;
-
-TEST( EnergyMortarCoordinates, preserves_edge_fraction_smoothing_on_normalized_interval )
-{
-  // EnergyMortar now evaluates edges on [-1, 1], so a smoothing length expressed as an edge fraction must expand and
-  // contract the normalized interval without changing its physical meaning.
-  constexpr double smoothing_length_fraction = 0.1;
-  constexpr double coordinate_tolerance = 1.0e-14;
-  // An edge fraction spans twice that distance on [-1, 1], so smoothing extends the endpoint at xi = 1 by 2 * del.
-  constexpr double normalized_support_limit = 1.0 + 2.0 * smoothing_length_fraction;
-  const double projections[2] = { -2.0, 2.0 };
-  double bounds[2];
-  ContactSmoothing::bounds_from_projections( projections, smoothing_length_fraction, bounds );
-
-  EXPECT_DOUBLE_EQ( bounds[0], -normalized_support_limit );
-  EXPECT_DOUBLE_EQ( bounds[1], normalized_support_limit );
-
-  double smooth_bounds[2];
-  ContactSmoothing::smooth_bounds( bounds, smoothing_length_fraction, smooth_bounds );
-  // Symmetric projections cover the complete edge, so smoothing must recover the exact normalized element endpoints.
-  EXPECT_NEAR( smooth_bounds[0], -1.0, coordinate_tolerance );
-  EXPECT_NEAR( smooth_bounds[1], 1.0, coordinate_tolerance );
-}
-
-// static ContactSmoothing smoother( ContactParams{} );
 
 inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], double P1[2] )
 {
@@ -66,8 +46,10 @@ inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], 
   P1[1] = P0_P1[3];
 }
 
-std::pair<double, double> EnergyMortarCalculator::eval_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                               const MeshData::Viewer& mesh2 ) const
+template <typename QuadratureRule>
+std::pair<double, double> EnergyMortarCalculator<QuadratureRule>::eval_gtilde( const InterfacePair& pair,
+                                                                               const MeshData::Viewer& mesh1,
+                                                                               const MeshData::Viewer& mesh2 ) const
 {
   NodalContactData ncd = compute_nodal_contact_data( pair, mesh1, mesh2 );
   // double gt1 = ncd.g_tilde[0];
@@ -78,23 +60,17 @@ std::pair<double, double> EnergyMortarCalculator::eval_gtilde( const InterfacePa
   return { A1, A2 };
 }
 
-FiniteDiffResult EnergyMortarCalculator::validate_g_tilde( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
-                                                           double epsilon ) const
+template <typename QuadratureRule>
+FiniteDiffResult EnergyMortarCalculator<QuadratureRule>::validate_g_tilde( const InterfacePair& pair, MeshData& mesh1,
+                                                                           MeshData& mesh2, double epsilon ) const
 {
   FiniteDiffResult result;
 
   auto viewer1 = mesh1.getView();
   auto viewer2 = mesh2.getView();
 
-  auto projs0 = projections( pair, viewer1, viewer2 );
-  double bounds0[2];
-  smoother_.bounds_from_projections( projs0.data(), p_.del, bounds0 );
-  double smooth_bounds0[2];
-  smoother_.smooth_bounds( bounds0, p_.del, smooth_bounds0 );
-  QuadPoints qp0;
-  if ( !p_.enzyme_quadrature ) {
-    compute_quadrature( smooth_bounds0, p_.N, &qp0 );
-  }
+  ReferenceQuadrature qp0{};
+  if ( !p_.enzyme_quadrature ) qp0 = constructReferenceQuadrature( pair, viewer1, viewer2 );
 
   auto [g1_base, g2_base] = eval_gtilde( pair, viewer1, viewer2 );
 
@@ -237,10 +213,10 @@ FiniteDiffResult EnergyMortarCalculator::validate_g_tilde( const InterfacePair& 
   return result;
 }
 
-std::pair<double, double> EnergyMortarCalculator::eval_gtilde_fixed_qp( const InterfacePair& pair,
-                                                                        const MeshData::Viewer& mesh1,
-                                                                        const MeshData::Viewer& mesh2,
-                                                                        const QuadPoints& qp_fixed ) const
+template <typename QuadratureRule>
+std::pair<double, double> EnergyMortarCalculator<QuadratureRule>::eval_gtilde_fixed_qp(
+    const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+    const ReferenceQuadrature& qp_fixed ) const
 {
   double A0[2], A1[2];
   endpoints( mesh1, pair.element_id1_, A0, A1 );
@@ -250,9 +226,9 @@ std::pair<double, double> EnergyMortarCalculator::eval_gtilde_fixed_qp( const In
 
   double gt1 = 0.0, gt2 = 0.0;
 
-  for ( size_t i = 0; i < qp_fixed.qp.size(); ++i ) {
-    const double xiA = qp_fixed.qp[i];
-    const double w = qp_fixed.w[i];
+  for ( IndexT i = 0; i < qp_fixed.result.required_point_count; ++i ) {
+    const double xiA = qp_fixed.parent_coordinates( i, 0 );
+    const double w = qp_fixed.reference_weights[i];
 
     double basis_values[LinearEdgeBasis::node_count];
     LinearEdgeBasis::Eval(
@@ -268,8 +244,9 @@ std::pair<double, double> EnergyMortarCalculator::eval_gtilde_fixed_qp( const In
   return { gt1, gt2 };
 }
 
-FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
-                                                           double epsilon ) const
+template <typename QuadratureRule>
+FiniteDiffResult EnergyMortarCalculator<QuadratureRule>::validate_hessian( const InterfacePair& pair, MeshData& mesh1,
+                                                                           MeshData& mesh2, double epsilon ) const
 {
   FiniteDiffResult result;
 
@@ -319,16 +296,8 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
     }
   }
 
-  // ===== FIXED QUADRATURE FOR enzyme_quadrature = false =====
-  QuadPoints qp0;
-  if ( !p_.enzyme_quadrature ) {
-    auto projs0 = projections( pair, viewer1, viewer2 );
-    double bounds0[2];
-    smoother_.bounds_from_projections( projs0.data(), p_.del, bounds0 );
-    double smooth_bounds0[2];
-    smoother_.smooth_bounds( bounds0, p_.del, smooth_bounds0 );
-    compute_quadrature( smooth_bounds0, p_.N, &qp0 );
-  }
+  ReferenceQuadrature qp0{};
+  if ( !p_.enzyme_quadrature ) qp0 = constructReferenceQuadrature( pair, viewer1, viewer2 );
 
   auto eval_from_offsets = [&]( const std::array<double, 8>& du ) -> std::pair<double, double> {
     auto x1 = x1_orig;
@@ -420,12 +389,11 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
   MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
 
   ContactParams params;
-  params.del = 0.1;
   params.k = 3.0;
-  params.N = 3;
   params.enzyme_quadrature = true;
 
-  EnergyMortarCalculator evaluator( params );
+  const EdgeQuadratureRule<3> quadrature_rule{};
+  EnergyMortarCalculator evaluator( params, quadrature_rule );
   const auto result =
       evaluator.compute_quadrature_point_penalty_data( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView() );
   EXPECT_FALSE( result.has_active_qp );
@@ -448,12 +416,11 @@ TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
   MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
 
   ContactParams params;
-  params.del = 0.1;
   params.k = 3.0;
-  params.N = 3;
   params.enzyme_quadrature = true;
 
-  EnergyMortarCalculator evaluator( params );
+  const EdgeQuadratureRule<3> quadrature_rule{};
+  EnergyMortarCalculator evaluator( params, quadrature_rule );
   const auto result =
       evaluator.compute_quadrature_point_penalty_data( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView() );
 
@@ -478,21 +445,20 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
   MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
 
   ContactParams params;
-  params.del = 0.1;
   params.k = 3.0;
-  params.N = 3;
   params.enzyme_quadrature = true;
 
   double gap_without_residual[2] = { 0.0, 0.0 };
   double tributary_area_without_residual[2] = { 0.0, 0.0 };
-  EnergyMortarCalculator evaluator_without_residual( params );
+  const EdgeQuadratureRule<3> quadrature_rule{};
+  EnergyMortarCalculator evaluator_without_residual( params, quadrature_rule );
   evaluator_without_residual.compute_gtilde_and_area( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView(),
                                                       gap_without_residual, tributary_area_without_residual );
 
   params.residual_gap = 0.15;
   double gap_with_residual[2] = { 0.0, 0.0 };
   double tributary_area_with_residual[2] = { 0.0, 0.0 };
-  EnergyMortarCalculator evaluator_with_residual( params );
+  EnergyMortarCalculator evaluator_with_residual( params, quadrature_rule );
   evaluator_with_residual.compute_gtilde_and_area( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView(),
                                                    gap_with_residual, tributary_area_with_residual );
 
@@ -518,12 +484,11 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
   MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
 
   ContactParams params;
-  params.del = 0.1;
   params.k = 3.0;
-  params.N = 3;
   params.enzyme_quadrature = true;
 
-  EnergyMortarCalculator evaluator_without_residual( params );
+  const EdgeQuadratureRule<3> quadrature_rule{};
+  EnergyMortarCalculator evaluator_without_residual( params, quadrature_rule );
   const auto inactive = evaluator_without_residual.compute_quadrature_point_penalty_data(
       InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView() );
   EXPECT_FALSE( inactive.has_active_qp );
@@ -534,7 +499,7 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
                             []( double stiffness ) { return stiffness == 0.0; } ) );
 
   params.residual_gap = 0.15;
-  EnergyMortarCalculator evaluator_with_residual( params );
+  EnergyMortarCalculator evaluator_with_residual( params, quadrature_rule );
   const auto active = evaluator_with_residual.compute_quadrature_point_penalty_data( InterfacePair{ 0, 0 },
                                                                                      mesh1.getView(), mesh2.getView() );
   EXPECT_TRUE( active.has_active_qp );
@@ -559,13 +524,12 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
 
   ContactParams params;
-  params.del = 0.1;
   params.k = 3.0;
-  params.N = 3;
   params.enzyme_quadrature = true;
   params.residual_gap = GetParam();
 
-  EnergyMortarCalculator evaluator( params );
+  const EdgeQuadratureRule<3> quadrature_rule{};
+  EnergyMortarCalculator evaluator( params, quadrature_rule );
   const InterfacePair pair{ 0, 0 };
   const auto analytical = evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() );
   ASSERT_GT( analytical.energy, 0.0 );
@@ -659,13 +623,12 @@ TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
 
   // ── Evaluator setup ──────────────────────────────────────────────────────
   ContactParams params_;
-  params_.del = 0.1;                 // smoothing m
   params_.k = 1.0;                   // penalty stiffness
-  params_.N = 3;                     // quadrature points
   params_.enzyme_quadrature = true;  // use the non-Enzyme quadrature path
   params_.residual_gap = GetParam();
 
-  EnergyMortarCalculator evaluator_( params_ );
+  const EdgeQuadratureRule<3> quadrature_rule{};
+  EnergyMortarCalculator evaluator_( params_, quadrature_rule );
 
   // ── Run validation ───────────────────────────────────────────────────────
   const double epsilon = 1e-7;
@@ -719,13 +682,12 @@ TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
 
   // ── Evaluator setup ──────────────────────────────────────────────────────
   ContactParams params_;
-  params_.del = 0.1;
   params_.k = 1.0;
-  params_.N = 3;
   params_.enzyme_quadrature = true;
   params_.residual_gap = GetParam();
 
-  EnergyMortarCalculator evaluator_( params_ );
+  const EdgeQuadratureRule<3> quadrature_rule{};
+  EnergyMortarCalculator evaluator_( params_, quadrature_rule );
 
   // ── Run validation ───────────────────────────────────────────────────────
   const double epsilon = 1e-5;
@@ -756,5 +718,122 @@ TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
 }
 
 INSTANTIATE_TEST_SUITE_P( ZeroAndNonzeroResidualGap, ResidualGapDerivativeCheck, testing::Values( 0.0, 0.15 ) );
+
+namespace {
+
+// Perturb both endpoints in x and y so finite differences include edge-length and overlap-bound changes.
+template <int Count>
+void checkSelectedRuleDerivatives( bool varying )
+{
+  using QuadratureRule = EdgeQuadratureRule<Count>;
+  using Calculator = EnergyMortarCalculator<QuadratureRule>;
+  static_assert( !std::is_constructible_v<Calculator, const ContactParams&, QuadratureRule&&>,
+                 "A calculator must not borrow a temporary quadrature-rule object." );
+  constexpr int dofs = 2 * LinearEdgeBasis::node_count * LinearEdgeBasis::spatial_dimension;
+  constexpr double step = 1.0e-4;
+  constexpr double gradient_tolerance = 2.0e-7;
+  constexpr double hessian_tolerance = 2.0e-6;
+  SCOPED_TRACE( testing::Message() << "points=" << Count << ", varying=" << varying );
+  RealT x1[] = { 0.0, 1.7 }, y1[] = { 0.0, 0.1 };
+  RealT x2[] = { 1.6, 0.25 }, y2[] = { 0.25, 0.15 };
+  const IndexT connectivity[] = { 0, 1 };
+  MeshData mesh1( 0, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
+  std::array<RealT*, dofs> coordinates{ &x1[0], &y1[0], &x1[1], &y1[1], &x2[0], &y2[0], &x2[1], &y2[1] };
+  std::array<RealT, dofs> baseline;
+  for ( int i = 0; i < dofs; ++i ) baseline[i] = *coordinates[i];
+  const QuadratureRule quadrature_rule{};
+  const SmoothProjectedEdgeInterval select_interval{ 0.2 };
+  const Calculator calculator( ContactParams{ 7.0, varying, 0.05 }, quadrature_rule, select_interval );
+  const LinearEdgeCoordinates initial1{ LinearEdgePointView{ baseline.data(), 2 },
+                                        LinearEdgePointView{ baseline.data() + 2, 2 } };
+  const LinearEdgeCoordinates initial2{ LinearEdgePointView{ baseline.data() + 4, 2 },
+                                        LinearEdgePointView{ baseline.data() + 6, 2 } };
+  const auto reference = quadrature_rule.template generateReferenceQuadrature<double>(
+      select_interval.template operator()<double>( initial1.view(), initial2.view() ) );
+  const auto evaluate = [&]() {
+    std::array<double, 4> values{};
+    if ( varying ) {
+      calculator.compute_gtilde_and_area( { 0, 0 }, mesh1.getView(), mesh2.getView(), values.data(),
+                                          values.data() + 2 );
+    } else {
+      const auto gaps = calculator.eval_gtilde_fixed_qp( { 0, 0 }, mesh1.getView(), mesh2.getView(), reference );
+      values[0] = gaps.first;
+      values[1] = gaps.second;
+      const double dx = x1[1] - x1[0], dy = y1[1] - y1[0];
+      const double jacobian = 0.5 * std::sqrt( dx * dx + dy * dy );
+      for ( int q = 0; q < Count; ++q ) {
+        values[2] += 0.5 * ( 1.0 - reference.parent_coordinates( q, 0 ) ) * reference.reference_weights[q] * jacobian;
+        values[3] += 0.5 * ( 1.0 + reference.parent_coordinates( q, 0 ) ) * reference.reference_weights[q] * jacobian;
+      }
+    }
+    return values;
+  };
+  std::array<std::array<double, dofs>, 4> gradient{};
+  std::array<std::array<double, dofs * dofs>, 4> hessian{};
+  calculator.grad_gtilde( { 0, 0 }, mesh1.getView(), mesh2.getView(), gradient[0].data(), gradient[1].data() );
+  calculator.grad_trib_area( { 0, 0 }, mesh1.getView(), mesh2.getView(), gradient[2].data(), gradient[3].data() );
+  calculator.d2_g2tilde( { 0, 0 }, mesh1.getView(), mesh2.getView(), hessian[0].data(), hessian[1].data() );
+  calculator.compute_d2A_d2u( { 0, 0 }, mesh1.getView(), mesh2.getView(), hessian[2].data(), hessian[3].data() );
+  const auto original = evaluate();
+  for ( int row = 0; row < dofs; ++row ) {
+    *coordinates[row] = baseline[row] + step;
+    const auto plus = evaluate();
+    *coordinates[row] = baseline[row] - step;
+    const auto minus = evaluate();
+    *coordinates[row] = baseline[row];
+    for ( std::size_t output = 0; output < gradient.size(); ++output ) {
+      EXPECT_NEAR( gradient[output][row], ( plus[output] - minus[output] ) / ( 2.0 * step ), gradient_tolerance );
+      EXPECT_NEAR( hessian[output][row * dofs + row],
+                   ( plus[output] - 2.0 * original[output] + minus[output] ) / ( step * step ), hessian_tolerance );
+    }
+    for ( int col = row + 1; col < dofs; ++col ) {
+      std::array<std::array<double, 4>, 4> samples{};
+      int sample = 0;
+      for ( const double row_sign : { 1.0, -1.0 } ) {
+        for ( const double col_sign : { 1.0, -1.0 } ) {
+          *coordinates[row] = baseline[row] + row_sign * step;
+          *coordinates[col] = baseline[col] + col_sign * step;
+          samples[sample++] = evaluate();
+        }
+      }
+      *coordinates[row] = baseline[row];
+      *coordinates[col] = baseline[col];
+      for ( std::size_t output = 0; output < hessian.size(); ++output ) {
+        const double expected = ( samples[0][output] - samples[1][output] - samples[2][output] + samples[3][output] ) /
+                                ( 4.0 * step * step );
+        EXPECT_NEAR( hessian[output][row * dofs + col], expected, hessian_tolerance );
+        EXPECT_NEAR( hessian[output][col * dofs + row], expected, hessian_tolerance );
+      }
+    }
+  }
+  if ( !varying ) return;
+  // Penalty gradients and Hessians must use the same selected rule, including its geometry-dependent weights.
+  const auto penalty = calculator.compute_quadrature_point_penalty_data( { 0, 0 }, mesh1.getView(), mesh2.getView() );
+  ASSERT_TRUE( penalty.has_active_qp );
+  for ( int col = 0; col < dofs; ++col ) {
+    *coordinates[col] = baseline[col] + step;
+    const auto plus = calculator.compute_quadrature_point_penalty_data( { 0, 0 }, mesh1.getView(), mesh2.getView() );
+    *coordinates[col] = baseline[col] - step;
+    const auto minus = calculator.compute_quadrature_point_penalty_data( { 0, 0 }, mesh1.getView(), mesh2.getView() );
+    *coordinates[col] = baseline[col];
+    EXPECT_NEAR( penalty.force[col], ( plus.energy - minus.energy ) / ( 2.0 * step ), gradient_tolerance );
+    for ( int row = 0; row < dofs; ++row ) {
+      EXPECT_NEAR( penalty.stiffness[row * dofs + col], ( plus.force[row] - minus.force[row] ) / ( 2.0 * step ),
+                   hessian_tolerance );
+    }
+  }
+}
+}  // namespace
+
+// All point counts must preserve nodal gap, area, and penalty derivatives when geometry and edge length change.
+TEST( EnergyMortarQuadrature, selected_point_counts_preserve_gradients_and_hessians )
+{
+  for ( const bool varying : { false, true } ) {
+    checkSelectedRuleDerivatives<1>( varying );
+    checkSelectedRuleDerivatives<2>( varying );
+    checkSelectedRuleDerivatives<3>( varying );
+  }
+}
 
 }  // namespace tribol
