@@ -55,15 +55,14 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     auto coarse_search = createCoarseSearch( cs->spatialDimension(), binning_method, execution_mode,
                                              binning_proximity_scale, residual_gap );
     auto refined_search = std::make_unique<ProjectedEdgeSearch>( execution_mode, delta, cs->getContactCase() == AUTO );
-    const bool uses_fixed_pairs = cs->getContactCase() == NO_SLIDING || cs->hasFixedBinning();
     if ( enforcement_location == EnforcementLocation::QuadraturePoint ) {
       return std::make_unique<EnergyMortarAdapter<QuadraturePoint>>(
           *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( coarse_search ),
-          std::move( refined_search ), uses_fixed_pairs, k, delta, N, enzyme_quadrature, use_penalty, residual_gap );
+          std::move( refined_search ), k, delta, N, enzyme_quadrature, use_penalty, residual_gap );
     } else {
       return std::make_unique<EnergyMortarAdapter<Nodal>>(
           *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( coarse_search ),
-          std::move( refined_search ), uses_fixed_pairs, k, delta, N, enzyme_quadrature, use_penalty, residual_gap );
+          std::move( refined_search ), k, delta, N, enzyme_quadrature, use_penalty, residual_gap );
     }
 #else
     SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );

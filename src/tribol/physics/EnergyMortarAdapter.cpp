@@ -16,14 +16,15 @@ namespace tribol {
 #ifdef TRIBOL_USE_ENZYME
 
 template <template <typename> class EnforcementLocation>
-EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter(
-    MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
-    std::unique_ptr<CoarseSearch> coarse_search, std::unique_ptr<RefinedSearch> refined_search, bool uses_fixed_pairs,
-    double k, double delta, int N, bool enzyme_quadrature, bool use_penalty, RealT residual_gap )
+EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
+                                                               MfemJacobianData& jac_data,
+                                                               std::unique_ptr<CoarseSearch> coarse_search,
+                                                               std::unique_ptr<RefinedSearch> refined_search, double k,
+                                                               double delta, int N, bool enzyme_quadrature,
+                                                               bool use_penalty, RealT residual_gap )
     : use_penalty_( use_penalty ),
       coarse_search_( std::move( coarse_search ) ),
       refined_search_( std::move( refined_search ) ),
-      uses_fixed_pairs_( uses_fixed_pairs ),
       mesh_data_( mesh_data ),
       submesh_data_( submesh_data ),
       jac_data_( jac_data )
@@ -73,14 +74,8 @@ void EnergyMortarAdapter<EnforcementLocation>::updateIntegrationRule( MeshData::
 template <template <typename> class EnforcementLocation>
 void EnergyMortarAdapter<EnforcementLocation>::refreshInterfacePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 )
 {
-  // A fixed search result may legitimately contain no pairs, so size alone cannot identify initialized state.
-  if ( uses_fixed_pairs_ && interface_pairs_are_initialized_ ) {
-    return;
-  }
-
   const auto candidates = coarse_search_->findCandidatePairs( mesh1, mesh2 );
   pairs_ = refined_search_->filterCandidatePairs( candidates, mesh1, mesh2 );
-  interface_pairs_are_initialized_ = true;
 }
 
 template <typename Adapter>

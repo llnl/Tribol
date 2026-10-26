@@ -142,7 +142,6 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @param jac_data MFEM Jacobian transfer data
    * @param coarse_search Coarse search whose ownership is transferred to this formulation; must be non-null
    * @param refined_search Refined search whose ownership is transferred to this formulation; must be non-null
-   * @param uses_fixed_pairs Whether an initialized pair set is reused on later requests
    * @param k Penalty stiffness
    * @param delta Smoothing length
    * @param N Quadrature order
@@ -157,8 +156,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
                        std::unique_ptr<CoarseSearch> coarse_search, std::unique_ptr<RefinedSearch> refined_search,
-                       bool uses_fixed_pairs, double k, double delta, int N, bool enzyme_quadrature,
-                       bool use_penalty = true, RealT residual_gap = 0.0 );
+                       double k, double delta, int N, bool enzyme_quadrature, bool use_penalty = true,
+                       RealT residual_gap = 0.0 );
 
   /**
    * @brief Default destructor
@@ -231,7 +230,7 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
 
  private:
   /**
-   * @brief Refresh method-approved pairs unless this formulation reuses an initialized fixed pair set
+   * @brief Search the current meshes and replace the pairs used for this calculation
    *
    * Coarse search supplies spatial candidates. ENERGY_MORTAR then applies its topology, orientation, and projected-
    * support checks before any element calculation sees the pairs.
@@ -251,9 +250,6 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
 
   /** @brief Refined search supplied by the caller and owned by this formulation */
   std::unique_ptr<RefinedSearch> refined_search_;
-
-  /** @brief Whether later requests reuse the first initialized pair set */
-  const bool uses_fixed_pairs_;
 
   /**
    * @brief Tolerance used to avoid division by zero for area-weighted quantities
@@ -297,9 +293,6 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @brief Interface pairs used for the current update
    */
   ArrayT<InterfacePair> pairs_;
-
-  /** @brief Distinguishes an initialized empty fixed pair set from a pair set that has not been searched */
-  bool interface_pairs_are_initialized_ = false;
 
   /**
    * @brief Contact constraint energy associated with the current state
