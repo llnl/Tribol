@@ -4,7 +4,11 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "tribol/physics/EnergyMortarAdapter.hpp"
+
 #include <axom/slic/interface/slic_macros.hpp>
+
+#include <utility>
+
 #include "tribol/mesh/MfemData.hpp"
 
 namespace tribol {
@@ -13,13 +17,21 @@ namespace tribol {
 
 template <template <typename> class EnforcementLocation>
 EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
-                                                               MfemJacobianData& jac_data, double k, double delta,
-                                                               int N, bool enzyme_quadrature, bool use_penalty,
-                                                               RealT residual_gap )
-    // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
-    // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
-    : use_penalty_( use_penalty ), mesh_data_( mesh_data ), submesh_data_( submesh_data ), jac_data_( jac_data )
+                                                               MfemJacobianData& jac_data,
+                                                               std::unique_ptr<CoarseSearch> coarse_search,
+                                                               std::unique_ptr<RefinedSearch> refined_search, double k,
+                                                               double delta, int N, bool enzyme_quadrature,
+                                                               bool use_penalty, RealT residual_gap )
+    : use_penalty_( use_penalty ),
+      coarse_search_( std::move( coarse_search ) ),
+      refined_search_( std::move( refined_search ) ),
+      mesh_data_( mesh_data ),
+      submesh_data_( submesh_data ),
+      jac_data_( jac_data )
 {
+  SLIC_ASSERT_MSG( coarse_search_ != nullptr, "ENERGY_MORTAR requires a coarse search object." );
+  SLIC_ASSERT_MSG( refined_search_ != nullptr, "ENERGY_MORTAR requires a refined search object." );
+
   params_.k = k;
   params_.del = delta;
   params_.N = N;
@@ -43,47 +55,25 @@ void Nodal<Adapter>::init( Adapter* adapter )
 }
 
 template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::updateMeshes( MeshData& mesh1, MeshData& mesh2 )
+void EnergyMortarAdapter<EnforcementLocation>::updateIntegrationRule( MeshData::Viewer /*mesh1*/,
+                                                                      MeshData::Viewer /*mesh2*/ )
 {
-  // Maintain the same "flipped" convention as the constructor.
-  mesh1_ = &mesh2;
-  mesh2_ = &mesh1;
-}
-
-template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::updateConstantPenaltyStiffness( double mesh1_penalty,
-                                                                               double mesh2_penalty )
-{
-  use_penalty_ = true;
-  params_.k = 0.5 * ( mesh1_penalty + mesh2_penalty );
-  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
-}
-
-template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::setResidualGap( RealT residual_gap )
-{
-  params_.residual_gap = residual_gap;
-  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
-}
-
-template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::setInterfacePairs( ArrayT<InterfacePair>&& pairs, int /*check_level*/ )
-{
-  // TODO: Consider design and how this interacts with binning and CG
-  pairs_ = std::move( pairs );
-}
-
-template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::updateIntegrationRule()
-{
-  SLIC_WARNING_ROOT( "Update integration rule not implemmented for any method" );
+  SLIC_WARNING_ROOT( "Update integration rule not implemented for ENERGY_MORTAR." );
   // TODO: break out integration rule as a separate method
 }
 
+template <template <typename> class EnforcementLocation>
+void EnergyMortarAdapter<EnforcementLocation>::refreshInterfacePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 )
+{
+  const auto candidates = coarse_search_->findCandidatePairs( mesh1, mesh2 );
+  pairs_ = refined_search_->filterCandidatePairs( candidates, mesh1, mesh2 );
+}
+
 template <typename Adapter>
-void Nodal<Adapter>::updateNodalGaps()
+void Nodal<Adapter>::updateNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 )
 {
   auto* adapter = static_cast<Adapter*>( this );
+  adapter->refreshInterfacePairs( mesh1, mesh2 );
 
   // NOTE: user should have called updateMfemParallelDecomposition() with updated coords before calling this
 
@@ -99,8 +89,8 @@ void Nodal<Adapter>::updateNodalGaps()
       use_lor ? *adapter->submesh_data_.GetLORMeshFESpace() : adapter->submesh_data_.GetSubmeshFESpace();
   const auto& displacement_redecomp_fes = *adapter->mesh_data_.GetRedecompResponse().FESpace();
   const auto& pressure_redecomp_fes = *adapter->submesh_data_.GetRedecompGap().FESpace();
-  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap1();
-  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap2();
+  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap1();
+  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap2();
 
   PackedPairJacobianContribs dg_lm_nm( pressure_surface_fes, displacement_surface_fes, pressure_redecomp_fes,
                                        displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
@@ -118,28 +108,21 @@ void Nodal<Adapter>::updateNodalGaps()
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
-  SLIC_ERROR_ROOT_IF( adapter->mesh1_ == nullptr || adapter->mesh2_ == nullptr, "ENERGY_MORTAR meshes not set." );
-  auto mesh1_view = adapter->mesh1_->getView();
-  auto mesh2_view = adapter->mesh2_->getView();
-
   // Compute local contributions
   for ( const auto& pair : adapter->pairs_ ) {
-    // These need to be flipped, since the pairs are determined with element 1 associated with mesh 1, and we flipped
-    // the mesh numbers to be consistent with the literature and since the underlying method integrates on element 1
-    InterfacePair flipped_pair( pair.element_id2_, pair.element_id1_ );
-    const auto elem1 = static_cast<int>( flipped_pair.element_id1_ );
-    const auto elem2 = static_cast<int>( flipped_pair.element_id2_ );
+    const auto elem1 = static_cast<int>( pair.element_id1_ );
+    const auto elem2 = static_cast<int>( pair.element_id2_ );
 
     double g_tilde_elem[2];
     double A_elem[2];
 
-    adapter->evaluator_->compute_gtilde_and_area( flipped_pair, mesh1_view, mesh2_view, g_tilde_elem, A_elem );
+    adapter->evaluator_->compute_gtilde_and_area( pair, mesh1, mesh2, g_tilde_elem, A_elem );
 
     if ( A_elem[0] <= 0.0 && A_elem[1] <= 0.0 ) {
       continue;
     }
 
-    auto A_conn = mesh1_view.getConnectivity()( elem1 );
+    auto A_conn = mesh1.getConnectivity()( elem1 );
 
     // Add to nodes of Element A
     redecomp_gap( A_conn[0] ) += g_tilde_elem[0];
@@ -152,7 +135,7 @@ void Nodal<Adapter>::updateNodalGaps()
     double dg_dx_node1[8];
     double dg_dx_node2[8];
     // TODO: make grad_gtilde return directly in dg_tilde_dx_blocks format
-    adapter->evaluator_->grad_gtilde( flipped_pair, mesh1_view, mesh2_view, dg_dx_node1, dg_dx_node2 );
+    adapter->evaluator_->grad_gtilde( pair, mesh1, mesh2, dg_dx_node1, dg_dx_node2 );
     double dg_tilde_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
       dg_tilde_dx_blocks[0][i * 2] = dg_dx_node1[node_idx[i]];
@@ -166,7 +149,7 @@ void Nodal<Adapter>::updateNodalGaps()
     double dA_dx_node1[8];
     double dA_dx_node2[8];
     // TODO: make grad_trib_area return directly in dA_dx_blocks format
-    adapter->evaluator_->grad_trib_area( flipped_pair, mesh1_view, mesh2_view, dA_dx_node1, dA_dx_node2 );
+    adapter->evaluator_->grad_trib_area( pair, mesh1, mesh2, dA_dx_node1, dA_dx_node2 );
     double dA_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
       dA_dx_blocks[0][i * 2] = dA_dx_node1[node_idx[i]];
@@ -231,11 +214,10 @@ void Nodal<Adapter>::updateNodalGaps()
 }
 
 template <typename Adapter>
-void Nodal<Adapter>::updateNodalForces()
+void Nodal<Adapter>::updateNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 )
 {
   auto* adapter = static_cast<Adapter*>( this );
-
-  // NOTE: user should have called updateNodalGaps() with updated coords before calling this
+  updateNodalGaps( mesh1, mesh2 );
 
   if ( adapter->use_penalty_ ) {
     // Penalty mode: p = k * (g_tilde / A)
@@ -262,7 +244,7 @@ void Nodal<Adapter>::updateNodalForces()
     submesh_lambda.SetFromTrueDofs( adapter->pressure_vec_.get() );
     adapter->submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_lambda, redecomp_lambda );
 
-    adapter->df_dx_ = computeDfDxSecondDerivativesLM( adapter, redecomp_lambda );
+    adapter->df_dx_ = computeDfDxSecondDerivativesLM( adapter, mesh1, mesh2, redecomp_lambda );
     return;
   }
 
@@ -299,7 +281,8 @@ void Nodal<Adapter>::updateNodalForces()
   submesh_A.SetFromTrueDofs( adapter->A_vec_.get() );
   adapter->submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_A, redecomp_A );
 
-  adapter->df_dx_ = computeDfDxSecondDerivativesPenalty( adapter, redecomp_pressure, redecomp_g_tilde, redecomp_A );
+  adapter->df_dx_ =
+      computeDfDxSecondDerivativesPenalty( adapter, mesh1, mesh2, redecomp_pressure, redecomp_g_tilde, redecomp_A );
 
   auto pg2_over_asq = ( 2.0 * adapter->pressure_vec_ )
                           .multiplyInPlace( adapter->g_tilde_vec_ )
@@ -328,15 +311,16 @@ RealT EnergyMortarAdapter<EnforcementLocation>::computeTimeStep()
 }
 
 template <typename Adapter>
-shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* adapter,
+shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* adapter, MeshData::Viewer mesh1,
+                                                                     MeshData::Viewer mesh2,
                                                                      const mfem::GridFunction& redecomp_lambda )
 {
   const bool use_lor = ( adapter->mesh_data_.GetLORMesh() != nullptr );
   const auto& displacement_surface_fes =
       use_lor ? *adapter->mesh_data_.GetLORMeshFESpace() : adapter->mesh_data_.GetSubmeshFESpace();
   const auto& displacement_redecomp_fes = *adapter->mesh_data_.GetRedecompResponse().FESpace();
-  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap1();
-  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap2();
+  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap1();
+  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap2();
 
   PackedPairJacobianContribs df_nm_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
                                        displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
@@ -354,23 +338,18 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* ad
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
-  SLIC_ERROR_ROOT_IF( adapter->mesh1_ == nullptr || adapter->mesh2_ == nullptr, "ENERGY_MORTAR meshes not set." );
-  auto mesh1_view = adapter->mesh1_->getView();
-  auto mesh2_view = adapter->mesh2_->getView();
-
   for ( auto& pair : adapter->pairs_ ) {
-    InterfacePair flipped_pair( pair.element_id2_, pair.element_id1_ );
-    const auto elem1 = static_cast<int>( flipped_pair.element_id1_ );
-    const auto node11 = mesh1_view.getConnectivity()( elem1, 0 );
-    const auto node12 = mesh1_view.getConnectivity()( elem1, 1 );
-    const auto elem2 = static_cast<int>( flipped_pair.element_id2_ );
+    const auto elem1 = static_cast<int>( pair.element_id1_ );
+    const auto node11 = mesh1.getConnectivity()( elem1, 0 );
+    const auto node12 = mesh1.getConnectivity()( elem1, 1 );
+    const auto elem2 = static_cast<int>( pair.element_id2_ );
 
     const RealT lambda1 = redecomp_lambda( node11 );
     const RealT lambda2 = redecomp_lambda( node12 );
 
     double d2g_dx2_node1[64];
     double d2g_dx2_node2[64];
-    adapter->evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2 );
+    adapter->evaluator_->d2_g2tilde( pair, mesh1, mesh2, d2g_dx2_node1, d2g_dx2_node2 );
 
     double df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
@@ -401,7 +380,8 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* ad
 }
 
 template <typename Adapter>
-shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapter* adapter,
+shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapter* adapter, MeshData::Viewer mesh1,
+                                                                          MeshData::Viewer mesh2,
                                                                           const mfem::GridFunction& redecomp_pressure,
                                                                           const mfem::GridFunction& redecomp_g_tilde,
                                                                           const mfem::GridFunction& redecomp_A )
@@ -410,8 +390,8 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
   const auto& displacement_surface_fes =
       use_lor ? *adapter->mesh_data_.GetLORMeshFESpace() : adapter->mesh_data_.GetSubmeshFESpace();
   const auto& displacement_redecomp_fes = *adapter->mesh_data_.GetRedecompResponse().FESpace();
-  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap1();
-  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap2();
+  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap1();
+  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap2();
 
   PackedPairJacobianContribs df_nm_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
                                        displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
@@ -429,16 +409,11 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
-  SLIC_ERROR_ROOT_IF( adapter->mesh1_ == nullptr || adapter->mesh2_ == nullptr, "ENERGY_MORTAR meshes not set." );
-  auto mesh1_view = adapter->mesh1_->getView();
-  auto mesh2_view = adapter->mesh2_->getView();
-
   for ( auto& pair : adapter->pairs_ ) {
-    InterfacePair flipped_pair( pair.element_id2_, pair.element_id1_ );
-    const auto elem1 = static_cast<int>( flipped_pair.element_id1_ );
-    const auto node11 = mesh1_view.getConnectivity()( elem1, 0 );
-    const auto node12 = mesh1_view.getConnectivity()( elem1, 1 );
-    const auto elem2 = static_cast<int>( flipped_pair.element_id2_ );
+    const auto elem1 = static_cast<int>( pair.element_id1_ );
+    const auto node11 = mesh1.getConnectivity()( elem1, 0 );
+    const auto node12 = mesh1.getConnectivity()( elem1, 1 );
+    const auto elem2 = static_cast<int>( pair.element_id2_ );
 
     const RealT pressure1 = 2.0 * redecomp_pressure( node11 );
     const RealT pressure2 = 2.0 * redecomp_pressure( node12 );
@@ -452,11 +427,11 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
 
     double d2g_dx2_node1[64];
     double d2g_dx2_node2[64];
-    adapter->evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2 );
+    adapter->evaluator_->d2_g2tilde( pair, mesh1, mesh2, d2g_dx2_node1, d2g_dx2_node2 );
 
     double d2A_dx2_node1[64];
     double d2A_dx2_node2[64];
-    adapter->evaluator_->compute_d2A_d2u( flipped_pair, mesh1_view, mesh2_view, d2A_dx2_node1, d2A_dx2_node2 );
+    adapter->evaluator_->compute_d2A_d2u( pair, mesh1, mesh2, d2A_dx2_node1, d2A_dx2_node2 );
 
     double df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
@@ -488,9 +463,10 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
 }
 
 template <typename Adapter>
-void QuadraturePoint<Adapter>::updateNodalForces()
+void QuadraturePoint<Adapter>::updateNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 )
 {
   auto* adapter = static_cast<Adapter*>( this );
+  adapter->refreshInterfacePairs( mesh1, mesh2 );
 
   SLIC_ERROR_ROOT_IF( !adapter->use_penalty_,
                       "ENERGY_MORTAR quadrature-point enforcement requires penalty enforcement." );
@@ -499,8 +475,8 @@ void QuadraturePoint<Adapter>::updateNodalForces()
   const auto& displacement_surface_fes =
       use_lor ? *adapter->mesh_data_.GetLORMeshFESpace() : adapter->mesh_data_.GetSubmeshFESpace();
   const auto& displacement_redecomp_fes = *adapter->mesh_data_.GetRedecompResponse().FESpace();
-  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap1();
-  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap2();
+  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap1();
+  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap2();
 
   PackedPairJacobianContribs df_nm_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
                                        displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
@@ -523,16 +499,10 @@ void QuadraturePoint<Adapter>::updateNodalForces()
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
-  SLIC_ERROR_ROOT_IF( adapter->mesh1_ == nullptr || adapter->mesh2_ == nullptr, "ENERGY_MORTAR meshes not set." );
-  auto mesh1_view = adapter->mesh1_->getView();
-  auto mesh2_view = adapter->mesh2_->getView();
-
   for ( const auto& pair : adapter->pairs_ ) {
-    InterfacePair flipped_pair( pair.element_id2_, pair.element_id1_ );
-    const auto elem1 = static_cast<int>( flipped_pair.element_id1_ );
-    const auto elem2 = static_cast<int>( flipped_pair.element_id2_ );
-    const auto qp_data =
-        adapter->evaluator_->compute_quadrature_point_penalty_data( flipped_pair, mesh1_view, mesh2_view );
+    const auto elem1 = static_cast<int>( pair.element_id1_ );
+    const auto elem2 = static_cast<int>( pair.element_id2_ );
+    const auto qp_data = adapter->evaluator_->compute_quadrature_point_penalty_data( pair, mesh1, mesh2 );
 
     if ( !qp_data.has_active_qp ) {
       continue;
@@ -540,8 +510,8 @@ void QuadraturePoint<Adapter>::updateNodalForces()
 
     adapter->energy_ += qp_data.energy;
 
-    auto A_conn = mesh1_view.getConnectivity()( elem1 );
-    auto B_conn = mesh2_view.getConnectivity()( elem2 );
+    auto A_conn = mesh1.getConnectivity()( elem1 );
+    auto B_conn = mesh2.getConnectivity()( elem2 );
     redecomp_force( A_conn[0] ) += qp_data.force[0];
     redecomp_force( scalar_size + A_conn[0] ) += qp_data.force[1];
     redecomp_force( A_conn[1] ) += qp_data.force[2];

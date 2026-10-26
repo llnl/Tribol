@@ -16,6 +16,8 @@
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
 
+#include "tribol/search/CoarseSearch.hpp"
+
 namespace tribol {
 
 /**
@@ -34,7 +36,7 @@ namespace tribol {
  * @tparam SpatialDimension Spatial dimension of the mesh coordinates
  */
 template <int SpatialDimension>
-class GridSearch {
+class GridSearch : public CoarseSearch {
  public:
   using BoundingBox = axom::primal::BoundingBox<RealT, SpatialDimension>;
   using Point = axom::primal::Point<RealT, SpatialDimension>;
@@ -64,7 +66,7 @@ class GridSearch {
    * @param mesh1 Current elements inserted into the implicit grid
    * @param mesh2 Current elements used to query the implicit grid
    */
-  ArrayT<InterfacePair> findCandidatePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
+  ArrayT<InterfacePair> findCandidatePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
   {
     constexpr RealT grid_boundary_scale = 1.0e-6;
     constexpr RealT grid_resolution_scale = 0.5;

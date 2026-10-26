@@ -10,8 +10,7 @@
 #include <stdexcept>
 
 #include "tribol/common/Parameters.hpp"
-#include "tribol/common/ArrayTypes.hpp"
-#include "tribol/mesh/InterfacePairs.hpp"
+#include "tribol/mesh/MeshData.hpp"
 
 #include <memory>
 
@@ -26,17 +25,17 @@ namespace tribol {
 
 // Forward declaration
 class MethodData;
-class MeshData;
 
 /*!
  * \brief Base class for contact formulations.
  *
  * This class provides a polymorphic interface for contact algorithms, allowing for modular implementation of new
- * physics and formulations.
+ * physics and formulations. Mortar formulations use mesh 1 as the non-mortar integration surface and mesh 2 as the
+ * mortar projection surface.
  *
- * NOTE (EBC): This class is still a work-in-progress. It's eventual design should incorporate specific choices for
- * coarse binning and take in the relevant input data in the constructor directly (i.e. Tribol mesh data, mfem meshes,
- * etc.)
+ * Each stage receives current non-owning mesh views. Implementations retain their method and search configuration and
+ * compute missing prerequisites so callers can request a stage without first calling earlier stages. The caller owns
+ * the mesh arrays and must keep them alive for the duration of each request.
  */
 class ContactFormulation {
  public:
@@ -46,38 +45,35 @@ class ContactFormulation {
   virtual ~ContactFormulation() = default;
 
   /**
-   * @brief Sets the initial set of candidate interface pairs
-   *
-   * @param pairs View of the coarse-binned interface pairs
-   * @param check_level In general, higher values mean more checks and 0 means don't do checks. See specific methods for
-   * details.
-   */
-  virtual void setInterfacePairs( ArrayT<InterfacePair>&& pairs, int check_level ) = 0;
-
-  /**
    * @brief Updates the integration rule
    *
    * Determines overlapping contact pairs and computes necessary integration data (e.g. quadrature points, weights).
+   * Implementations compute any missing pair data needed by this request. Some formulations may treat this as a no-op.
    *
-   * @note Many formulations require setInterfacePairs() to be called first.
-   * Some formulations may treat this as a no-op.
+   * @param mesh1 Current first mesh in Tribol coupling-scheme order
+   * @param mesh2 Current second mesh in Tribol coupling-scheme order
    */
-  virtual void updateIntegrationRule() = 0;
+  virtual void updateIntegrationRule( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) = 0;
 
   /**
    * @brief Updates nodal gaps
    *
-   * @note Many formulations require updateIntegrationRule() to be called first.
-   * Some formulations assemble gaps directly from the stored interface pairs.
+   * Implementations compute any missing pair or integration data needed by this request.
+   *
+   * @param mesh1 Current first mesh in Tribol coupling-scheme order
+   * @param mesh2 Current second mesh in Tribol coupling-scheme order
    */
-  virtual void updateNodalGaps() = 0;
+  virtual void updateNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) = 0;
 
   /**
    * @brief Updates nodal forces/residual
    *
-   * @note Many formulations require updateNodalGaps() to be called first.
+   * Implementations compute any missing pair, integration, or gap data needed by this request.
+   *
+   * @param mesh1 Current first mesh in Tribol coupling-scheme order
+   * @param mesh2 Current second mesh in Tribol coupling-scheme order
    */
-  virtual void updateNodalForces() = 0;
+  virtual void updateNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) = 0;
 
   /**
    * @brief Reports if formulation has a maximum allowable timestep calculation
@@ -101,28 +97,6 @@ class ContactFormulation {
    * @return contact energy
    */
   virtual RealT getEnergy() const = 0;
-
-  /**
-   * @brief Update mesh references used by the formulation (optional)
-   *
-   * Some workflows re-register meshes each cycle (e.g. MFEM + redecomp), which can replace the underlying MeshData
-   * instances. Formulations that cache mesh pointers/references can override this to refresh their internal handles.
-   *
-   * @note Called by CouplingScheme during initialization each update cycle.
-   */
-  virtual void updateMeshes( MeshData& /*mesh1*/, MeshData& /*mesh2*/ ) {}
-
-  /**
-   * @brief Update constant penalty stiffness
-   *
-   * Used to dynamically update the constant penalty stiffness after the formulation has been instantiated.
-   */
-  virtual void updateConstantPenaltyStiffness( double /*mesh1_penalty*/, double /*mesh2_penalty*/ ) {}
-
-  /**
-   * @brief Update the residual-gap offset on formulations that cache contact parameters
-   */
-  virtual void setResidualGap( RealT /*residual_gap*/ ) {}
 
 #ifdef BUILD_REDECOMP
   /**

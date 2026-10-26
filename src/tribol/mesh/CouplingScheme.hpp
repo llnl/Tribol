@@ -748,6 +748,9 @@ class CouplingScheme {
    */
   void updateContactFormulation();
 
+  /** @brief Update the element-size multiplier used to expand coarse-search bounds */
+  void updateEffectiveBinningProximityScale();
+
   /**
    * @brief Check if a ContactFormulation implementation is set
    *

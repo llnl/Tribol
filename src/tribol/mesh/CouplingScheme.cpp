@@ -1004,6 +1004,11 @@ int CouplingScheme::checkExecutionModeData()
 //------------------------------------------------------------------------------
 void CouplingScheme::performBinning()
 {
+  // Contact formulations own their candidate search because each formulation decides which coarse pairs are usable.
+  if ( m_formulation ) {
+    return;
+  }
+
   // Find the interacting pairs for this coupling scheme. Will not use
   // binning if setInterfacePairs has been called.
   if ( !this->hasFixedBinning() ) {
@@ -1029,11 +1034,8 @@ void CouplingScheme::performBinning()
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
   if ( m_formulation ) {
-    if ( m_interface_pairs.size() > 0 || !hasFixedBinning() ) {
-      m_formulation->setInterfacePairs( std::move( m_interface_pairs ), 0 );
-    }
-    m_formulation->updateNodalGaps();
-    m_formulation->updateNodalForces();
+    // The formulation performs the search and gap calculations needed to compute forces from the current mesh data.
+    m_formulation->updateNodalForces( getMesh1().getView(), getMesh2().getView() );
     if ( m_formulation->hasTimeStepCalculation() ) {
       dt = m_formulation->computeTimeStep();
     }
@@ -1148,6 +1150,13 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 void CouplingScheme::updateContactFormulation()
 {
   if ( m_contactMethod == ENERGY_MORTAR ) {
+    // Formulation construction captures search configuration, so valid current meshes are required before invoking
+    // the factory. Setters that change search configuration update its derived values before rebuilding here.
+    // Status 2 selects a usable but nonoptimal execution mode, so only status 1 prevents formulation construction.
+    if ( !setMeshPointers() || checkExecutionModeData() == 1 ) {
+      SLIC_ERROR_ROOT( "ENERGY_MORTAR formulation configuration requires valid registered meshes." );
+      return;
+    }
     this->setContactFormulation( createContactFormulation( this ) );
   } else {
     SLIC_WARNING_ROOT(
@@ -1163,13 +1172,12 @@ bool CouplingScheme::init()
     // validity checks are done in the constructors of ContactFormulations
     this->m_isValid = true;
     // the validity checks also set mesh pointers and allocator id, so these calls are still needed
-    if ( !setMeshPointers() || checkExecutionModeData() != 0 ) {
+    // Status 2 selects a usable but nonoptimal execution mode, so only status 1 prevents initialization.
+    if ( !setMeshPointers() || checkExecutionModeData() == 1 ) {
       // TODO: consider design; should these checks be specific to a contact formulation or are they specific to
       // ENERGY_MORTAR?
       return false;
     }
-    // pass the new meshes to the formulation
-    m_formulation->updateMeshes( *m_mesh1, *m_mesh2 );
   } else {
     this->m_isValid = this->isValidCouplingScheme();
   }
@@ -1178,13 +1186,7 @@ bool CouplingScheme::init()
     // set individual coupling scheme logging level
     this->setSlicLoggingLevel();
 
-    // set effective binning proximity, based on binning proximity scale and LOR factor
-    this->m_effective_binning_proximity_scale = this->getParameters().binning_proximity_scale;
-#ifdef BUILD_REDECOMP
-    if ( this->hasMfemData() && this->getMfemMeshData()->GetLORFactor() > 1 ) {
-      this->m_effective_binning_proximity_scale *= static_cast<RealT>( this->getMfemMeshData()->GetLORFactor() );
-    }
-#endif
+    updateEffectiveBinningProximityScale();
 
     // compute the face data
     // different element normals for enzyme + mortar (matching Puso and Laursen)
@@ -1206,6 +1208,17 @@ bool CouplingScheme::init()
   } else {
     return false;
   }
+}
+
+//------------------------------------------------------------------------------
+void CouplingScheme::updateEffectiveBinningProximityScale()
+{
+  m_effective_binning_proximity_scale = getParameters().binning_proximity_scale;
+#ifdef BUILD_REDECOMP
+  if ( hasMfemData() && getMfemMeshData()->GetLORFactor() > 1 ) {
+    m_effective_binning_proximity_scale *= static_cast<RealT>( getMfemMeshData()->GetLORFactor() );
+  }
+#endif
 }
 
 //------------------------------------------------------------------------------

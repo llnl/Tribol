@@ -191,7 +191,7 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
 
     // Register tribol once; coordinates are updated in-place each Newton iteration.
     coords.ReadWrite();
-    tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
+    tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, nonmortar_attrs, mortar_attrs,
                                         tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
                                         tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID );
     tribol::setLagrangeMultiplierOptions( cs_id, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN );
