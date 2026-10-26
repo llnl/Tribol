@@ -7,230 +7,137 @@
 #define SRC_TRIBOL_INTEG_INTERFACEQUADRATURE_HPP_
 
 #include <cassert>
+#include <type_traits>
 #include <utility>
 
-#include "axom/core/Array.hpp"
-
 #include "tribol/common/ArrayTypes.hpp"
-#include "tribol/common/Enzyme.hpp"
-#include "tribol/common/ExecModel.hpp"
-#include "tribol/common/MdArray.hpp"
+#include "tribol/common/MdSpan.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 
 namespace tribol {
 
 /**
- * @brief Stores one interface quadrature point in the parent coordinates of both contact elements
+ * @brief Read-only, non-owning view of one quadrature point
  *
- * Parent coordinates follow the conventions documented by FaceElementTraits. The first and second coordinate arrays
- * correspond to InterfacePair::element_id1_ and InterfacePair::element_id2_, respectively. Keeping both arrays on
- * the point allows a caller to pass either fixed-extent view directly to the matching BasisFunction specialization.
- *
- * The weight contains the complete physical line or surface integration measure. Reusing a stored point therefore
- * treats its coordinates and weight as fixed. A differentiated calculation must rebuild geometry-dependent points and
- * weights inside the differentiated function when their derivatives contribute to the requested result.
- *
- * @tparam ParentDimension Dimension of each contact element's parent coordinates
+ * ParentDimension == 0 exposes runtime-sized coordinates; 1 and 2 expose fixed extents for element kernels.
+ * Coordinates follow FaceElementTraits and the mesh order of the containing interface pair. The weight includes the
+ * complete physical integration measure. Coordinates and weight contain no geometry sensitivities.
  */
-template <int ParentDimension>
-class InterfaceQuadraturePoint {
-  static_assert( ParentDimension > 0, "Interface quadrature points require a positive parent dimension." );
+template <int ParentDimension = 0>
+class InterfaceQuadraturePointView {
+  static_assert( ParentDimension >= 0 && ParentDimension <= 2 );
 
  public:
-  using ParentCoordinates = MdArray<RealT, ParentDimension>;
+  using Coordinates =
+      std::conditional_t<ParentDimension == 0, ArrayViewT<const RealT>, MdSpan<const RealT, ParentDimension>>;
 
-  /** @brief Parent dimension shared by both contact elements */
-  static constexpr int parent_dimension = ParentDimension;
-
-  TRIBOL_DEFAULT_HOST_DEVICE InterfaceQuadraturePoint() = default;
-  TRIBOL_DEFAULT_HOST_DEVICE ~InterfaceQuadraturePoint() = default;
-  TRIBOL_DEFAULT_HOST_DEVICE InterfaceQuadraturePoint( const InterfaceQuadraturePoint& ) = default;
-  TRIBOL_DEFAULT_HOST_DEVICE InterfaceQuadraturePoint( InterfaceQuadraturePoint&& ) = default;
-  TRIBOL_DEFAULT_HOST_DEVICE InterfaceQuadraturePoint& operator=( const InterfaceQuadraturePoint& ) = default;
-  TRIBOL_DEFAULT_HOST_DEVICE InterfaceQuadraturePoint& operator=( InterfaceQuadraturePoint&& ) = default;
-
-  /**
-   * @brief Construct a point from both elements' parent coordinates and its physical integration weight
-   */
-  TRIBOL_HOST_DEVICE constexpr InterfaceQuadraturePoint( ParentCoordinates mesh1_parent_coordinates,
-                                                         ParentCoordinates mesh2_parent_coordinates, RealT weight )
-      : mesh1_parent_coordinates_( mesh1_parent_coordinates ),
-        mesh2_parent_coordinates_( mesh2_parent_coordinates ),
-        weight_( weight )
+  TRIBOL_HOST_DEVICE InterfaceQuadraturePointView( const RealT* mesh1, const RealT* mesh2, RealT weight, int dimension )
+      : mesh1_( mesh1, dimension ), mesh2_( mesh2, dimension ), weight_( weight )
   {
   }
 
-  /** @brief Return mutable parent coordinates for the first element in the interface pair */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE MdSpan<RealT, ParentDimension> getMesh1ParentCoordinates() & noexcept
-  {
-    return mesh1_parent_coordinates_.view();
-  }
-
-  /** @brief Return read-only parent coordinates for the first element in the interface pair */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE MdSpan<const RealT, ParentDimension> getMesh1ParentCoordinates()
-      const& noexcept
-  {
-    return mesh1_parent_coordinates_.view();
-  }
-
-  MdSpan<RealT, ParentDimension> getMesh1ParentCoordinates() && = delete;
-  MdSpan<const RealT, ParentDimension> getMesh1ParentCoordinates() const&& = delete;
-
-  /** @brief Return mutable parent coordinates for the second element in the interface pair */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE MdSpan<RealT, ParentDimension> getMesh2ParentCoordinates() & noexcept
-  {
-    return mesh2_parent_coordinates_.view();
-  }
-
-  /** @brief Return read-only parent coordinates for the second element in the interface pair */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE MdSpan<const RealT, ParentDimension> getMesh2ParentCoordinates()
-      const& noexcept
-  {
-    return mesh2_parent_coordinates_.view();
-  }
-
-  MdSpan<RealT, ParentDimension> getMesh2ParentCoordinates() && = delete;
-  MdSpan<const RealT, ParentDimension> getMesh2ParentCoordinates() const&& = delete;
-
-  /** @brief Return the complete physical integration weight */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT getWeight() const noexcept { return weight_; }
-
-  /** @brief Set the complete physical integration weight */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE void setWeight( RealT weight ) noexcept { weight_ = weight; }
+  TRIBOL_HOST_DEVICE Coordinates getMesh1ParentCoordinates() const { return mesh1_; }
+  TRIBOL_HOST_DEVICE Coordinates getMesh2ParentCoordinates() const { return mesh2_; }
+  TRIBOL_HOST_DEVICE RealT getWeight() const { return weight_; }
 
  private:
-  ParentCoordinates mesh1_parent_coordinates_;
-  ParentCoordinates mesh2_parent_coordinates_;
-  RealT weight_{ 0.0 };
+  Coordinates mesh1_;
+  Coordinates mesh2_;
+  RealT weight_;
 };
 
 /**
- * @brief Owns quadrature points for a block of interface pairs with one parent dimension
+ * @brief Owns an integration rule with a runtime parent dimension (1 for edges, 2 for surfaces)
  *
- * Interface pairs and points use a compressed-row layout. Pair i owns the points in
- * [pair_offsets[i], pair_offsets[i + 1]). Grouping pairs with the same parent dimension keeps each point a fixed-size,
- * trivially copyable value suitable for host and device kernels.
- *
- * The owning arrays may use any allocator supported by ArrayT. Viewer stores only non-owning array views, so the data
- * object and its arrays must remain alive while a viewer is used.
- *
- * @tparam ParentDimension Dimension of both contact elements' parent coordinates
+ * Pair i owns points [offsets[i], offsets[i+1]). Coordinates are contiguous [point, parent coordinate] arrays, so
+ * runtime ownership requires no per-point allocation. Viewers and point views borrow these arrays; the owning rule
+ * must outlive them. Reusing a rule as constant data freezes its geometry-dependent coordinates and physical weights.
+ * Differentiated calculations must rebuild those quantities when their derivatives contribute to the result.
  */
-template <int ParentDimension>
 class InterfaceQuadratureData {
  public:
-  using QuadraturePoint = InterfaceQuadraturePoint<ParentDimension>;
-
-  /** @brief Provides read-only host/device access to interface pairs and their quadrature points */
+  /** @brief Read-only host/device access, optionally with compile-time coordinate extents */
+  template <int ParentDimension = 0>
   class Viewer {
    public:
-    TRIBOL_HOST_DEVICE Viewer( ArrayViewT<const InterfacePair> interface_pairs, ArrayViewT<const IndexT> pair_offsets,
-                               ArrayViewT<const QuadraturePoint> quadrature_points )
-        : interface_pairs_( interface_pairs ), pair_offsets_( pair_offsets ), quadrature_points_( quadrature_points )
+    using QuadraturePoint = InterfaceQuadraturePointView<ParentDimension>;
+
+    TRIBOL_HOST_DEVICE Viewer( int dimension, ArrayViewT<const InterfacePair> pairs, ArrayViewT<const IndexT> offsets,
+                               ArrayViewT<const RealT, 2> mesh1, ArrayViewT<const RealT, 2> mesh2,
+                               ArrayViewT<const RealT> weights )
+        : dimension_( dimension ),
+          pairs_( pairs ),
+          offsets_( offsets ),
+          mesh1_( mesh1 ),
+          mesh2_( mesh2 ),
+          weights_( weights )
     {
+      assert( ParentDimension == 0 || ParentDimension == dimension );
     }
 
-    /** @brief Return the number of interface pairs represented by the rule */
-    TRIBOL_HOST_DEVICE IndexT numberOfPairs() const { return interface_pairs_.size(); }
-
-    /** @brief Return the total number of quadrature points across all pairs */
-    TRIBOL_HOST_DEVICE IndexT numberOfQuadraturePoints() const { return quadrature_points_.size(); }
-
-    /** @brief Return one interface pair */
-    TRIBOL_HOST_DEVICE const InterfacePair& getInterfacePair( IndexT pair_index ) const
+    TRIBOL_HOST_DEVICE int getParentDimension() const { return dimension_; }
+    TRIBOL_HOST_DEVICE IndexT numberOfPairs() const { return pairs_.size(); }
+    TRIBOL_HOST_DEVICE IndexT numberOfQuadraturePoints() const { return weights_.size(); }
+    TRIBOL_HOST_DEVICE IndexT numberOfQuadraturePoints( IndexT pair ) const
     {
-      assert( pair_index >= 0 && pair_index < numberOfPairs() );
-      return interface_pairs_[pair_index];
+      assert( pair >= 0 && pair < numberOfPairs() );
+      return offsets_[pair + 1] - offsets_[pair];
     }
-
-    /** @brief Return the number of quadrature points assigned to one interface pair */
-    TRIBOL_HOST_DEVICE IndexT numberOfQuadraturePoints( IndexT pair_index ) const
+    TRIBOL_HOST_DEVICE const InterfacePair& getInterfacePair( IndexT pair ) const
     {
-      return getQuadraturePoints( pair_index ).size();
+      assert( pair >= 0 && pair < numberOfPairs() );
+      return pairs_[pair];
     }
-
-    /** @brief Return one quadrature point using its interface-pair-local index */
-    TRIBOL_HOST_DEVICE const QuadraturePoint& getQuadraturePoint( IndexT pair_index, IndexT point_index ) const
+    TRIBOL_HOST_DEVICE QuadraturePoint getQuadraturePoint( IndexT pair, IndexT point ) const
     {
-      const auto pair_points = getQuadraturePoints( pair_index );
-      assert( point_index >= 0 && point_index < pair_points.size() );
-      return pair_points[point_index];
-    }
-
-    /** @brief Return a contiguous view of the quadrature points assigned to one interface pair */
-    TRIBOL_HOST_DEVICE ArrayViewT<const QuadraturePoint> getQuadraturePoints( IndexT pair_index ) const
-    {
-      assert( pair_index >= 0 && pair_index < numberOfPairs() );
-      const IndexT pair_begin = pair_offsets_[pair_index];
-      const IndexT pair_end = pair_offsets_[pair_index + 1];
-      assert( pair_begin >= 0 && pair_begin <= pair_end );
-      assert( pair_end <= numberOfQuadraturePoints() );
-      const auto* all_points = quadrature_points_.data();
-      const auto* pair_points = all_points == nullptr ? nullptr : all_points + pair_begin;
-      return ArrayViewT<const QuadraturePoint>( pair_points, pair_end - pair_begin );
+      assert( point >= 0 && point < numberOfQuadraturePoints( pair ) );
+      const IndexT index = offsets_[pair] + point;
+      return { mesh1_.data() + index * dimension_, mesh2_.data() + index * dimension_, weights_[index], dimension_ };
     }
 
    private:
-    ArrayViewT<const InterfacePair> interface_pairs_;
-    ArrayViewT<const IndexT> pair_offsets_;
-    ArrayViewT<const QuadraturePoint> quadrature_points_;
+    int dimension_;
+    ArrayViewT<const InterfacePair> pairs_;
+    ArrayViewT<const IndexT> offsets_;
+    ArrayViewT<const RealT, 2> mesh1_;
+    ArrayViewT<const RealT, 2> mesh2_;
+    ArrayViewT<const RealT> weights_;
   };
 
-  /** @brief Construct an empty quadrature data container */
-  InterfaceQuadratureData() : InterfaceQuadratureData( getDefaultAllocatorID() ) {}
-
-  /** @brief Construct an empty quadrature data container using the specified allocator */
-  explicit InterfaceQuadratureData( int allocator_id )
-      : interface_pairs_( 0, 0, allocator_id ),
-        pair_offsets_( { 0 }, allocator_id ),
-        quadrature_points_( 0, 0, allocator_id )
+  /** @brief Construct an empty rule retaining its dimension and allocator */
+  explicit InterfaceQuadratureData( int parent_dimension = 1, int allocator_id = getDefaultAllocatorID() )
+      : InterfaceQuadratureData( parent_dimension, 0, 0, allocator_id )
   {
   }
 
-  /**
-   * @brief Allocate uninitialized storage for a known number of pairs and points
-   *
-   * Callers fill every pair, point, and offset before requesting a viewer. The offset array has number_of_pairs + 1
-   * entries and must begin at zero, end at number_of_points, and remain nondecreasing. For zero pairs, pair_offsets
-   * is initialized with a single zero entry.
-   */
-  InterfaceQuadratureData( IndexT number_of_pairs, IndexT number_of_points, int allocator_id )
-      : interface_pairs_( axom::ArrayOptions::Uninitialized{}, number_of_pairs, number_of_pairs, allocator_id ),
-        pair_offsets_( axom::ArrayOptions::Uninitialized{}, number_of_pairs + 1, number_of_pairs + 1, allocator_id ),
-        quadrature_points_( axom::ArrayOptions::Uninitialized{}, number_of_points, number_of_points, allocator_id )
+  /** @brief Allocate storage; callers must fill every entry before requesting a viewer */
+  InterfaceQuadratureData( int parent_dimension, IndexT pair_count, IndexT point_count, int allocator_id )
+      : dimension_( parent_dimension ),
+        pairs_( axom::ArrayOptions::Uninitialized{}, pair_count, pair_count, allocator_id ),
+        offsets_( axom::ArrayOptions::Uninitialized{}, pair_count + 1, pair_count + 1, allocator_id ),
+        mesh1_( axom::StackArray<axom::IndexType, 2>{ point_count, parent_dimension }, allocator_id ),
+        mesh2_( axom::StackArray<axom::IndexType, 2>{ point_count, parent_dimension }, allocator_id ),
+        weights_( axom::ArrayOptions::Uninitialized{}, point_count, point_count, allocator_id )
   {
-    if ( number_of_pairs == 0 ) {
-      pair_offsets_.fill( 0 );
+    assert( dimension_ == 1 || dimension_ == 2 );
+    assert( pair_count >= 0 && point_count >= 0 );
+    assert( pair_count != 0 || point_count == 0 );
+    if ( pair_count == 0 ) {
+      offsets_.fill( 0 );
     }
   }
 
-  /**
-   * @brief Take ownership of completed pair, offset, and quadrature-point arrays
-   *
-   * @pre pair_offsets.size() == interface_pairs.size() + 1
-   * @pre all arrays use the same allocator
-   * @pre offsets begin at zero, end at quadrature_points.size(), and remain nondecreasing
-   */
-  InterfaceQuadratureData( ArrayT<InterfacePair>&& interface_pairs, ArrayT<IndexT>&& pair_offsets,
-                           ArrayT<QuadraturePoint>&& quadrature_points )
-      : interface_pairs_( std::move( interface_pairs ) ),
-        pair_offsets_( std::move( pair_offsets ) ),
-        quadrature_points_( std::move( quadrature_points ) )
+  /** @brief Take ownership of completed arrays, all with the same allocator and valid CSR offsets */
+  InterfaceQuadratureData( int parent_dimension, ArrayT<InterfacePair>&& pairs, ArrayT<IndexT>&& offsets,
+                           ArrayT<RealT, 2>&& mesh1, ArrayT<RealT, 2>&& mesh2, ArrayT<RealT>&& weights )
+      : dimension_( parent_dimension ),
+        pairs_( std::move( pairs ) ),
+        offsets_( std::move( offsets ) ),
+        mesh1_( std::move( mesh1 ) ),
+        mesh2_( std::move( mesh2 ) ),
+        weights_( std::move( weights ) )
   {
-    assert( pair_offsets_.size() == interface_pairs_.size() + 1 );
-    assert( interface_pairs_.getAllocatorID() == pair_offsets_.getAllocatorID() );
-    assert( interface_pairs_.getAllocatorID() == quadrature_points_.getAllocatorID() );
-#ifndef NDEBUG
-    // Caller-built offsets can assign points outside the owned point array. Validate them after taking ownership so
-    // later host/device views can use pair-local indices safely. The offsets may reside on a device, so inspect a host
-    // copy only in builds where assertions are enabled.
-    ArrayT<IndexT, 1, MemorySpace::Host> offsets_host( pair_offsets_ );
-    assert( offsets_host[0] == 0 );
-    assert( offsets_host[offsets_host.size() - 1] == quadrature_points_.size() );
-    for ( IndexT i = 0; i < interface_pairs_.size(); ++i ) {
-      assert( offsets_host[i] <= offsets_host[i + 1] );
-    }
-#endif
+    validate();
   }
 
   InterfaceQuadratureData( const InterfaceQuadratureData& ) = delete;
@@ -238,22 +145,52 @@ class InterfaceQuadratureData {
   InterfaceQuadratureData( InterfaceQuadratureData&& ) = default;
   InterfaceQuadratureData& operator=( InterfaceQuadratureData&& ) = default;
 
-  /** @brief Return mutable storage used to fill interface pairs */
-  ArrayViewT<InterfacePair> getInterfacePairs() { return interface_pairs_.view(); }
+  int getParentDimension() const { return dimension_; }
+  int getAllocatorId() const { return pairs_.getAllocatorID(); }
+  ArrayViewT<InterfacePair> getInterfacePairs() { return pairs_.view(); }
+  ArrayViewT<IndexT> getPairOffsets() { return offsets_.view(); }
+  ArrayViewT<RealT, 2> getMesh1ParentCoordinates() { return mesh1_.view(); }
+  ArrayViewT<RealT, 2> getMesh2ParentCoordinates() { return mesh2_.view(); }
+  ArrayViewT<RealT> getWeights() { return weights_.view(); }
 
-  /** @brief Return mutable CSR offsets used to assign points to interface pairs */
-  ArrayViewT<IndexT> getPairOffsets() { return pair_offsets_.view(); }
+  /** @brief Borrow a completed rule; a nonzero ParentDimension must match the runtime dimension */
+  template <int ParentDimension = 0>
+  Viewer<ParentDimension> getView() const&
+  {
+    static_assert( ParentDimension >= 0 && ParentDimension <= 2 );
+    assert( ParentDimension == 0 || ParentDimension == dimension_ );
+    validate();
+    return { dimension_, pairs_.view(), offsets_.view(), mesh1_.view(), mesh2_.view(), weights_.view() };
+  }
 
-  /** @brief Return mutable quadrature-point storage */
-  ArrayViewT<QuadraturePoint> getQuadraturePoints() { return quadrature_points_.view(); }
-
-  /** @brief Return a read-only host/device view of the completed quadrature data */
-  Viewer getView() const { return Viewer{ interface_pairs_.view(), pair_offsets_.view(), quadrature_points_.view() }; }
+  template <int ParentDimension = 0>
+  Viewer<ParentDimension> getView() const&& = delete;
 
  private:
-  ArrayT<InterfacePair> interface_pairs_;
-  ArrayT<IndexT> pair_offsets_;
-  ArrayT<QuadraturePoint> quadrature_points_;
+  void validate() const
+  {
+#ifndef NDEBUG
+    assert( dimension_ == 1 || dimension_ == 2 );
+    assert( offsets_.size() == pairs_.size() + 1 );
+    assert( mesh1_.shape()[0] == weights_.size() && mesh1_.shape()[1] == dimension_ );
+    assert( mesh2_.shape()[0] == weights_.size() && mesh2_.shape()[1] == dimension_ );
+    assert( getAllocatorId() == offsets_.getAllocatorID() && getAllocatorId() == mesh1_.getAllocatorID() );
+    assert( getAllocatorId() == mesh2_.getAllocatorID() && getAllocatorId() == weights_.getAllocatorID() );
+    // Offsets may reside on a device; validate a host copy rather than dereferencing device storage.
+    ArrayT<IndexT, 1, MemorySpace::Host> offsets( offsets_ );
+    assert( offsets[0] == 0 && offsets[offsets.size() - 1] == weights_.size() );
+    for ( IndexT i = 0; i < pairs_.size(); ++i ) {
+      assert( offsets[i] <= offsets[i + 1] );
+    }
+#endif
+  }
+
+  int dimension_;
+  ArrayT<InterfacePair> pairs_;
+  ArrayT<IndexT> offsets_;
+  ArrayT<RealT, 2> mesh1_;
+  ArrayT<RealT, 2> mesh2_;
+  ArrayT<RealT> weights_;
 };
 
 }  // namespace tribol
