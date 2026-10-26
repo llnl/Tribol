@@ -43,6 +43,7 @@
  *      ParMesh
  */
 
+#include <numbers>
 #include <string>
 #include <vector>
 
@@ -438,7 +439,7 @@ std::unique_ptr<mfem::ParMesh> MakePMesh( MPI_Comm comm, const std::string& mesh
 
   // rotate unrefined serial mesh
   if ( theta != 0.0 ) {
-    theta = theta * redecomp::pi / 180.0;
+    theta = theta * std::numbers::pi_v<double> / 180.0;
     auto R = axom::numerics::Matrix<double>::zeros( 3, 3 );
     R( 0, 0 ) = cos( theta );
     R( 0, 1 ) = -sin( theta );

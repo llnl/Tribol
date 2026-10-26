@@ -9,8 +9,8 @@
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/simple_tribol.hpp"
 
-#define _USE_MATH_DEFINES
 #include <cmath>  // std::abs, std::cos, std::sin
+#include <numbers>
 
 // AXOM includes
 #include "axom/core.hpp"
@@ -410,8 +410,8 @@ void TestMesh::setupContactMeshHex( int numElemsX1, int numElemsY1, int numElems
           bool rotationX = ( i > 0 && i < ( numNodesX - 1 ) ) ? true : false;
 
           if ( rotationX && rotationY ) {
-            RealT rot0 = std::cos( theta * M_PI / 180 );
-            RealT rot1 = -std::sin( theta * M_PI / 180 );
+            RealT rot0 = std::cos( theta * std::numbers::pi_v<RealT> / 180 );
+            RealT rot1 = -std::sin( theta * std::numbers::pi_v<RealT> / 180 );
             RealT rot2 = -rot1;
             RealT rot3 = rot0;
 
@@ -710,9 +710,9 @@ void TestMesh::rotateContactMesh( const int mesh_id, RealT theta_x, RealT theta_
     SLIC_ERROR( "rotateContactMesh(): must setup contact mesh prior to calling this routine." );
   }
 
-  theta_x *= M_PI / 180;
-  theta_y *= M_PI / 180;
-  theta_z *= M_PI / 180;
+  theta_x *= std::numbers::pi_v<RealT> / 180;
+  theta_y *= std::numbers::pi_v<RealT> / 180;
+  theta_z *= std::numbers::pi_v<RealT> / 180;
 
   RealT alpha = theta_z;
   RealT beta = theta_y;
