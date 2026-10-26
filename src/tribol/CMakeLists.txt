@@ -31,6 +31,7 @@ set(tribol_headers
 
     integ/BasisFunction.hpp
     integ/FE.hpp
+    integ/InterfaceQuadrature.hpp
     integ/Integration.hpp
 
     interface/mfem_tribol.hpp
