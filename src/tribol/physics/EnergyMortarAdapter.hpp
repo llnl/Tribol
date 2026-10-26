@@ -165,6 +165,14 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   virtual ~EnergyMortarAdapter() = default;
 
   /**
+   * @brief Generate an owned rule from current host-accessible linear edges using a fresh search
+   *
+   * This call is independent of fixed-pair and force/gap calculation state. Both meshes must use host-accessible
+   * storage, and search must execute on the host. The rule uses the mesh-1 allocator.
+   */
+  InterfaceQuadratureData generateIntegrationRule( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override;
+
+  /**
    * @brief Update internal integration rule data
    *
    * @note This is currently a no-op. ENERGY_MORTAR directly assembles gap/force quantities over the stored interface

@@ -1,5 +1,7 @@
 #include "tribol/physics/EnergyMortar.hpp"
 
+#include <stdexcept>
+
 #include "axom/slic.hpp"
 #include "tribol/common/Enzyme.hpp"
 #include "tribol/integ/BasisFunction.hpp"
@@ -601,57 +603,81 @@ void d2_kernel_quad( const double* x, const Gparams* gp, double* H )
 
 }  // namespace
 
-// Construct the quadrature data needed to evaluate the smoothed gap kernel.
-Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                   const MeshData::Viewer& mesh2 ) const
+// Share the value-level rule construction with nodal evaluation and the frozen-quadrature derivative path.
+QuadPoints EnergyMortarCalculator::constructQuadrature( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                        const MeshData::Viewer& mesh2 ) const
 {
-  double A0[2], A1[2], B0[2], B1[2];
-
-  endpoints( mesh1, pair.element_id1_, A0, A1 );
-  endpoints( mesh2, pair.element_id2_, B0, B1 );
-  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
-  double nB[2] = { 0.0 };
-  find_normal( B0, B1, nB );
-
-  // Build the smoothed integration bounds from the projection of edge B onto edge A.
-  auto projs = EnergyMortarCalculator::compute_projection_bounds( pair, mesh1, mesh2 );
+  if ( p_.N != 3 ) {
+    throw std::invalid_argument( "ENERGY_MORTAR currently requires three quadrature points." );
+  }
+  const auto projs = compute_projection_bounds( pair, mesh1, mesh2 );
   double bounds[2];
   smoother_.bounds_from_projections( projs.data(), p_.del, bounds );
   double smooth_bounds[2];
   smoother_.smooth_bounds( bounds, p_.del, smooth_bounds );
-
   QuadPoints qp;
-  EnergyMortarCalculator::compute_quadrature( smooth_bounds, p_.N, &qp );
+  compute_quadrature( smooth_bounds, p_.N, &qp );
+  return qp;
+}
 
-  const int N = static_cast<int>( qp.qp.size() );
-
-  std::vector<double> x2( 2 * N );
-
-  for ( int i = 0; i < N; ++i ) {
-    double basis_values[LinearEdgeBasis::node_count];
-    LinearEdgeBasis::Eval(
-        MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &qp.qp[i], LinearEdgeBasis::parent_dimension },
-        basis_values );
-    double x1[2] = { 0.0 };
-    MapToPhysical<LinearEdgeBasis>( basis_values, edge_coordinates.view(), x1 );
-
-    // Cache the projection of each quadrature point on edge A onto edge B.
-    double x2_i[2] = { 0.0 };
-    find_intersection( B0, B1, x1, nB, x2_i );
-    x2[2 * i] = x2_i[0];
-    x2[2 * i + 1] = x2_i[1];
-  }
-
+// Construct the quadrature data needed to evaluate the smoothed gap kernel.
+Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                   const MeshData::Viewer& mesh2 ) const
+{
+  const auto qp = constructQuadrature( pair, mesh1, mesh2 );
   Gparams gp;
   gp.residual_gap = p_.residual_gap;
-  // int N = eval.get_N();
-
-  for ( std::size_t i = 0; i < qp.qp.size(); ++i ) {
-    gp.qp[i] = qp.qp[i];
-    gp.w[i] = qp.w[i];
-  }
-
+  gp.qp = qp.qp;
+  gp.w = qp.w;
   return gp;
+}
+
+InterfaceQuadratureData EnergyMortarCalculator::generateIntegrationRule( const ArrayT<InterfacePair>& pairs,
+                                                                         const MeshData::Viewer& mesh1,
+                                                                         const MeshData::Viewer& mesh2 ) const
+{
+  // Retain only pairs with positive measure; smoothing can collapse an otherwise accepted support interval.
+  ArrayT<InterfacePair> contributing_pairs( 0, pairs.size(), mesh1.getAllocatorId() );
+  std::vector<QuadPoints> rules;
+  for ( const auto& pair : pairs ) {
+    const auto qp = constructQuadrature( pair, mesh1, mesh2 );
+    if ( qp.w[0] > 0.0 ) {
+      contributing_pairs.push_back( pair );
+      rules.push_back( qp );
+    }
+  }
+  InterfaceQuadratureData result( 1, contributing_pairs.size(), 3 * contributing_pairs.size(), mesh1.getAllocatorId() );
+  auto output_pairs = result.getInterfacePairs();
+  auto offsets = result.getPairOffsets();
+  auto coords1 = result.getMesh1ParentCoordinates();
+  auto coords2 = result.getMesh2ParentCoordinates();
+  auto weights = result.getWeights();
+  offsets[0] = 0;
+  for ( IndexT i = 0; i < contributing_pairs.size(); ++i ) {
+    const auto& pair = contributing_pairs[i];
+    output_pairs[i] = pair;
+    offsets[i + 1] = 3 * ( i + 1 );
+    double A0[2], A1[2], B0[2], B1[2], nB[2];
+    endpoints( mesh1, pair.element_id1_, A0, A1 );
+    endpoints( mesh2, pair.element_id2_, B0, B1 );
+    find_normal( B0, B1, nB );
+    const double ax = A1[0] - A0[0];
+    const double ay = A1[1] - A0[1];
+    const double bx = B1[0] - B0[0];
+    const double by = B1[1] - B0[1];
+    const double jacobian = 0.5 * std::sqrt( ax * ax + ay * ay );
+    for ( int q = 0; q < 3; ++q ) {
+      const double xi = rules[i].qp[q];
+      const double xA[2] = { A0[0] + 0.5 * ( xi + 1.0 ) * ax, A0[1] + 0.5 * ( xi + 1.0 ) * ay };
+      double xB[2];
+      find_intersection( B0, B1, xA, nB, xB );
+      const double xiB = 2.0 * ( ( xB[0] - B0[0] ) * bx + ( xB[1] - B0[1] ) * by ) / ( bx * bx + by * by ) - 1.0;
+      coords1( 3 * i + q, 0 ) = xi;
+      coords2( 3 * i + q, 0 ) = xiB;
+      weights[3 * i + q] = rules[i].w[q] * jacobian;
+    }
+  }
+  return result;
 }
 
 // Return the local projection bounds of edge B onto edge A for this interface pair.
@@ -777,16 +803,7 @@ NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const Inter
   const double J = ComputeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coordinates.view() );
   const double J_ref = J;
 
-  auto projs = projections( pair, mesh1, mesh2 );
-
-  // Build the smoothed integration interval from the projection bounds.
-  double bounds[2];
-  smoother_.bounds_from_projections( projs.data(), p_.del, bounds );
-  double smooth_bounds[2];
-  smoother_.smooth_bounds( bounds, p_.del, smooth_bounds );
-
-  QuadPoints qp;
-  compute_quadrature( smooth_bounds, p_.N, &qp );
+  const auto qp = constructQuadrature( pair, mesh1, mesh2 );
 
   double g_tilde1 = 0.0;
   double g_tilde2 = 0.0;

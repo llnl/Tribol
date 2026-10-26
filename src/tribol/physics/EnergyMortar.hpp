@@ -7,6 +7,7 @@
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
+#include "tribol/integ/InterfaceQuadrature.hpp"
 
 namespace tribol {
 
@@ -124,6 +125,10 @@ class EnergyMortarCalculator {
 
   int get_N() const { return p_.N; }
 
+  /** @brief Generate physical quadrature for a caller-filtered set of linear-edge pairs on the host */
+  InterfaceQuadratureData generateIntegrationRule( const ArrayT<InterfacePair>& pairs, const MeshData::Viewer& mesh1,
+                                                   const MeshData::Viewer& mesh2 ) const;
+
   std::array<double, 2> compute_projection_bounds( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                    const MeshData::Viewer& mesh2 ) const
   {
@@ -235,11 +240,11 @@ class EnergyMortarCalculator {
   /// Helper used to construct smoothed integration bounds
   ContactSmoothing smoother_;
 
-  /// Construct the gap-kernel parameter bundle for the current interface pair.
-  ///
-  /// This builds the smoothed integration bounds, quadrature points, quadrature
-  /// weights, and projected quadrature-point coordinates needed by the lower-level
-  /// gap kernel.
+  /// Construct the smoothed parent-coordinate quadrature shared by value-level calculations.
+  QuadPoints constructQuadrature( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                  const MeshData::Viewer& mesh2 ) const;
+
+  /// Construct the fixed quadrature and residual-gap parameters needed by the lower-level gap kernel.
   Gparams construct_gparams( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                              const MeshData::Viewer& mesh2 ) const;
 

@@ -11,6 +11,7 @@
 
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
+#include "tribol/integ/InterfaceQuadrature.hpp"
 
 #include <memory>
 
@@ -43,6 +44,19 @@ class ContactFormulation {
    * @brief Virtual destructor
    */
   virtual ~ContactFormulation() = default;
+
+  /**
+   * @brief Return an owned integration rule for the current geometry without retaining calculation data
+   *
+   * Mesh 1 is the non-mortar integration side; mesh 2 is the mortar projection side. Returned parent coordinates and
+   * physical weights contain values only, not geometry sensitivities. No previous calculation stage is required.
+   * Implementations that cannot expose an integration rule throw std::logic_error.
+   */
+  virtual InterfaceQuadratureData generateIntegrationRule( MeshData::Viewer /*mesh1*/,
+                                                           MeshData::Viewer /*mesh2*/ ) const
+  {
+    throw std::logic_error( "Integration-rule generation is not supported by this formulation." );
+  }
 
   /**
    * @brief Updates the integration rule

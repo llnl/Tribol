@@ -55,6 +55,26 @@ void Nodal<Adapter>::init( Adapter* adapter )
 }
 
 template <template <typename> class EnforcementLocation>
+InterfaceQuadratureData EnergyMortarAdapter<EnforcementLocation>::generateIntegrationRule(
+    MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
+{
+  if ( mesh1.spatialDimension() != 2 || mesh2.spatialDimension() != 2 || mesh1.getElementType() != EDGE ||
+       mesh2.getElementType() != EDGE || mesh1.getFaceOrder() != LINEAR_LAGRANGE ||
+       mesh2.getFaceOrder() != LINEAR_LAGRANGE ) {
+    throw std::invalid_argument( "ENERGY_MORTAR integration-rule generation requires two-dimensional linear edges." );
+  }
+#ifdef TRIBOL_USE_UMPIRE
+  if ( mesh1.getMemorySpace() == MemorySpace::Device || mesh2.getMemorySpace() == MemorySpace::Device ||
+       axom::isDeviceAllocator( mesh1.getAllocatorId() ) || axom::isDeviceAllocator( mesh2.getAllocatorId() ) ) {
+    throw std::invalid_argument( "ENERGY_MORTAR integration-rule generation requires host-accessible meshes." );
+  }
+#endif
+  const auto candidates = coarse_search_->findCandidatePairs( mesh1, mesh2 );
+  const auto pairs = refined_search_->filterCandidatePairs( candidates, mesh1, mesh2 );
+  return evaluator_->generateIntegrationRule( pairs, mesh1, mesh2 );
+}
+
+template <template <typename> class EnforcementLocation>
 void EnergyMortarAdapter<EnforcementLocation>::updateIntegrationRule( MeshData::Viewer /*mesh1*/,
                                                                       MeshData::Viewer /*mesh2*/ )
 {
