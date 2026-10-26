@@ -24,6 +24,13 @@
 
 namespace {
 
+constexpr tribol::IndexT integration_mesh_id = 0;
+constexpr tribol::IndexT projected_mesh_id = 1;
+constexpr tribol::IndexT nodes_per_edge = 2;
+constexpr tribol::RealT no_smoothing = 0.0;
+constexpr tribol::RealT smoothing_fraction = 0.1;
+constexpr tribol::RealT edge_gap = 0.1;
+
 using PairIds = std::set<std::pair<tribol::IndexT, tribol::IndexT>>;
 
 PairIds pairIds( const tribol::ArrayT<tribol::InterfacePair>& pairs )
@@ -37,23 +44,27 @@ PairIds pairIds( const tribol::ArrayT<tribol::InterfacePair>& pairs )
 
 class RefinedSearchTest : public tribol::detail::ExecutionTest {};
 
-// Call ProjectedEdgeSearch through a RefinedSearch pointer and check that only accepted pairs are returned.
+// Call ProjectedEdgeSearch through a RefinedSearch pointer and check that it removes the pair whose normals point in
+// the same direction and returns the other two pairs.
 // Filtering must leave the input unchanged, and later input changes must not change the returned pairs.
 TEST_P( RefinedSearchTest, filters_and_compacts_without_consuming_candidates )
 {
-  const auto x = copyToExecutionSpace<tribol::RealT>( { 0, 1, 2, 0.8, 0.2, 1.8, 1.2 } );
-  const auto y = copyToExecutionSpace<tribol::RealT>( { 0, 0, 0, 0.1, 0.1, 0.1, 0.1 } );
+  // Mesh 1 has two unit edges; the opposing edges lie strictly inside them.
+  const auto x = copyToExecutionSpace<tribol::RealT>( { 0.0, 1.0, 2.0, 0.8, 0.2, 1.8, 1.2 } );
+  const auto y = copyToExecutionSpace<tribol::RealT>( { 0.0, 0.0, 0.0, edge_gap, edge_gap, edge_gap, edge_gap } );
   const auto integration_conn = copyToExecutionSpace<tribol::IndexT>( { 0, 1, 1, 2 } );
   const auto projected_conn = copyToExecutionSpace<tribol::IndexT>( { 3, 4, 4, 3, 5, 6 } );
-  tribol::MeshData integration( 17, 2, 7, integration_conn.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(),
-                                y.data(), nullptr, memorySpace() );
-  tribol::MeshData projected( 29, 3, 7, projected_conn.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(),
-                              y.data(), nullptr, memorySpace() );
+  tribol::MeshData integration( integration_mesh_id, integration_conn.size() / nodes_per_edge, x.size(),
+                                integration_conn.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(), y.data(),
+                                nullptr, memorySpace() );
+  tribol::MeshData projected( projected_mesh_id, projected_conn.size() / nodes_per_edge, x.size(),
+                              projected_conn.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(), y.data(), nullptr,
+                              memorySpace() );
   // The first pair has normals pointing in the same direction and is rejected. The other two pairs are accepted.
   auto candidates = copyToExecutionSpace<tribol::InterfacePair>( { { 0, 1 }, { 1, 2 }, { 0, 0 } } );
   const tribol::ArrayT<tribol::InterfacePair, 1, tribol::MemorySpace::Host> original( candidates );
   std::unique_ptr<tribol::RefinedSearch> search =
-      std::make_unique<tribol::ProjectedEdgeSearch>( GetParam(), 0.0, false );
+      std::make_unique<tribol::ProjectedEdgeSearch>( GetParam(), no_smoothing, false );
   const auto accepted = search->filterCandidatePairs( candidates, integration.getView(), projected.getView() );
   EXPECT_EQ( pairIds( accepted ), ( PairIds{ { 0, 0 }, { 1, 2 } } ) );
   EXPECT_EQ( accepted.getAllocatorID(), allocatorId() );
@@ -71,20 +82,24 @@ TEST_P( RefinedSearchTest, filters_and_compacts_without_consuming_candidates )
 // An element paired with itself must always be rejected.
 TEST_P( RefinedSearchTest, applies_shared_node_and_support_settings )
 {
-  const auto x = copyToExecutionSpace<tribol::RealT>( { 0, 1, 1.15, 1.05 } );
-  const auto y = copyToExecutionSpace<tribol::RealT>( { 0, 0, 0, 0 } );
+  constexpr tribol::RealT edge_length = 1.0;
+  const tribol::RealT support_extension = smoothing_fraction * edge_length;
+  // The third edge straddles the end of the smoothed support, so it overlaps only when smoothing is enabled.
+  const auto x = copyToExecutionSpace<tribol::RealT>(
+      { 0.0, edge_length, edge_length + 1.5 * support_extension, edge_length + 0.5 * support_extension } );
+  const auto y = copyToExecutionSpace<tribol::RealT>( { 0.0, 0.0, 0.0, 0.0 } );
   const auto conn = copyToExecutionSpace<tribol::IndexT>( { 0, 1, 1, 0, 2, 3 } );
-  tribol::MeshData mesh( 17, 3, 4, conn.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(), y.data(), nullptr,
-                         memorySpace() );
+  tribol::MeshData mesh( integration_mesh_id, conn.size() / nodes_per_edge, x.size(), conn.data(), tribol::EDGE,
+                         tribol::LINEAR_LAGRANGE, x.data(), y.data(), nullptr, memorySpace() );
   // Pair 0 uses the same element twice, pair 1 shares nodes, and pair 2 overlaps only when smoothing is enabled.
   const auto candidates = copyToExecutionSpace<tribol::InterfacePair>( { { 0, 0 }, { 0, 1 }, { 0, 2 } } );
-  tribol::ProjectedEdgeSearch expanded( GetParam(), 0.1, false );
+  tribol::ProjectedEdgeSearch expanded( GetParam(), smoothing_fraction, false );
   EXPECT_EQ( pairIds( expanded.filterCandidatePairs( candidates, mesh.getView(), mesh.getView() ) ),
              ( PairIds{ { 0, 1 }, { 0, 2 } } ) );
-  tribol::ProjectedEdgeSearch reject_shared( GetParam(), 0.1, true );
+  tribol::ProjectedEdgeSearch reject_shared( GetParam(), smoothing_fraction, true );
   EXPECT_EQ( pairIds( reject_shared.filterCandidatePairs( candidates, mesh.getView(), mesh.getView() ) ),
              ( PairIds{ { 0, 2 } } ) );
-  tribol::ProjectedEdgeSearch unexpanded( GetParam(), 0.0, false );
+  tribol::ProjectedEdgeSearch unexpanded( GetParam(), no_smoothing, false );
   EXPECT_EQ( pairIds( unexpanded.filterCandidatePairs( candidates, mesh.getView(), mesh.getView() ) ),
              ( PairIds{ { 0, 1 } } ) );
 }
@@ -93,20 +108,21 @@ TEST_P( RefinedSearchTest, applies_shared_node_and_support_settings )
 // Previously returned pairs must remain valid after another search and after the search object is destroyed.
 TEST_P( RefinedSearchTest, empty_results_and_current_mesh_views )
 {
-  const auto x1 = copyToExecutionSpace<tribol::RealT>( { 0, 1 } );
-  const auto y1 = copyToExecutionSpace<tribol::RealT>( { 0, 0 } );
-  const auto x2 = copyToExecutionSpace<tribol::RealT>( { 1, 0 } );
-  const auto near_y = copyToExecutionSpace<tribol::RealT>( { 0.1, 0.1 } );
-  const auto far_x = copyToExecutionSpace<tribol::RealT>( { 10, 9 } );
+  const auto x1 = copyToExecutionSpace<tribol::RealT>( { 0.0, 1.0 } );
+  const auto y1 = copyToExecutionSpace<tribol::RealT>( { 0.0, 0.0 } );
+  const auto x2 = copyToExecutionSpace<tribol::RealT>( { 1.0, 0.0 } );
+  const auto near_y = copyToExecutionSpace<tribol::RealT>( { edge_gap, edge_gap } );
+  constexpr tribol::RealT separation = 9.0;
+  const auto far_x = copyToExecutionSpace<tribol::RealT>( { 1.0 + separation, separation } );
   const auto conn = copyToExecutionSpace<tribol::IndexT>( { 0, 1 } );
-  tribol::MeshData mesh1( 17, 1, 2, conn.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x1.data(), y1.data(), nullptr,
-                          memorySpace() );
-  tribol::MeshData mesh2( 29, 1, 2, conn.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE, x2.data(), near_y.data(),
-                          nullptr, memorySpace() );
+  tribol::MeshData mesh1( integration_mesh_id, conn.size() / nodes_per_edge, x1.size(), conn.data(), tribol::EDGE,
+                          tribol::LINEAR_LAGRANGE, x1.data(), y1.data(), nullptr, memorySpace() );
+  tribol::MeshData mesh2( projected_mesh_id, conn.size() / nodes_per_edge, x2.size(), conn.data(), tribol::EDGE,
+                          tribol::LINEAR_LAGRANGE, x2.data(), near_y.data(), nullptr, memorySpace() );
   const auto candidates = copyToExecutionSpace<tribol::InterfacePair>( { { 0, 0 } } );
-  auto search = std::make_unique<tribol::ProjectedEdgeSearch>( GetParam(), 0.1, false );
+  auto search = std::make_unique<tribol::ProjectedEdgeSearch>( GetParam(), smoothing_fraction, false );
   auto retained = search->filterCandidatePairs( candidates, mesh1.getView(), mesh2.getView() );
-  ASSERT_EQ( retained.size(), 1 );
+  ASSERT_EQ( retained.size(), candidates.size() );
   mesh2.setPosition( far_x.data(), near_y.data(), nullptr );
   EXPECT_TRUE( search->filterCandidatePairs( candidates, mesh1.getView(), mesh2.getView() ).empty() );
   tribol::ArrayT<tribol::InterfacePair> empty( 0, 0, allocatorId() );

@@ -11,10 +11,19 @@
 #include "tribol/config.hpp"
 
 #include "tribol/common/Enzyme.hpp"
-#include "tribol/common/MdSpan.hpp"
+#include "tribol/common/MdArray.hpp"
 #include "tribol/mesh/MeshData.hpp"
 
 namespace tribol {
+
+/** @brief Normalized projection bounds; invalid edges return zero bounds and valid == false */
+template <typename Value>
+struct EdgeProjection {
+  /** @brief Increasing bounds in the integration edge's normalized coordinate; zero when invalid */
+  MdArray<Value, 2> bounds{ Value{}, Value{} };
+  /** @brief Whether both edges are nondegenerate; overlap with the integration edge is checked separately */
+  bool valid{ false };
+};
 
 /**
  * @brief Provides allocation-free checks that contact formulations can compose when filtering coarse candidates
@@ -84,20 +93,17 @@ struct InterfacePairChecks {
    * @param integration_point1 Second endpoint of the integration edge
    * @param projected_point0 First endpoint of the projected edge
    * @param projected_point1 Second endpoint of the projected edge
-   * @param projection_bounds Two normalized bounds written in increasing order
    * @tparam Value Coordinate value type; EnergyMortar uses double even when Tribol configures RealT differently
-   * @return true when both edges are nondegenerate; false otherwise
+   * @return Increasing bounds with valid == true for nondegenerate edges; otherwise zero bounds and valid == false
    */
   template <typename Value>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static bool computeLinearEdgeProjectionBounds(
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static EdgeProjection<Value> computeLinearEdgeProjectionBounds(
       const Value* integration_point0, const Value* integration_point1, const Value* projected_point0,
-      const Value* projected_point1, MdSpan<Value, 2> projection_bounds )
+      const Value* projected_point1 )
   {
     Value projected_normal[2];
     if ( !computeLinearEdgeNormal( projected_point0, projected_point1, projected_normal ) ) {
-      projection_bounds[0] = Value{};
-      projection_bounds[1] = Value{};
-      return false;
+      return {};
     }
 
     const Value integration_x = integration_point1[0] - integration_point0[0];
@@ -105,9 +111,7 @@ struct InterfacePairChecks {
     const Value integration_length_squared = integration_x * integration_x + integration_y * integration_y;
     const Value minimum_edge_length = static_cast<Value>( minimum_edge_length_ );
     if ( integration_length_squared <= minimum_edge_length * minimum_edge_length ) {
-      projection_bounds[0] = Value{};
-      projection_bounds[1] = Value{};
-      return false;
+      return {};
     }
 
     Value projected_intersection0[2];
@@ -126,9 +130,9 @@ struct InterfacePairChecks {
 
     const Value coordinate0 = 2.0 * integration_fraction0 - 1.0;
     const Value coordinate1 = 2.0 * integration_fraction1 - 1.0;
-    projection_bounds[0] = coordinate0 < coordinate1 ? coordinate0 : coordinate1;
-    projection_bounds[1] = coordinate0 < coordinate1 ? coordinate1 : coordinate0;
-    return true;
+    return { MdArray<Value, 2>{ coordinate0 < coordinate1 ? coordinate0 : coordinate1,
+                                coordinate0 < coordinate1 ? coordinate1 : coordinate0 },
+             true };
   }
 
   /**
@@ -138,14 +142,11 @@ struct InterfacePairChecks {
    * @param integration_element Element ID of the integration edge
    * @param projected_mesh Mesh containing the edge projected along its own normal
    * @param projected_element Element ID of the projected edge
-   * @param projection_bounds Two normalized bounds written in increasing order
-   * @return true when both edges are nondegenerate; false otherwise
+   * @return Increasing bounds with valid == true for nondegenerate edges; otherwise zero bounds and valid == false
    */
-  TRIBOL_HOST_DEVICE static bool computeLinearEdgeProjectionBounds( const MeshData::Viewer& integration_mesh,
-                                                                    IndexT integration_element,
-                                                                    const MeshData::Viewer& projected_mesh,
-                                                                    IndexT projected_element,
-                                                                    MdSpan<RealT, 2> projection_bounds )
+  TRIBOL_HOST_DEVICE static EdgeProjection<RealT> computeLinearEdgeProjectionBounds(
+      const MeshData::Viewer& integration_mesh, IndexT integration_element, const MeshData::Viewer& projected_mesh,
+      IndexT projected_element )
   {
     RealT integration_point0[2];
     RealT integration_point1[2];
@@ -154,7 +155,7 @@ struct InterfacePairChecks {
     getLinearEdgeEndpoints( integration_mesh, integration_element, integration_point0, integration_point1 );
     getLinearEdgeEndpoints( projected_mesh, projected_element, projected_point0, projected_point1 );
     return computeLinearEdgeProjectionBounds( integration_point0, integration_point1, projected_point0,
-                                              projected_point1, projection_bounds );
+                                              projected_point1 );
   }
 
   /**

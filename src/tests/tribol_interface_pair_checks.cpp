@@ -27,6 +27,8 @@ namespace {
 
 constexpr tribol::IndexT shared_mesh_id = 11;
 constexpr tribol::IndexT opposing_mesh_id = 12;
+constexpr tribol::IndexT nodes_per_edge = 2;
+constexpr tribol::RealT edge_gap = 0.2;
 constexpr tribol::RealT comparison_tolerance = 1.0e-14;
 
 TEST( InterfacePairChecks, identifies_same_and_topologically_adjacent_elements )
@@ -35,8 +37,9 @@ TEST( InterfacePairChecks, identifies_same_and_topologically_adjacent_elements )
   constexpr std::array<tribol::IndexT, 6> connectivity{ 0, 1, 1, 2, 3, 4 };
   constexpr std::array<tribol::RealT, 5> x{ 0.0, 1.0, 2.0, 3.0, 4.0 };
   constexpr std::array<tribol::RealT, 5> y{ 0.0, 0.0, 0.0, 0.0, 0.0 };
-  tribol::MeshData mesh( shared_mesh_id, 3, x.size(), connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE,
-                         x.data(), y.data(), nullptr, tribol::MemorySpace::Host );
+  tribol::MeshData mesh( shared_mesh_id, connectivity.size() / nodes_per_edge, x.size(), connectivity.data(),
+                         tribol::EDGE, tribol::LINEAR_LAGRANGE, x.data(), y.data(), nullptr,
+                         tribol::MemorySpace::Host );
   const auto mesh_view = mesh.getView();
 
   EXPECT_TRUE( tribol::InterfacePairChecks::isSameElementPair( mesh_view, 0, mesh_view, 0 ) );
@@ -78,51 +81,76 @@ TEST( InterfacePairChecks, requires_opposing_nondegenerate_edge_normals )
       tribol::InterfacePairChecks::linearEdgeNormalsAreOpposing( lower.getView(), 0, degenerate.getView(), 0 ) );
 }
 
+// Check normalized projection bounds for overlapping, contained, separated, and covering edges.
 TEST( InterfacePairChecks, computes_normalized_projection_intervals )
 {
-  // These intervals cover partial overlap, containment, complete separation, unequal lengths, and asymmetric placement.
-  const tribol::RealT integration_point0[2]{ 0.0, 0.0 };
-  const tribol::RealT integration_point1[2]{ 2.0, 0.0 };
-
-  const auto expect_projection = [&]( const std::array<tribol::RealT, 2>& projected_point0,
-                                      const std::array<tribol::RealT, 2>& projected_point1,
-                                      const std::array<tribol::RealT, 2>& expected_bounds ) {
-    tribol::RealT projection_bounds[2];
-    ASSERT_TRUE( tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds(
-        integration_point0, integration_point1, projected_point0.data(), projected_point1.data(),
-        tribol::MdSpan<tribol::RealT, 2>{ projection_bounds } ) );
-    EXPECT_NEAR( projection_bounds[0], expected_bounds[0], comparison_tolerance );
-    EXPECT_NEAR( projection_bounds[1], expected_bounds[1], comparison_tolerance );
+  // These are physical (x, y) edge endpoints, not quadrature points. The integration edge receives the projection.
+  // On this edge, x=0 maps to -1 and x=2 maps to +1, so the normalized coordinate is x-1.
+  const tribol::RealT integration_edge_start[2]{ 0.0, 0.0 };
+  const tribol::RealT integration_edge_end[2]{ 2.0, 0.0 };
+  // Each projected edge is horizontal at y=edge_gap. Projection along its normal moves its endpoints vertically.
+  struct ProjectionCase {
+    const char* description;
+    std::array<tribol::RealT, 2> projected_edge_start;
+    std::array<tribol::RealT, 2> projected_edge_end;
+    std::array<tribol::RealT, 2> expected_normalized_bounds;
   };
 
-  expect_projection( { 1.0, 0.2 }, { 3.0, 0.2 }, { 0.0, 2.0 } );
-  expect_projection( { 0.5, 0.2 }, { 1.5, 0.2 }, { -0.5, 0.5 } );
-  expect_projection( { 3.0, 0.2 }, { 4.0, 0.2 }, { 2.0, 3.0 } );
-  expect_projection( { -1.0, 0.2 }, { 4.0, 0.2 }, { -2.0, 3.0 } );
-  expect_projection( { -0.5, 0.2 }, { 0.25, 0.2 }, { -1.5, -0.75 } );
+  const std::array cases{
+      ProjectionCase{ .description = "Right overlap: keep the extension beyond the right endpoint",
+                      .projected_edge_start = { 1.0, edge_gap },
+                      .projected_edge_end = { 3.0, edge_gap },
+                      .expected_normalized_bounds = { 0.0, 2.0 } },
+      ProjectionCase{
+          .description = "Full containment: the shorter projected edge is centered inside the integration edge",
+          .projected_edge_start = { 0.5, edge_gap },
+          .projected_edge_end = { 1.5, edge_gap },
+          .expected_normalized_bounds = { -0.5, 0.5 } },
+      ProjectionCase{
+          .description = "Complete separation: projection is valid even when both bounds lie beyond the edge",
+          .projected_edge_start = { 3.0, edge_gap },
+          .projected_edge_end = { 4.0, edge_gap },
+          .expected_normalized_bounds = { 2.0, 3.0 } },
+      ProjectionCase{ .description = "Full coverage: keep the extensions beyond both endpoints",
+                      .projected_edge_start = { -1.0, edge_gap },
+                      .projected_edge_end = { 4.0, edge_gap },
+                      .expected_normalized_bounds = { -2.0, 3.0 } },
+      ProjectionCase{
+          .description = "Asymmetric left overlap: most of the projected edge lies outside the integration edge",
+          .projected_edge_start = { -0.5, edge_gap },
+          .projected_edge_end = { 0.25, edge_gap },
+          .expected_normalized_bounds = { -1.5, -0.75 } } };
+
+  for ( const auto& test_case : cases ) {
+    SCOPED_TRACE( test_case.description );
+    const auto projection = tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds(
+        integration_edge_start, integration_edge_end, test_case.projected_edge_start.data(),
+        test_case.projected_edge_end.data() );
+
+    ASSERT_TRUE( projection.valid );
+    EXPECT_NEAR( projection.bounds[0], test_case.expected_normalized_bounds[0], comparison_tolerance );
+    EXPECT_NEAR( projection.bounds[1], test_case.expected_normalized_bounds[1], comparison_tolerance );
+  }
 }
 
 TEST( InterfacePairChecks, rejects_degenerate_projection_edges )
 {
-  // A collapsed source or target edge cannot define the projection used to construct an integration interval.
+  // A collapsed edge returns an invalid result with zero bounds. EnergyMortar uses these bounds as a zero-length
+  // integration interval, so the result must contain defined values even when validity is ignored.
   const tribol::RealT valid_point0[2]{ 0.0, 0.0 };
   const tribol::RealT valid_point1[2]{ 1.0, 0.0 };
   const tribol::RealT collapsed_point[2]{ 0.5, 0.1 };
-  tribol::RealT projection_bounds[2]{ 3.0, 4.0 };
+  const auto collapsed_projected = tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds(
+      valid_point0, valid_point1, collapsed_point, collapsed_point );
+  EXPECT_FALSE( collapsed_projected.valid );
+  EXPECT_EQ( collapsed_projected.bounds[0], 0.0 );
+  EXPECT_EQ( collapsed_projected.bounds[1], 0.0 );
 
-  EXPECT_FALSE( tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds(
-      valid_point0, valid_point1, collapsed_point, collapsed_point,
-      tribol::MdSpan<tribol::RealT, 2>{ projection_bounds } ) );
-  EXPECT_EQ( projection_bounds[0], 0.0 );
-  EXPECT_EQ( projection_bounds[1], 0.0 );
-
-  projection_bounds[0] = 3.0;
-  projection_bounds[1] = 4.0;
-  EXPECT_FALSE( tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds(
-      collapsed_point, collapsed_point, valid_point0, valid_point1,
-      tribol::MdSpan<tribol::RealT, 2>{ projection_bounds } ) );
-  EXPECT_EQ( projection_bounds[0], 0.0 );
-  EXPECT_EQ( projection_bounds[1], 0.0 );
+  const auto collapsed_integration = tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds(
+      collapsed_point, collapsed_point, valid_point0, valid_point1 );
+  EXPECT_FALSE( collapsed_integration.valid );
+  EXPECT_EQ( collapsed_integration.bounds[0], 0.0 );
+  EXPECT_EQ( collapsed_integration.bounds[1], 0.0 );
 }
 
 TEST( InterfacePairChecks, requires_positive_overlap_with_smoothed_support )
@@ -131,9 +159,11 @@ TEST( InterfacePairChecks, requires_positive_overlap_with_smoothed_support )
   // touch.
   constexpr tribol::RealT smoothing_fraction = 0.1;
   const tribol::RealT ordinary_overlap[2]{ 0.5, 1.5 };
-  const tribol::RealT smoothing_only_overlap[2]{ 1.1, 1.15 };
-  const tribol::RealT separated_interval[2]{ 1.3, 2.0 };
-  const tribol::RealT zero_measure_touch[2]{ 1.2, 2.0 };
+  // Normalized coordinates span [-1, 1], so the edge-length fraction doubles in this coordinate system.
+  constexpr tribol::RealT support_end = 1.0 + 2.0 * smoothing_fraction;
+  const tribol::RealT smoothing_only_overlap[2]{ 1.0 + smoothing_fraction, support_end - 0.5 * smoothing_fraction };
+  const tribol::RealT separated_interval[2]{ support_end + smoothing_fraction, 2.0 };
+  const tribol::RealT zero_measure_touch[2]{ support_end, 2.0 };
 
   EXPECT_TRUE(
       tribol::InterfacePairChecks::projectionIntervalOverlapsSmoothedSupport( ordinary_overlap, smoothing_fraction ) );
@@ -145,38 +175,35 @@ TEST( InterfacePairChecks, requires_positive_overlap_with_smoothed_support )
                                                                                         smoothing_fraction ) );
 }
 
+// Check that the mesh overload uses mesh 1 (non-mortar) as the integration edge, matching ENERGY_MORTAR.
 TEST( InterfacePairChecks, matches_energy_mortar_integration_edge )
 {
-  // ENERGY_MORTAR integrates on the first (non-mortar) mesh and projects the second (mortar) mesh onto it.
-  // The mesh overload must match the raw endpoint calculation in the same order.
+  constexpr tribol::IndexT nonmortar_mesh_id = 0;
+  constexpr tribol::IndexT mortar_mesh_id = 1;
   constexpr std::array<tribol::IndexT, 2> connectivity{ 0, 1 };
-  constexpr std::array<tribol::RealT, 2> projected_x{ 0.5, 1.5 };
-  constexpr std::array<tribol::RealT, 2> projected_y{ 0.2, 0.2 };
-  constexpr std::array<tribol::RealT, 2> integration_x{ 0.0, 2.0 };
-  constexpr std::array<tribol::RealT, 2> integration_y{ 0.0, 0.0 };
-  tribol::MeshData projected_mesh( shared_mesh_id, 1, projected_x.size(), connectivity.data(), tribol::EDGE,
-                                   tribol::LINEAR_LAGRANGE, projected_x.data(), projected_y.data(), nullptr,
+
+  // The non-mortar edge runs from (0, 0) to (2, 0). Its normalized coordinate maps x=0 to -1 and x=2 to +1.
+  constexpr std::array<tribol::RealT, 2> nonmortar_x{ 0.0, 2.0 };
+  constexpr std::array<tribol::RealT, 2> nonmortar_y{ 0.0, 0.0 };
+  tribol::MeshData nonmortar_mesh( nonmortar_mesh_id, 1, nonmortar_x.size(), connectivity.data(), tribol::EDGE,
+                                   tribol::LINEAR_LAGRANGE, nonmortar_x.data(), nonmortar_y.data(), nullptr,
                                    tribol::MemorySpace::Host );
-  tribol::MeshData integration_mesh( opposing_mesh_id, 1, integration_x.size(), connectivity.data(), tribol::EDGE,
-                                     tribol::LINEAR_LAGRANGE, integration_x.data(), integration_y.data(), nullptr,
-                                     tribol::MemorySpace::Host );
 
-  tribol::RealT mesh_bounds[2];
-  tribol::RealT endpoint_bounds[2];
-  const tribol::RealT integration_point0[2]{ 0.0, 0.0 };
-  const tribol::RealT integration_point1[2]{ 2.0, 0.0 };
-  const tribol::RealT projected_point0[2]{ 0.5, 0.2 };
-  const tribol::RealT projected_point1[2]{ 1.5, 0.2 };
-  ASSERT_TRUE( tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds(
-      integration_mesh.getView(), 0, projected_mesh.getView(), 0, mesh_bounds ) );
-  ASSERT_TRUE( tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds(
-      integration_point0, integration_point1, projected_point0, projected_point1,
-      tribol::MdSpan<tribol::RealT, 2>{ endpoint_bounds } ) );
+  // The mortar edge runs from (0.5, 0.2) to (1.5, 0.2). Projection onto the non-mortar edge gives bounds [-0.5, 0.5].
+  constexpr std::array<tribol::RealT, 2> mortar_x{ 0.5, 1.5 };
+  constexpr std::array<tribol::RealT, 2> mortar_y{ 0.2, 0.2 };
+  tribol::MeshData mortar_mesh( mortar_mesh_id, 1, mortar_x.size(), connectivity.data(), tribol::EDGE,
+                                tribol::LINEAR_LAGRANGE, mortar_x.data(), mortar_y.data(), nullptr,
+                                tribol::MemorySpace::Host );
+  constexpr tribol::RealT expected_normalized_lower_bound = -0.5;
+  constexpr tribol::RealT expected_normalized_upper_bound = 0.5;
 
-  EXPECT_NEAR( mesh_bounds[0], -0.5, comparison_tolerance );
-  EXPECT_NEAR( mesh_bounds[1], 0.5, comparison_tolerance );
-  EXPECT_NEAR( mesh_bounds[0], endpoint_bounds[0], comparison_tolerance );
-  EXPECT_NEAR( mesh_bounds[1], endpoint_bounds[1], comparison_tolerance );
+  const auto projection = tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds( nonmortar_mesh.getView(), 0,
+                                                                                          mortar_mesh.getView(), 0 );
+
+  ASSERT_TRUE( projection.valid );
+  EXPECT_NEAR( projection.bounds[0], expected_normalized_lower_bound, comparison_tolerance );
+  EXPECT_NEAR( projection.bounds[1], expected_normalized_upper_bound, comparison_tolerance );
 }
 
 class InterfacePairChecksExecutionTest : public tribol::detail::ExecutionTest {};
@@ -184,26 +211,34 @@ class InterfacePairChecksExecutionTest : public tribol::detail::ExecutionTest {}
 // Check projection bounds and support overlap inside a loop on each enabled CPU or GPU backend.
 TEST_P( InterfacePairChecksExecutionTest, evaluates_projection_support )
 {
-  const auto input_coordinates = copyToExecutionSpace<tribol::RealT>( { 0.0, 0.0, 2.0, 0.0, 0.5, 0.2, 1.5, 0.2 } );
-  tribol::ArrayT<tribol::RealT> output( 3, 3, allocatorId() );
+  constexpr tribol::IndexT spatial_dimension = 2;
+  constexpr tribol::IndexT projected_edge_offset = nodes_per_edge * spatial_dimension;
+  constexpr tribol::IndexT projection_bound_count = 2;
+  constexpr tribol::IndexT overlap_result_index = projection_bound_count;
+  constexpr tribol::IndexT result_count = projection_bound_count + 1;
+  constexpr tribol::RealT no_smoothing = 0.0;
+  // A centered edge covering half of [0, 2] projects to [-0.5, 0.5] in normalized coordinates.
+  const auto input_coordinates =
+      copyToExecutionSpace<tribol::RealT>( { 0.0, 0.0, 2.0, 0.0, 0.5, edge_gap, 1.5, edge_gap } );
+  tribol::ArrayT<tribol::RealT> output( result_count, result_count, allocatorId() );
   const auto coordinates = input_coordinates.view();
   auto results = output.view();
 
   tribol::forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( tribol::IndexT ) {
-    tribol::RealT projection_bounds[2];
-    const bool has_projection = tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds(
-        coordinates.data(), coordinates.data() + 2, coordinates.data() + 4, coordinates.data() + 6,
-        tribol::MdSpan<tribol::RealT, 2>{ projection_bounds } );
-    results[0] = projection_bounds[0];
-    results[1] = projection_bounds[1];
-    results[2] = has_projection &&
-                 tribol::InterfacePairChecks::projectionIntervalOverlapsSmoothedSupport( projection_bounds, 0.0 );
+    const auto projection = tribol::InterfacePairChecks::computeLinearEdgeProjectionBounds(
+        coordinates.data(), coordinates.data() + spatial_dimension, coordinates.data() + projected_edge_offset,
+        coordinates.data() + projected_edge_offset + spatial_dimension );
+    results[0] = projection.bounds[0];
+    results[1] = projection.bounds[1];
+    results[overlap_result_index] =
+        projection.valid && tribol::InterfacePairChecks::projectionIntervalOverlapsSmoothedSupport(
+                                projection.bounds.view(), no_smoothing );
   } );
 
   tribol::ArrayT<tribol::RealT, 1, tribol::MemorySpace::Host> host_results( output );
   EXPECT_NEAR( host_results[0], -0.5, comparison_tolerance );
   EXPECT_NEAR( host_results[1], 0.5, comparison_tolerance );
-  EXPECT_EQ( host_results[2], 1.0 );
+  EXPECT_EQ( host_results[overlap_result_index], 1.0 );
 }
 
 INSTANTIATE_TEST_SUITE_P( execution, InterfacePairChecksExecutionTest, tribol::detail::enabledExecutionModes() );

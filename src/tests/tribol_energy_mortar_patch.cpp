@@ -72,7 +72,9 @@ class MfemMortarEnergyPatchTest
 
     int nel_per_dir = std::pow( 2, ref_levels );
 
-    const int mortar_nel = unequal_meshes ? 2 * nel_per_dir : nel_per_dir;
+    constexpr int mortar_refinement_ratio = 2;
+    constexpr double inactive_pressure_tolerance = 1.0e-12;
+    const int mortar_nel = unequal_meshes ? mortar_refinement_ratio * nel_per_dir : nel_per_dir;
 
     // clang-format off
     mfem::ParMesh mesh = shared::ParMeshBuilder(MPI_COMM_WORLD, shared::MeshBuilder::Unify({
@@ -227,10 +229,10 @@ class MfemMortarEnergyPatchTest
           pressure_fes.GetElementDofs( e, dofs );
           for ( int i = 0; i < dofs.Size(); ++i ) {
             const double value = pressure( dofs[i] );
-            if ( nonmortar_attrs.count( pressure_fes.GetAttribute( e ) ) ) {
+            if ( nonmortar_attrs.contains( pressure_fes.GetAttribute( e ) ) ) {
               local_nonmortar_pressure += value * value;
             } else {
-              EXPECT_NEAR( value, 0.0, 1.0e-12 );
+              EXPECT_NEAR( value, 0.0, inactive_pressure_tolerance );
             }
           }
         }

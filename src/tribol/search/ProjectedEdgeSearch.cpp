@@ -47,14 +47,11 @@ ArrayT<InterfacePair> ProjectedEdgeSearch::filterCandidatePairs( const ArrayT<In
                                                                                     pair.element_id2_ );
                 }
 
-                RealT projection_bounds[2];
                 if ( accepts_pair ) {
-                  accepts_pair = InterfacePairChecks::computeLinearEdgeProjectionBounds(
-                      mesh1, pair.element_id1_, mesh2, pair.element_id2_, MdSpan<RealT, 2>{ projection_bounds } );
-                }
-                if ( accepts_pair ) {
-                  accepts_pair = InterfacePairChecks::projectionIntervalOverlapsSmoothedSupport(
-                      MdSpan<const RealT, 2>{ projection_bounds }, smoothing_fraction );
+                  const auto projection = InterfacePairChecks::computeLinearEdgeProjectionBounds(
+                      mesh1, pair.element_id1_, mesh2, pair.element_id2_ );
+                  accepts_pair = projection.valid && InterfacePairChecks::projectionIntervalOverlapsSmoothedSupport(
+                                                         projection.bounds.view(), smoothing_fraction );
                 }
 
                 accepted_values[candidate_index] = accepts_pair;
