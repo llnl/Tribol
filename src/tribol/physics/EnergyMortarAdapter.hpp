@@ -195,14 +195,6 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    */
   RealT getEnergy() const override { return energy_; }
 
-  /**
-   * @brief Update constant penalty stiffness
-   *
-   * @param mesh1_penalty Penalty stiffness for mesh 1.
-   * @param mesh2_penalty Penalty stiffness for mesh 2.
-   */
-  void updateConstantPenaltyStiffness( double mesh1_penalty, double mesh2_penalty ) override;
-
 #ifdef BUILD_REDECOMP
   /**
    * @brief Return the parent true-dof force vector

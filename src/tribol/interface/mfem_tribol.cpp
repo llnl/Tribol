@@ -399,7 +399,7 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
   cs->getMfemMeshData()->SetMesh2KinematicConstantPenalty( mesh2_penalty );
 
   if ( cs->hasContactFormulation() ) {
-    cs->getContactFormulation()->updateConstantPenaltyStiffness( mesh1_penalty, mesh2_penalty );
+    cs->updateContactFormulation();
   }
 }
 

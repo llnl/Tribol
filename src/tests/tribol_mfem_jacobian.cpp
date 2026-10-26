@@ -1023,18 +1023,19 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
   auto mortar_attrs = std::set<int>( { 4 } );
   auto nonmortar_attrs = std::set<int>( { 5 } );
 
+  // Rename boundary attributes before reusing them on other edges, so the contact surfaces keep attributes 4 and 5.
   // clang-format off
   mfem::ParMesh mesh = shared::ParMeshBuilder(MPI_COMM_WORLD, shared::MeshBuilder::Unify({
     shared::MeshBuilder::SquareMesh(nel_per_dir, nel_per_dir)
       .updateBdrAttrib(1, 7)
-      .updateBdrAttrib(2, 3)
+      .updateBdrAttrib(4, 1)
       .updateBdrAttrib(3, 4) // Mortar
-      .updateBdrAttrib(4, 1),
+      .updateBdrAttrib(2, 3),
     shared::MeshBuilder::SquareMesh(nel_per_dir, nel_per_dir)
       .translate({0.0, 0.99}) // Slight overlap
       .updateBdrAttrib(1, 5) // Nonmortar
-      .updateBdrAttrib(2, 3)
       .updateBdrAttrib(3, 7)
+      .updateBdrAttrib(2, 3)
       .updateBdrAttrib(4, 1)
   }));
   // clang-format on
@@ -1055,8 +1056,9 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
                                       tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID );
   tribol::setEnforcementLocation( cs_id, tribol::EnforcementLocation::QuadraturePoint );
 
+  constexpr tribol::RealT initial_penalty = 1.0;
   tribol::setPenaltyOptions( cs_id, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
-  tribol::setMfemKinematicConstantPenalty( cs_id, 1.0, 1.0 );
+  tribol::setMfemKinematicConstantPenalty( cs_id, initial_penalty, initial_penalty );
 
   // Build internal MfemData
   tribol::updateMfemParallelDecomposition();
@@ -1079,6 +1081,24 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
       EXPECT_GT( DfDx->NNZ(), 0 );
     }
   }
+
+  // Changing penalties after the first force calculation must scale forces at unchanged coordinates.
+  // Use unequal mesh penalties to check that their average supplies the stiffness.
+  constexpr tribol::RealT updated_mesh1_penalty = 2.0;
+  constexpr tribol::RealT updated_mesh2_penalty = 4.0;
+  constexpr tribol::RealT stiffness_ratio = 0.5 * ( updated_mesh1_penalty + updated_mesh2_penalty ) / initial_penalty;
+  constexpr double relative_force_tolerance = 1.0e-10;
+  const auto initial_force = tribol::getMfemContactForce( cs_id );
+  const double initial_force_norm = std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, initial_force, initial_force ) );
+  ASSERT_GT( initial_force_norm, 0.0 );
+
+  tribol::setMfemKinematicConstantPenalty( cs_id, updated_mesh1_penalty, updated_mesh2_penalty );
+  tribol::update( 2, 2.0, dt );
+
+  auto force_error = tribol::getMfemContactForce( cs_id );
+  force_error.Add( -stiffness_ratio, initial_force );
+  const double force_error_norm = std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, force_error, force_error ) );
+  EXPECT_LE( force_error_norm, relative_force_tolerance * stiffness_ratio * initial_force_norm );
 }
 
 #endif

@@ -55,15 +55,6 @@ void Nodal<Adapter>::init( Adapter* adapter )
 }
 
 template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::updateConstantPenaltyStiffness( double mesh1_penalty,
-                                                                               double mesh2_penalty )
-{
-  use_penalty_ = true;
-  params_.k = 0.5 * ( mesh1_penalty + mesh2_penalty );
-  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
-}
-
-template <template <typename> class EnforcementLocation>
 void EnergyMortarAdapter<EnforcementLocation>::updateIntegrationRule( MeshData::Viewer /*mesh1*/,
                                                                       MeshData::Viewer /*mesh2*/ )
 {

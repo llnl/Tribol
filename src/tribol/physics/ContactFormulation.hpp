@@ -98,13 +98,6 @@ class ContactFormulation {
    */
   virtual RealT getEnergy() const = 0;
 
-  /**
-   * @brief Update constant penalty stiffness
-   *
-   * Used to dynamically update the constant penalty stiffness after the formulation has been instantiated.
-   */
-  virtual void updateConstantPenaltyStiffness( double /*mesh1_penalty*/, double /*mesh2_penalty*/ ) {}
-
 #ifdef BUILD_REDECOMP
   /**
    * @brief Returns t-dof vector of forces on parent mesh
