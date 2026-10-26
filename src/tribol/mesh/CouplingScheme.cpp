@@ -1034,10 +1034,8 @@ void CouplingScheme::performBinning()
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
   if ( m_formulation ) {
-    // A force request computes any missing pair and gap data, so callers do not have to issue stages in order.
+    // The formulation performs the search and gap calculations needed to compute forces from the current mesh data.
     m_formulation->updateNodalForces( getMesh1().getView(), getMesh2().getView() );
-    setBinned( true );
-    setFixedBinningPerCase();
     if ( m_formulation->hasTimeStepCalculation() ) {
       dt = m_formulation->computeTimeStep();
     }
