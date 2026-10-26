@@ -3,12 +3,19 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+/**
+ * @file
+ * @brief Test quadrature-point access, stored pair and point ranges, and integration of a constant edge gap.
+ *
+ * Basis evaluation through a quadrature view runs with each enabled execution backend, using device arrays on GPUs.
+ */
+
 #include <array>
 #include <cmath>
 #include <type_traits>
 #include <utility>
 
-#include <gtest/gtest.h>
+#include "ExecutionTest.hpp"
 
 #include "axom/slic/core/SimpleLogger.hpp"
 
@@ -223,15 +230,15 @@ TEST( InterfaceQuadratureData, integrates_quadratic_edge_gap_like_data )
   EXPECT_NEAR( nodal_gap_integrals[2], midpoint_basis_integral, comparison_tolerance );
 }
 
-#if defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP )
-TEST( InterfaceQuadratureData, evaluates_basis_from_device_view )
+class InterfaceQuadratureExecutionTest : public tribol::detail::ExecutionTest {};
+
+// Evaluate the quadratic edge basis at its midpoint through the rule view: only the midpoint basis value is one.
+// The same view must also provide the stored physical weight on each enabled CPU or GPU backend.
+TEST_P( InterfaceQuadratureExecutionTest, evaluates_basis_from_view )
 {
-  // The rule view and each point's fixed-extent coordinate span must remain usable inside the configured device path.
   using Basis = tribol::BasisFunction<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>;
   using QuadratureData = tribol::InterfaceQuadratureData<Basis::parent_dimension>;
   using QuadraturePoint = QuadratureData::QuadraturePoint;
-  const int host_allocator_id = tribol::getResourceAllocatorID( tribol::MemorySpace::Host );
-  const int device_allocator_id = tribol::getResourceAllocatorID( tribol::MemorySpace::Device );
 
   constexpr tribol::IndexT integration_edge_id = 1;
   constexpr tribol::IndexT projected_edge_id = 2;
@@ -239,41 +246,31 @@ TEST( InterfaceQuadratureData, evaluates_basis_from_device_view )
   constexpr tribol::IndexT midpoint_node = Basis::node_count - 1;
   constexpr tribol::IndexT weight_result_index = Basis::node_count;
   constexpr tribol::IndexT result_count = Basis::node_count + 1;
-  tribol::ArrayT<tribol::InterfacePair> host_pairs( { tribol::InterfacePair{ integration_edge_id, projected_edge_id } },
-                                                    host_allocator_id );
-  tribol::ArrayT<tribol::IndexT> host_offsets( { 0, 1 }, host_allocator_id );
-  tribol::ArrayT<QuadraturePoint> host_points(
-      { QuadraturePoint{ QuadraturePoint::ParentCoordinates{ 0.0 }, QuadraturePoint::ParentCoordinates{ 0.5 },
-                         physical_weight } },
-      host_allocator_id );
+  auto pairs = copyToExecutionSpace<tribol::InterfacePair>( { { integration_edge_id, projected_edge_id } } );
+  auto offsets = copyToExecutionSpace<tribol::IndexT>( { 0, 1 } );
+  auto points = copyToExecutionSpace<QuadraturePoint>( { QuadraturePoint{
+      QuadraturePoint::ParentCoordinates{ 0.0 }, QuadraturePoint::ParentCoordinates{ 0.5 }, physical_weight } } );
 
-  tribol::ArrayT<tribol::InterfacePair> device_pairs( host_pairs, device_allocator_id );
-  tribol::ArrayT<tribol::IndexT> device_offsets( host_offsets, device_allocator_id );
-  tribol::ArrayT<QuadraturePoint> device_points( host_points, device_allocator_id );
-  QuadratureData quadrature_data( std::move( device_pairs ), std::move( device_offsets ), std::move( device_points ) );
+  QuadratureData quadrature_data( std::move( pairs ), std::move( offsets ), std::move( points ) );
   const auto quadrature_view = quadrature_data.getView();
 
-  tribol::ArrayT<tribol::RealT> device_results( result_count, result_count, device_allocator_id );
-  auto results = device_results.view();
-#if defined( TRIBOL_USE_CUDA )
-  constexpr tribol::ExecutionMode device_execution_mode = tribol::ExecutionMode::Cuda;
-#else
-  constexpr tribol::ExecutionMode device_execution_mode = tribol::ExecutionMode::Hip;
-#endif
-  tribol::forAllExec<false>( device_execution_mode, 1, [=] TRIBOL_HOST_DEVICE( tribol::IndexT ) {
+  tribol::ArrayT<tribol::RealT> output( result_count, result_count, allocatorId() );
+  auto results = output.view();
+  tribol::forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( tribol::IndexT ) {
     const auto& point = quadrature_view.getQuadraturePoint( 0, 0 );
     Basis::Eval( point.getMesh1ParentCoordinates(),
                  tribol::MdSpan<tribol::RealT, Basis::node_count>{ results.data(), Basis::node_count } );
     results[weight_result_index] = point.getWeight();
   } );
 
-  tribol::ArrayT<tribol::RealT, 1, tribol::MemorySpace::Host> host_results( device_results );
+  const tribol::ArrayT<tribol::RealT, 1, tribol::MemorySpace::Host> host_results( output );
   EXPECT_NEAR( host_results[0], 0.0, comparison_tolerance );
   EXPECT_NEAR( host_results[1], 0.0, comparison_tolerance );
   EXPECT_NEAR( host_results[midpoint_node], 1.0, comparison_tolerance );
   EXPECT_NEAR( host_results[weight_result_index], physical_weight, comparison_tolerance );
 }
-#endif
+
+INSTANTIATE_TEST_SUITE_P( execution, InterfaceQuadratureExecutionTest, tribol::detail::enabledExecutionModes() );
 
 }  // namespace
 
