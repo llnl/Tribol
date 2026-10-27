@@ -107,6 +107,8 @@ TEST( InterfacePairChecks, computes_normalized_projection_intervals )
           .projected_edge_end = { 1.5, edge_gap },
           .expected_normalized_bounds = { -0.5, 0.5 } },
       ProjectionCase{
+          // This helper only computes projection geometry. Refined search retains separated intervals, and
+          // EnergyMortar later assigns them zero integration measure.
           .description = "Complete separation: projection is valid even when both bounds lie beyond the edge",
           .projected_edge_start = { 3.0, edge_gap },
           .projected_edge_end = { 4.0, edge_gap },
