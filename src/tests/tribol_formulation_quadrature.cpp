@@ -20,21 +20,67 @@
 #include "tribol/physics/ContactFormulation.hpp"
 #include "tribol/physics/EnergyMortar.hpp"
 
-// Checks factory-selected quadrature orders, physical integrals, and independent rule generation through
-// ContactFormulation. Per-pair numerical formulas, bounded writes, and capacity errors are covered in
-// tribol_pair_quadrature.
+/**
+ * @file
+ * @brief Check factory-selected quadrature orders, physical integrals, and independent formulation calls.
+ *
+ * Per-pair formulas, bounded writes, and capacity errors are covered in tribol_pair_quadrature.
+ */
+
 namespace {
 
+/**
+ * @brief Provide a minimal formulation that leaves quadrature generation unsupported.
+ */
 class UnsupportedFormulation : public tribol::ContactFormulation {
  public:
-  void updateQuadrature( tribol::MeshData::Viewer, tribol::MeshData::Viewer ) override {}
-  void updateNodalGaps( tribol::MeshData::Viewer, tribol::MeshData::Viewer ) override {}
-  void updateNodalForces( tribol::MeshData::Viewer, tribol::MeshData::Viewer ) override {}
+  /**
+   * @brief Leave quadrature unchanged in the unsupported test formulation.
+   *
+   * @param mesh1 Unused source mesh view.
+   * @param mesh2 Unused target mesh view.
+   */
+  void updateQuadrature( [[maybe_unused]] tribol::MeshData::Viewer mesh1,
+                         [[maybe_unused]] tribol::MeshData::Viewer mesh2 ) override
+  {
+  }
+  /**
+   * @brief Leave gaps unchanged in the unsupported test formulation.
+   *
+   * @param mesh1 Unused source mesh view.
+   * @param mesh2 Unused target mesh view.
+   */
+  void updateNodalGaps( [[maybe_unused]] tribol::MeshData::Viewer mesh1,
+                        [[maybe_unused]] tribol::MeshData::Viewer mesh2 ) override
+  {
+  }
+  /**
+   * @brief Leave forces unchanged in the unsupported test formulation.
+   *
+   * @param mesh1 Unused source mesh view.
+   * @param mesh2 Unused target mesh view.
+   */
+  void updateNodalForces( [[maybe_unused]] tribol::MeshData::Viewer mesh1,
+                          [[maybe_unused]] tribol::MeshData::Viewer mesh2 ) override
+  {
+  }
+  /**
+   * @brief Disable time-step calculation in the unsupported test formulation.
+   *
+   * @return False.
+   */
   bool hasTimeStepCalculation() override { return false; }
+  /**
+   * @brief Return the unsupported test formulation's fixed energy.
+   *
+   * @return Zero.
+   */
   tribol::RealT getEnergy() const override { return 0.0; }
 };
 
-// A formulation that does not implement rule generation must report that the operation is unsupported.
+/**
+ * @brief A formulation that does not implement rule generation must report that the operation is unsupported.
+ */
 TEST( ContactFormulation, unsupported_rule_generation_throws )
 {
   const tribol::RealT x[] = { 0.0, 1.0 }, y[] = { 0.0, 0.0 };
@@ -46,12 +92,29 @@ TEST( ContactFormulation, unsupported_rule_generation_throws )
   EXPECT_THROW( base.generateQuadrature( mesh.getView(), mesh.getView() ), std::logic_error );
 }
 
-// Each test supplies independent mesh views to an existing MFEM-backed formulation. No contact update is required.
+/**
+ * @brief Generate rules from independent mesh views using an MFEM-backed formulation.
+ *
+ * Test parameters select the enforcement location and requested polynomial degree. No contact update is needed.
+ */
 class FormulationQuadratureTest : public testing::TestWithParam<std::tuple<tribol::EnforcementLocation, int>> {
  protected:
+  /**
+   * @brief Read the requested reference polynomial degree from the test parameters.
+   *
+   * @return Selected quadrature order.
+   */
   int quadratureOrder() const { return std::get<1>( GetParam() ); }
+  /**
+   * @brief Calculate the edge Gauss point count for this fixture's selected order.
+   *
+   * @return One, two, or three points.
+   */
   int pointCount() const { return ( quadratureOrder() + 2 ) / 2; }
 
+  /**
+   * @brief Register the MFEM coupling scheme and configure its enforcement location and quadrature order.
+   */
   void SetUp() override
   {
     mesh_ = std::make_unique<mfem::ParMesh>( static_cast<const mfem::ParMesh&>(
@@ -70,30 +133,40 @@ class FormulationQuadratureTest : public testing::TestWithParam<std::tuple<tribo
     formulation_ = tribol::CouplingSchemeManager::getInstance().findData( 0 )->getContactFormulation();
     ASSERT_NE( formulation_, nullptr );
   }
+  /**
+   * @brief Release coupling-scheme state after each test.
+   */
   void TearDown() override { tribol::finalize(); }
 
-  std::unique_ptr<mfem::ParMesh> mesh_;
-  std::unique_ptr<mfem::H1_FECollection> fec_;
-  std::unique_ptr<mfem::ParFiniteElementSpace> fes_;
-  std::unique_ptr<mfem::ParGridFunction> coords_;
-  tribol::ContactFormulation* formulation_;
+  std::unique_ptr<mfem::ParMesh> mesh_;               ///< Owned parent mesh for registration.
+  std::unique_ptr<mfem::H1_FECollection> fec_;        ///< Owned linear finite-element collection.
+  std::unique_ptr<mfem::ParFiniteElementSpace> fes_;  ///< Owned vector space for parent-mesh coordinates.
+  std::unique_ptr<mfem::ParGridFunction> coords_;     ///< Owned registered mesh-coordinate field.
+  tribol::ContactFormulation* formulation_;           ///< Borrowed formulation valid until tribol::finalize().
 };
 
+/**
+ * @brief Own coordinate arrays and mesh views for two opposed host segments.
+ */
 struct Edges {
-  std::array<tribol::IndexT, 2> connectivity{ 0, 1 };
-  std::array<tribol::RealT, 2> x1{ 0.0, 2.0 };
-  std::array<tribol::RealT, 2> y1{ 0.0, 0.0 };
-  std::array<tribol::RealT, 2> x2{ 2.0, 0.0 };
-  std::array<tribol::RealT, 2> y2{ 0.1, 0.1 };
+  std::array<tribol::IndexT, 2> connectivity{ 0, 1 };  ///< Endpoint connectivity shared by both test segments.
+  std::array<tribol::RealT, 2> x1{ 0.0, 2.0 };         ///< Source endpoint x coordinates.
+  std::array<tribol::RealT, 2> y1{ 0.0, 0.0 };         ///< Source endpoint y coordinates.
+  std::array<tribol::RealT, 2> x2{ 2.0, 0.0 };         ///< Oppositely ordered target endpoint x coordinates.
+  std::array<tribol::RealT, 2> y2{ 0.1, 0.1 };         ///< Target endpoint y coordinates.
+  /// @brief Source mesh borrowing the arrays in this object.
   tribol::MeshData mesh1{
       0,         1,         2,       connectivity.data(),      tribol::EDGE, tribol::LINEAR_LAGRANGE,
       x1.data(), y1.data(), nullptr, tribol::MemorySpace::Host };
+  /// @brief Target mesh borrowing the arrays in this object.
   tribol::MeshData mesh2{
       1,         1,         2,       connectivity.data(),      tribol::EDGE, tribol::LINEAR_LAGRANGE,
       x2.data(), y2.data(), nullptr, tribol::MemorySpace::Host };
 };
 
-// Each selected quadrature order must reproduce the calculator integrals and map points onto the mortar edge.
+/**
+ * @brief Each selected quadrature order must reproduce the calculator integrals and map points onto the mortar edge.
+ */
 TEST_P( FormulationQuadratureTest, matches_element_integrals_and_physical_projection )
 {
   // Del = 0.1 in the formulation factory. Exercise full, partial, and support-only overlap with unequal edge lengths.
@@ -112,8 +185,9 @@ TEST_P( FormulationQuadratureTest, matches_element_integrals_and_physical_projec
     const tribol::ContactParams params{ 1000.0, true, 0.0 };
     double expected_gaps[2], expected_area[2];
     const auto calculate = [&]<int Count>() {
-      const tribol::EdgeQuadratureRule<Count> quadrature_rule{};
-      tribol::EnergyMortarCalculator<tribol::EdgeQuadratureRule<Count>> calculator( params, quadrature_rule );
+      const tribol::EdgeQuadratureRule<Count, tribol::SmoothedEdgeProjection> quadrature_rule{};
+      tribol::EnergyMortarCalculator<tribol::EdgeQuadratureRule<Count, tribol::SmoothedEdgeProjection>> calculator(
+          params, quadrature_rule );
       calculator.compute_gtilde_and_area( { 0, 0 }, edges.mesh1.getView(), edges.mesh2.getView(), expected_gaps,
                                           expected_area );
     };
@@ -154,7 +228,9 @@ TEST_P( FormulationQuadratureTest, matches_element_integrals_and_physical_projec
   }
 }
 
-// A length-two edge has a unit Jacobian; smoothing shortens its full integration interval to [-0.95, 0.95].
+/**
+ * @brief A length-two edge has a unit Jacobian; smoothing shortens its full integration interval to [-0.95, 0.95].
+ */
 TEST_P( FormulationQuadratureTest, analytic_smoothed_full_overlap )
 {
   Edges edges;
@@ -178,7 +254,9 @@ TEST_P( FormulationQuadratureTest, analytic_smoothed_full_overlap )
   EXPECT_NEAR( moment, 1.9, 1.e-12 );
 }
 
-// Changed geometry must change new results without changing or invalidating a previously returned rule.
+/**
+ * @brief Changed geometry must change new results without changing or invalidating a previously returned rule.
+ */
 TEST_P( FormulationQuadratureTest, fresh_search_and_independent_owned_results )
 {
   Edges edges;
@@ -198,7 +276,9 @@ TEST_P( FormulationQuadratureTest, fresh_search_and_independent_owned_results )
   EXPECT_EQ( retained.getView().numberOfQuadraturePoints(), pointCount() );
 }
 
-// Empty meshes and pairs rejected by refined search must produce an empty quadrature rule.
+/**
+ * @brief Empty meshes and pairs rejected by refined search must produce an empty quadrature rule.
+ */
 TEST_P( FormulationQuadratureTest, empty_and_rejected_pairs )
 {
   Edges edges;
@@ -215,7 +295,9 @@ TEST_P( FormulationQuadratureTest, empty_and_rejected_pairs )
   EXPECT_EQ( rule.getParentDimension(), 1 );
 }
 
-// Generating rules from unrelated mesh views must leave the formulation force and energy state unchanged.
+/**
+ * @brief Generating rules from unrelated mesh views must leave the formulation force and energy state unchanged.
+ */
 TEST_P( FormulationQuadratureTest, generation_does_not_seed_or_modify_force_state )
 {
   Edges edges;
@@ -238,7 +320,10 @@ TEST_P( FormulationQuadratureTest, generation_does_not_seed_or_modify_force_stat
   }
 }
 
-// Linear-edge rule generation must report unsupported quadratic elements instead of treating their nodes as endpoints.
+/**
+ * @brief Linear-edge rule generation must report unsupported quadratic elements instead of treating their nodes as
+ * endpoints.
+ */
 TEST_P( FormulationQuadratureTest, rejects_unsupported_geometry )
 {
   Edges edges;
@@ -249,7 +334,9 @@ TEST_P( FormulationQuadratureTest, rejects_unsupported_geometry )
   EXPECT_THROW( formulation_->generateQuadrature( quadratic.getView(), edges.mesh2.getView() ), std::invalid_argument );
 }
 
-// Changing the setting rebuilds the formulation, while invalid values leave its configuration unchanged.
+/**
+ * @brief Changing the setting rebuilds the formulation, while invalid values leave its configuration unchanged.
+ */
 TEST_P( FormulationQuadratureTest, updates_quadrature_order_and_rejects_invalid_settings )
 {
   Edges edges;
@@ -279,7 +366,10 @@ TEST_P( FormulationQuadratureTest, updates_quadrature_order_and_rejects_invalid_
   EXPECT_EQ( rebuilt.getView().numberOfQuadraturePoints( 0 ), 2 );
 }
 
-// A missing scheme or a method that does not use this rule must reject the setting without changing its parameters.
+/**
+ * @brief A missing scheme or a method that does not use this rule must reject the setting without changing its
+ * parameters.
+ */
 TEST( ContactFormulation, rejects_order_setting_for_unsupported_schemes )
 {
   EXPECT_THROW( tribol::setQuadratureOrder( 0, 2 ), std::invalid_argument );
@@ -296,6 +386,7 @@ TEST( ContactFormulation, rejects_order_setting_for_unsupported_schemes )
   tribol::finalize();
 }
 
+/** @brief Exercise both enforcement locations with one, two, and three Gauss points. */
 INSTANTIATE_TEST_SUITE_P( enforcement, FormulationQuadratureTest,
                           testing::Combine( testing::Values( tribol::EnforcementLocation::Nodal,
                                                              tribol::EnforcementLocation::QuadraturePoint ),
@@ -303,6 +394,13 @@ INSTANTIATE_TEST_SUITE_P( enforcement, FormulationQuadratureTest,
 
 }  // namespace
 
+/**
+ * @brief Initialize MPI and logging, run formulation tests, and finalize MPI.
+ *
+ * @param [in,out] argc Command-line argument count; MPI and Google Test may consume arguments.
+ * @param [in,out] argv Command-line argument strings.
+ * @return Google Test exit status.
+ */
 int main( int argc, char** argv )
 {
   MPI_Init( &argc, &argv );

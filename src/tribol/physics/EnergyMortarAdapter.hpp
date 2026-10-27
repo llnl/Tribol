@@ -33,7 +33,7 @@ namespace tribol {
  * `G = d(g_tilde)/dx`.
  */
 
-template <template <typename> class EnforcementLocation, typename QuadratureRule = EdgeQuadratureRule<3>>
+template <template <typename> class EnforcementLocation, typename QuadratureRule>
 class EnergyMortarAdapter;
 
 /**
@@ -144,7 +144,6 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @param refined_search Refined search whose ownership is transferred to this formulation; must be non-null
    * @param k Penalty stiffness
    * @param quadrature_rule Source quadrature generator owned by this adapter
-   * @param select_interval Computes smoothed overlap bounds independently of quadrature point placement.
    * @param enzyme_quadrature If true, differentiate the reference-rule construction with respect to geometry
    * @param use_penalty If true, interpret the dual field as pressure; otherwise interpret it as a Lagrange multiplier
    * vector (LM mode)
@@ -156,8 +155,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
                        std::unique_ptr<CoarseSearch> coarse_search, std::unique_ptr<RefinedSearch> refined_search,
-                       double k, QuadratureRule quadrature_rule, SmoothProjectedEdgeInterval select_interval,
-                       bool enzyme_quadrature, bool use_penalty = true, RealT residual_gap = 0.0 );
+                       double k, QuadratureRule quadrature_rule, bool enzyme_quadrature, bool use_penalty = true,
+                       RealT residual_gap = 0.0 );
 
   /**
    * @brief Default destructor
@@ -251,11 +250,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   /** @brief Refined search supplied by the caller and owned by this formulation */
   std::unique_ptr<RefinedSearch> refined_search_;
 
-  /** @brief Value-owned generator; current geometry and integration bounds are supplied separately */
+  /** @brief Value-owned generator configured by the factory; current geometry is supplied at each call */
   QuadratureRule quadrature_rule_;
-
-  /** @brief Select smoothed integration intervals independently of quadrature point placement */
-  SmoothProjectedEdgeInterval select_interval_;
 
   /**
    * @brief Tolerance used to avoid division by zero for area-weighted quantities

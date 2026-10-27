@@ -9,7 +9,6 @@
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/integ/InterfaceQuadrature.hpp"
 #include "tribol/integ/EdgeQuadratureRule.hpp"
-#include "tribol/integ/SmoothProjectedEdgeInterval.hpp"
 
 namespace tribol {
 
@@ -82,7 +81,7 @@ struct FiniteDiffResult {
 /// one face from mesh1, treated as edge A/non-mortar/integration side, and one
 /// face from mesh2, treated as edge B/mortar/projection side. Local edge coordinates use the normalized [-1, 1]
 /// interval shared by BasisFunction.
-template <typename QuadratureRule = EdgeQuadratureRule<3>>
+template <typename QuadratureRule>
 class EnergyMortarCalculator {
   static_assert( QuadratureRule::parent_dimension == 1 && QuadratureRule::endpoint_count == 2 &&
                      QuadratureRule::spatial_dimension == 2,
@@ -92,19 +91,12 @@ class EnergyMortarCalculator {
   using ReferenceQuadrature = typename QuadratureRule::template ReferenceQuadrature<double>;
 
   /// Borrow a generator; it must outlive this evaluator. Current geometry is supplied to each calculation.
-  EnergyMortarCalculator( const ContactParams& p, const QuadratureRule& quadrature_rule,
-                          SmoothProjectedEdgeInterval select_interval = {} )
-      : p_( p ), quadrature_rule_( quadrature_rule ), select_interval_( select_interval )
+  EnergyMortarCalculator( const ContactParams& p, const QuadratureRule& quadrature_rule )
+      : p_( p ), quadrature_rule_( quadrature_rule )
   {
   }
 
-  EnergyMortarCalculator( const ContactParams&, const QuadratureRule&&, SmoothProjectedEdgeInterval = {} ) = delete;
-
-  std::array<double, 2> compute_projection_bounds( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                   const MeshData::Viewer& mesh2 ) const
-  {
-    return projections( pair, mesh1, mesh2 );
-  }
+  EnergyMortarCalculator( const ContactParams&, const QuadratureRule&& ) = delete;
 
   /// Compute the nodal smoothed gap integrals and tributary areas.
   ///
@@ -204,19 +196,10 @@ class EnergyMortarCalculator {
   ContactParams p_;
   /// Generator owned by the adapter or caller; no mesh views or generated quadrature are retained here.
   const QuadratureRule& quadrature_rule_;
-  /// Select the smoothed integration interval independently of the Gauss point count.
-  SmoothProjectedEdgeInterval select_interval_;
 
   /// Gather current element coordinates and construct reference data for frozen-quadrature derivatives.
   ReferenceQuadrature constructReferenceQuadrature( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                     const MeshData::Viewer& mesh2 ) const;
-
-  /// Compute the local projection bounds of edge B onto edge A.
-  ///
-  /// The returned values are local coordinates on edge A and define the interval
-  /// used to construct the smoothed integration bounds.
-  std::array<double, 2> projections( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                     const MeshData::Viewer& mesh2 ) const;
 
   /// Compute smoothed gap gradients while holding the quadrature rule fixed.
   ///

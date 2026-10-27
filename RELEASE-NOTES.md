@@ -63,16 +63,19 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ### Changed
 - Renamed `ContactFormulation::generateIntegrationRule()` and `updateIntegrationRule()` to `generateQuadrature()` and
   `updateQuadrature()`. Quadrature generators use `QuadratureRule` names; point-data containers use `Quadrature` names.
-- `EnergyMortarAdapter` and `EnergyMortarCalculator` take a `QuadratureRule` template parameter, defaulting to the
-  three-point edge rule. The adapter owns the generator and its calculator borrows it. Energy Mortar selects smoothed
-  projected overlap intervals separately.
-  `ContactParams` no longer carries a runtime quadrature count or smoothing length.
-- `EdgeQuadratureRule<NumPoints>` places Gauss points on a supplied source-edge interval without requiring an FE
-  basis or a contact method. `SmoothProjectedEdgeInterval` finds and smooths projected overlap bounds independently.
-  Projection onto target edges preserves the source weights. Pair generation shares bounded allocation and packing
-  through `generatePairQuadrature()`. The low-level pair generator accepts compile-time or runtime execution modes and
-  supports allocator-matched host, CUDA, and HIP data. Contact-formulation generation and ENERGY_MORTAR assembly
-  remain host-only. Surface-region representations beyond edge intervals remain future work.
+- `EnergyMortarAdapter` and `EnergyMortarCalculator` take a configured `QuadratureRule` type. The adapter owns the
+  generator and its calculator borrows it. The factory defaults to three Gauss points. `ContactParams` no longer
+  carries a runtime quadrature count or smoothing length.
+- `EdgeQuadratureRule<NumPoints, Projection>` owns projection configuration by value. The factory supplies matching
+  configuration to quadrature and refined search, keeping their support bounds and smoothing fraction consistent.
+  The adapter and calculator do not retain projection settings.
+  `NoEdgeProjection` generates ordinary whole-segment quadrature; source segments need no FE basis. Geometry-approved
+  pair generation preserves source weights when mapping target coordinates and supports allocator-matched host, CUDA,
+  and HIP data. Contact-formulation generation and ENERGY_MORTAR assembly remain host-only.
+- Energy Mortar calculates straight-edge normal gaps directly from the target line. Very short nondegenerate target
+  edges retain their normal gap instead of depending on a line-intersection tolerance. The calculator's unused
+  `compute_projection_bounds()` helper was removed. Surface-region representations beyond edge intervals remain future
+  work.
 - `tribol::registerMesh()` now requires a `tribol::FaceOrderType` argument after `element_type`. Existing callers must
   pass `tribol::LINEAR_LAGRANGE` to retain the previous linear-face behavior.
 - Tribol now requires C++20 or newer.

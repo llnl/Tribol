@@ -13,3 +13,7 @@
 - Avoid unexplained numeric literals. Name values by their purpose, calculate counts from existing data where practical,
   and explain choices that affect behavior. Keep obvious indices, mathematical constants, and readable coordinate tables
   inline.
+
+## Documentation
+
+- Document new headers, types, functions, and members with Doxygen; cover all parameters using `@param` and `@tparam`.

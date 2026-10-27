@@ -17,13 +17,36 @@ namespace tribol {
 
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
 namespace {
-template <template <typename> class EnforcementLocation, typename QuadratureRule>
-std::unique_ptr<ContactFormulation> createEnergyMortarAdapter( CouplingScheme* cs )
+std::unique_ptr<ContactFormulation> createEnergyMortar( CouplingScheme* cs );
+}  // namespace
+#endif
+
+std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs )
 {
-  // Use the same smoothing fraction for pair acceptance and integration bounds.
+  if ( !cs ) {
+    SLIC_ERROR_ROOT( "User must register coupling scheme prior to calling createContactFormulation" );
+    return nullptr;
+  }
+
+  if ( cs->getContactMethod() == ENERGY_MORTAR ) {
+#if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
+    return createEnergyMortar( cs );
+#else
+    SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );
+    return nullptr;
+#endif
+  }
+
+  return nullptr;
+}
+
+#if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
+namespace {
+template <template <typename> class EnforcementLocation, typename QuadratureRule, typename Projection>
+std::unique_ptr<ContactFormulation> createEnergyMortarAdapter( CouplingScheme* cs, QuadratureRule quadrature_rule,
+                                                               const Projection& projection )
+{
   double k = 1000.0;
-  const SmoothedEdgeProjection projection{};
-  const double delta = projection.smoothing_fraction;
   const bool enzyme_quadrature = true;
 
   // ENERGY_MORTAR supports a penalty-style mode driven by the kinematic penalty parameters, even if the coupling
@@ -50,20 +73,21 @@ std::unique_ptr<ContactFormulation> createEnergyMortarAdapter( CouplingScheme* c
   const auto binning_proximity_scale = cs->getEffectiveBinningProximityScale();
   auto coarse_search = createCoarseSearch( cs->spatialDimension(), binning_method, execution_mode,
                                            binning_proximity_scale, residual_gap );
-  auto refined_search = std::make_unique<ProjectedEdgeSearch<SmoothedEdgeProjection>>( execution_mode, projection,
-                                                                                       cs->getContactCase() == AUTO );
+  auto refined_search =
+      std::make_unique<ProjectedEdgeSearch<Projection>>( execution_mode, projection, cs->getContactCase() == AUTO );
   return std::make_unique<EnergyMortarAdapter<EnforcementLocation, QuadratureRule>>(
       *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( coarse_search ),
-      std::move( refined_search ), k, QuadratureRule{}, SmoothProjectedEdgeInterval{ delta }, enzyme_quadrature,
-      use_penalty, residual_gap );
+      std::move( refined_search ), k, std::move( quadrature_rule ), enzyme_quadrature, use_penalty, residual_gap );
 }
 
 template <template <typename> class EnforcementLocation>
 std::unique_ptr<ContactFormulation> createEnergyMortarForLocation( CouplingScheme* cs )
 {
-  return createWithQuadratureRule( cs->getParameters().quadrature_order,
-                                   [&]<typename QuadratureRule>() -> std::unique_ptr<ContactFormulation> {
-                                     return createEnergyMortarAdapter<EnforcementLocation, QuadratureRule>( cs );
+  const SmoothedEdgeProjection projection{};
+  return createWithQuadratureRule( cs->getParameters().quadrature_order, projection,
+                                   [&]( auto quadrature_rule ) -> std::unique_ptr<ContactFormulation> {
+                                     return createEnergyMortarAdapter<EnforcementLocation>(
+                                         cs, std::move( quadrature_rule ), projection );
                                    } );
 }
 
@@ -76,24 +100,5 @@ std::unique_ptr<ContactFormulation> createEnergyMortar( CouplingScheme* cs )
 }
 }  // namespace
 #endif
-
-std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs )
-{
-  if ( !cs ) {
-    SLIC_ERROR_ROOT( "User must register coupling scheme prior to calling createContactFormulation" );
-    return nullptr;
-  }
-
-  if ( cs->getContactMethod() == ENERGY_MORTAR ) {
-#if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
-    return createEnergyMortar( cs );
-#else
-    SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );
-    return nullptr;
-#endif
-  }
-
-  return nullptr;
-}
 
 }  // namespace tribol

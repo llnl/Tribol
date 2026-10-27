@@ -4,8 +4,9 @@
 // SPDX-License-Identifier: (MIT)
 
 /**
- * Tests single-source quadrature, independent target projections, paired values, and bounded writes on every enabled
- * backend. Host batch tests separately check capacity errors, packing, pair ordering, returned arrays surviving
+ * @file
+ * @brief Tests single-source quadrature, independent target projections, paired values, and bounded writes on every
+ * enabled backend. Batch tests separately check capacity errors, packing, pair ordering, returned arrays surviving
  * temporary inputs, and factory selection by polynomial order. Geometry acceptance rules belong to
  * tribol_interface_pair_checks; these tests check generated quadrature data and its storage contract.
  */
@@ -23,23 +24,38 @@
 #include "tribol/integ/GeneratePairQuadrature.hpp"
 #include "tribol/integ/QuadratureRuleFactory.hpp"
 #include "tribol/integ/EdgeQuadratureRule.hpp"
-#include "tribol/integ/SmoothProjectedEdgeInterval.hpp"
+#include "tribol/geom/EdgeProjection.hpp"
 
 namespace {
 using namespace tribol;
-using Status = QuadratureStatus;
-constexpr RealT unwritten = -7.0;
-constexpr double tolerance = 1.0e-12;
+using Status = QuadratureStatus;       ///< Short name for generation status in test expectations.
+constexpr RealT unwritten = -7.0;      ///< Sentinel detecting writes outside a supplied point slice.
+constexpr double tolerance = 1.0e-12;  ///< Absolute tolerance for quadrature coordinates and moments.
 
+/**
+ * @brief Host copies of a generated pair rule and its guard entries.
+ */
 struct GeneratedPoints {
-  QuadratureResult result;
-  ArrayT<RealT, 1, MemorySpace::Host> mesh1;
-  ArrayT<RealT, 1, MemorySpace::Host> mesh2;
-  ArrayT<RealT, 1, MemorySpace::Host> weights;
+  QuadratureResult result;                      ///< Generation status and complete required count.
+  ArrayT<RealT, 1, MemorySpace::Host> mesh1;    ///< Source parent coordinates, including guard entries.
+  ArrayT<RealT, 1, MemorySpace::Host> mesh2;    ///< Target parent coordinates, including guard entries.
+  ArrayT<RealT, 1, MemorySpace::Host> weights;  ///< Physical source weights, including guard entries.
 };
 
+/**
+ * @brief Check point generation and bounded writes on each enabled execution backend.
+ */
 class PairQuadratureTest : public detail::ExecutionTest {
  protected:
+  /**
+   * @brief Generate projected pair data in a guarded output slice.
+   *
+   * @tparam Count Number of Gauss points per nonempty source interval.
+   * @param endpoints Two source endpoints followed by two target endpoints, each with x and y components.
+   * @param smoothing Smoothing fraction of source length.
+   * @param capacity Writable point capacity between the guard entries.
+   * @return Status and host copies of both coordinate arrays and weights.
+   */
   template <int Count>
   GeneratedPoints generate( std::initializer_list<RealT> endpoints, double smoothing, IndexT capacity )
   {
@@ -60,14 +76,12 @@ class PairQuadratureTest : public detail::ExecutionTest {
                                                ArrayViewT<RealT>{ weights.data() + 1, capacity } };
     auto status = result.view();
     forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
-      using QuadratureRule = EdgeQuadratureRule<Count>;
-      const QuadratureRule quadrature_rule{};
-      const SmoothProjectedEdgeInterval select_interval{ smoothing };
+      using QuadratureRule = EdgeQuadratureRule<Count, SmoothedEdgeProjection>;
+      const QuadratureRule quadrature_rule{ SmoothedEdgeProjection{ smoothing } };
       const typename QuadratureRule::template Coordinates<RealT> source{ coordinate_view.data(), 4 };
       const typename QuadratureRule::template Coordinates<RealT> target{ coordinate_view.data() + 4, 4 };
-      const auto interval = select_interval.template operator()<RealT>( source, target );
-      const auto quadrature = quadrature_rule.template generate<RealT>( source, interval );
-      status[0] = projectEdgeQuadrature<RealT>( quadrature, target, output );
+      const auto quadrature = quadrature_rule.template generate<RealT>( source, target );
+      status[0] = projectEdgeQuadrature<RealT>( quadrature, target, output, quadrature_rule.projection() );
     } );
     const ArrayT<QuadratureResult, 1, MemorySpace::Host> host_result( result );
     GeneratedPoints host{ host_result[0], ArrayT<RealT, 1, MemorySpace::Host>( mesh1 ),
@@ -80,6 +94,11 @@ class PairQuadratureTest : public detail::ExecutionTest {
     return host;
   }
 
+  /**
+   * @brief Check ordinary source quadrature and two independent target mappings.
+   *
+   * @tparam Count Gauss point count tested on the selected backend.
+   */
   template <int Count>
   void checkSingleSurfaceAndProjections()
   {
@@ -126,13 +145,14 @@ class PairQuadratureTest : public detail::ExecutionTest {
       const EdgeQuadratureInterval<RealT> right_half{ MdArray<RealT, 2>{ 0.0, 1.0 }, true };
       const auto partial = quadrature_rule.template generate<RealT>( surface, right_half );
       statuses[IntervalSource] = partial.result;
+      const SmoothedEdgeProjection projection{};
       MdArray<RealT, Count, 1> projected1{}, projected2{};
       const axom::StackArray<axom::IndexType, 2> shape{ Count, 1 };
       statuses[Source] = source.result;
-      statuses[FirstProjection] =
-          projectQuadratureToEdge( source.getView(), target1, ArrayViewT<RealT, 2>{ projected1.data(), shape } );
-      statuses[SecondProjection] =
-          projectQuadratureToEdge( source.getView(), target2, ArrayViewT<RealT, 2>{ projected2.data(), shape } );
+      statuses[FirstProjection] = projectQuadratureToEdge(
+          source.getView(), target1, ArrayViewT<RealT, 2>{ projected1.data(), shape }, projection );
+      statuses[SecondProjection] = projectQuadratureToEdge(
+          source.getView(), target2, ArrayViewT<RealT, 2>{ projected2.data(), shape }, projection );
       for ( int q = 0; q < Count; ++q ) {
         values( q, Parent ) = source.parent_coordinates( q, 0 );
         values( q, X ) = source.physical_coordinates( q, 0 );
@@ -171,6 +191,11 @@ class PairQuadratureTest : public detail::ExecutionTest {
     }
   }
 
+  /**
+   * @brief Check failed geometry and short output buffers without overwriting guards.
+   *
+   * @tparam Count Gauss point count tested on the selected backend.
+   */
   template <int Count>
   void checkSourceFailures()
   {
@@ -215,8 +240,10 @@ class PairQuadratureTest : public detail::ExecutionTest {
       const auto source = quadrature_rule.template generate<RealT>( surface );
       const ArrayViewT<RealT, 2> projected{ parent_view.data() + 1,
                                             axom::StackArray<axom::IndexType, 2>{ short_capacity, 1 } };
-      statuses[ShortProjection] = projectQuadratureToEdge( source.getView(), surface, projected );
-      statuses[InvalidTarget] = projectQuadratureToEdge<RealT>( source.getView(), degenerate.view(), projected );
+      const SmoothedEdgeProjection projection{};
+      statuses[ShortProjection] = projectQuadratureToEdge( source.getView(), surface, projected, projection );
+      statuses[InvalidTarget] =
+          projectQuadratureToEdge<RealT>( source.getView(), degenerate.view(), projected, projection );
     } );
     const ArrayT<QuadratureResult, 1, MemorySpace::Host> status( results );
     for ( const auto kind : { ShortSource, ShortProjection } ) {
@@ -237,6 +264,11 @@ class PairQuadratureTest : public detail::ExecutionTest {
     }
   }
 
+  /**
+   * @brief Check all supported polynomial moments with the physical source measure.
+   *
+   * @tparam Count Gauss point count tested on the selected backend.
+   */
   template <int Count>
   void checkMoments()
   {
@@ -261,6 +293,11 @@ class PairQuadratureTest : public detail::ExecutionTest {
     }
   }
 
+  /**
+   * @brief Check overlap, smoothing support, zero measure, and bounded pair output.
+   *
+   * @tparam Count Gauss point count tested on the selected backend.
+   */
   template <int Count>
   void checkOverlapAndFailure()
   {
@@ -305,10 +342,15 @@ class PairQuadratureTest : public detail::ExecutionTest {
     EXPECT_EQ( spare.result.required_point_count, Count );
     EXPECT_EQ( spare.weights[Count + 1], unwritten );
   }
+  /**
+   * @brief Check local value copies and current physical mapping of frozen reference points.
+   *
+   * @tparam Count Gauss point count tested on the selected backend.
+   */
   template <int Count>
   void checkLocalStorageAndFrozenMapping()
   {
-    using QuadratureRule = EdgeQuadratureRule<Count>;
+    using QuadratureRule = EdgeQuadratureRule<Count, SmoothedEdgeProjection>;
     enum Column
     {
       Parent1,
@@ -340,11 +382,8 @@ class PairQuadratureTest : public detail::ExecutionTest {
       const typename QuadratureRule::template Coordinates<RealT> mesh2{ inputs.data() + coordinate_count,
                                                                         coordinate_count };
       const QuadratureRule quadrature_rule{};
-      const SmoothProjectedEdgeInterval select_interval{};
-      const auto reference = quadrature_rule.template generateReferenceQuadrature<RealT>(
-          select_interval.template operator()<RealT>( mesh1, mesh2 ) );
-      auto original =
-          quadrature_rule.template generate<RealT>( mesh1, select_interval.template operator()<RealT>( mesh1, mesh2 ) );
+      const auto reference = quadrature_rule.template generateReferenceQuadrature<RealT>( mesh1, mesh2 );
+      auto original = quadrature_rule.template generate<RealT>( mesh1, mesh2 );
       const auto copied = original;
       original.parent_coordinates( 0, 0 ) = unwritten;
       original.physical_weights[0] = unwritten;
@@ -354,7 +393,7 @@ class PairQuadratureTest : public detail::ExecutionTest {
       changed( 1, 0 ) *= length_scale;
       const auto updated =
           quadrature_rule.template mapReferenceQuadrature<RealT>( changed.view(), reference.getView() );
-      const auto mapped = projectEdgeQuadrature<RealT>( updated, mesh2 );
+      const auto mapped = projectEdgeQuadrature<RealT>( updated, mesh2, quadrature_rule.projection() );
       const auto mapped_view = mapped.getView();
       output_statuses[CopiedPhysical] = copied.result;
       output_statuses[UpdatedPhysical] = mapped.result;
@@ -384,7 +423,10 @@ class PairQuadratureTest : public detail::ExecutionTest {
   }
 };
 
-// One ordinary Gauss rule covers the source edge and can be reused for two targets without changing its measure.
+/**
+ * @brief One ordinary Gauss rule covers the source edge and can be reused for two targets without changing its
+ * measure.
+ */
 TEST_P( PairQuadratureTest, generates_one_source_rule_and_projects_to_two_targets )
 {
   checkSingleSurfaceAndProjections<1>();
@@ -392,7 +434,10 @@ TEST_P( PairQuadratureTest, generates_one_source_rule_and_projects_to_two_target
   checkSingleSurfaceAndProjections<3>();
 }
 
-// Generation and projection must distinguish invalid geometry from insufficient capacity and leave buffers untouched.
+/**
+ * @brief Generation and projection must distinguish invalid geometry from insufficient capacity and leave buffers
+ * untouched.
+ */
 TEST_P( PairQuadratureTest, rejects_invalid_source_or_target_and_short_buffers )
 {
   checkSourceFailures<1>();
@@ -400,7 +445,10 @@ TEST_P( PairQuadratureTest, rejects_invalid_source_or_target_and_short_buffers )
   checkSourceFailures<3>();
 }
 
-// Each point count must integrate its supported polynomial degrees with the physical edge measure included once.
+/**
+ * @brief Each point count must integrate its supported polynomial degrees with the physical edge measure included
+ * once.
+ */
 TEST_P( PairQuadratureTest, integrates_moments_and_projects_to_mesh2 )
 {
   checkMoments<1>();
@@ -408,7 +456,10 @@ TEST_P( PairQuadratureTest, integrates_moments_and_projects_to_mesh2 )
   checkMoments<3>();
 }
 
-// Distinguish zero measure from invalid geometry and verify that short output slices never overwrite their neighbors.
+/**
+ * @brief Distinguish zero measure from invalid geometry and verify that short output slices never overwrite their
+ * neighbors.
+ */
 TEST_P( PairQuadratureTest, handles_overlap_zero_measure_and_insufficient_capacity )
 {
   checkOverlapAndFailure<1>();
@@ -416,7 +467,9 @@ TEST_P( PairQuadratureTest, handles_overlap_zero_measure_and_insufficient_capaci
   checkOverlapAndFailure<3>();
 }
 
-// Local copies must own their arrays, and frozen reference weights must acquire the updated physical Jacobian.
+/**
+ * @brief Local copies must own their arrays, and frozen reference weights must acquire the updated physical Jacobian.
+ */
 TEST_P( PairQuadratureTest, owns_local_rule_data_and_remaps_frozen_reference_points )
 {
   checkLocalStorageAndFrozenMapping<1>();
@@ -424,10 +477,13 @@ TEST_P( PairQuadratureTest, owns_local_rule_data_and_remaps_frozen_reference_poi
   checkLocalStorageAndFrozenMapping<3>();
 }
 
-// Copies retain their smoothing fraction, and computing another interval must not change a configured selector.
-TEST_P( PairQuadratureTest, keeps_configuration_in_each_interval_selector )
+/**
+ * @brief Copied rules retain their projection settings, and generating with another rule must not change those
+ * settings.
+ */
+TEST_P( PairQuadratureTest, keeps_projection_configuration_in_each_rule )
 {
-  using QuadratureRule = EdgeQuadratureRule<3>;
+  using QuadratureRule = EdgeQuadratureRule<3, SmoothedEdgeProjection>;
   enum Measure
   {
     CopiedInterval,
@@ -437,9 +493,8 @@ TEST_P( PairQuadratureTest, keeps_configuration_in_each_interval_selector )
   };
   constexpr double smoothing_fraction = 0.2;
   constexpr RealT edge_length = 4.0;
-  const QuadratureRule quadrature_rule{};
-  const SmoothProjectedEdgeInterval smoothed{ smoothing_fraction };
-  const SmoothProjectedEdgeInterval unsmoothed{ 0.0 };
+  const QuadratureRule smoothed{ SmoothedEdgeProjection{ smoothing_fraction } };
+  const QuadratureRule unsmoothed{ SmoothedEdgeProjection{ 0.0 } };
   const auto copied = smoothed;
   const auto coordinates = copyToExecutionSpace<RealT>( { 0.0, 0.0, edge_length, 0.0, edge_length, 0.2, 0.0, 0.2 } );
   const auto inputs = coordinates.view();
@@ -449,12 +504,9 @@ TEST_P( PairQuadratureTest, keeps_configuration_in_each_interval_selector )
     constexpr int coordinate_count = QuadratureRule::endpoint_count * QuadratureRule::spatial_dimension;
     const QuadratureRule::Coordinates<RealT> mesh1{ inputs.data(), coordinate_count };
     const QuadratureRule::Coordinates<RealT> mesh2{ inputs.data() + coordinate_count, coordinate_count };
-    const auto first =
-        quadrature_rule.template generate<RealT>( mesh1, copied.template operator()<RealT>( mesh1, mesh2 ) );
-    const auto middle =
-        quadrature_rule.template generate<RealT>( mesh1, unsmoothed.template operator()<RealT>( mesh1, mesh2 ) );
-    const auto last =
-        quadrature_rule.template generate<RealT>( mesh1, smoothed.template operator()<RealT>( mesh1, mesh2 ) );
+    const auto first = copied.template generate<RealT>( mesh1, mesh2 );
+    const auto middle = unsmoothed.template generate<RealT>( mesh1, mesh2 );
+    const auto last = smoothed.template generate<RealT>( mesh1, mesh2 );
     output[CopiedInterval] = output[UnsmoothedInterval] = output[OriginalInterval] = 0.0;
     for ( IndexT q = 0; q < first.result.required_point_count; ++q ) {
       output[CopiedInterval] += first.getView().physical_weights[q];
@@ -469,19 +521,45 @@ TEST_P( PairQuadratureTest, keeps_configuration_in_each_interval_selector )
   EXPECT_NEAR( result[OriginalInterval], expected_smoothed_length, tolerance );
 }
 
-// Emit two points per region with two parent components, without implementing a surface intersection algorithm.
+/**
+ * @brief Emit predictable source data for testing variable counts without surface intersection geometry.
+ */
 struct VariableSurfaceRule {
-  static constexpr int parent_dimension = 2;
-  static constexpr int spatial_dimension = 3;
-  static constexpr int points_per_base_rule = 2;
+  static constexpr int parent_dimension = 2;      ///< Parent components in each synthetic surface point.
+  static constexpr int spatial_dimension = 3;     ///< Physical components in each synthetic surface point.
+  static constexpr int points_per_base_rule = 2;  ///< Synthetic points contributed by each region.
+  /**
+   * @brief Capacity configuration for the synthetic surface rule.
+   */
   struct Parameters {
-    IndexT region_capacity{ 1 };
+    IndexT region_capacity{ 1 };  ///< Regions reserved in each output slice.
   };
+  /**
+   * @brief Use the default capacity of one synthetic region.
+   */
   TRIBOL_DEFAULT_HOST_DEVICE VariableSurfaceRule() = default;
+  /**
+   * @brief Retain the synthetic rule capacity.
+   *
+   * @param parameters Number of regions to reserve per generated pair.
+   */
   TRIBOL_HOST_DEVICE explicit VariableSurfaceRule( Parameters parameters ) : parameters_( parameters ) {}
+  /**
+   * @brief Return the configured scratch-point capacity.
+   *
+   * @return Points per base rule times reserved regions.
+   */
   TRIBOL_HOST_DEVICE IndexT pointCapacity() const { return points_per_base_rule * parameters_.region_capacity; }
-  TRIBOL_HOST_DEVICE QuadratureResult
-  generate( IndexT regions, SurfaceQuadratureView<RealT, parent_dimension, spatial_dimension> output ) const
+  TRIBOL_HOST_DEVICE
+  QuadratureResult
+      /**
+       * @brief Emit synthetic source points without exceeding the output slice.
+       *
+       * @param regions Number of fixed-point regions to emit.
+       * @param [out] output Writable source coordinates and weights.
+       * @return Success or InsufficientCapacity and the full required count.
+       */
+      generate( IndexT regions, SurfaceQuadratureView<RealT, parent_dimension, spatial_dimension> output ) const
   {
     const IndexT count = regions * points_per_base_rule;
     for ( IndexT q = 0; q < count; ++q ) {
@@ -497,10 +575,17 @@ struct VariableSurfaceRule {
   }
 
  private:
-  Parameters parameters_{};
+  Parameters parameters_{};  ///< Owned capacity configuration.
 };
 
-// Use known target coordinates to check batch packing separately from geometry and projection algorithms.
+/**
+ * @brief Write known paired values to test batch order and capacity separately from projection geometry.
+ *
+ * @param rule Synthetic rule defining the per-pair capacity.
+ * @param regions Number of fixed-point regions to emit.
+ * @param [out] output Writable paired coordinate and weight arrays.
+ * @return Success or InsufficientCapacity and the full required count.
+ */
 TRIBOL_HOST_DEVICE QuadratureResult generateSurfacePair( const VariableSurfaceRule& rule, IndexT regions,
                                                          PairQuadratureView<RealT, 2> output )
 {
@@ -516,7 +601,10 @@ TRIBOL_HOST_DEVICE QuadratureResult generateSurfacePair( const VariableSurfaceRu
   return { count > rule.pointCapacity() ? Status::InsufficientCapacity : Status::Success, count };
 }
 
-// Runtime-sized surface output must report the full required count after reaching capacity on every enabled backend.
+/**
+ * @brief Runtime-sized surface output must report the full required count after reaching capacity on every enabled
+ * backend.
+ */
 TEST_P( PairQuadratureTest, supports_variable_surface_point_counts )
 {
   const VariableSurfaceRule quadrature_rule{};
@@ -542,10 +630,20 @@ TEST_P( PairQuadratureTest, supports_variable_surface_point_counts )
   EXPECT_EQ( values[capacity], unwritten );
 }
 
+/** @brief Run the fixture checks on each enabled execution backend. */
 INSTANTIATE_TEST_SUITE_P( execution, PairQuadratureTest, detail::enabledExecutionModes() );
 
+/**
+ * @brief Check batch generation, scans, and packing on each enabled execution backend.
+ */
 class QuadratureBatchExecutionTest : public detail::ExecutionTest {};
 
+/**
+ * @brief Copy all paired arrays to independent host-owned storage.
+ *
+ * @param source Completed quadrature whose arrays are copied without modifying them.
+ * @return Owned host quadrature with the same pairs, offsets, coordinates, and weights.
+ */
 InterfaceQuadratureData copyQuadratureToHost( InterfaceQuadratureData& source )
 {
   const int allocator = getResourceAllocatorID( MemorySpace::Host );
@@ -558,7 +656,9 @@ InterfaceQuadratureData copyQuadratureToHost( InterfaceQuadratureData& source )
            std::move( mesh1 ),          std::move( mesh2 ), std::move( weights ) };
 }
 
-// Mixed region counts check unused capacity, omitted zero-point pairs, ordering, and exactly one call per pair.
+/**
+ * @brief Mixed region counts check unused capacity, omitted zero-point pairs, ordering, and exactly one call per pair.
+ */
 TEST_P( QuadratureBatchExecutionTest, packs_variable_point_counts_without_regenerating_pairs )
 {
   const auto pairs = copyToExecutionSpace<InterfacePair>( { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } } );
@@ -620,7 +720,9 @@ TEST_P( QuadratureBatchExecutionTest, packs_variable_point_counts_without_regene
   EXPECT_EQ( offsets[3], 12 );
 }
 
-// Insufficient capacity reports the first affected pair after each submitted pair runs exactly once.
+/**
+ * @brief Insufficient capacity reports the first affected pair after each submitted pair runs exactly once.
+ */
 TEST_P( QuadratureBatchExecutionTest, reports_insufficient_capacity_without_regenerating_pairs )
 {
   const auto pairs = copyToExecutionSpace<InterfacePair>( { { 0, 0 }, { 1, 0 } } );
@@ -649,14 +751,16 @@ TEST_P( QuadratureBatchExecutionTest, reports_insufficient_capacity_without_rege
   EXPECT_EQ( host_calls[1], 1 );
 }
 
-// Batch generation must use the configured interval selector and updated coordinates without changing earlier data.
+/**
+ * @brief Batch generation must use the configured interval selector and updated coordinates without changing earlier
+ * data.
+ */
 TEST( QuadratureBatch, uses_configuration_and_current_coordinates )
 {
-  using QuadratureRule = EdgeQuadratureRule<3>;
+  using QuadratureRule = EdgeQuadratureRule<3, SmoothedEdgeProjection>;
   constexpr double smoothing_fraction = 0.2;
   constexpr RealT edge_length = 4.0;
-  const QuadratureRule quadrature_rule{};
-  const SmoothProjectedEdgeInterval select_interval{ smoothing_fraction };
+  const QuadratureRule quadrature_rule{ SmoothedEdgeProjection{ smoothing_fraction } };
   const IndexT connectivity[] = { 0, 1 };
   RealT x1[] = { 0.0, edge_length }, y1[] = { 0.0, 0.0 };
   RealT x2[] = { edge_length, 0.0 }, y2[] = { 0.2, 0.2 };
@@ -666,15 +770,15 @@ TEST( QuadratureBatch, uses_configuration_and_current_coordinates )
 #ifdef TRIBOL_USE_UMPIRE
   const ArrayT<InterfacePair> mismatched_pairs( { { 0, 0 } }, axom::MALLOC_ALLOCATOR_ID );
   EXPECT_THROW( generatePairQuadrature( ExecutionMode::Sequential, quadrature_rule, mismatched_pairs, mesh1.getView(),
-                                        mesh2.getView(), select_interval ),
+                                        mesh2.getView() ),
                 std::invalid_argument );
 #endif
-  auto first = generatePairQuadrature<ExecutionMode::Sequential>( quadrature_rule, pairs, mesh1.getView(),
-                                                                  mesh2.getView(), select_interval );
+  auto first =
+      generatePairQuadrature<ExecutionMode::Sequential>( quadrature_rule, pairs, mesh1.getView(), mesh2.getView() );
   x1[1] *= 2.0;
   x2[0] *= 2.0;
-  auto second = generatePairQuadrature<ExecutionMode::Sequential>( quadrature_rule, pairs, mesh1.getView(),
-                                                                   mesh2.getView(), select_interval );
+  auto second =
+      generatePairQuadrature<ExecutionMode::Sequential>( quadrature_rule, pairs, mesh1.getView(), mesh2.getView() );
   const auto measure = []( const InterfaceQuadratureData& data ) {
     const auto view = data.getView<1>();
     double result = 0.0;
@@ -687,7 +791,9 @@ TEST( QuadratureBatch, uses_configuration_and_current_coordinates )
   EXPECT_NEAR( measure( second ), 2.0 * expected_length, tolerance );
 }
 
-// Empty input calls no generator; invalid calculations and inconsistent counts report host exceptions.
+/**
+ * @brief Empty input calls no generator; invalid calculations and inconsistent counts report host exceptions.
+ */
 TEST_P( QuadratureBatchExecutionTest, handles_empty_input_and_rejects_failed_generation )
 {
   const VariableSurfaceRule quadrature_rule{};
@@ -719,10 +825,12 @@ TEST_P( QuadratureBatchExecutionTest, handles_empty_input_and_rejects_failed_gen
                 std::runtime_error );
 }
 
-// Generate concrete edge quadrature from device-resident mesh data, then consume its typed view on the device.
+/**
+ * @brief Generate concrete edge quadrature from device-resident mesh data, then consume its typed view on the device.
+ */
 TEST_P( QuadratureBatchExecutionTest, generates_projected_edge_quadrature_in_execution_space )
 {
-  using QuadratureRule = EdgeQuadratureRule<3>;
+  using QuadratureRule = EdgeQuadratureRule<3, SmoothedEdgeProjection>;
   constexpr RealT edge_length = 4.0;
   constexpr RealT smoothing_fraction = 0.2;
   const auto connectivity = copyToExecutionSpace<IndexT>( { 0, 1 } );
@@ -739,8 +847,8 @@ TEST_P( QuadratureBatchExecutionTest, generates_projected_edge_quadrature_in_exe
     EXPECT_FALSE( executionModeUsesAllocator( GetParam(), getResourceAllocatorID( MemorySpace::Host ) ) );
   }
 #endif
-  auto rule = generatePairQuadrature( GetParam(), QuadratureRule{}, pairs, mesh1.getView(), mesh2.getView(),
-                                      SmoothProjectedEdgeInterval{ smoothing_fraction } );
+  auto rule = generatePairQuadrature( GetParam(), QuadratureRule{ SmoothedEdgeProjection{ smoothing_fraction } }, pairs,
+                                      mesh1.getView(), mesh2.getView() );
   EXPECT_EQ( rule.getAllocatorId(), allocatorId() );
   const auto view = rule.getView<1>();
   ArrayT<RealT> measure_data( 1, 1, allocatorId() );
@@ -759,15 +867,20 @@ TEST_P( QuadratureBatchExecutionTest, generates_projected_edge_quadrature_in_exe
   EXPECT_EQ( host.getView().numberOfQuadraturePoints( 0 ), QuadratureRule::points_per_base_rule );
 }
 
+/** @brief Run the fixture checks on each enabled execution backend. */
 INSTANTIATE_TEST_SUITE_P( execution, QuadratureBatchExecutionTest, detail::enabledExecutionModes() );
 
+/** @brief Reject sums and products that exceed the index range before allocating storage. */
 TEST( QuadratureBatch, rejects_unrepresentable_sizes )
 {
   EXPECT_THROW( detail::checkedQuadratureProduct( std::numeric_limits<IndexT>::max(), 2 ), std::length_error );
   EXPECT_THROW( detail::checkedQuadratureSum( std::numeric_limits<IndexT>::max(), 1 ), std::length_error );
 }
 
-// The factory's registered rules must cover supported degrees and invoke the construction callback exactly once.
+/**
+ * @brief The factory's registered rules must cover supported degrees and invoke the construction callback exactly
+ * once.
+ */
 TEST( QuadratureRuleFactory, selects_registered_rule_by_polynomial_order )
 {
   int calls = 0;
@@ -789,14 +902,22 @@ TEST( QuadratureRuleFactory, selects_registered_rule_by_polynomial_order )
   }
 }
 
-// These test-only rule descriptions exercise selection without implementing triangle quadrature generation.
+/**
+ * @brief Describe synthetic surface rules for degree-based factory selection.
+ *
+ * @tparam Degree Exactly integrated reference polynomial degree.
+ * @tparam Points Points in the synthetic base rule.
+ */
 template <int Degree, int Points>
 struct SurfaceQuadratureRuleMetadata {
-  static constexpr int polynomial_order = Degree;
-  static constexpr int points_per_base_rule = Points;
+  static constexpr int polynomial_order = Degree;      ///< Declared exact polynomial degree.
+  static constexpr int points_per_base_rule = Points;  ///< Declared points per base rule.
 };
 
-// Surface rules can have different degree-to-point mappings; selection must use polynomial degree, not point count.
+/**
+ * @brief Surface rules can have different degree-to-point mappings; selection must use polynomial degree, not point
+ * count.
+ */
 TEST( QuadratureRuleFactory, supports_surface_rule_families )
 {
   using LinearTriangle = SurfaceQuadratureRuleMetadata<1, 1>;
@@ -813,6 +934,13 @@ TEST( QuadratureRuleFactory, supports_surface_rule_families )
 
 }  // namespace
 
+/**
+ * @brief Initialize logging and run portable quadrature tests.
+ *
+ * @param [in,out] argc Command-line argument count; Google Test may consume arguments.
+ * @param [in,out] argv Command-line argument strings.
+ * @return Google Test exit status.
+ */
 int main( int argc, char** argv )
 {
   ::testing::InitGoogleTest( &argc, argv );

@@ -39,7 +39,6 @@ set(tribol_headers
     integ/PairQuadrature.hpp
     integ/Quadrature.hpp
     integ/QuadratureRuleFactory.hpp
-    integ/SmoothProjectedEdgeInterval.hpp
 
     interface/mfem_tribol.hpp
     interface/simple_tribol.hpp

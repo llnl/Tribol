@@ -3,6 +3,11 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+/**
+ * @file
+ * @brief Bounded pair generation, completion checks, and ordered packing on enabled execution backends.
+ */
+
 #ifndef SRC_TRIBOL_INTEG_GENERATEPAIRQUADRATURE_HPP_
 #define SRC_TRIBOL_INTEG_GENERATEPAIRQUADRATURE_HPP_
 
@@ -340,23 +345,21 @@ InterfaceQuadratureData generateQuadrature( ExecutionMode execution_mode, const 
  *
  * @tparam EXEC Concrete execution mode used by generation, scans, and packing
  * @tparam QuadratureRule Projected-edge rule type with a fixed parent dimension
- * @tparam SelectInterval Device-copyable callable that selects one source-edge parent interval
  *
  * @param quadrature_rule Rule used to generate source-edge points and physical weights
  * @param pairs Input element pairs allocated beside both meshes
  * @param mesh1 Integration-side mesh used to generate source quadrature
  * @param mesh2 Target mesh onto which source quadrature points are projected
- * @param select_interval Callable receiving both edge coordinate arrays and returning the source interval
  * @return Exact-size owned quadrature data allocated beside pairs and both meshes
  *
  * @throws std::invalid_argument when geometry, allocators, or execution-space accessibility are invalid
  * @throws std::runtime_error when the underlying rule reports an inconsistent point count
  * @throws std::length_error when storage sizes exceed IndexT or any pair exceeds its scratch capacity
  */
-template <ExecutionMode EXEC, typename QuadratureRule, typename SelectInterval>
+template <ExecutionMode EXEC, typename QuadratureRule>
 InterfaceQuadratureData generatePairQuadrature( const QuadratureRule& quadrature_rule,
                                                 const ArrayT<InterfacePair>& pairs, const MeshData::Viewer& mesh1,
-                                                const MeshData::Viewer& mesh2, const SelectInterval& select_interval )
+                                                const MeshData::Viewer& mesh2 )
 {
   static_assert( EXEC != ExecutionMode::Dynamic, "Pair quadrature generation requires a concrete execution mode." );
   using Traits = FaceElementTraits<EDGE, LINEAR_LAGRANGE>;
@@ -380,9 +383,8 @@ InterfaceQuadratureData generatePairQuadrature( const QuadratureRule& quadrature
         MdArray<RealT, Traits::node_count, Traits::spatial_dimension> coords2;
         mesh1.getFaceCoords( pair_values[pair_index].element_id1_, coords1.data() );
         mesh2.getFaceCoords( pair_values[pair_index].element_id2_, coords2.data() );
-        const auto interval = select_interval.template operator()<RealT>( coords1.view(), coords2.view() );
-        const auto source = quadrature_rule.template generate<RealT>( coords1.view(), interval );
-        return projectEdgeQuadrature<RealT>( source, coords2.view(), output );
+        const auto source = quadrature_rule.template generate<RealT>( coords1.view(), coords2.view() );
+        return projectEdgeQuadrature<RealT>( source, coords2.view(), output, quadrature_rule.projection() );
       } );
 }
 
@@ -390,29 +392,26 @@ InterfaceQuadratureData generatePairQuadrature( const QuadratureRule& quadrature
  * @brief Dispatch projected-edge quadrature generation when the execution mode is selected at run time
  *
  * @tparam QuadratureRule Projected-edge rule type with a fixed parent dimension
- * @tparam SelectInterval Device-copyable callable that selects one source-edge parent interval
  *
  * @param execution_mode Concrete execution mode used by generation, scans, and packing
  * @param quadrature_rule Rule used to generate source-edge points and physical weights
  * @param pairs Input element pairs allocated beside both meshes
  * @param mesh1 Integration-side mesh used to generate source quadrature
  * @param mesh2 Target mesh onto which source quadrature points are projected
- * @param select_interval Callable receiving both edge coordinate arrays and returning the source interval
  * @return Exact-size owned quadrature data allocated beside pairs and both meshes
  *
  * @throws std::invalid_argument when execution_mode, geometry, allocators, or accessibility are invalid
  * @throws std::runtime_error when the underlying rule reports an inconsistent point count
  * @throws std::length_error when storage sizes exceed IndexT or any pair exceeds its scratch capacity
  */
-template <typename QuadratureRule, typename SelectInterval>
+template <typename QuadratureRule>
 InterfaceQuadratureData generatePairQuadrature( ExecutionMode execution_mode, const QuadratureRule& quadrature_rule,
                                                 const ArrayT<InterfacePair>& pairs, const MeshData::Viewer& mesh1,
-                                                const MeshData::Viewer& mesh2, const SelectInterval& select_interval )
+                                                const MeshData::Viewer& mesh2 )
 {
   return dispatchExecutionMode(
-      execution_mode, "Pair quadrature generation requires a concrete execution mode.", [&]<ExecutionMode EXEC>() {
-        return generatePairQuadrature<EXEC>( quadrature_rule, pairs, mesh1, mesh2, select_interval );
-      } );
+      execution_mode, "Pair quadrature generation requires a concrete execution mode.",
+      [&]<ExecutionMode EXEC>() { return generatePairQuadrature<EXEC>( quadrature_rule, pairs, mesh1, mesh2 ); } );
 }
 
 }  // namespace tribol

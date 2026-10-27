@@ -3,6 +3,11 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+/**
+ * @file
+ * @brief Polynomial-order selection and configured construction of compile-time quadrature rule types.
+ */
+
 #ifndef SRC_TRIBOL_INTEG_QUADRATURERULEFACTORY_HPP_
 #define SRC_TRIBOL_INTEG_QUADRATURERULEFACTORY_HPP_
 
@@ -14,6 +19,18 @@
 namespace tribol {
 namespace detail {
 
+/**
+ * @brief Select the first rule whose exact degree meets the requested order.
+ *
+ * @throws std::invalid_argument No supported rule covers the requested order.
+ *
+ * @tparam QuadratureRule First supported rule, with its exact polynomial degree.
+ * @tparam OtherQuadratureRules Remaining rule types in increasing degree order.
+ * @tparam Create Callable with `operator()<SelectedRule>()` and a common return type for all rules.
+ * @param order Requested reference polynomial degree.
+ * @param create Callback invoked with the selected rule type.
+ * @return Callback result.
+ */
 template <typename QuadratureRule, typename... OtherQuadratureRules, typename Create>
 decltype( auto ) createWithQuadratureRuleImpl( int order, Create&& create )
 {
@@ -30,13 +47,17 @@ decltype( auto ) createWithQuadratureRuleImpl( int order, Create&& create )
 }  // namespace detail
 
 /**
- * @brief Select a rule type by polynomial order and pass it to a templated factory callback
+ * @brief Select from explicitly supplied rule types in increasing polynomial degree order.
  *
- * Supply rule types from least to most accurate. Each type exposes polynomial_order, the reference polynomial degree
- * it integrates exactly. The first adequate type is passed to create.template operator()<QuadratureRule>(). The
- * callback runs once and must return the same type for every supported rule, such as unique_ptr<ContactFormulation>.
- * Negative or unsupported orders throw invalid_argument without calling the callback. Selection runs on the host;
- * the selected type can then be used in device or differentiated kernels without a runtime rule selection there.
+ * @throws std::invalid_argument The order is negative or exceeds every supported rule.
+ * Selection runs on the host; the selected type can be used in device and differentiated kernels.
+ *
+ * @tparam QuadratureRule First supported rule, with its exact polynomial degree.
+ * @tparam OtherQuadratureRules Remaining rule types in increasing degree order.
+ * @tparam Create Callable with `operator()<SelectedRule>()` and a common return type for all rules.
+ * @param order Requested nonnegative reference polynomial degree.
+ * @param create Callback invoked once as `operator()<SelectedRule>()`.
+ * @return Callback result.
  */
 template <typename QuadratureRule, typename... OtherQuadratureRules, typename Create>
 decltype( auto ) createWithQuadratureRule( int order, Create&& create )
@@ -48,7 +69,19 @@ decltype( auto ) createWithQuadratureRule( int order, Create&& create )
 
 namespace detail {
 
-/** @brief Generate rule types for a contiguous point-count range before selecting by polynomial order */
+/**
+ * @brief Select a rule from a contiguous compile-time point-count range.
+ *
+ * @throws std::invalid_argument The order is negative or exceeds every supported rule.
+ *
+ * @tparam QuadratureRuleFamily Template accepting the number of points per base rule.
+ * @tparam FirstPointCount First supported positive point count.
+ * @tparam LastPointCount Last supported point count, inclusive.
+ * @tparam Create Templated callback accepting the selected rule type.
+ * @param order Requested nonnegative reference polynomial degree.
+ * @param create Callback invoked once with the selected rule type.
+ * @return Callback result.
+ */
 template <template <int> class QuadratureRuleFamily, int FirstPointCount, int LastPointCount, typename Create>
 decltype( auto ) createWithQuadratureRuleRange( int order, Create&& create )
 {
@@ -59,20 +92,58 @@ decltype( auto ) createWithQuadratureRuleRange( int order, Create&& create )
   }( std::make_integer_sequence<int, LastPointCount - FirstPointCount + 1>{} );
 }
 
+/**
+ * @brief Bind a projection type while leaving the Gauss point count selectable.
+ *
+ * @tparam Projection Projection value type retained by every rule in the family.
+ */
+template <typename Projection>
+struct ProjectedEdgeRuleFamily {
+  /**
+   * @brief Rule type for one supported point count.
+   *
+   * @tparam NumPoints Number of Gauss points per base rule.
+   */
+  template <int NumPoints>
+  using Rule = EdgeQuadratureRule<NumPoints, Projection>;
+};
+
 }  // namespace detail
 
 /**
- * @brief Select a built-in edge Gauss rule by polynomial order and invoke the construction callback
+ * @brief Select a built-in unprojected edge rule by polynomial order.
  *
- * Orders 0-5 select one, two, or three Gauss-Legendre points. The factory generates the supported types from a
- * compile-time point-count range, so callers provide only the requested order and a templated callback. The
- * explicit-type overload also supports families with noncontiguous point counts. Interval selection and target
- * projection are independent of the selected point count.
+ * @throws std::invalid_argument The order is negative or greater than five.
+ *
+ * @tparam Create Callable invoked as `operator()<SelectedRule>()`.
+ * @param order Requested degree 0-5, selecting one, two, or three Gauss points.
+ * @param create Callback invoked once with the selected rule type.
+ * @return Callback result.
  */
 template <typename Create>
 decltype( auto ) createWithQuadratureRule( int order, Create&& create )
 {
   return detail::createWithQuadratureRuleRange<EdgeQuadratureRule, 1, 3>( order, std::forward<Create>( create ) );
+}
+/**
+ * @brief Select an edge rule and construct it with the supplied projection.
+ *
+ * @throws std::invalid_argument The order is negative or greater than five.
+ *
+ * @tparam Projection Projection value type retained by the constructed rule.
+ * @tparam Create Callable accepting the constructed rule by value.
+ * @param order Requested degree 0-5, selecting one, two, or three Gauss points.
+ * @param projection Configuration copied into the selected rule.
+ * @param create Callback invoked once with the configured rule.
+ * @return Callback result.
+ */
+template <typename Projection, typename Create>
+decltype( auto ) createWithQuadratureRule( int order, const Projection& projection, Create&& create )
+{
+  return detail::createWithQuadratureRuleRange<detail::ProjectedEdgeRuleFamily<Projection>::template Rule, 1, 3>(
+      order, [&]<typename QuadratureRule>() -> decltype( auto ) {
+        return std::forward<Create>( create )( QuadratureRule{ projection } );
+      } );
 }
 
 }  // namespace tribol

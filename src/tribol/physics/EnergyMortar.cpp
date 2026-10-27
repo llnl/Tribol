@@ -1,12 +1,10 @@
 #include "tribol/physics/EnergyMortar.hpp"
-#include "tribol/integ/EdgeQuadratureProjection.hpp"
 
 #include <stdexcept>
 
 #include "axom/slic.hpp"
 #include "tribol/common/Enzyme.hpp"
 #include "tribol/integ/BasisFunction.hpp"
-#include "tribol/search/InterfacePairChecks.hpp"
 
 #include <algorithm>
 #include <array>
@@ -30,7 +28,6 @@ using LinearEdgeCoordinates = MdArray<double, LinearEdgeBasis::node_count, Linea
 template <typename QuadratureRule>
 struct KernelParams {
   QuadratureRule quadrature_rule;
-  SmoothProjectedEdgeInterval select_interval;
   double k;
   double residual_gap;
 };
@@ -62,65 +59,6 @@ TRIBOL_ENZYME_INLINE void endpoints( const MeshData::Viewer& mesh, int elem_id, 
   P0[1] = P0_P1[1];
   P1[0] = P0_P1[2];
   P1[1] = P0_P1[3];
-}
-
-// Projects the point p onto the infinite line defined by edge A, using nB as
-// the projection direction.
-//
-// Edge A defines the target line with the segment fraction alphaA:
-//
-//     x_A(alphaA) = A0 + alphaA * (A1 - A0)
-//
-// The projection line is the line passing through p in the direction nB:
-// Point p is assumed to be on edge B
-//
-//     x_proj(beta) = p + beta * nB
-//
-// This function computes the point where the projection line intersects the
-// infinite line containing edge A.
-// The returned intersection is not restricted to the finite segment A0--A1.
-// If alphaA is outside [0, 1], the intersection lies on the infinite extension of
-// edge A. If nB is degenerate, or if the projection direction is nearly parallel
-// to edge A, the function falls back to returning p.
-TRIBOL_ENZYME_INLINE void find_intersection( const double* A0, const double* A1, const double* p, const double* nB,
-                                             double* intersection )
-{
-  const double tA[2] = { A1[0] - A0[0], A1[1] - A0[1] };
-  const double d[2] = { p[0] - A0[0], p[1] - A0[1] };
-
-  const double nlen = std::sqrt( nB[0] * nB[0] + nB[1] * nB[1] );
-  if ( nlen < 1e-14 ) {
-    intersection[0] = p[0];
-    intersection[1] = p[1];
-    return;
-  }
-  const double n[2] = { nB[0] / nlen, nB[1] / nlen };
-
-  const double det = tA[0] * n[1] - tA[1] * n[0];
-
-  // If the projection direction is nearly parallel to edge A, use p as a safe fallback.
-  if ( std::abs( det ) < 1e-12 ) {
-    intersection[0] = p[0];
-    intersection[1] = p[1];
-    return;
-  }
-
-  const double inv_det = 1.0 / det;
-  double alpha = ( d[0] * n[1] - d[1] * n[0] ) * inv_det;
-
-  intersection[0] = A0[0] + alpha * tA[0];
-  intersection[1] = A0[1] + alpha * tA[1];
-}
-
-// Project the vertices of edge B onto edge A and return normalized [-1, 1] coordinates on A. Values outside this range
-// identify intersections with the infinite extension of edge A.
-TRIBOL_ENZYME_INLINE void get_projections( const double* A0, const double* A1, const double* B0, const double* B1,
-                                           double* projections )
-{
-  // Filtering and integration must use the same projection construction or they can disagree near support endpoints.
-  const auto projection = InterfacePairChecks::computeLinearEdgeProjectionBounds( A0, A1, B0, B1 );
-  projections[0] = projection.bounds[0];
-  projections[1] = projection.bounds[1];
 }
 
 // Integrate the nodal smoothed gap and tributary area contributions over edge A.
@@ -160,15 +98,8 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, SurfaceQuadratureView<
 
     const double* x1 = quadrature.physical_coordinates.data() + i * LinearEdgeBasis::spatial_dimension;
 
-    // Project the quadrature point on edge A (nonmortar) onto edge B (mortar) along B's normal.
-    double x2[2];
-    find_intersection( B0, B1, x1, nB, x2 );
-
-    const double dx = x1[0] - x2[0];
-    const double dy = x1[1] - x2[1];
-
-    // lagged normal on B
-    const double gn = -( dx * nB[0] + dy * nB[1] );
+    // Any point on the straight target edge gives the same signed normal distance.
+    const double gn = ( B0[0] - x1[0] ) * nB[0] + ( B0[1] - x1[1] ) * nB[1];
     const double g = effective_gap( gn, eta, residual_gap );
 
     g1 += w * basis_values[0] * g;
@@ -243,10 +174,7 @@ static void kernel_out_enzyme( const double* x, const void* kp_void, double* out
 {
   const KernelParams<QuadratureRule>* kp = static_cast<const KernelParams<QuadratureRule>*>( kp_void );
   const auto quadrature = kp->quadrature_rule.template generate<double>(
-      { x, LinearEdgeCoordinates::size() },
-      kp->select_interval.template operator()<double>(
-          { x, LinearEdgeCoordinates::size() },
-          { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() } ) );
+      { x, LinearEdgeCoordinates::size() }, { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() } );
 
   double gt[2];
   double A_out[2];
@@ -299,17 +227,11 @@ void d2_kernel( const double* x, const KernelParams<QuadratureRule>* kp, double*
   }
 }
 
-// Isolate loop-local arrays to avoid a leak in Enzyme's reverse-mode tape.
-TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double w, const double* x1, const double* B0, const double* B1,
-                                                         const double* nB, double eta, double residual_gap,
-                                                         double penalty, bool* pair_has_active_qp )
+TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double w, const double* x1, const double* B0, const double* nB,
+                                                         double eta, double residual_gap, double penalty,
+                                                         bool* pair_has_active_qp )
 {
-  double x2[2];
-  find_intersection( B0, B1, x1, nB, x2 );
-
-  const double dx = x1[0] - x2[0];
-  const double dy = x1[1] - x2[1];
-  const double gn = -( dx * nB[0] + dy * nB[1] );
+  const double gn = ( B0[0] - x1[0] ) * nB[0] + ( B0[1] - x1[1] ) * nB[1];
   const double gap = effective_gap( gn, eta, residual_gap );
   const bool is_active = gap <= 0.0;
 
@@ -330,10 +252,7 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   double B1[2] = { x[6], x[7] };
 
   const auto generated = kp->quadrature_rule.template generate<double>(
-      { x, LinearEdgeCoordinates::size() },
-      kp->select_interval.template operator()<double>(
-          { x, LinearEdgeCoordinates::size() },
-          { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() } ) );
+      { x, LinearEdgeCoordinates::size() }, { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() } );
   const auto quadrature = generated.getView();
 
   double nB[2];
@@ -349,7 +268,7 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   for ( int i = 0; i < quadrature.physical_weights.size(); ++i ) {
     value += qp_penalty_kernel_qp_energy(
         quadrature.physical_weights[i], quadrature.physical_coordinates.data() + i * LinearEdgeBasis::spatial_dimension,
-        B0, B1, nB, eta, kp->residual_gap, kp->k, pair_has_active_qp );
+        B0, nB, eta, kp->residual_gap, kp->k, pair_has_active_qp );
   }
 
   *energy = value;
@@ -416,31 +335,12 @@ EnergyMortarCalculator<QuadratureRule>::constructReferenceQuadrature( const Inte
   LinearEdgeCoordinates coords1, coords2;
   mesh1.getFaceCoords( pair.element_id1_, coords1.data() );
   mesh2.getFaceCoords( pair.element_id2_, coords2.data() );
-  const auto reference = quadrature_rule_.template generateReferenceQuadrature<double>(
-      select_interval_.template operator()<double>( coords1.view(), coords2.view() ) );
+  const auto reference =
+      quadrature_rule_.template generateReferenceQuadrature<double>( coords1.view(), coords2.view() );
   if ( reference.result.status == QuadratureStatus::InvalidGeometry ) {
     throw std::invalid_argument( "Cannot generate a quadrature rule for invalid pair geometry." );
   }
   return reference;
-}
-
-// Return the local projection bounds of edge B onto edge A for this interface pair.
-template <typename QuadratureRule>
-std::array<double, 2> EnergyMortarCalculator<QuadratureRule>::projections( const InterfacePair& pair,
-                                                                           const MeshData::Viewer& mesh1,
-                                                                           const MeshData::Viewer& mesh2 ) const
-{
-  double A0[2];
-  double A1[2];
-  endpoints( mesh1, pair.element_id1_, A0, A1 );
-  double B0[2];
-  double B1[2];
-  endpoints( mesh2, pair.element_id2_, B0, B1 );
-
-  double projs[2];
-  get_projections( A0, A1, B0, B1, projs );
-
-  return { projs[0], projs[1] };
 }
 
 // Evaluate the weighted normal gap at local coordinate xiA on edge A.
@@ -468,14 +368,7 @@ double EnergyMortarCalculator<QuadratureRule>::compute_weighted_normal_gap( cons
   double x1[2] = { 0.0 };
   MapToPhysical<LinearEdgeBasis>( basis_values, edge_coordinates.view(), x1 );
 
-  // Project the point on edge A onto edge B along B's normal.
-  double x2[2] = { 0.0 };
-  find_intersection( B0, B1, x1, nB, x2 );
-
-  double dx = x1[0] - x2[0];
-  double dy = x1[1] - x2[1];
-
-  double gn = -( dx * nB[0] + dy * nB[1] );  // signed normal gap
+  const double gn = ( B0[0] - x1[0] ) * nB[0] + ( B0[1] - x1[1] ) * nB[1];
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
   double eta = ( dot < 0 ) ? dot : 0.0;
 
@@ -491,10 +384,7 @@ NodalContactData EnergyMortarCalculator<QuadratureRule>::compute_nodal_contact_d
   mesh1.getFaceCoords( pair.element_id1_, x );
   mesh2.getFaceCoords( pair.element_id2_, x + 4 );
   const auto quadrature = quadrature_rule_.template generate<double>(
-      { x, LinearEdgeCoordinates::size() },
-      select_interval_.template operator()<double>(
-          { x, LinearEdgeCoordinates::size() },
-          { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() } ) );
+      { x, LinearEdgeCoordinates::size() }, { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() } );
   NodalContactData result{};
   gtilde_kernel( x, quadrature.getView(), p_.residual_gap, result.g_tilde.data(), result.AI.data() );
   return result;
@@ -534,7 +424,7 @@ void EnergyMortarCalculator<QuadratureRule>::grad_gtilde( const InterfacePair& p
   double dg1_du[8] = { 0.0 };
   double dg2_du[8] = { 0.0 };
 
-  const KernelParams<QuadratureRule> kp{ quadrature_rule_, select_interval_, p_.k, p_.residual_gap };
+  const KernelParams<QuadratureRule> kp{ quadrature_rule_, p_.k, p_.residual_gap };
   if ( !p_.enzyme_quadrature ) {
     // Hold the quadrature rule fixed while differentiating the gap kernel.
     const auto reference = constructReferenceQuadrature( pair, mesh1, mesh2 );
@@ -570,7 +460,7 @@ void EnergyMortarCalculator<QuadratureRule>::grad_trib_area( const InterfacePair
   find_normal( B0, B1, nB );
   find_normal( A0, A1, nA );
 
-  const KernelParams<QuadratureRule> kp{ quadrature_rule_, select_interval_, p_.k, p_.residual_gap };
+  const KernelParams<QuadratureRule> kp{ quadrature_rule_, p_.k, p_.residual_gap };
   if ( !p_.enzyme_quadrature ) {
     // Hold the quadrature rule fixed while differentiating the area kernel.
     const auto reference = constructReferenceQuadrature( pair, mesh1, mesh2 );
@@ -603,7 +493,7 @@ void EnergyMortarCalculator<QuadratureRule>::d2_g2tilde( const InterfacePair& pa
   double d2g1_d2u[64] = { 0.0 };
   double d2g2_d2u[64] = { 0.0 };
 
-  const KernelParams<QuadratureRule> kp{ quadrature_rule_, select_interval_, p_.k, p_.residual_gap };
+  const KernelParams<QuadratureRule> kp{ quadrature_rule_, p_.k, p_.residual_gap };
   if ( !p_.enzyme_quadrature ) {
     // Hold the quadrature rule fixed while differentiating the gap gradients.
     const auto reference = constructReferenceQuadrature( pair, mesh1, mesh2 );
@@ -643,7 +533,7 @@ void EnergyMortarCalculator<QuadratureRule>::compute_d2A_d2u( const InterfacePai
   double d2A1_d2u[64] = { 0.0 };
   double d2A2_d2u[64] = { 0.0 };
 
-  const KernelParams<QuadratureRule> kp{ quadrature_rule_, select_interval_, p_.k, p_.residual_gap };
+  const KernelParams<QuadratureRule> kp{ quadrature_rule_, p_.k, p_.residual_gap };
   if ( !p_.enzyme_quadrature ) {
     // Hold the quadrature rule fixed while differentiating the area gradients.
     const auto reference = constructReferenceQuadrature( pair, mesh1, mesh2 );
@@ -671,7 +561,7 @@ double EnergyMortarCalculator<QuadratureRule>::compute_quadrature_point_penalty_
   endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  const KernelParams<QuadratureRule> kp{ quadrature_rule_, select_interval_, p_.k, p_.residual_gap };
+  const KernelParams<QuadratureRule> kp{ quadrature_rule_, p_.k, p_.residual_gap };
   double energy = 0.0;
   bool pair_has_active_qp = false;
   qp_penalty_kernel<QuadratureRule>( x, &kp, &energy, &pair_has_active_qp );
@@ -688,7 +578,7 @@ QuadraturePointPenaltyData EnergyMortarCalculator<QuadratureRule>::compute_quadr
   endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  const KernelParams<QuadratureRule> kp{ quadrature_rule_, select_interval_, p_.k, p_.residual_gap };
+  const KernelParams<QuadratureRule> kp{ quadrature_rule_, p_.k, p_.residual_gap };
 
   QuadraturePointPenaltyData result;
   qp_penalty_kernel<QuadratureRule>( x, &kp, &result.energy, &result.has_active_qp );
@@ -697,9 +587,9 @@ QuadraturePointPenaltyData EnergyMortarCalculator<QuadratureRule>::compute_quadr
   return result;
 }
 
-template class EnergyMortarCalculator<EdgeQuadratureRule<1>>;
-template class EnergyMortarCalculator<EdgeQuadratureRule<2>>;
-template class EnergyMortarCalculator<EdgeQuadratureRule<3>>;
+template class EnergyMortarCalculator<EdgeQuadratureRule<1, SmoothedEdgeProjection>>;
+template class EnergyMortarCalculator<EdgeQuadratureRule<2, SmoothedEdgeProjection>>;
+template class EnergyMortarCalculator<EdgeQuadratureRule<3, SmoothedEdgeProjection>>;
 
 #endif  // TRIBOL_USE_ENZYME
 

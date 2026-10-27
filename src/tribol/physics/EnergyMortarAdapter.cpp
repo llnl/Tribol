@@ -20,13 +20,11 @@ template <template <typename> class EnforcementLocation, typename QuadratureRule
 EnergyMortarAdapter<EnforcementLocation, QuadratureRule>::EnergyMortarAdapter(
     MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
     std::unique_ptr<CoarseSearch> coarse_search, std::unique_ptr<RefinedSearch> refined_search, double k,
-    QuadratureRule quadrature_rule, SmoothProjectedEdgeInterval select_interval, bool enzyme_quadrature,
-    bool use_penalty, RealT residual_gap )
+    QuadratureRule quadrature_rule, bool enzyme_quadrature, bool use_penalty, RealT residual_gap )
     : use_penalty_( use_penalty ),
       coarse_search_( std::move( coarse_search ) ),
       refined_search_( std::move( refined_search ) ),
       quadrature_rule_( std::move( quadrature_rule ) ),
-      select_interval_( select_interval ),
       mesh_data_( mesh_data ),
       submesh_data_( submesh_data ),
       jac_data_( jac_data )
@@ -38,7 +36,7 @@ EnergyMortarAdapter<EnforcementLocation, QuadratureRule>::EnergyMortarAdapter(
   params_.enzyme_quadrature = enzyme_quadrature;
   params_.residual_gap = residual_gap;
 
-  evaluator_ = std::make_unique<EnergyMortarCalculator<QuadratureRule>>( params_, quadrature_rule_, select_interval_ );
+  evaluator_ = std::make_unique<EnergyMortarCalculator<QuadratureRule>>( params_, quadrature_rule_ );
 
   this->init( this );
 }
@@ -71,7 +69,7 @@ InterfaceQuadratureData EnergyMortarAdapter<EnforcementLocation, QuadratureRule>
 #endif
   const auto candidates = coarse_search_->findCandidatePairs( mesh1, mesh2 );
   const auto pairs = refined_search_->filterCandidatePairs( candidates, mesh1, mesh2 );
-  return generatePairQuadrature<ExecutionMode::Sequential>( quadrature_rule_, pairs, mesh1, mesh2, select_interval_ );
+  return generatePairQuadrature<ExecutionMode::Sequential>( quadrature_rule_, pairs, mesh1, mesh2 );
 }
 
 template <template <typename> class EnforcementLocation, typename QuadratureRule>
@@ -593,12 +591,12 @@ std::unique_ptr<mfem::HypreParMatrix> Nodal<Adapter>::getMfemDfDp() const
   return std::unique_ptr<mfem::HypreParMatrix>( df_dlambda.release() );
 }
 
-template class EnergyMortarAdapter<Nodal, EdgeQuadratureRule<1>>;
-template class EnergyMortarAdapter<QuadraturePoint, EdgeQuadratureRule<1>>;
-template class EnergyMortarAdapter<Nodal, EdgeQuadratureRule<2>>;
-template class EnergyMortarAdapter<QuadraturePoint, EdgeQuadratureRule<2>>;
-template class EnergyMortarAdapter<Nodal, EdgeQuadratureRule<3>>;
-template class EnergyMortarAdapter<QuadraturePoint, EdgeQuadratureRule<3>>;
+template class EnergyMortarAdapter<Nodal, EdgeQuadratureRule<1, SmoothedEdgeProjection>>;
+template class EnergyMortarAdapter<QuadraturePoint, EdgeQuadratureRule<1, SmoothedEdgeProjection>>;
+template class EnergyMortarAdapter<Nodal, EdgeQuadratureRule<2, SmoothedEdgeProjection>>;
+template class EnergyMortarAdapter<QuadraturePoint, EdgeQuadratureRule<2, SmoothedEdgeProjection>>;
+template class EnergyMortarAdapter<Nodal, EdgeQuadratureRule<3, SmoothedEdgeProjection>>;
+template class EnergyMortarAdapter<QuadraturePoint, EdgeQuadratureRule<3, SmoothedEdgeProjection>>;
 
 #endif  // TRIBOL_USE_ENZYME
 

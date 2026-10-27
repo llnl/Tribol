@@ -8,7 +8,6 @@
 #include <set>
 #include <type_traits>
 #include "tribol/physics/EnergyMortar.hpp"
-#include "tribol/integ/EdgeQuadratureProjection.hpp"
 #include <gtest/gtest.h>
 
 #ifdef TRIBOL_USE_UMPIRE
@@ -392,7 +391,7 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
   params.k = 3.0;
   params.enzyme_quadrature = true;
 
-  const EdgeQuadratureRule<3> quadrature_rule{};
+  const EdgeQuadratureRule<3, SmoothedEdgeProjection> quadrature_rule{};
   EnergyMortarCalculator evaluator( params, quadrature_rule );
   const auto result =
       evaluator.compute_quadrature_point_penalty_data( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView() );
@@ -419,7 +418,7 @@ TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
   params.k = 3.0;
   params.enzyme_quadrature = true;
 
-  const EdgeQuadratureRule<3> quadrature_rule{};
+  const EdgeQuadratureRule<3, SmoothedEdgeProjection> quadrature_rule{};
   EnergyMortarCalculator evaluator( params, quadrature_rule );
   const auto result =
       evaluator.compute_quadrature_point_penalty_data( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView() );
@@ -450,7 +449,7 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
 
   double gap_without_residual[2] = { 0.0, 0.0 };
   double tributary_area_without_residual[2] = { 0.0, 0.0 };
-  const EdgeQuadratureRule<3> quadrature_rule{};
+  const EdgeQuadratureRule<3, SmoothedEdgeProjection> quadrature_rule{};
   EnergyMortarCalculator evaluator_without_residual( params, quadrature_rule );
   evaluator_without_residual.compute_gtilde_and_area( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView(),
                                                       gap_without_residual, tributary_area_without_residual );
@@ -487,7 +486,7 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
   params.k = 3.0;
   params.enzyme_quadrature = true;
 
-  const EdgeQuadratureRule<3> quadrature_rule{};
+  const EdgeQuadratureRule<3, SmoothedEdgeProjection> quadrature_rule{};
   EnergyMortarCalculator evaluator_without_residual( params, quadrature_rule );
   const auto inactive = evaluator_without_residual.compute_quadrature_point_penalty_data(
       InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView() );
@@ -528,7 +527,7 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   params.enzyme_quadrature = true;
   params.residual_gap = GetParam();
 
-  const EdgeQuadratureRule<3> quadrature_rule{};
+  const EdgeQuadratureRule<3, SmoothedEdgeProjection> quadrature_rule{};
   EnergyMortarCalculator evaluator( params, quadrature_rule );
   const InterfacePair pair{ 0, 0 };
   const auto analytical = evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() );
@@ -627,7 +626,7 @@ TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
   params_.enzyme_quadrature = true;  // use the non-Enzyme quadrature path
   params_.residual_gap = GetParam();
 
-  const EdgeQuadratureRule<3> quadrature_rule{};
+  const EdgeQuadratureRule<3, SmoothedEdgeProjection> quadrature_rule{};
   EnergyMortarCalculator evaluator_( params_, quadrature_rule );
 
   // ── Run validation ───────────────────────────────────────────────────────
@@ -686,7 +685,7 @@ TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
   params_.enzyme_quadrature = true;
   params_.residual_gap = GetParam();
 
-  const EdgeQuadratureRule<3> quadrature_rule{};
+  const EdgeQuadratureRule<3, SmoothedEdgeProjection> quadrature_rule{};
   EnergyMortarCalculator evaluator_( params_, quadrature_rule );
 
   // ── Run validation ───────────────────────────────────────────────────────
@@ -721,11 +720,33 @@ INSTANTIATE_TEST_SUITE_P( ZeroAndNonzeroResidualGap, ResidualGapDerivativeCheck,
 
 namespace {
 
+// A short valid edge must retain its normal distance; small edge length does not imply zero separation.
+TEST( EnergyMortarGap, calculates_normal_distance_for_short_valid_edges )
+{
+  constexpr RealT edge_length = 1.0e-13;
+  constexpr RealT separation = 0.25;
+  constexpr double tolerance = 1.0e-12;
+  const IndexT connectivity[] = { 0, 1 };
+  RealT x1[] = { 0.0, edge_length }, y1[] = { 0.0, 0.0 };
+  RealT x2[] = { edge_length, 0.0 }, y2[] = { separation, separation };
+  MeshData mesh1( 0, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
+  const EdgeQuadratureRule<3, SmoothedEdgeProjection> quadrature_rule{};
+  const EnergyMortarCalculator calculator( ContactParams{ 1.0, true, 0.0 }, quadrature_rule );
+  NodalContactData response{};
+  calculator.compute_gtilde_and_area( { 0, 0 }, mesh1.getView(), mesh2.getView(), response.g_tilde.data(),
+                                      response.AI.data() );
+  for ( int node = 0; node < LinearEdgeBasis::node_count; ++node ) {
+    ASSERT_GT( response.AI[node], 0.0 );
+    EXPECT_NEAR( response.g_tilde[node] / response.AI[node], -separation, tolerance );
+  }
+}
+
 // Perturb both endpoints in x and y so finite differences include edge-length and overlap-bound changes.
 template <int Count>
 void checkSelectedRuleDerivatives( bool varying )
 {
-  using QuadratureRule = EdgeQuadratureRule<Count>;
+  using QuadratureRule = EdgeQuadratureRule<Count, SmoothedEdgeProjection>;
   using Calculator = EnergyMortarCalculator<QuadratureRule>;
   static_assert( !std::is_constructible_v<Calculator, const ContactParams&, QuadratureRule&&>,
                  "A calculator must not borrow a temporary quadrature-rule object." );
@@ -742,15 +763,14 @@ void checkSelectedRuleDerivatives( bool varying )
   std::array<RealT*, dofs> coordinates{ &x1[0], &y1[0], &x1[1], &y1[1], &x2[0], &y2[0], &x2[1], &y2[1] };
   std::array<RealT, dofs> baseline;
   for ( int i = 0; i < dofs; ++i ) baseline[i] = *coordinates[i];
-  const QuadratureRule quadrature_rule{};
-  const SmoothProjectedEdgeInterval select_interval{ 0.2 };
-  const Calculator calculator( ContactParams{ 7.0, varying, 0.05 }, quadrature_rule, select_interval );
+  const QuadratureRule quadrature_rule{ SmoothedEdgeProjection{ 0.2 } };
+  const Calculator calculator( ContactParams{ 7.0, varying, 0.05 }, quadrature_rule );
   const LinearEdgeCoordinates initial1{ LinearEdgePointView{ baseline.data(), 2 },
                                         LinearEdgePointView{ baseline.data() + 2, 2 } };
   const LinearEdgeCoordinates initial2{ LinearEdgePointView{ baseline.data() + 4, 2 },
                                         LinearEdgePointView{ baseline.data() + 6, 2 } };
-  const auto reference = quadrature_rule.template generateReferenceQuadrature<double>(
-      select_interval.template operator()<double>( initial1.view(), initial2.view() ) );
+  const auto reference =
+      quadrature_rule.template generateReferenceQuadrature<double>( initial1.view(), initial2.view() );
   const auto evaluate = [&]() {
     std::array<double, 4> values{};
     if ( varying ) {

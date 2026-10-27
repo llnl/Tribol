@@ -3,6 +3,11 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+/**
+ * @file
+ * @brief Owning arrays, borrowed views, and completion results for source-surface quadrature.
+ */
+
 #ifndef SRC_TRIBOL_INTEG_QUADRATURE_HPP_
 #define SRC_TRIBOL_INTEG_QUADRATURE_HPP_
 
@@ -17,9 +22,9 @@ namespace tribol {
 /** @brief Whether a complete rule was generated, needs more storage, or has invalid geometry */
 enum class QuadratureStatus
 {
-  Success,
-  InsufficientCapacity,
-  InvalidGeometry
+  Success,               ///< Every reported point is initialized; zero points means zero measure.
+  InsufficientCapacity,  ///< Reported count exceeds capacity; discard partial output.
+  InvalidGeometry        ///< Geometry calculation failed; discard output and report zero points.
 };
 
 /**
@@ -30,19 +35,39 @@ enum class QuadratureStatus
  * returns zero points and its output must also be discarded. Unused capacity is never part of a completed rule.
  */
 struct QuadratureResult {
-  QuadratureStatus status{ QuadratureStatus::Success };
-  IndexT required_point_count{ 0 };
+  QuadratureStatus status{ QuadratureStatus::Success };  ///< Whether the complete rule can be consumed.
+  IndexT required_point_count{ 0 };  ///< Complete count on success or overflow; zero for invalid geometry.
 };
 
-/** @brief Borrows integration-side parent points and weights before applying the physical Jacobian */
+/**
+ * @brief Borrow source parent points and weights before applying a physical Jacobian.
+ *
+ * Arrays are indexed by point, then parent component. The caller retains ownership.
+ *
+ * @tparam Value Coordinate and weight scalar type.
+ * @tparam ParentDimension Number of parent-coordinate components per point.
+ */
 template <typename Value, int ParentDimension>
 struct ReferenceQuadratureView {
   static_assert( ParentDimension == 1 || ParentDimension == 2 );
-  ArrayViewT<Value, 2> parent_coordinates;
-  ArrayViewT<Value> reference_weights;
+  ArrayViewT<Value, 2> parent_coordinates;  ///< Borrowed source parent coordinates [point][component].
+  ArrayViewT<Value> reference_weights;      ///< Borrowed weights before physical Jacobian scaling.
 
+  /**
+   * @brief Return the number of borrowed reference points.
+   *
+   * @return Length of reference_weights.
+   */
   TRIBOL_HOST_DEVICE IndexT numberOfPoints() const { return reference_weights.size(); }
 
+  /**
+   * @brief Borrow matching coordinate and weight arrays.
+   *
+   * Both arrays must have the same point count and remain alive while the view is used.
+   *
+   * @param coordinates Parent-coordinate array [point][ParentDimension].
+   * @param weights Reference weights, one per point.
+   */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE ReferenceQuadratureView( ArrayViewT<Value, 2> coordinates,
                                                                    ArrayViewT<Value> weights )
       : parent_coordinates( coordinates ), reference_weights( weights )
@@ -51,13 +76,29 @@ struct ReferenceQuadratureView {
   }
 };
 
-/** @brief Owns parent points and reference weights that may be frozen while physical geometry changes */
+/**
+ * @brief Own fixed-capacity parent points and weights that can remain frozen while geometry changes.
+ *
+ * Views borrow this object's arrays and must not outlive it.
+ *
+ * @tparam Value Coordinate and weight scalar type.
+ * @tparam ParentDimension Number of parent-coordinate components per point.
+ * @tparam Capacity Number of points available in the fixed-size backing arrays.
+ */
 template <typename Value, int ParentDimension, IndexT Capacity>
 struct ReferenceQuadratureData {
-  MdArray<Value, Capacity, ParentDimension> parent_coordinates{};
-  MdArray<Value, Capacity> reference_weights{};
-  QuadratureResult result{};
+  MdArray<Value, Capacity, ParentDimension>
+      parent_coordinates{};                      ///< Owned source parent coordinates [point][component].
+  MdArray<Value, Capacity> reference_weights{};  ///< Owned weights before physical Jacobian scaling.
+  QuadratureResult result{};                     ///< Completion status and number of populated points.
 
+  /**
+   * @brief Borrow only completed reference points.
+   *
+   * @pre result.status is Success and required_point_count does not exceed Capacity.
+   *
+   * @return Read-only points and weights valid while this object remains alive.
+   */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE ReferenceQuadratureView<const Value, ParentDimension> getView() const&
   {
     assert( result.status == QuadratureStatus::Success );
@@ -67,23 +108,44 @@ struct ReferenceQuadratureData {
              ArrayViewT<const Value>{ reference_weights.data(), result.required_point_count } };
   }
 
+  /**
+   * @brief Prevent borrowing reference points from a temporary owner.
+   */
   ReferenceQuadratureView<const Value, ParentDimension> getView() const&& = delete;
 };
 
 /**
- * @brief Borrows quadrature on one source surface, before projection onto any target surface
+ * @brief Borrow source-surface parent coordinates, physical coordinates, and physical weights.
  *
- * Parent and physical coordinates are [point][component]. Physical weights include only the source surface measure.
- * All arrays belong to the caller. A projection must keep these weights rather than apply a target Jacobian.
+ * Coordinate arrays are indexed by point, then component. Weights include only the source surface measure; target
+ * projection must not apply another Jacobian.
+ *
+ * @tparam Value Coordinate and weight scalar type.
+ * @tparam ParentDimension Number of parent-coordinate components per point.
+ * @tparam SpatialDimension Number of physical-coordinate components per point.
  */
 template <typename Value, int ParentDimension, int SpatialDimension>
 struct SurfaceQuadratureView {
-  ArrayViewT<Value, 2> parent_coordinates;
-  ArrayViewT<Value, 2> physical_coordinates;
-  ArrayViewT<Value> physical_weights;
+  ArrayViewT<Value, 2> parent_coordinates;    ///< Borrowed source parent coordinates [point][component].
+  ArrayViewT<Value, 2> physical_coordinates;  ///< Borrowed physical source points [point][component].
+  ArrayViewT<Value> physical_weights;         ///< Borrowed weights including the complete source measure.
 
+  /**
+   * @brief Return the number of source points that fit in the borrowed arrays.
+   *
+   * @return Length of physical_weights.
+   */
   TRIBOL_HOST_DEVICE IndexT capacity() const { return physical_weights.size(); }
 
+  /**
+   * @brief Borrow matching source-point and weight arrays.
+   *
+   * All arrays must have the same point count and remain alive while the view is used.
+   *
+   * @param parent Parent coordinates [point][ParentDimension].
+   * @param physical Physical points [point][SpatialDimension].
+   * @param weights Physical source weights, one per point.
+   */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE SurfaceQuadratureView( ArrayViewT<Value, 2> parent,
                                                                  ArrayViewT<Value, 2> physical,
                                                                  ArrayViewT<Value> weights )
@@ -94,14 +156,30 @@ struct SurfaceQuadratureView {
   }
 };
 
-/** @brief Owns fixed-capacity source quadrature; views remain valid only while this object's arrays remain alive */
+/**
+ * @brief Own fixed-capacity source quadrature for allocation-free element calculations.
+ *
+ * Copies own their values. Views borrow this object's arrays and must not outlive it.
+ *
+ * @tparam Value Coordinate and weight scalar type.
+ * @tparam ParentDimension Number of parent-coordinate components per point.
+ * @tparam SpatialDimension Number of physical-coordinate components per point.
+ * @tparam Capacity Number of points available in the fixed-size backing arrays.
+ */
 template <typename Value, int ParentDimension, int SpatialDimension, IndexT Capacity>
 struct SurfaceQuadratureData {
-  MdArray<Value, Capacity, ParentDimension> parent_coordinates{};
-  MdArray<Value, Capacity, SpatialDimension> physical_coordinates{};
-  MdArray<Value, Capacity> physical_weights{};
-  QuadratureResult result{};
+  MdArray<Value, Capacity, ParentDimension>
+      parent_coordinates{};  ///< Owned source parent coordinates [point][component].
+  MdArray<Value, Capacity, SpatialDimension>
+      physical_coordinates{};                   ///< Owned physical source points [point][component].
+  MdArray<Value, Capacity> physical_weights{};  ///< Owned weights including the complete source measure.
+  QuadratureResult result{};                    ///< Completion status and number of populated points.
 
+  /**
+   * @brief Borrow all available source storage for generation.
+   *
+   * @return Writable arrays with Capacity entries, valid while this object remains alive.
+   */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE SurfaceQuadratureView<Value, ParentDimension, SpatialDimension>
   getOutputView() &
   {
@@ -112,6 +190,13 @@ struct SurfaceQuadratureData {
              ArrayViewT<Value>{ physical_weights.data(), Capacity } };
   }
 
+  /**
+   * @brief Borrow only completed source points.
+   *
+   * @pre result.status is Success and required_point_count does not exceed Capacity.
+   *
+   * @return Read-only arrays sized to required_point_count, valid while this object remains alive.
+   */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE SurfaceQuadratureView<const Value, ParentDimension, SpatialDimension>
   getView() const&
   {
@@ -125,7 +210,13 @@ struct SurfaceQuadratureData {
              ArrayViewT<const Value>{ physical_weights.data(), count } };
   }
 
+  /**
+   * @brief Prevent borrowing writable storage from a temporary owner.
+   */
   SurfaceQuadratureView<Value, ParentDimension, SpatialDimension> getOutputView() && = delete;
+  /**
+   * @brief Prevent borrowing source points from a temporary owner.
+   */
   SurfaceQuadratureView<const Value, ParentDimension, SpatialDimension> getView() const&& = delete;
 };
 
