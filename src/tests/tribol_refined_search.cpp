@@ -5,10 +5,12 @@
 
 /**
  * @file
- * @brief Test how ProjectedEdgeSearch filters candidate pairs and returns the accepted pairs.
+ * @brief Test ProjectedEdgeSearch candidate-pair filtering.
  *
- * These tests check that filtering keeps only accepted pairs, leaves the input unchanged, and returns a separate array.
- * They also check shared-node rejection, deferred overlap calculation, updated coordinates, and empty results.
+ * These tests check that filtering removes exact self-pairs, optionally removes shared-node pairs, and rejects edges
+ * without nondegenerate opposing normals. After filtering, the tests verify that the input candidates remain unchanged
+ * and retained pairs are returned in a separate array. They also cover deferred overlap calculation, updated
+ * coordinates, and empty results.
  * Individual geometry checks are tested in tribol_interface_pair_checks.cpp.
  * Tests run with sequential execution and each enabled OpenMP, CUDA, or HIP backend. GPU cases use device arrays,
  * and assertions read copies on the host. Results may list accepted pairs in any order.
