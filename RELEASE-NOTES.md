@@ -11,6 +11,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Added `ProjectedEdgeSearch` to reject self-pairs, optionally reject shared-node pairs, and require opposing edge
   normals. Projected overlap is determined during quadrature generation rather than refined search; zero-width
   integration intervals produce no active penalty quadrature points.
+- Added allocation-free edge quadrature generation within Energy Mortar pair calculations. `setQuadratureOrder()`
+  selects orders 0-5, using one, two, or three Gauss-Legendre points; the default order 5 retains three points.
 - Added the `ENERGY_MORTAR` contact method for MFEM coupling schemes built with Enzyme and Redecomp. The method supports
   nodal and quadrature-point enforcement and provides differentiated residual and Jacobian contributions.
 - Added the `VISCOUS_TANGENTIAL` contact model and APIs for setting mesh-specific viscous damping coefficients through
@@ -58,6 +60,16 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Energy Mortar generates and consumes quadrature locally for each pair during gap and force calculations. Independent
+  quadrature output is deferred, and the unused `ContactFormulation::updateIntegrationRule()` operation is removed.
+- `EnergyMortarAdapter` owns its configured `QuadratureRule`, and its calculator borrows that generator. The rule owns
+  projection and smoothing settings; refined search leaves overlap determination to quadrature generation.
+  `ContactParams` no longer carries a runtime quadrature count or smoothing length. Varying and frozen quadrature
+  derivative modes are preserved. Contact assembly remains host-only; the allocation-free generators are device-callable.
+- Energy Mortar calculates straight-edge normal gaps directly from the target line. Very short nondegenerate target
+  edges retain their normal gap instead of depending on a line-intersection tolerance. The calculator's unused
+  `compute_projection_bounds()` helper was removed. Surface-region representations beyond edge intervals remain future
+  work.
 - `tribol::registerMesh()` now requires a `tribol::FaceOrderType` argument after `element_type`. Existing callers must
   pass `tribol::LINEAR_LAGRANGE` to retain the previous linear-face behavior.
 - Tribol now requires C++20 or newer.

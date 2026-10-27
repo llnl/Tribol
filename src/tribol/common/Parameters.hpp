@@ -507,7 +507,8 @@ struct Parameters {
 
   EnforcementLocation enforcement_location =
       EnforcementLocation::QuadraturePoint;  ///! Defaults to quadrature-point enforcement
-  RealT residual_gap = 0.0;                  ///! Nonnegative gap constraint; positive values enforce separation
+  int quadrature_order = 5;  ///! Requested reference polynomial degree; ENERGY_MORTAR defaults to three points
+  RealT residual_gap = 0.0;  ///! Nonnegative gap constraint; positive values enforce separation
 };
 
 }  // namespace tribol
