@@ -54,6 +54,30 @@ TEST( EnergyMortarCoordinates, preserves_edge_fraction_smoothing_on_normalized_i
   EXPECT_NEAR( smooth_bounds[1], 1.0, coordinate_tolerance );
 }
 
+/** @brief Pairs with disjoint projected intervals must contribute no measure or active quadrature points. */
+TEST( EnergyMortarCoordinates, disjoint_projected_intervals_have_zero_contribution )
+{
+  const RealT x1[] = { 0.0, 1.0 }, y1[] = { 0.0, 0.0 };
+  const RealT x2[] = { 3.0, 2.0 }, y2[] = { 0.1, 0.1 };
+  const IndexT connectivity[] = { 0, 1 };
+  MeshData mesh1( 0, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
+  const ContactParams params{ 0.1, 1.0, 3, true, 0.0 };
+  const EnergyMortarCalculator evaluator( params );
+  NodalContactData nodal{};
+  evaluator.compute_gtilde_and_area( { 0, 0 }, mesh1.getView(), mesh2.getView(), nodal.g_tilde.data(),
+                                     nodal.AI.data() );
+  for ( int node = 0; node < LinearEdgeBasis::node_count; ++node ) {
+    EXPECT_EQ( nodal.g_tilde[node], 0.0 );
+    EXPECT_EQ( nodal.AI[node], 0.0 );
+  }
+  const auto penalty = evaluator.compute_quadrature_point_penalty_data( { 0, 0 }, mesh1.getView(), mesh2.getView() );
+  EXPECT_FALSE( penalty.has_active_qp );
+  EXPECT_EQ( penalty.energy, 0.0 );
+  for ( const double force : penalty.force ) EXPECT_EQ( force, 0.0 );
+  for ( const double stiffness : penalty.stiffness ) EXPECT_EQ( stiffness, 0.0 );
+}
+
 // static ContactSmoothing smoother( ContactParams{} );
 
 inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], double P1[2] )
