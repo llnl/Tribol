@@ -501,27 +501,19 @@ struct VariableSurfaceRule {
 };
 
 // Use known target coordinates to check batch packing separately from geometry and projection algorithms.
-QuadratureResult generateSurfacePair( const VariableSurfaceRule& rule, IndexT regions,
-                                      PairQuadratureView<RealT, 2> output )
+TRIBOL_HOST_DEVICE QuadratureResult generateSurfacePair( const VariableSurfaceRule& rule, IndexT regions,
+                                                         PairQuadratureView<RealT, 2> output )
 {
-  const IndexT capacity = output.capacity();
-  const int allocator = getResourceAllocatorID( MemorySpace::Host );
-  ArrayT<RealT, 2> parent( axom::StackArray<axom::IndexType, 2>{ capacity, VariableSurfaceRule::parent_dimension },
-                           allocator );
-  ArrayT<RealT, 2> physical( axom::StackArray<axom::IndexType, 2>{ capacity, VariableSurfaceRule::spatial_dimension },
-                             allocator );
-  ArrayT<RealT> weights( capacity, capacity, allocator );
-  const SurfaceQuadratureView<RealT, 2, 3> source{ parent.view(), physical.view(), weights.view() };
-  const auto result = rule.generate( regions, source );
-  if ( result.status != Status::Success ) return result;
-  for ( IndexT q = 0; q < result.required_point_count; ++q ) {
+  const IndexT count = regions * VariableSurfaceRule::points_per_base_rule;
+  for ( IndexT q = 0; q < count && q < output.capacity(); ++q ) {
     for ( int d = 0; d < VariableSurfaceRule::parent_dimension; ++d ) {
-      output.mesh1_parent_coordinates( q, d ) = parent( q, d );
-      output.mesh2_parent_coordinates( q, d ) = -parent( q, d );
+      const RealT coordinate = d == 0 ? static_cast<RealT>( q ) : static_cast<RealT>( regions );
+      output.mesh1_parent_coordinates( q, d ) = coordinate;
+      output.mesh2_parent_coordinates( q, d ) = -coordinate;
     }
-    output.physical_weights[q] = weights[q];
+    output.physical_weights[q] = 1.0;
   }
-  return result;
+  return { count > rule.pointCapacity() ? Status::InsufficientCapacity : Status::Success, count };
 }
 
 // Runtime-sized surface output must report the full required count after reaching capacity on every enabled backend.
@@ -552,73 +544,109 @@ TEST_P( PairQuadratureTest, supports_variable_surface_point_counts )
 
 INSTANTIATE_TEST_SUITE_P( execution, PairQuadratureTest, detail::enabledExecutionModes() );
 
-// Mixed region counts check unused capacity, omitted zero-point pairs, ordering, and exactly one call per pair.
-TEST( QuadratureBatch, packs_variable_point_counts_without_regenerating_pairs )
-{
-  InterfaceQuadratureData retained;
-  {
-    const int allocator = getResourceAllocatorID( MemorySpace::Host );
-    const ArrayT<InterfacePair> pairs( { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } }, allocator );
-    const VariableSurfaceRule quadrature_rule{ { 3 } };
-    const std::vector<IndexT> regions{ 0, 1, 3, 2 };
-    std::vector<int> calls( regions.size(), 0 );
-    const auto generate = [&]( IndexT pair, PairQuadratureView<RealT, 2> output ) {
-      ++calls[pair];
-      return generateSurfacePair( quadrature_rule, regions[pair], output );
-    };
-    retained = detail::generateQuadrature( quadrature_rule, pairs.view(), allocator, generate );
-    EXPECT_EQ( calls, ( std::vector<int>{ 1, 1, 1, 1 } ) );
-    const auto actual = retained.getView<2>();
-    ASSERT_EQ( actual.numberOfPairs(), 3 );
-    IndexT expected_points = 0;
-    for ( const IndexT count : regions ) expected_points += count * VariableSurfaceRule::points_per_base_rule;
-    EXPECT_EQ( actual.numberOfQuadraturePoints(), expected_points );
-    for ( IndexT p = 0; p < actual.numberOfPairs(); ++p ) {
-      const IndexT region_count = regions[p + 1];
-      EXPECT_EQ( actual.getInterfacePair( p ).element_id1_, pairs[p + 1].element_id1_ );
-      EXPECT_EQ( actual.getInterfacePair( p ).element_id2_, pairs[p + 1].element_id2_ );
-      ASSERT_EQ( actual.numberOfQuadraturePoints( p ), region_count * VariableSurfaceRule::points_per_base_rule );
-      for ( IndexT q = 0; q < actual.numberOfQuadraturePoints( p ); ++q ) {
-        const auto point = actual.getQuadraturePoint( p, q );
-        EXPECT_EQ( point.getWeight(), 1.0 );
-        EXPECT_EQ( point.getMesh1ParentCoordinates()[0], static_cast<RealT>( q ) );
-        EXPECT_EQ( point.getMesh1ParentCoordinates()[1], static_cast<RealT>( region_count ) );
-        EXPECT_EQ( point.getMesh2ParentCoordinates()[0], -static_cast<RealT>( q ) );
-        EXPECT_EQ( point.getMesh2ParentCoordinates()[1], -static_cast<RealT>( region_count ) );
-      }
-    }
-    const auto offsets = retained.getPairOffsets();
-    EXPECT_EQ( offsets[0], 0 );
-    for ( IndexT p = 0; p < actual.numberOfPairs(); ++p ) {
-      EXPECT_EQ( offsets[p + 1] - offsets[p], regions[p + 1] * VariableSurfaceRule::points_per_base_rule );
-    }
-  }
-  EXPECT_EQ( retained.getView<2>().getQuadraturePoint( 2, 0 ).getWeight(), 1.0 );
-}
+class QuadratureBatchExecutionTest : public detail::ExecutionTest {};
 
-// Insufficient capacity must stop generation and report the affected pair and sizes without a second attempt.
-TEST( QuadratureBatch, reports_insufficient_capacity_without_regenerating_pairs )
+InterfaceQuadratureData copyQuadratureToHost( InterfaceQuadratureData& source )
 {
   const int allocator = getResourceAllocatorID( MemorySpace::Host );
-  const ArrayT<InterfacePair> pairs( { { 0, 0 }, { 1, 0 } }, allocator );
+  ArrayT<InterfacePair> pairs( source.getInterfacePairs(), allocator );
+  ArrayT<IndexT> offsets( source.getPairOffsets(), allocator );
+  ArrayT<RealT, 2> mesh1( source.getMesh1ParentCoordinates(), allocator );
+  ArrayT<RealT, 2> mesh2( source.getMesh2ParentCoordinates(), allocator );
+  ArrayT<RealT> weights( source.getWeights(), allocator );
+  return { source.getParentDimension(), std::move( pairs ), std::move( offsets ),
+           std::move( mesh1 ),          std::move( mesh2 ), std::move( weights ) };
+}
+
+// Mixed region counts check unused capacity, omitted zero-point pairs, ordering, and exactly one call per pair.
+TEST_P( QuadratureBatchExecutionTest, packs_variable_point_counts_without_regenerating_pairs )
+{
+  const auto pairs = copyToExecutionSpace<InterfacePair>( { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } } );
+  const auto regions = copyToExecutionSpace<IndexT>( { 0, 1, 3, 2 } );
+  ArrayT<IndexT> calls( pairs.size(), pairs.size(), allocatorId() );
+  calls.fill( 0 );
+  const VariableSurfaceRule quadrature_rule{ { 3 } };
+  const auto region_values = regions.view();
+  auto call_values = calls.view();
+  auto retained =
+      detail::generateQuadrature( GetParam(), quadrature_rule, pairs.view(), allocatorId(),
+                                  [=] TRIBOL_HOST_DEVICE( IndexT pair, PairQuadratureView<RealT, 2> output ) {
+                                    ++call_values[pair];
+                                    return generateSurfacePair( quadrature_rule, region_values[pair], output );
+                                  } );
+  EXPECT_EQ( retained.getAllocatorId(), allocatorId() );
+  const ArrayT<IndexT, 1, MemorySpace::Host> host_calls( calls );
+  for ( IndexT pair = 0; pair < host_calls.size(); ++pair ) EXPECT_EQ( host_calls[pair], 1 );
+
+  const auto device_view = retained.getView<2>();
+  ArrayT<RealT> pair_measures( device_view.numberOfPairs(), device_view.numberOfPairs(), allocatorId() );
+  auto measures = pair_measures.view();
+  forAllExec( GetParam(), device_view.numberOfPairs(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
+    RealT measure = 0.0;
+    for ( IndexT point = 0; point < device_view.numberOfQuadraturePoints( pair ); ++point ) {
+      measure += device_view.getQuadraturePoint( pair, point ).getWeight();
+    }
+    measures[pair] = measure;
+  } );
+  const ArrayT<RealT, 1, MemorySpace::Host> host_measures( pair_measures );
+  EXPECT_EQ( host_measures[0], 2.0 );
+  EXPECT_EQ( host_measures[1], 6.0 );
+  EXPECT_EQ( host_measures[2], 4.0 );
+
+  auto host = copyQuadratureToHost( retained );
+  const auto actual = host.getView<2>();
+  ASSERT_EQ( actual.numberOfPairs(), 3 );
+  EXPECT_EQ( actual.numberOfQuadraturePoints(), 12 );
+  const InterfacePair expected_pairs[] = { { 0, 1 }, { 1, 0 }, { 1, 1 } };
+  const IndexT expected_regions[] = { 1, 3, 2 };
+  for ( IndexT pair = 0; pair < actual.numberOfPairs(); ++pair ) {
+    const IndexT region_count = expected_regions[pair];
+    EXPECT_EQ( actual.getInterfacePair( pair ).element_id1_, expected_pairs[pair].element_id1_ );
+    EXPECT_EQ( actual.getInterfacePair( pair ).element_id2_, expected_pairs[pair].element_id2_ );
+    ASSERT_EQ( actual.numberOfQuadraturePoints( pair ), region_count * VariableSurfaceRule::points_per_base_rule );
+    for ( IndexT point = 0; point < actual.numberOfQuadraturePoints( pair ); ++point ) {
+      const auto quadrature_point = actual.getQuadraturePoint( pair, point );
+      EXPECT_EQ( quadrature_point.getWeight(), 1.0 );
+      EXPECT_EQ( quadrature_point.getMesh1ParentCoordinates()[0], static_cast<RealT>( point ) );
+      EXPECT_EQ( quadrature_point.getMesh1ParentCoordinates()[1], static_cast<RealT>( region_count ) );
+      EXPECT_EQ( quadrature_point.getMesh2ParentCoordinates()[0], -static_cast<RealT>( point ) );
+      EXPECT_EQ( quadrature_point.getMesh2ParentCoordinates()[1], -static_cast<RealT>( region_count ) );
+    }
+  }
+  const auto offsets = host.getPairOffsets();
+  EXPECT_EQ( offsets[0], 0 );
+  EXPECT_EQ( offsets[1], 2 );
+  EXPECT_EQ( offsets[2], 8 );
+  EXPECT_EQ( offsets[3], 12 );
+}
+
+// Insufficient capacity reports the first affected pair after each submitted pair runs exactly once.
+TEST_P( QuadratureBatchExecutionTest, reports_insufficient_capacity_without_regenerating_pairs )
+{
+  const auto pairs = copyToExecutionSpace<InterfacePair>( { { 0, 0 }, { 1, 0 } } );
+  const auto regions = copyToExecutionSpace<IndexT>( { 1, 3 } );
+  ArrayT<IndexT> calls( pairs.size(), pairs.size(), allocatorId() );
+  calls.fill( 0 );
   const VariableSurfaceRule quadrature_rule{};
-  const std::vector<IndexT> regions{ 1, 3 };
-  std::vector<int> calls( regions.size(), 0 );
-  const auto generate = [&]( IndexT pair, PairQuadratureView<RealT, 2> output ) {
-    ++calls[pair];
-    return generateSurfacePair( quadrature_rule, regions[pair], output );
+  const auto region_values = regions.view();
+  auto call_values = calls.view();
+  const auto generate = [=] TRIBOL_HOST_DEVICE( IndexT pair, PairQuadratureView<RealT, 2> output ) {
+    ++call_values[pair];
+    return generateSurfacePair( quadrature_rule, region_values[pair], output );
   };
   try {
-    detail::generateQuadrature( quadrature_rule, pairs.view(), allocator, generate );
+    detail::generateQuadrature( GetParam(), quadrature_rule, pairs.view(), allocatorId(), generate );
     FAIL() << "Insufficient point capacity must report an error.";
   } catch ( const std::length_error& error ) {
     const std::string message = error.what();
     EXPECT_NE( message.find( "pair 1 (elements 1, 0)" ), std::string::npos );
-    const IndexT required_points = regions.back() * VariableSurfaceRule::points_per_base_rule;
+    const IndexT required_points = 3 * VariableSurfaceRule::points_per_base_rule;
     EXPECT_NE( message.find( "requires " + std::to_string( required_points ) + " points" ), std::string::npos );
     EXPECT_NE( message.find( "capacity " + std::to_string( quadrature_rule.pointCapacity() ) ), std::string::npos );
   }
-  EXPECT_EQ( calls, ( std::vector<int>{ 1, 1 } ) );
+  const ArrayT<IndexT, 1, MemorySpace::Host> host_calls( calls );
+  EXPECT_EQ( host_calls[0], 1 );
+  EXPECT_EQ( host_calls[1], 1 );
 }
 
 // Batch generation must use the configured interval selector and updated coordinates without changing earlier data.
@@ -635,10 +663,18 @@ TEST( QuadratureBatch, uses_configuration_and_current_coordinates )
   MeshData mesh1( 0, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
   MeshData mesh2( 1, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
   const ArrayT<InterfacePair> pairs( { { 0, 0 } }, getResourceAllocatorID( MemorySpace::Host ) );
-  auto first = generatePairQuadrature( quadrature_rule, pairs, mesh1.getView(), mesh2.getView(), select_interval );
+#ifdef TRIBOL_USE_UMPIRE
+  const ArrayT<InterfacePair> mismatched_pairs( { { 0, 0 } }, axom::MALLOC_ALLOCATOR_ID );
+  EXPECT_THROW( generatePairQuadrature( ExecutionMode::Sequential, quadrature_rule, mismatched_pairs, mesh1.getView(),
+                                        mesh2.getView(), select_interval ),
+                std::invalid_argument );
+#endif
+  auto first = generatePairQuadrature<ExecutionMode::Sequential>( quadrature_rule, pairs, mesh1.getView(),
+                                                                  mesh2.getView(), select_interval );
   x1[1] *= 2.0;
   x2[0] *= 2.0;
-  auto second = generatePairQuadrature( quadrature_rule, pairs, mesh1.getView(), mesh2.getView(), select_interval );
+  auto second = generatePairQuadrature<ExecutionMode::Sequential>( quadrature_rule, pairs, mesh1.getView(),
+                                                                   mesh2.getView(), select_interval );
   const auto measure = []( const InterfaceQuadratureData& data ) {
     const auto view = data.getView<1>();
     double result = 0.0;
@@ -651,32 +687,82 @@ TEST( QuadratureBatch, uses_configuration_and_current_coordinates )
   EXPECT_NEAR( measure( second ), 2.0 * expected_length, tolerance );
 }
 
-// Empty input calls no generator; invalid calculations, inconsistent counts, and unrepresentable sizes report errors.
-TEST( QuadratureBatch, handles_empty_input_and_rejects_failed_generation )
+// Empty input calls no generator; invalid calculations and inconsistent counts report host exceptions.
+TEST_P( QuadratureBatchExecutionTest, handles_empty_input_and_rejects_failed_generation )
 {
   const VariableSurfaceRule quadrature_rule{};
-  const int allocator = getResourceAllocatorID( MemorySpace::Host );
-  const ArrayT<InterfacePair> empty( 0, 0, allocator );
-  int calls = 0;
-  auto rule = detail::generateQuadrature( quadrature_rule, empty.view(), allocator,
-                                          [&]( IndexT, PairQuadratureView<RealT, 2> ) {
-                                            ++calls;
+  const ArrayT<InterfacePair> empty( 0, 0, allocatorId() );
+  ArrayT<IndexT> calls( 1, 1, allocatorId() );
+  calls.fill( 0 );
+  auto call_values = calls.view();
+  auto rule = detail::generateQuadrature( GetParam(), quadrature_rule, empty.view(), allocatorId(),
+                                          [=] TRIBOL_HOST_DEVICE( IndexT, PairQuadratureView<RealT, 2> ) {
+                                            ++call_values[0];
                                             return QuadratureResult{};
                                           } );
-  EXPECT_EQ( calls, 0 );
+  const ArrayT<IndexT, 1, MemorySpace::Host> host_calls( calls );
+  EXPECT_EQ( host_calls[0], 0 );
+  EXPECT_EQ( rule.getAllocatorId(), allocatorId() );
   EXPECT_EQ( rule.getView().numberOfPairs(), 0 );
-  EXPECT_EQ( rule.getPairOffsets()[0], 0 );
-  const ArrayT<InterfacePair> pairs( { { 0, 0 } }, allocator );
-  const auto invalid = []( IndexT, PairQuadratureView<RealT, 2> ) {
+  const ArrayT<IndexT, 1, MemorySpace::Host> empty_offsets( rule.getPairOffsets() );
+  EXPECT_EQ( empty_offsets[0], 0 );
+  const auto pairs = copyToExecutionSpace<InterfacePair>( { { 0, 0 } } );
+  const auto invalid = [] TRIBOL_HOST_DEVICE( IndexT, PairQuadratureView<RealT, 2> ) {
     return QuadratureResult{ Status::InvalidGeometry, 0 };
   };
-  EXPECT_THROW( detail::generateQuadrature( quadrature_rule, pairs.view(), allocator, invalid ),
+  EXPECT_THROW( detail::generateQuadrature( GetParam(), quadrature_rule, pairs.view(), allocatorId(), invalid ),
                 std::invalid_argument );
-  const auto inconsistent = []( IndexT, PairQuadratureView<RealT, 2> output ) {
+  const auto inconsistent = [] TRIBOL_HOST_DEVICE( IndexT, PairQuadratureView<RealT, 2> output ) {
     return QuadratureResult{ Status::Success, output.capacity() + 1 };
   };
-  EXPECT_THROW( detail::generateQuadrature( quadrature_rule, pairs.view(), allocator, inconsistent ),
+  EXPECT_THROW( detail::generateQuadrature( GetParam(), quadrature_rule, pairs.view(), allocatorId(), inconsistent ),
                 std::runtime_error );
+}
+
+// Generate concrete edge quadrature from device-resident mesh data, then consume its typed view on the device.
+TEST_P( QuadratureBatchExecutionTest, generates_projected_edge_quadrature_in_execution_space )
+{
+  using QuadratureRule = EdgeQuadratureRule<3>;
+  constexpr RealT edge_length = 4.0;
+  constexpr RealT smoothing_fraction = 0.2;
+  const auto connectivity = copyToExecutionSpace<IndexT>( { 0, 1 } );
+  const auto x1 = copyToExecutionSpace<RealT>( { 0.0, edge_length } );
+  const auto y1 = copyToExecutionSpace<RealT>( { 0.0, 0.0 } );
+  const auto x2 = copyToExecutionSpace<RealT>( { edge_length, 0.0 } );
+  const auto y2 = copyToExecutionSpace<RealT>( { 0.2, 0.2 } );
+  MeshData mesh1( 0, 1, 2, connectivity.data(), EDGE, LINEAR_LAGRANGE, x1.data(), y1.data(), nullptr, memorySpace() );
+  MeshData mesh2( 1, 1, 2, connectivity.data(), EDGE, LINEAR_LAGRANGE, x2.data(), y2.data(), nullptr, memorySpace() );
+  const auto pairs = copyToExecutionSpace<InterfacePair>( { { 0, 0 } } );
+  EXPECT_TRUE( executionModeUsesAllocator( GetParam(), allocatorId() ) );
+#ifdef TRIBOL_USE_UMPIRE
+  if ( isOnDevice( GetParam() ) ) {
+    EXPECT_FALSE( executionModeUsesAllocator( GetParam(), getResourceAllocatorID( MemorySpace::Host ) ) );
+  }
+#endif
+  auto rule = generatePairQuadrature( GetParam(), QuadratureRule{}, pairs, mesh1.getView(), mesh2.getView(),
+                                      SmoothProjectedEdgeInterval{ smoothing_fraction } );
+  EXPECT_EQ( rule.getAllocatorId(), allocatorId() );
+  const auto view = rule.getView<1>();
+  ArrayT<RealT> measure_data( 1, 1, allocatorId() );
+  auto measure = measure_data.view();
+  forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
+    RealT value = 0.0;
+    for ( IndexT point = 0; point < view.numberOfQuadraturePoints( 0 ); ++point ) {
+      value += view.getQuadraturePoint( 0, point ).getWeight();
+    }
+    measure[0] = value;
+  } );
+  const ArrayT<RealT, 1, MemorySpace::Host> host_measure( measure_data );
+  EXPECT_NEAR( host_measure[0], edge_length * ( 1.0 - smoothing_fraction / 2.0 ), tolerance );
+  auto host = copyQuadratureToHost( rule );
+  EXPECT_EQ( host.getView().numberOfPairs(), 1 );
+  EXPECT_EQ( host.getView().numberOfQuadraturePoints( 0 ), QuadratureRule::points_per_base_rule );
+}
+
+INSTANTIATE_TEST_SUITE_P( execution, QuadratureBatchExecutionTest, detail::enabledExecutionModes() );
+
+TEST( QuadratureBatch, rejects_unrepresentable_sizes )
+{
   EXPECT_THROW( detail::checkedQuadratureProduct( std::numeric_limits<IndexT>::max(), 2 ), std::length_error );
   EXPECT_THROW( detail::checkedQuadratureSum( std::numeric_limits<IndexT>::max(), 1 ), std::length_error );
 }

@@ -71,7 +71,7 @@ InterfaceQuadratureData EnergyMortarAdapter<EnforcementLocation, QuadratureRule>
 #endif
   const auto candidates = coarse_search_->findCandidatePairs( mesh1, mesh2 );
   const auto pairs = refined_search_->filterCandidatePairs( candidates, mesh1, mesh2 );
-  return generatePairQuadrature( quadrature_rule_, pairs, mesh1, mesh2, select_interval_ );
+  return generatePairQuadrature<ExecutionMode::Sequential>( quadrature_rule_, pairs, mesh1, mesh2, select_interval_ );
 }
 
 template <template <typename> class EnforcementLocation, typename QuadratureRule>

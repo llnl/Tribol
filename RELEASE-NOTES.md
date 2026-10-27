@@ -70,7 +70,9 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - `EdgeQuadratureRule<NumPoints>` places Gauss points on a supplied source-edge interval without requiring an FE
   basis or a contact method. `SmoothProjectedEdgeInterval` finds and smooths projected overlap bounds independently.
   Projection onto target edges preserves the source weights. Pair generation shares bounded allocation and packing
-  through `generatePairQuadrature()`. Surface-region representations beyond edge intervals remain future work.
+  through `generatePairQuadrature()`. The low-level pair generator accepts compile-time or runtime execution modes and
+  supports allocator-matched host, CUDA, and HIP data. Contact-formulation generation and ENERGY_MORTAR assembly
+  remain host-only. Surface-region representations beyond edge intervals remain future work.
 - `tribol::registerMesh()` now requires a `tribol::FaceOrderType` argument after `element_type`. Existing callers must
   pass `tribol::LINEAR_LAGRANGE` to retain the previous linear-face behavior.
 - Tribol now requires C++20 or newer.

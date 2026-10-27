@@ -7,13 +7,16 @@
 #define SRC_TRIBOL_COMMON_LOOPEXEC_HPP_
 
 // C++ includes
+#include <stdexcept>
 #include <type_traits>
+#include <utility>
 
 // Tribol includes
 #include "tribol/common/ExecModel.hpp"
 
 // Axom includes
 #include "axom/core/execution/execution_space.hpp"
+#include "axom/core/execution/scans.hpp"
 #include "axom/slic.hpp"
 
 // RAJA includes
@@ -168,6 +171,142 @@ struct toAxomExecSpace<ExecutionMode::Hip, BLOCK_SIZE> {
   using type = axom::HIP_EXEC<BLOCK_SIZE>;
 };
 #endif
+
+/**
+ * @brief Invoke a templated callable with the execution mode selected at run time
+ *
+ * The callable must provide operator()<ExecutionMode>() for every execution mode enabled in this build. This keeps the
+ * run-time choice at API boundaries while allowing the implementation behind each choice to use compile-time policies.
+ *
+ * @param exec_mode Execution mode passed to the callable as a template argument
+ * @param error_message Message for the invalid_argument thrown when exec_mode is not a concrete enabled mode
+ * @param function Callable containing the execution-mode-specific operation
+ */
+template <typename Function>
+decltype( auto ) dispatchExecutionMode( ExecutionMode exec_mode, const char* error_message, Function&& function )
+{
+  switch ( exec_mode ) {
+    case ExecutionMode::Sequential:
+      return std::forward<Function>( function ).template operator()<ExecutionMode::Sequential>();
+#ifdef TRIBOL_USE_OPENMP
+    case ExecutionMode::OpenMP:
+      return std::forward<Function>( function ).template operator()<ExecutionMode::OpenMP>();
+#endif
+#ifdef TRIBOL_USE_CUDA
+    case ExecutionMode::Cuda:
+      return std::forward<Function>( function ).template operator()<ExecutionMode::Cuda>();
+#endif
+#ifdef TRIBOL_USE_HIP
+    case ExecutionMode::Hip:
+      return std::forward<Function>( function ).template operator()<ExecutionMode::Hip>();
+#endif
+    default:
+      throw std::invalid_argument( error_message );
+  }
+}
+
+/** @brief Return whether an allocator is accessible from a compile-time execution mode */
+template <ExecutionMode EXEC, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE>
+bool executionModeUsesAllocator( int allocator_id )
+{
+  using AxomExecSpace = typename toAxomExecSpace<EXEC, BLOCK_SIZE>::type;
+  return axom::execution_space<AxomExecSpace>::usesAllocId( allocator_id );
+}
+
+/** @brief Return whether an allocator is accessible from a runtime execution mode */
+template <int BLOCK_SIZE = TRIBOL_BLOCK_SIZE>
+bool executionModeUsesAllocator( ExecutionMode exec_mode, int allocator_id )
+{
+  switch ( exec_mode ) {
+    case ExecutionMode::Sequential:
+      return executionModeUsesAllocator<ExecutionMode::Sequential, BLOCK_SIZE>( allocator_id );
+#ifdef TRIBOL_USE_OPENMP
+    case ExecutionMode::OpenMP:
+      return executionModeUsesAllocator<ExecutionMode::OpenMP, BLOCK_SIZE>( allocator_id );
+#endif
+#ifdef TRIBOL_USE_CUDA
+    case ExecutionMode::Cuda:
+      return executionModeUsesAllocator<ExecutionMode::Cuda, BLOCK_SIZE>( allocator_id );
+#endif
+#ifdef TRIBOL_USE_HIP
+    case ExecutionMode::Hip:
+      return executionModeUsesAllocator<ExecutionMode::Hip, BLOCK_SIZE>( allocator_id );
+#endif
+    default:
+      return false;
+  }
+}
+
+/**
+ * @brief Compute an exclusive sum scan with the execution mode known at compile time
+ *
+ * The input and output must have equal sizes and reside in memory accessible to the selected execution mode. CUDA and
+ * HIP scans complete before this function returns so callers may immediately use the offsets for allocation or packing.
+ *
+ * @tparam EXEC Execution mode for the scan
+ * @tparam BLOCK_SIZE Block size used by CUDA or HIP
+ * @tparam Input Container providing size(), data(), and element access
+ * @tparam Output Container providing size(), data(), and writable element access
+ * @param input Values to sum
+ * @param output Exclusive offsets
+ */
+template <ExecutionMode EXEC, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE, typename Input, typename Output>
+void exclusiveScanExec( const Input& input, Output&& output )
+{
+  using AxomExecSpace = typename toAxomExecSpace<EXEC, BLOCK_SIZE>::type;
+  axom::exclusive_scan<AxomExecSpace>( input, std::forward<Output>( output ) );
+}
+
+/**
+ * @brief Compute an exclusive sum scan with the execution mode selected at run time
+ *
+ * @tparam BLOCK_SIZE Block size used by CUDA or HIP
+ * @tparam Input Container providing size(), data(), and element access
+ * @tparam Output Container providing size(), data(), and writable element access
+ * @param exec_mode Execution mode for the scan
+ * @param input Values to sum
+ * @param output Exclusive offsets
+ */
+template <int BLOCK_SIZE = TRIBOL_BLOCK_SIZE, typename Input, typename Output>
+void exclusiveScanExec( ExecutionMode exec_mode, const Input& input, Output&& output )
+{
+  switch ( exec_mode ) {
+    case ExecutionMode::Sequential:
+      return exclusiveScanExec<ExecutionMode::Sequential, BLOCK_SIZE>( input, std::forward<Output>( output ) );
+#ifdef TRIBOL_USE_OPENMP
+    case ExecutionMode::OpenMP:
+      return exclusiveScanExec<ExecutionMode::OpenMP, BLOCK_SIZE>( input, std::forward<Output>( output ) );
+#endif
+#ifdef TRIBOL_USE_CUDA
+    case ExecutionMode::Cuda:
+      return exclusiveScanExec<ExecutionMode::Cuda, BLOCK_SIZE>( input, std::forward<Output>( output ) );
+#endif
+#ifdef TRIBOL_USE_HIP
+    case ExecutionMode::Hip:
+      return exclusiveScanExec<ExecutionMode::Hip, BLOCK_SIZE>( input, std::forward<Output>( output ) );
+#endif
+    default:
+      SLIC_ERROR_ROOT( "Unsupported execution mode in an exclusiveScanExec scan." );
+      return;
+  }
+}
+
+/** @brief Compute an exclusive sum scan in place with the execution mode known at compile time */
+template <ExecutionMode EXEC, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE, typename Container>
+void exclusiveScanInplaceExec( Container&& values )
+{
+  using AxomExecSpace = typename toAxomExecSpace<EXEC, BLOCK_SIZE>::type;
+  axom::exclusive_scan_inplace<AxomExecSpace>( std::forward<Container>( values ) );
+}
+
+/** @brief Compute an exclusive sum scan in place with the execution mode selected at run time */
+template <int BLOCK_SIZE = TRIBOL_BLOCK_SIZE, typename Container>
+void exclusiveScanInplaceExec( ExecutionMode exec_mode, Container&& values )
+{
+  dispatchExecutionMode(
+      exec_mode, "Unsupported execution mode in an exclusiveScanInplaceExec scan.",
+      [&]<ExecutionMode EXEC>() { exclusiveScanInplaceExec<EXEC, BLOCK_SIZE>( std::forward<Container>( values ) ); } );
+}
 
 /**
  * @brief Call a RAJA forall loop with the execution mode known at compile time

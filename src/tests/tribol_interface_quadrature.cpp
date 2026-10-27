@@ -165,6 +165,77 @@ TEST( InterfaceQuadratureData, integrates_quadratic_edge_basis_with_physical_wei
 
 class InterfaceQuadratureExecutionTest : public tribol::detail::ExecutionTest {};
 
+// Build scan offsets in the same execution space that will consume them during device packing.
+TEST_P( InterfaceQuadratureExecutionTest, scans_offsets_in_execution_space )
+{
+  const auto counts = copyToExecutionSpace<tribol::IndexT>( { 2, 0, 3, 1 } );
+  tribol::ArrayT<tribol::IndexT> offsets( counts.size(), counts.size(), allocatorId() );
+  tribol::exclusiveScanExec( GetParam(), counts.view(), offsets.view() );
+  const tribol::ArrayT<tribol::IndexT, 1, tribol::MemorySpace::Host> host_offsets( offsets );
+  EXPECT_EQ( host_offsets[0], 0 );
+  EXPECT_EQ( host_offsets[1], 2 );
+  EXPECT_EQ( host_offsets[2], 2 );
+  EXPECT_EQ( host_offsets[3], 5 );
+
+  auto inplace_offsets = copyToExecutionSpace<tribol::IndexT>( { 2, 0, 3, 1 } );
+  tribol::exclusiveScanInplaceExec( GetParam(), inplace_offsets.view() );
+  const tribol::ArrayT<tribol::IndexT, 1, tribol::MemorySpace::Host> host_inplace_offsets( inplace_offsets );
+  EXPECT_EQ( host_inplace_offsets[0], 0 );
+  EXPECT_EQ( host_inplace_offsets[1], 2 );
+  EXPECT_EQ( host_inplace_offsets[2], 2 );
+  EXPECT_EQ( host_inplace_offsets[3], 5 );
+}
+
+// Initialize owned storage in its execution space, move it, and consume the typed view in another kernel.
+TEST_P( InterfaceQuadratureExecutionTest, initializes_and_consumes_owned_storage_in_execution_space )
+{
+  constexpr tribol::IndexT pair_count = 2;
+  constexpr tribol::IndexT point_count = 3;
+  InterfaceQuadratureData rule( 1, pair_count, point_count, allocatorId() );
+  auto pairs = rule.getInterfacePairs();
+  auto offsets = rule.getPairOffsets();
+  auto mesh1 = rule.getMesh1ParentCoordinates();
+  auto mesh2 = rule.getMesh2ParentCoordinates();
+  auto weights = rule.getWeights();
+  tribol::forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( tribol::IndexT ) {
+    pairs[0] = { 4, 8 };
+    pairs[1] = { 5, 9 };
+    offsets[0] = 0;
+    offsets[1] = 2;
+    offsets[2] = point_count;
+  } );
+  tribol::forAllExec( GetParam(), point_count, [=] TRIBOL_HOST_DEVICE( tribol::IndexT point ) {
+    mesh1( point, 0 ) = static_cast<RealT>( point );
+    mesh2( point, 0 ) = -static_cast<RealT>( point );
+    weights[point] = static_cast<RealT>( point + 1 );
+  } );
+
+  const auto* storage = rule.getMesh1ParentCoordinates().data();
+  InterfaceQuadratureData moved( std::move( rule ) );
+  EXPECT_EQ( moved.getAllocatorId(), allocatorId() );
+  EXPECT_EQ( moved.getMesh1ParentCoordinates().data(), storage );
+  const auto view = moved.getView<1>();
+  tribol::ArrayT<RealT> values( point_count, point_count, allocatorId() );
+  auto output = values.view();
+  tribol::forAllExec( GetParam(), point_count, [=] TRIBOL_HOST_DEVICE( tribol::IndexT point ) {
+    const tribol::IndexT pair = point < 2 ? 0 : 1;
+    const tribol::IndexT local_point = point < 2 ? point : 0;
+    const auto quadrature_point = view.getQuadraturePoint( pair, local_point );
+    output[point] = quadrature_point.getMesh1ParentCoordinates()[0] - quadrature_point.getMesh2ParentCoordinates()[0] +
+                    quadrature_point.getWeight();
+  } );
+  const tribol::ArrayT<RealT, 1, tribol::MemorySpace::Host> host_values( values );
+  EXPECT_EQ( host_values[0], 1.0 );
+  EXPECT_EQ( host_values[1], 4.0 );
+  EXPECT_EQ( host_values[2], 7.0 );
+
+  InterfaceQuadratureData empty( 1, allocatorId() );
+  EXPECT_EQ( empty.getAllocatorId(), allocatorId() );
+  EXPECT_EQ( empty.getView().numberOfPairs(), 0 );
+  const tribol::ArrayT<tribol::IndexT, 1, tribol::MemorySpace::Host> empty_offsets( empty.getPairOffsets() );
+  EXPECT_EQ( empty_offsets[0], 0 );
+}
+
 // Evaluate the quadratic edge basis at its midpoint through a typed view and read the stored physical weight.
 TEST_P( InterfaceQuadratureExecutionTest, evaluates_basis_from_view )
 {
