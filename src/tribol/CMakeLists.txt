@@ -23,6 +23,7 @@ set(tribol_headers
     common/Parameters.hpp
 
     geom/CompGeom.hpp
+    geom/EdgeProjection.hpp
     geom/ElementNormal.hpp
     geom/GeomUtilities.hpp
     geom/Hyperplane.hpp
@@ -97,7 +98,6 @@ set(tribol_sources
      
     search/CoarseSearchFactory.cpp
     search/InterfacePairFinder.cpp
-    search/ProjectedEdgeSearch.cpp
 
     utils/ContactPlaneOutput.cpp
     utils/Math.cpp

@@ -25,7 +25,7 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
     // Default parameters for now, or extract from CouplingScheme if available
     double k = 1000.0;
-    double delta = 0.1;
+    const SmoothedEdgeProjection projection{};
     int N = 3;
     bool enzyme_quadrature = true;
 
@@ -54,15 +54,18 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     const auto binning_proximity_scale = cs->getEffectiveBinningProximityScale();
     auto coarse_search = createCoarseSearch( cs->spatialDimension(), binning_method, execution_mode,
                                              binning_proximity_scale, residual_gap );
-    auto refined_search = std::make_unique<ProjectedEdgeSearch>( execution_mode, delta, cs->getContactCase() == AUTO );
+    auto refined_search = std::make_unique<ProjectedEdgeSearch<SmoothedEdgeProjection>>( execution_mode, projection,
+                                                                                         cs->getContactCase() == AUTO );
     if ( enforcement_location == EnforcementLocation::QuadraturePoint ) {
       return std::make_unique<EnergyMortarAdapter<QuadraturePoint>>(
           *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( coarse_search ),
-          std::move( refined_search ), k, delta, N, enzyme_quadrature, use_penalty, residual_gap );
+          std::move( refined_search ), k, projection.smoothing_fraction, N, enzyme_quadrature, use_penalty,
+          residual_gap );
     } else {
       return std::make_unique<EnergyMortarAdapter<Nodal>>(
           *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( coarse_search ),
-          std::move( refined_search ), k, delta, N, enzyme_quadrature, use_penalty, residual_gap );
+          std::move( refined_search ), k, projection.smoothing_fraction, N, enzyme_quadrature, use_penalty,
+          residual_gap );
     }
 #else
     SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );

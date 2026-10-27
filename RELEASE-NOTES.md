@@ -8,6 +8,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added reusable edge projection geometry and `ProjectedEdgeSearch<Projection>`. Search owns its projection
+  configuration, which can also be supplied to integration methods.
 - Added the `ENERGY_MORTAR` contact method for MFEM coupling schemes built with Enzyme and Redecomp. The method supports
   nodal and quadrature-point enforcement and provides differentiated residual and Jacobian contributions.
 - Added the `VISCOUS_TANGENTIAL` contact model and APIs for setting mesh-specific viscous damping coefficients through
