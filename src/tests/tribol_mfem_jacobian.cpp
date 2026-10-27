@@ -1049,11 +1049,13 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
 
   // Register coupling scheme with PENALTY
   int cs_id = 100;
-  int mesh1_id = 100;
-  int mesh2_id = 101;
-  tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, nonmortar_attrs, mortar_attrs,
-                                      tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::ENERGY_MORTAR,
-                                      tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID );
+  int nonmortar_mesh_id = 100;
+  int mortar_mesh_id = 101;
+  // ContactFormulation-based EnergyMortar integrates on mesh 1 and projects onto mesh 2.
+  tribol::registerMfemCouplingScheme( cs_id, nonmortar_mesh_id, mortar_mesh_id, mesh, coords, nonmortar_attrs,
+                                      mortar_attrs, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                                      tribol::ENERGY_MORTAR, tribol::FRICTIONLESS, tribol::PENALTY,
+                                      tribol::BINNING_GRID );
   tribol::setEnforcementLocation( cs_id, tribol::EnforcementLocation::QuadraturePoint );
 
   constexpr tribol::RealT initial_penalty = 1.0;
