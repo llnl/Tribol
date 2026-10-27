@@ -62,11 +62,16 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ### Changed
 - Energy Mortar generates and consumes quadrature locally for each pair during gap and force calculations. Independent
   quadrature output is deferred, and the unused `ContactFormulation::updateIntegrationRule()` operation is removed.
-- `EnergyMortarAdapter` owns its configured `QuadratureRule`, and its calculator borrows that generator. The rule owns
-  projection and smoothing settings; refined search leaves overlap determination to quadrature generation.
-  `ContactParams` no longer carries a runtime quadrature count or smoothing length. Varying and frozen quadrature
-  derivative modes are preserved. Contact assembly remains host-only; the allocation-free generators are device-callable.
-- Energy Mortar calculates straight-edge normal gaps directly from the target line. Very short nondegenerate target
+- `PairQuadratureRule<Mapping, BaseQuadratureRule>` combines an element-pair integration mapping with a reference rule.
+  `SmoothedProjectedEdgeMapping` selects the integration interval and maps its points to both elements' parent
+  coordinates, applying the mesh1 physical Jacobian once. `EdgeQuadratureRule<NumPoints>` only places Gauss points and
+  reference weights on an interval. The calculator evaluates fields at the returned parent points on both elements.
+  Mapping types identify their element geometries; the implemented mapping supports straight two-dimensional edges.
+- `EnergyMortarAdapter` owns its configured pair rule, and its calculator borrows that generator. The mapping owns
+  smoothing settings; refined search leaves overlap determination to quadrature generation. `ContactParams` no longer
+  carries a runtime quadrature count or smoothing length. Frozen reference points are mapped to both current elements,
+  preserving the varying and frozen derivative modes. Assembly remains host-only; the generators are device-callable.
+- Energy Mortar calculates straight-edge normal gaps from the corresponding element points. Very short nondegenerate target
   edges retain their normal gap instead of depending on a line-intersection tolerance. The calculator's unused
   `compute_projection_bounds()` helper was removed. Surface-region representations beyond edge intervals remain future
   work.

@@ -10,6 +10,7 @@
 #include "tribol/search/CoarseSearchFactory.hpp"
 #include "tribol/search/ProjectedEdgeSearch.hpp"
 #include "tribol/integ/QuadratureRuleFactory.hpp"
+#include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 
 #include <utility>
 
@@ -81,8 +82,8 @@ std::unique_ptr<ContactFormulation> createEnergyMortarAdapter( CouplingScheme* c
 template <template <typename> class EnforcementLocation>
 std::unique_ptr<ContactFormulation> createEnergyMortarForLocation( CouplingScheme* cs )
 {
-  const SmoothedEdgeProjection projection{};
-  return createWithQuadratureRule( cs->getParameters().quadrature_order, projection,
+  const SmoothedProjectedEdgeMapping mapping{};
+  return createWithQuadratureRule( cs->getParameters().quadrature_order, mapping,
                                    [&]( auto quadrature_rule ) -> std::unique_ptr<ContactFormulation> {
                                      return createEnergyMortarAdapter<EnforcementLocation>(
                                          cs, std::move( quadrature_rule ) );

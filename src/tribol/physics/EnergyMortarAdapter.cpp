@@ -563,12 +563,15 @@ std::unique_ptr<mfem::HypreParMatrix> Nodal<Adapter>::getMfemDfDp() const
   return std::unique_ptr<mfem::HypreParMatrix>( df_dlambda.release() );
 }
 
-template class EnergyMortarAdapter<Nodal, EdgeQuadratureRule<1, SmoothedEdgeProjection>>;
-template class EnergyMortarAdapter<QuadraturePoint, EdgeQuadratureRule<1, SmoothedEdgeProjection>>;
-template class EnergyMortarAdapter<Nodal, EdgeQuadratureRule<2, SmoothedEdgeProjection>>;
-template class EnergyMortarAdapter<QuadraturePoint, EdgeQuadratureRule<2, SmoothedEdgeProjection>>;
-template class EnergyMortarAdapter<Nodal, EdgeQuadratureRule<3, SmoothedEdgeProjection>>;
-template class EnergyMortarAdapter<QuadraturePoint, EdgeQuadratureRule<3, SmoothedEdgeProjection>>;
+template class EnergyMortarAdapter<Nodal, PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<1>>>;
+template class EnergyMortarAdapter<QuadraturePoint,
+                                   PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<1>>>;
+template class EnergyMortarAdapter<Nodal, PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<2>>>;
+template class EnergyMortarAdapter<QuadraturePoint,
+                                   PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<2>>>;
+template class EnergyMortarAdapter<Nodal, PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<3>>>;
+template class EnergyMortarAdapter<QuadraturePoint,
+                                   PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<3>>>;
 
 #endif  // TRIBOL_USE_ENZYME
 

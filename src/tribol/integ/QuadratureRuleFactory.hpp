@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "tribol/integ/EdgeQuadratureRule.hpp"
+#include "tribol/integ/PairQuadratureRule.hpp"
 
 namespace tribol {
 namespace detail {
@@ -92,22 +93,6 @@ decltype( auto ) createWithQuadratureRuleRange( int order, Create&& create )
   }( std::make_integer_sequence<int, LastPointCount - FirstPointCount + 1>{} );
 }
 
-/**
- * @brief Bind a projection type while leaving the Gauss point count selectable.
- *
- * @tparam Projection Projection value type retained by every rule in the family.
- */
-template <typename Projection>
-struct ProjectedEdgeRuleFamily {
-  /**
-   * @brief Rule type for one supported point count.
-   *
-   * @tparam NumPoints Number of Gauss points per base rule.
-   */
-  template <int NumPoints>
-  using Rule = EdgeQuadratureRule<NumPoints, Projection>;
-};
-
 }  // namespace detail
 
 /**
@@ -126,24 +111,21 @@ decltype( auto ) createWithQuadratureRule( int order, Create&& create )
   return detail::createWithQuadratureRuleRange<EdgeQuadratureRule, 1, 3>( order, std::forward<Create>( create ) );
 }
 /**
- * @brief Select an edge rule and construct it with the supplied projection.
- *
+ * @brief Compose a supplied mapping with the edge base rule selected by polynomial order.
  * @throws std::invalid_argument The order is negative or greater than five.
- *
- * @tparam Projection Projection value type retained by the constructed rule.
- * @tparam Create Callable accepting the constructed rule by value.
+ * @tparam Mapping Forward and reverse mapping retained by the pair rule.
+ * @tparam Create Callable accepting the composed rule by value.
  * @param order Requested degree 0-5, selecting one, two, or three Gauss points.
- * @param projection Configuration copied into the selected rule.
- * @param create Callback invoked once with the configured rule.
+ * @param mapping Configuration copied into the composed rule.
+ * @param create Callback invoked once with the configured pair rule.
  * @return Callback result.
  */
-template <typename Projection, typename Create>
-decltype( auto ) createWithQuadratureRule( int order, const Projection& projection, Create&& create )
+template <typename Mapping, typename Create>
+decltype( auto ) createWithQuadratureRule( int order, const Mapping& mapping, Create&& create )
 {
-  return detail::createWithQuadratureRuleRange<detail::ProjectedEdgeRuleFamily<Projection>::template Rule, 1, 3>(
-      order, [&]<typename QuadratureRule>() -> decltype( auto ) {
-        return std::forward<Create>( create )( QuadratureRule{ projection } );
-      } );
+  return createWithQuadratureRule( order, [&]<typename BaseQuadratureRule>() -> decltype( auto ) {
+    return std::forward<Create>( create )( PairQuadratureRule<Mapping, BaseQuadratureRule>{ mapping } );
+  } );
 }
 
 }  // namespace tribol

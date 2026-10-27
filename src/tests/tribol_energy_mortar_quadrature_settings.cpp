@@ -69,7 +69,7 @@ class EnergyMortarQuadratureSettingsTest : public testing::TestWithParam<std::tu
 template <int Count>
 bool usesPointCount( tribol::ContactFormulation* formulation, tribol::EnforcementLocation location )
 {
-  using Rule = tribol::EdgeQuadratureRule<Count, tribol::SmoothedEdgeProjection>;
+  using Rule = tribol::PairQuadratureRule<tribol::SmoothedProjectedEdgeMapping, tribol::EdgeQuadratureRule<Count>>;
   if ( location == tribol::EnforcementLocation::Nodal ) {
     return dynamic_cast<tribol::EnergyMortarAdapter<tribol::Nodal, Rule>*>( formulation ) != nullptr;
   }

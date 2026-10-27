@@ -8,6 +8,8 @@
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/integ/EdgeQuadratureRule.hpp"
+#include "tribol/integ/PairQuadratureRule.hpp"
+#include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 
 namespace tribol {
 

@@ -63,7 +63,7 @@ TRIBOL_ENZYME_INLINE void endpoints( const MeshData::Viewer& mesh, int elem_id, 
 
 // Integrate the nodal smoothed gap and tributary area contributions over edge A.
 // The generated weights already contain the physical integration measure.
-TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, SurfaceQuadratureView<const double, 1, 2> quadrature,
+TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, PairQuadratureView<const double, 1, 1> quadrature,
                                          double residual_gap, double* g_tilde_out, double* A_out )
 {
   // x stores the two endpoints of edge A followed by the two endpoints of edge B.
@@ -79,8 +79,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, SurfaceQuadratureView<
   find_normal( A0, A1, nA );
 
   // Only keep the contribution when the edge normals oppose each other.
-  // NOTE: geomFilter already rejects pairs with co-oriented normals (dot > 0),
-  // but the clamp is retained for defensive correctness in tests and direct calls.
+  // Refined search rejects co-oriented normals; direct calculator calls also need this clamp.
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
   double eta = ( dot < 0 ) ? dot : 0.0;
 
@@ -88,7 +87,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, SurfaceQuadratureView<
   double AI_1 = 0.0, AI_2 = 0.0;
 
   for ( int i = 0; i < quadrature.physical_weights.size(); ++i ) {
-    const double xiA = quadrature.parent_coordinates( i, 0 );
+    const double xiA = quadrature.mesh1_parent_coordinates( i, 0 );
     const double w = quadrature.physical_weights[i];
 
     double basis_values[LinearEdgeBasis::node_count];
@@ -96,10 +95,11 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, SurfaceQuadratureView<
         MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &xiA, LinearEdgeBasis::parent_dimension },
         basis_values );
 
-    const double* x1 = quadrature.physical_coordinates.data() + i * LinearEdgeBasis::spatial_dimension;
-
-    // Any point on the straight target edge gives the same signed normal distance.
-    const double gn = ( B0[0] - x1[0] ) * nB[0] + ( B0[1] - x1[1] ) * nB[1];
+    const auto x1 = LinearEdgeGeometry::position<double>( { x, LinearEdgeCoordinates::size() }, xiA );
+    const auto x2 =
+        LinearEdgeGeometry::position<double>( { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() },
+                                              quadrature.mesh2_parent_coordinates( i, 0 ) );
+    const double gn = ( x2[0] - x1[0] ) * nB[0] + ( x2[1] - x1[1] ) * nB[1];
     const double g = effective_gap( gn, eta, residual_gap );
 
     g1 += w * basis_values[0] * g;
@@ -133,7 +133,8 @@ static void kernel_out( const double* x, const void* reference_void, const void*
   const auto* reference =
       static_cast<const typename QuadratureRule::template ReferenceQuadrature<double>*>( reference_void );
   const auto quadrature = kp->quadrature_rule.template mapReferenceQuadrature<double>(
-      { x, LinearEdgeCoordinates::size() }, reference->getView() );
+      { x, LinearEdgeCoordinates::size() }, { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() },
+      reference->getView() );
   double gt[2];
   double A_out[2];
   gtilde_kernel( x, quadrature.getView(), kp->residual_gap, gt, A_out );
@@ -227,11 +228,11 @@ void d2_kernel( const double* x, const KernelParams<QuadratureRule>* kp, double*
   }
 }
 
-TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double w, const double* x1, const double* B0, const double* nB,
+TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double w, const double* x1, const double* x2, const double* nB,
                                                          double eta, double residual_gap, double penalty,
                                                          bool* pair_has_active_qp )
 {
-  const double gn = ( B0[0] - x1[0] ) * nB[0] + ( B0[1] - x1[1] ) * nB[1];
+  const double gn = ( x2[0] - x1[0] ) * nB[0] + ( x2[1] - x1[1] ) * nB[1];
   const double gap = effective_gap( gn, eta, residual_gap );
   const bool is_active = gap <= 0.0;
 
@@ -260,15 +261,18 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   double nA[2];
   find_normal( A0, A1, nA );
   // Only keep the contribution when the edge normals oppose each other.
-  // NOTE: geomFilter already rejects pairs with co-oriented normals (dot > 0),
-  // but the clamp is retained for defensive correctness in tests and direct calls.
+  // Refined search rejects co-oriented normals; direct calculator calls also need this clamp.
   const double dot = nA[0] * nB[0] + nA[1] * nB[1];
   const double eta = ( dot < 0 ) ? dot : 0.0;
   double value = 0.0;
   for ( int i = 0; i < quadrature.physical_weights.size(); ++i ) {
-    value += qp_penalty_kernel_qp_energy(
-        quadrature.physical_weights[i], quadrature.physical_coordinates.data() + i * LinearEdgeBasis::spatial_dimension,
-        B0, nB, eta, kp->residual_gap, kp->k, pair_has_active_qp );
+    const auto x1 = LinearEdgeGeometry::position<double>( { x, LinearEdgeCoordinates::size() },
+                                                          quadrature.mesh1_parent_coordinates( i, 0 ) );
+    const auto x2 =
+        LinearEdgeGeometry::position<double>( { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() },
+                                              quadrature.mesh2_parent_coordinates( i, 0 ) );
+    value += qp_penalty_kernel_qp_energy( quadrature.physical_weights[i], x1.data(), x2.data(), nB, eta,
+                                          kp->residual_gap, kp->k, pair_has_active_qp );
   }
 
   *energy = value;
@@ -587,9 +591,9 @@ QuadraturePointPenaltyData EnergyMortarCalculator<QuadratureRule>::compute_quadr
   return result;
 }
 
-template class EnergyMortarCalculator<EdgeQuadratureRule<1, SmoothedEdgeProjection>>;
-template class EnergyMortarCalculator<EdgeQuadratureRule<2, SmoothedEdgeProjection>>;
-template class EnergyMortarCalculator<EdgeQuadratureRule<3, SmoothedEdgeProjection>>;
+template class EnergyMortarCalculator<PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<1>>>;
+template class EnergyMortarCalculator<PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<2>>>;
+template class EnergyMortarCalculator<PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<3>>>;
 
 #endif  // TRIBOL_USE_ENZYME
 

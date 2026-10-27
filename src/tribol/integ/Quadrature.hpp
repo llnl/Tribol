@@ -5,7 +5,7 @@
 
 /**
  * @file
- * @brief Owning arrays, borrowed views, and completion results for source-surface quadrature.
+ * @brief Local reference and element-pair quadrature arrays, views, and generation results.
  */
 
 #ifndef SRC_TRIBOL_INTEG_QUADRATURE_HPP_
@@ -18,6 +18,16 @@
 #include "tribol/common/MdArray.hpp"
 
 namespace tribol {
+
+/**
+ * @brief Bounds on a one-dimensional integration surface in normalized parent coordinates.
+ * @tparam Value Coordinate scalar type.
+ */
+template <typename Value>
+struct EdgeQuadratureInterval {
+  MdArray<Value, 2> bounds{ -1.0, 1.0 };  ///< Lower and upper bounds; default to the whole reference edge.
+  bool valid{ true };                     ///< False for invalid geometry; collapsed valid bounds have zero measure.
+};
 
 /** @brief Whether a complete rule was generated, needs more storage, or has invalid geometry */
 enum class QuadratureStatus
@@ -40,7 +50,7 @@ struct QuadratureResult {
 };
 
 /**
- * @brief Borrow source parent points and weights before applying a physical Jacobian.
+ * @brief Borrow integration-surface points and weights before applying the mapping's physical measure.
  *
  * Arrays are indexed by point, then parent component. The caller retains ownership.
  *
@@ -50,7 +60,7 @@ struct QuadratureResult {
 template <typename Value, int ParentDimension>
 struct ReferenceQuadratureView {
   static_assert( ParentDimension == 1 || ParentDimension == 2 );
-  ArrayViewT<Value, 2> parent_coordinates;  ///< Borrowed source parent coordinates [point][component].
+  ArrayViewT<Value, 2> parent_coordinates;  ///< Borrowed integration-surface coordinates [point][component].
   ArrayViewT<Value> reference_weights;      ///< Borrowed weights before physical Jacobian scaling.
 
   /**
@@ -88,7 +98,7 @@ struct ReferenceQuadratureView {
 template <typename Value, int ParentDimension, IndexT Capacity>
 struct ReferenceQuadratureData {
   MdArray<Value, Capacity, ParentDimension>
-      parent_coordinates{};                      ///< Owned source parent coordinates [point][component].
+      parent_coordinates{};                      ///< Owned integration-surface coordinates [point][component].
   MdArray<Value, Capacity> reference_weights{};  ///< Owned weights before physical Jacobian scaling.
   QuadratureResult result{};                     ///< Completion status and number of populated points.
 
@@ -115,109 +125,80 @@ struct ReferenceQuadratureData {
 };
 
 /**
- * @brief Borrow source-surface parent coordinates, physical coordinates, and physical weights.
+ * @brief Borrow parent points on both elements and weights for one physical integration measure.
  *
- * Coordinate arrays are indexed by point, then component. Weights include only the source surface measure; target
- * projection must not apply another Jacobian.
- *
+ * Arrays are indexed by point, then parent component. Mapping to the second element does not add another Jacobian.
  * @tparam Value Coordinate and weight scalar type.
- * @tparam ParentDimension Number of parent-coordinate components per point.
- * @tparam SpatialDimension Number of physical-coordinate components per point.
+ * @tparam ParentDimension1 Parent components on mesh1.
+ * @tparam ParentDimension2 Parent components on mesh2.
  */
-template <typename Value, int ParentDimension, int SpatialDimension>
-struct SurfaceQuadratureView {
-  ArrayViewT<Value, 2> parent_coordinates;    ///< Borrowed source parent coordinates [point][component].
-  ArrayViewT<Value, 2> physical_coordinates;  ///< Borrowed physical source points [point][component].
-  ArrayViewT<Value> physical_weights;         ///< Borrowed weights including the complete source measure.
+template <typename Value, int ParentDimension1, int ParentDimension2>
+struct PairQuadratureView {
+  ArrayViewT<Value, 2> mesh1_parent_coordinates;  ///< Points on mesh1 [point][parent component].
+  ArrayViewT<Value, 2> mesh2_parent_coordinates;  ///< Corresponding points on mesh2 [point][parent component].
+  ArrayViewT<Value> physical_weights;             ///< Weights including the mapping's physical integration measure.
 
-  /**
-   * @brief Return the number of source points that fit in the borrowed arrays.
-   *
-   * @return Length of physical_weights.
-   */
+  /** @brief Return the available point capacity. @return Number of weight entries. */
   TRIBOL_HOST_DEVICE IndexT capacity() const { return physical_weights.size(); }
 
   /**
-   * @brief Borrow matching source-point and weight arrays.
-   *
-   * All arrays must have the same point count and remain alive while the view is used.
-   *
-   * @param parent Parent coordinates [point][ParentDimension].
-   * @param physical Physical points [point][SpatialDimension].
-   * @param weights Physical source weights, one per point.
+   * @brief Borrow matching coordinate and weight arrays.
+   * @param mesh1 Parent coordinates on mesh1.
+   * @param mesh2 Parent coordinates on mesh2.
+   * @param weights Physical integration weights.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE SurfaceQuadratureView( ArrayViewT<Value, 2> parent,
-                                                                 ArrayViewT<Value, 2> physical,
-                                                                 ArrayViewT<Value> weights )
-      : parent_coordinates( parent ), physical_coordinates( physical ), physical_weights( weights )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureView( ArrayViewT<Value, 2> mesh1, ArrayViewT<Value, 2> mesh2,
+                                                              ArrayViewT<Value> weights )
+      : mesh1_parent_coordinates( mesh1 ), mesh2_parent_coordinates( mesh2 ), physical_weights( weights )
   {
-    assert( parent.shape()[0] == weights.size() && physical.shape()[0] == weights.size() );
-    assert( parent.shape()[1] == ParentDimension && physical.shape()[1] == SpatialDimension );
+    assert( mesh1.shape()[0] == weights.size() && mesh1.shape()[1] == ParentDimension1 );
+    assert( mesh2.shape()[0] == weights.size() && mesh2.shape()[1] == ParentDimension2 );
   }
 };
 
 /**
- * @brief Own fixed-capacity source quadrature for allocation-free element calculations.
- *
- * Copies own their values. Views borrow this object's arrays and must not outlive it.
- *
+ * @brief Fixed-capacity quadrature consumed within one element-pair calculation.
  * @tparam Value Coordinate and weight scalar type.
- * @tparam ParentDimension Number of parent-coordinate components per point.
- * @tparam SpatialDimension Number of physical-coordinate components per point.
- * @tparam Capacity Number of points available in the fixed-size backing arrays.
+ * @tparam ParentDimension1 Parent components on mesh1.
+ * @tparam ParentDimension2 Parent components on mesh2.
+ * @tparam Capacity Available points in the local backing arrays.
  */
-template <typename Value, int ParentDimension, int SpatialDimension, IndexT Capacity>
-struct SurfaceQuadratureData {
-  MdArray<Value, Capacity, ParentDimension>
-      parent_coordinates{};  ///< Owned source parent coordinates [point][component].
-  MdArray<Value, Capacity, SpatialDimension>
-      physical_coordinates{};                   ///< Owned physical source points [point][component].
-  MdArray<Value, Capacity> physical_weights{};  ///< Owned weights including the complete source measure.
-  QuadratureResult result{};                    ///< Completion status and number of populated points.
+template <typename Value, int ParentDimension1, int ParentDimension2, IndexT Capacity>
+struct PairQuadratureData {
+  MdArray<Value, Capacity, ParentDimension1> mesh1_parent_coordinates{};  ///< Owned mesh1 parent points.
+  MdArray<Value, Capacity, ParentDimension2> mesh2_parent_coordinates{};  ///< Owned mesh2 parent points.
+  MdArray<Value, Capacity> physical_weights{};                            ///< Owned physical integration weights.
+  QuadratureResult result{};                                              ///< Status and initialized point count.
 
-  /**
-   * @brief Borrow all available source storage for generation.
-   *
-   * @return Writable arrays with Capacity entries, valid while this object remains alive.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE SurfaceQuadratureView<Value, ParentDimension, SpatialDimension>
+  /** @brief Borrow all available output storage. @return Writable arrays valid while this owner is alive. */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureView<Value, ParentDimension1, ParentDimension2>
   getOutputView() &
   {
-    return { ArrayViewT<Value, 2>{ parent_coordinates.data(),
-                                   axom::StackArray<axom::IndexType, 2>{ Capacity, ParentDimension } },
-             ArrayViewT<Value, 2>{ physical_coordinates.data(),
-                                   axom::StackArray<axom::IndexType, 2>{ Capacity, SpatialDimension } },
-             ArrayViewT<Value>{ physical_weights.data(), Capacity } };
+    return { { mesh1_parent_coordinates.data(), { Capacity, ParentDimension1 } },
+             { mesh2_parent_coordinates.data(), { Capacity, ParentDimension2 } },
+             { physical_weights.data(), Capacity } };
   }
 
   /**
-   * @brief Borrow only completed source points.
-   *
+   * @brief Borrow only initialized points of a completed rule.
    * @pre result.status is Success and required_point_count does not exceed Capacity.
-   *
-   * @return Read-only arrays sized to required_point_count, valid while this object remains alive.
+   * @return Read-only arrays valid while this owner is alive.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE SurfaceQuadratureView<const Value, ParentDimension, SpatialDimension>
-  getView() const&
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureView<const Value, ParentDimension1, ParentDimension2> getView()
+      const&
   {
     assert( result.status == QuadratureStatus::Success );
     assert( result.required_point_count >= 0 && result.required_point_count <= Capacity );
     const IndexT count = result.required_point_count;
-    return { ArrayViewT<const Value, 2>{ parent_coordinates.data(),
-                                         axom::StackArray<axom::IndexType, 2>{ count, ParentDimension } },
-             ArrayViewT<const Value, 2>{ physical_coordinates.data(),
-                                         axom::StackArray<axom::IndexType, 2>{ count, SpatialDimension } },
-             ArrayViewT<const Value>{ physical_weights.data(), count } };
+    return { { mesh1_parent_coordinates.data(), { count, ParentDimension1 } },
+             { mesh2_parent_coordinates.data(), { count, ParentDimension2 } },
+             { physical_weights.data(), count } };
   }
 
-  /**
-   * @brief Prevent borrowing writable storage from a temporary owner.
-   */
-  SurfaceQuadratureView<Value, ParentDimension, SpatialDimension> getOutputView() && = delete;
-  /**
-   * @brief Prevent borrowing source points from a temporary owner.
-   */
-  SurfaceQuadratureView<const Value, ParentDimension, SpatialDimension> getView() const&& = delete;
+  /** @brief Prevent borrowing output arrays from a temporary. */
+  PairQuadratureView<Value, ParentDimension1, ParentDimension2> getOutputView() && = delete;
+  /** @brief Prevent borrowing initialized arrays from a temporary. */
+  PairQuadratureView<const Value, ParentDimension1, ParentDimension2> getView() const&& = delete;
 };
 
 }  // namespace tribol

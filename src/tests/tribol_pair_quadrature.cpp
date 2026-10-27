@@ -5,8 +5,8 @@
 
 /**
  * @file
- * @brief Tests local edge quadrature on every enabled backend: polynomial accuracy, interval selection, bounded
- * writes, invalid geometry, and frozen reference points mapped to changed geometry. Factory tests check order
+ * @brief Tests base and paired edge quadrature on every enabled backend: polynomial accuracy, interval selection,
+ * bounded writes, invalid geometry, and frozen reference points mapped to changed geometry. Factory tests check order
  * selection.
  */
 
@@ -19,6 +19,8 @@
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/integ/EdgeQuadratureRule.hpp"
+#include "tribol/integ/PairQuadratureRule.hpp"
+#include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 #include "tribol/integ/QuadratureRuleFactory.hpp"
 
 namespace {
@@ -29,30 +31,28 @@ constexpr double tolerance = 1.0e-12;  ///< Absolute tolerance for coordinates, 
 class EdgeQuadratureTest : public detail::ExecutionTest {
  protected:
   /**
-   * @brief Integrate each supported monomial on an edge of length four, using all three point counts.
+   * @brief Integrate each supported monomial on the reference interval using all three point counts.
    * @tparam Count Number of Gauss points.
    */
   template <int Count>
   void checkPolynomialIntegrals()
   {
     using Rule = EdgeQuadratureRule<Count>;
-    constexpr RealT edge_length = 4.0;
     constexpr int degree_count = Rule::polynomial_order + 1;
     ArrayT<RealT> integrals( degree_count, degree_count, allocatorId() );
     ArrayT<QuadratureResult> results( 1, 1, allocatorId() );
     const auto output = integrals.view();
     const auto status = results.view();
     forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
-      const MdArray<RealT, 2, 2> endpoints{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ edge_length, 0.0 } };
-      const auto rule = Rule{}.template generate<RealT>( endpoints.view() );
+      const auto rule = Rule{}.template generate<RealT>();
       status[0] = rule.result;
       const auto points = rule.getView();
       for ( int degree = 0; degree < degree_count; ++degree ) {
         output[degree] = 0.0;
         for ( int q = 0; q < Count; ++q ) {
           RealT monomial = 1.0;
-          for ( int power = 0; power < degree; ++power ) monomial *= points.physical_coordinates( q, 0 );
-          output[degree] += monomial * points.physical_weights[q];
+          for ( int power = 0; power < degree; ++power ) monomial *= points.parent_coordinates( q, 0 );
+          output[degree] += monomial * points.reference_weights[q];
         }
       }
     } );
@@ -61,7 +61,7 @@ class EdgeQuadratureTest : public detail::ExecutionTest {
     ASSERT_EQ( statuses[0].status, QuadratureStatus::Success );
     ASSERT_EQ( statuses[0].required_point_count, Count );
     for ( int degree = 0; degree < degree_count; ++degree ) {
-      EXPECT_NEAR( values[degree], std::pow( edge_length, degree + 1 ) / ( degree + 1 ), tolerance );
+      EXPECT_NEAR( values[degree], ( degree % 2 == 0 ? 2.0 / ( degree + 1 ) : 0.0 ), tolerance );
     }
   }
 
@@ -85,7 +85,7 @@ class EdgeQuadratureTest : public detail::ExecutionTest {
                                    { 4.6, 4.2, 0.1, 0.9875, 1.0 }, { 8.0, 6.0, 0.1, 1.0, 1.0 } };
     for ( const auto test : cases ) {
       SCOPED_TRACE( test.target_left );
-      ArrayT<RealT, 2> records( axom::StackArray<axom::IndexType, 2>{ Count, 4 }, allocatorId() );
+      ArrayT<RealT, 2> records( axom::StackArray<axom::IndexType, 2>{ Count, 7 }, allocatorId() );
       ArrayT<QuadratureResult> results( 1, 1, allocatorId() );
       const auto output = records.view();
       const auto status = results.view();
@@ -93,15 +93,23 @@ class EdgeQuadratureTest : public detail::ExecutionTest {
         const MdArray<RealT, 2, 2> source{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } };
         const MdArray<RealT, 2, 2> target{ MdArray<RealT, 2>{ test.target_right, 0.2 },
                                            MdArray<RealT, 2>{ test.target_left, 0.2 } };
-        const EdgeQuadratureRule<Count, SmoothedEdgeProjection> generator{ SmoothedEdgeProjection{ test.smoothing } };
+        const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<Count>> generator{
+            SmoothedProjectedEdgeMapping{ test.smoothing } };
         const auto rule = generator.template generate<RealT>( source.view(), target.view() );
         status[0] = rule.result;
         const auto points = rule.getView();
         for ( IndexT q = 0; q < rule.result.required_point_count; ++q ) {
-          output( q, 0 ) = points.parent_coordinates( q, 0 );
-          output( q, 1 ) = points.physical_coordinates( q, 0 );
-          output( q, 2 ) = points.physical_coordinates( q, 1 );
+          const auto physical1 =
+              LinearEdgeGeometry::position<RealT>( source.view(), points.mesh1_parent_coordinates( q, 0 ) );
+          const auto physical2 =
+              LinearEdgeGeometry::position<RealT>( target.view(), points.mesh2_parent_coordinates( q, 0 ) );
+          output( q, 0 ) = points.mesh1_parent_coordinates( q, 0 );
+          output( q, 1 ) = physical1[0];
+          output( q, 2 ) = physical1[1];
           output( q, 3 ) = points.physical_weights[q];
+          output( q, 4 ) = points.mesh2_parent_coordinates( q, 0 );
+          output( q, 5 ) = physical2[0];
+          output( q, 6 ) = physical2[1];
         }
       } );
       const ArrayT<QuadratureResult, 1, MemorySpace::Host> statuses( results );
@@ -115,6 +123,11 @@ class EdgeQuadratureTest : public detail::ExecutionTest {
         EXPECT_LE( values( q, 0 ), test.expected_upper );
         EXPECT_NEAR( values( q, 1 ), 2.0 * ( 1.0 + values( q, 0 ) ), tolerance );
         EXPECT_EQ( values( q, 2 ), 0.0 );
+        EXPECT_NEAR( values( q, 4 ),
+                     2.0 * ( values( q, 1 ) - test.target_right ) / ( test.target_left - test.target_right ) - 1.0,
+                     tolerance );
+        EXPECT_NEAR( values( q, 5 ), values( q, 1 ), tolerance );
+        EXPECT_NEAR( values( q, 6 ), 0.2, tolerance );
         measure += values( q, 3 );
       }
       EXPECT_NEAR( measure, 2.0 * ( test.expected_upper - test.expected_lower ), tolerance );
@@ -122,7 +135,7 @@ class EdgeQuadratureTest : public detail::ExecutionTest {
   }
 };
 
-// Physical weights must include the source Jacobian exactly once for all supported polynomial degrees.
+// The base rule integrates its supported polynomial degrees without consulting either element.
 TEST_P( EdgeQuadratureTest, integrates_supported_polynomial_degrees )
 {
   checkPolynomialIntegrals<1>();
@@ -149,7 +162,7 @@ TEST_P( EdgeQuadratureTest, rejects_invalid_geometry_and_insufficient_storage )
   const auto output = storage.view();
   const auto status = results.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
-    const EdgeQuadratureRule<point_count, SmoothedEdgeProjection> generator{};
+    const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<point_count>> generator{};
     const MdArray<RealT, 2, 2> source{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } },
         target{ MdArray<RealT, 2>{ 4.0, 0.2 }, MdArray<RealT, 2>{ 0.0, 0.2 } };
     const MdArray<RealT, 2, 2> degenerate{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 0.0, 0.0 } };
@@ -157,9 +170,9 @@ TEST_P( EdgeQuadratureTest, rejects_invalid_geometry_and_insufficient_storage )
     status[1] = generator.template generate<RealT>( source.view(), degenerate.view() ).result;
     // A capacity of one has a guard entry on either side of its weight array.
     MdArray<RealT, 1, 1> parent;
-    MdArray<RealT, 1, 2> physical;
-    const SurfaceQuadratureView<RealT, 1, 2> bounded{
-        { parent.data(), { 1, 1 } }, { physical.data(), { 1, 2 } }, { output.data() + 1, 1 } };
+    MdArray<RealT, 1, 1> target_parent;
+    const PairQuadratureView<RealT, 1, 1> bounded{
+        { parent.data(), { 1, 1 } }, { target_parent.data(), { 1, 1 } }, { output.data() + 1, 1 } };
     status[2] = generator.template generate<RealT>( source.view(), target.view(), bounded );
   } );
   const ArrayT<QuadratureResult, 1, MemorySpace::Host> statuses( results );
@@ -180,18 +193,172 @@ TEST_P( EdgeQuadratureTest, maps_frozen_reference_points_to_current_geometry )
   ArrayT<RealT> records( 2, 2, allocatorId() );
   const auto output = records.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
-    const EdgeQuadratureRule<3> generator{};
-    const auto reference = generator.template generateReferenceQuadrature<RealT>();
+    const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<3>> generator{};
+    const auto reference = EdgeQuadratureRule<3>{}.template generate<RealT>();
     const MdArray<RealT, 2, 2> source{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } },
         stretched{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 8.0, 0.0 } };
-    const auto original = generator.template mapReferenceQuadrature<RealT>( source.view(), reference.getView() );
-    const auto changed = generator.template mapReferenceQuadrature<RealT>( stretched.view(), reference.getView() );
-    output[0] = changed.parent_coordinates( 0, 0 ) - original.parent_coordinates( 0, 0 );
+    const auto original =
+        generator.template mapReferenceQuadrature<RealT>( source.view(), source.view(), reference.getView() );
+    const auto changed =
+        generator.template mapReferenceQuadrature<RealT>( stretched.view(), source.view(), reference.getView() );
+    output[0] = changed.mesh1_parent_coordinates( 0, 0 ) - original.mesh1_parent_coordinates( 0, 0 );
     output[1] = changed.physical_weights[0] / original.physical_weights[0];
   } );
   const ArrayT<RealT, 1, MemorySpace::Host> values( records );
   EXPECT_EQ( values[0], 0.0 );
   EXPECT_NEAR( values[1], 2.0, tolerance );
+}
+
+// A tilted mortar edge must receive points projected along its normal; its length must not rescale source weights.
+TEST_P( EdgeQuadratureTest, maps_both_parent_coordinates_and_preserves_source_measure )
+{
+  constexpr int count = 3;
+  constexpr int columns = 5;
+  ArrayT<RealT, 2> records( axom::StackArray<axom::IndexType, 2>{ count, columns }, allocatorId() );
+  ArrayT<QuadratureResult> results( 1, 1, allocatorId() );
+  const auto output = records.view();
+  const auto status = results.view();
+  forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
+    // Source is x=[0,4], y=0. Target runs from (3,2) to (1,0); the target has a different length and direction.
+    const MdArray<RealT, 2, 2> source{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } };
+    const MdArray<RealT, 2, 2> target{ MdArray<RealT, 2>{ 3.0, 2.0 }, MdArray<RealT, 2>{ 1.0, 0.0 } };
+    const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<count>> generator{
+        SmoothedProjectedEdgeMapping{ 0.0 } };
+    // Use a full source interval so this check isolates reverse mapping from overlap selection.
+    const auto reference = EdgeQuadratureRule<count>{}.template generate<RealT>();
+    const auto rule =
+        generator.template mapReferenceQuadrature<RealT>( source.view(), target.view(), reference.getView() );
+    status[0] = rule.result;
+    const auto points = rule.getView();
+    for ( int q = 0; q < count; ++q ) {
+      const auto physical1 =
+          LinearEdgeGeometry::position<RealT>( source.view(), points.mesh1_parent_coordinates( q, 0 ) );
+      const auto physical2 =
+          LinearEdgeGeometry::position<RealT>( target.view(), points.mesh2_parent_coordinates( q, 0 ) );
+      output( q, 0 ) = physical1[0];
+      output( q, 1 ) = physical2[0];
+      output( q, 2 ) = physical2[1];
+      output( q, 3 ) = points.physical_weights[q];
+      output( q, 4 ) = points.mesh2_parent_coordinates( q, 0 );
+    }
+  } );
+  const ArrayT<QuadratureResult, 1, MemorySpace::Host> statuses( results );
+  ASSERT_EQ( statuses[0].status, QuadratureStatus::Success );
+  ASSERT_EQ( statuses[0].required_point_count, count );
+  const ArrayT<RealT, 2, MemorySpace::Host> values( records );
+  RealT measure = 0.0, integral = 0.0;
+  for ( int q = 0; q < count; ++q ) {
+    const RealT source_x = values( q, 0 );
+    // The target line is y=x-1. Its normal projection of (source_x,0) is ((source_x+1)/2,(source_x-1)/2).
+    EXPECT_NEAR( values( q, 1 ), 0.5 * ( source_x + 1.0 ), tolerance );
+    EXPECT_NEAR( values( q, 2 ), 0.5 * ( source_x - 1.0 ), tolerance );
+    EXPECT_NEAR( values( q, 4 ), 1.5 - 0.5 * source_x, tolerance );
+    measure += values( q, 3 );
+    integral += source_x * values( q, 1 ) * values( q, 3 );
+  }
+  EXPECT_NEAR( measure, 4.0, tolerance );
+  // Integral from 0 to 4 of x * (x+1)/2 dx = 44/3, using field values on both elements.
+  EXPECT_NEAR( integral, 44.0 / 3.0, tolerance );
+}
+
+// Frozen source points still require reverse mapping onto the updated target, even when the source does not change.
+TEST_P( EdgeQuadratureTest, remaps_frozen_points_to_updated_target )
+{
+  ArrayT<RealT> records( 3, 3, allocatorId() );
+  const auto output = records.view();
+  forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
+    const MdArray<RealT, 2, 2> source{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } };
+    const MdArray<RealT, 2, 2> target{ MdArray<RealT, 2>{ 4.0, 0.2 }, MdArray<RealT, 2>{ 0.0, 0.2 } };
+    const MdArray<RealT, 2, 2> translated{ MdArray<RealT, 2>{ 5.0, 0.2 }, MdArray<RealT, 2>{ 1.0, 0.2 } };
+    const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<1>> generator{};
+    const auto reference = generator.template generateReferenceQuadrature<RealT>( source.view(), target.view() );
+    const auto original =
+        generator.template mapReferenceQuadrature<RealT>( source.view(), target.view(), reference.getView() );
+    const auto changed =
+        generator.template mapReferenceQuadrature<RealT>( source.view(), translated.view(), reference.getView() );
+    output[0] = changed.mesh1_parent_coordinates( 0, 0 ) - original.mesh1_parent_coordinates( 0, 0 );
+    output[1] = changed.mesh2_parent_coordinates( 0, 0 ) - original.mesh2_parent_coordinates( 0, 0 );
+    output[2] = changed.physical_weights[0] - original.physical_weights[0];
+  } );
+  const ArrayT<RealT, 1, MemorySpace::Host> values( records );
+  EXPECT_EQ( values[0], 0.0 );
+  EXPECT_NEAR( values[1], 0.5, tolerance );
+  EXPECT_EQ( values[2], 0.0 );
+}
+
+/**
+ * @brief Test a mapping whose integration coordinates are physical x, rather than either element's parent coordinates.
+ *
+ * Inputs are horizontal straight edges with mesh1 ordered left-to-right and mesh2 ordered right-to-left. Their common
+ * interval can lie on a plane between the edges; reverse mapping gives a point on each edge with the same x coordinate.
+ */
+struct ParallelEdgeMapping {
+  using Mesh1Geometry = LinearEdgeGeometry;  ///< First straight-edge geometry.
+  using Mesh2Geometry = LinearEdgeGeometry;  ///< Second straight-edge geometry.
+
+  /**
+   * @brief Find the common physical-x interval of the two horizontal edges.
+   * @tparam Value Coordinate scalar type.
+   * @param mesh1 Left-to-right first edge.
+   * @param mesh2 Right-to-left second edge.
+   * @return Common interval in physical x; nonincreasing bounds give zero measure.
+   */
+  template <typename Value>
+  TRIBOL_HOST_DEVICE EdgeQuadratureInterval<Value> makeIntegrationSurface(
+      LinearEdgeGeometry::Coordinates<Value> mesh1, LinearEdgeGeometry::Coordinates<Value> mesh2 ) const
+  {
+    const Value left = mesh1( 0, 0 ) > mesh2( 1, 0 ) ? mesh1( 0, 0 ) : mesh2( 1, 0 );
+    const Value right = mesh1( 1, 0 ) < mesh2( 0, 0 ) ? mesh1( 1, 0 ) : mesh2( 0, 0 );
+    return { MdArray<Value, 2>{ left, right }, true };
+  }
+
+  /**
+   * @brief Map physical-x integration points onto each horizontal edge.
+   * @tparam Value Coordinate and weight scalar type.
+   * @param mesh1 First edge endpoints.
+   * @param mesh2 Second edge endpoints.
+   * @param reference Points and weights expressed in physical x.
+   * @param [out] output Parent coordinates on both elements and physical weights.
+   * @return Success with initialized count, or InsufficientCapacity with the full count and untouched output.
+   */
+  template <typename Value>
+  TRIBOL_HOST_DEVICE QuadratureResult mapToElements( LinearEdgeGeometry::Coordinates<Value> mesh1,
+                                                     LinearEdgeGeometry::Coordinates<Value> mesh2,
+                                                     ReferenceQuadratureView<const Value, 1> reference,
+                                                     PairQuadratureView<Value, 1, 1> output ) const
+  {
+    const IndexT count = reference.numberOfPoints();
+    if ( output.capacity() < count ) return { QuadratureStatus::InsufficientCapacity, count };
+    for ( IndexT q = 0; q < count; ++q ) {
+      const Value x = reference.parent_coordinates( q, 0 );
+      output.mesh1_parent_coordinates( q, 0 ) = 2.0 * ( x - mesh1( 0, 0 ) ) / ( mesh1( 1, 0 ) - mesh1( 0, 0 ) ) - 1.0;
+      output.mesh2_parent_coordinates( q, 0 ) = 2.0 * ( x - mesh2( 0, 0 ) ) / ( mesh2( 1, 0 ) - mesh2( 0, 0 ) ) - 1.0;
+      output.physical_weights[q] = reference.reference_weights[q];
+    }
+    return { QuadratureStatus::Success, count };
+  }
+};
+
+// The same base Gauss rule must also work when integration points are expressed independently of both elements.
+TEST_P( EdgeQuadratureTest, composes_with_a_different_integration_mapping )
+{
+  ArrayT<RealT> records( 3, 3, allocatorId() );
+  const auto output = records.view();
+  forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
+    const MdArray<RealT, 2, 2> source{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } };
+    const MdArray<RealT, 2, 2> target{ MdArray<RealT, 2>{ 3.0, 0.2 }, MdArray<RealT, 2>{ 1.0, 0.2 } };
+    const PairQuadratureRule<ParallelEdgeMapping, EdgeQuadratureRule<1>> generator{};
+    const auto rule = generator.template generate<RealT>( source.view(), target.view() );
+    const auto points = rule.getView();
+    output[0] = points.mesh1_parent_coordinates( 0, 0 );
+    output[1] = points.mesh2_parent_coordinates( 0, 0 );
+    output[2] = points.physical_weights[0];
+  } );
+  const ArrayT<RealT, 1, MemorySpace::Host> values( records );
+  // The common interval is x=[1,3], with midpoint x=2: parent zero on both elements and physical measure two.
+  EXPECT_NEAR( values[0], 0.0, tolerance );
+  EXPECT_NEAR( values[1], 0.0, tolerance );
+  EXPECT_NEAR( values[2], 2.0, tolerance );
 }
 
 INSTANTIATE_TEST_SUITE_P( execution, EdgeQuadratureTest, detail::enabledExecutionModes() );
