@@ -22,6 +22,9 @@ using LinearEdgeBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
 using LinearEdgePointView = MdSpan<const double, LinearEdgeBasis::spatial_dimension>;
 using LinearEdgeCoordinates = MdArray<double, LinearEdgeBasis::node_count, LinearEdgeBasis::spatial_dimension>;
 
+constexpr double minimum_edge_length = 1.0e-14;
+constexpr double minimum_projection_determinant = 1.0e-12;
+
 // This MUST match what the ContactParams struct has in EnergyMortarAdapter
 // These had to be saved locally in order for enzyme to work correctly
 struct KernelParams {
@@ -147,7 +150,7 @@ TRIBOL_ENZYME_INLINE void find_intersection( const double* A0, const double* A1,
   const double d[2] = { p[0] - A0[0], p[1] - A0[1] };
 
   const double nlen = std::sqrt( nB[0] * nB[0] + nB[1] * nB[1] );
-  if ( nlen < 1e-14 ) {
+  if ( nlen < minimum_edge_length ) {
     intersection[0] = p[0];
     intersection[1] = p[1];
     return;
@@ -157,7 +160,7 @@ TRIBOL_ENZYME_INLINE void find_intersection( const double* A0, const double* A1,
   const double det = tA[0] * n[1] - tA[1] * n[0];
 
   // If the projection direction is nearly parallel to edge A, use p as a safe fallback.
-  if ( std::abs( det ) < 1e-12 ) {
+  if ( std::abs( det ) < minimum_projection_determinant ) {
     intersection[0] = p[0];
     intersection[1] = p[1];
     return;
@@ -175,29 +178,40 @@ TRIBOL_ENZYME_INLINE void find_intersection( const double* A0, const double* A1,
 TRIBOL_ENZYME_INLINE void get_projections( const double* A0, const double* A1, const double* B0, const double* B1,
                                            double* projections )
 {
-  double nB[2] = { 0.0, 0.0 };
-  find_normal( B0, B1, nB );
+  const double projected_edge_x = B1[0] - B0[0];
+  const double projected_edge_y = B1[1] - B0[1];
+  const double projected_edge_length =
+      std::sqrt( projected_edge_x * projected_edge_x + projected_edge_y * projected_edge_y );
+  const double integration_edge_x = A1[0] - A0[0];
+  const double integration_edge_y = A1[1] - A0[1];
+  const double integration_edge_length_squared =
+      integration_edge_x * integration_edge_x + integration_edge_y * integration_edge_y;
+  if ( projected_edge_length < minimum_edge_length ||
+       integration_edge_length_squared <= minimum_edge_length * minimum_edge_length ) {
+    projections[0] = 0.0;
+    projections[1] = 0.0;
+    return;
+  }
 
-  const double dxA = A1[0] - A0[0];
-  const double dyA = A1[1] - A0[1];
-  const double len2A = dxA * dxA + dyA * dyA;
+  double projected_normal[2] = { 0.0, 0.0 };
+  find_normal( B0, B1, projected_normal );
 
-  double q0[2] = { 0.0, 0.0 };
-  find_intersection( A0, A1, B0, nB, q0 );
-  // Convert the physical projection point on A to the normalized local coordinate xi in [-1, 1].
-  const double alphaA0 = ( ( q0[0] - A0[0] ) * dxA + ( q0[1] - A0[1] ) * dyA ) / len2A;
-  const double xi0 = 2.0 * alphaA0 - 1.0;
+  double projected_point0[2] = { 0.0, 0.0 };
+  find_intersection( A0, A1, B0, projected_normal, projected_point0 );
+  const double integration_fraction0 =
+      ( ( projected_point0[0] - A0[0] ) * integration_edge_x + ( projected_point0[1] - A0[1] ) * integration_edge_y ) /
+      integration_edge_length_squared;
 
-  double q1[2] = { 0.0, 0.0 };
-  find_intersection( A0, A1, B1, nB, q1 );
-  const double alphaA1 = ( ( q1[0] - A0[0] ) * dxA + ( q1[1] - A0[1] ) * dyA ) / len2A;
-  const double xi1 = 2.0 * alphaA1 - 1.0;
+  double projected_point1[2] = { 0.0, 0.0 };
+  find_intersection( A0, A1, B1, projected_normal, projected_point1 );
+  const double integration_fraction1 =
+      ( ( projected_point1[0] - A0[0] ) * integration_edge_x + ( projected_point1[1] - A0[1] ) * integration_edge_y ) /
+      integration_edge_length_squared;
 
-  double xi_min = std::min( xi0, xi1 );
-  double xi_max = std::max( xi0, xi1 );
-
-  projections[0] = xi_min;
-  projections[1] = xi_max;
+  const double normalized_coordinate0 = 2.0 * integration_fraction0 - 1.0;
+  const double normalized_coordinate1 = 2.0 * integration_fraction1 - 1.0;
+  projections[0] = std::min( normalized_coordinate0, normalized_coordinate1 );
+  projections[1] = std::max( normalized_coordinate0, normalized_coordinate1 );
 }
 
 // Isolate each endpoint to avoid incorrect loop-local tape reuse in Enzyme reverse mode.
@@ -547,6 +561,12 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   ContactSmoothing::bounds_from_projections( projs, kp->del, bounds );
   double xi_bounds[2];
   ContactSmoothing::smooth_bounds( bounds, kp->del, xi_bounds );
+  // A zero-length projected interval has zero quadrature weight. Return before evaluating the gap so the pair remains
+  // inactive and contributes no energy.
+  if ( xi_bounds[1] <= xi_bounds[0] ) {
+    *energy = 0.0;
+    return;
+  }
   QuadPoints qp;
   EnergyMortarCalculator::compute_quadrature( xi_bounds, kp->N, &qp );
 

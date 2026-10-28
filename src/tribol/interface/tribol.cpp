@@ -349,6 +349,9 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale )
   }
 
   cs->getParameters().binning_proximity_scale = binning_proximity_scale;
+  if ( cs->hasContactFormulation() ) {
+    cs->updateContactFormulation();
+  }
 
 }  // end setBinningProximityScale()
 
@@ -363,8 +366,8 @@ void setResidualGap( IndexT cs_id, RealT residual_gap )
   SLIC_ERROR_ROOT_IF( residual_gap < 0.0, "tribol::setResidualGap(): residual gap must be nonnegative." );
 
   cs->getParameters().residual_gap = residual_gap;
-  if ( cs->getContactFormulation() ) {
-    cs->getContactFormulation()->setResidualGap( residual_gap );
+  if ( cs->hasContactFormulation() ) {
+    cs->updateContactFormulation();
   }
 
 }  // end setResidualGap()
@@ -818,6 +821,12 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
 
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setInterfacePairs(): invalid coupling scheme index." );
+
+  // Formulations own pair search and filtering so externally supplied pairs cannot bypass method-specific checks.
+  if ( cs->hasContactFormulation() || cs->getContactMethod() == ENERGY_MORTAR ) {
+    SLIC_ERROR_ROOT( "tribol::setInterfacePairs() is not supported for formulation-backed contact methods." );
+    return;
+  }
 
   auto& pairs = cs->getInterfacePairs();
   pairs.clear();

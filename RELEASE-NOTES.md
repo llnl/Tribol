@@ -8,6 +8,9 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added `ProjectedEdgeSearch` to reject self-pairs, optionally reject shared-node pairs, and require opposing edge
+  normals. Projected overlap is determined during quadrature generation rather than refined search; zero-width
+  integration intervals produce no active penalty quadrature points.
 - Added the `ENERGY_MORTAR` contact method for MFEM coupling schemes built with Enzyme and Redecomp. The method supports
   nodal and quadrature-point enforcement and provides differentiated residual and Jacobian contributions.
 - Added the `VISCOUS_TANGENTIAL` contact model and APIs for setting mesh-specific viscous damping coefficients through
