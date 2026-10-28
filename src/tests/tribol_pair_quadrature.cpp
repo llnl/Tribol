@@ -372,7 +372,7 @@ TEST( QuadratureRuleFactory, selects_registered_rule_by_polynomial_order )
     return QuadratureRule::points_per_base_rule;
   };
   const std::pair<int, int> orders_and_points[] = { { 0, 1 }, { 1, 1 }, { 2, 2 }, { 3, 2 }, { 4, 3 }, { 5, 3 } };
-  for ( const auto [order, expected_points] : orders_and_points ) {
+  for ( const auto& [order, expected_points] : orders_and_points ) {
     const int before = calls;
     const auto selected = createWithQuadratureRule( order, create );
     EXPECT_EQ( selected, expected_points );
@@ -408,7 +408,7 @@ TEST( QuadratureRuleFactory, supports_surface_rule_families )
   using FourthDegreeTriangle = SurfaceQuadratureRuleMetadata<4, 6>;
   const auto create = []<typename QuadratureRule>() { return QuadratureRule::points_per_base_rule; };
   const std::pair<int, int> orders_and_points[] = { { 0, 1 }, { 1, 1 }, { 2, 3 }, { 3, 6 }, { 4, 6 } };
-  for ( const auto [order, expected_points] : orders_and_points ) {
+  for ( const auto& [order, expected_points] : orders_and_points ) {
     const auto selected =
         createWithQuadratureRule<LinearTriangle, QuadraticTriangle, FourthDegreeTriangle>( order, create );
     EXPECT_EQ( selected, expected_points );

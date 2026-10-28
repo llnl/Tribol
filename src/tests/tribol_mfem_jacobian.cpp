@@ -1053,9 +1053,8 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
   int mortar_mesh_id = 101;
   // ContactFormulation-based EnergyMortar integrates on mesh 1 and projects onto mesh 2.
   tribol::registerMfemCouplingScheme( cs_id, nonmortar_mesh_id, mortar_mesh_id, mesh, coords, nonmortar_attrs,
-                                      mortar_attrs, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
-                                      tribol::ENERGY_MORTAR, tribol::FRICTIONLESS, tribol::PENALTY,
-                                      tribol::BINNING_GRID );
+                                      mortar_attrs, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::ENERGY_MORTAR,
+                                      tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID );
   tribol::setEnforcementLocation( cs_id, tribol::EnforcementLocation::QuadraturePoint );
 
   constexpr tribol::RealT initial_penalty = 1.0;

@@ -395,13 +395,13 @@ TEST_P( MfemMortarEnergyPatchTest, check_patch_test )
   MPI_Barrier( MPI_COMM_WORLD );
 }
 
-INSTANTIATE_TEST_SUITE_P( tribol, MfemMortarEnergyPatchTest,
-                          testing::Combine( testing::Values( 2 ),
-                                            testing::Values( tribol::EnforcementLocation::Nodal,
-                                                             tribol::EnforcementLocation::QuadraturePoint ),
-                                            // Run grid and BVH searches with matching and 2:1 mortar/nonmortar interfaces.
-                                            testing::Values( tribol::BINNING_GRID, tribol::BINNING_BVH ),
-                                            testing::Bool() ) );
+INSTANTIATE_TEST_SUITE_P(
+    tribol, MfemMortarEnergyPatchTest,
+    testing::Combine( testing::Values( 2 ),
+                      testing::Values( tribol::EnforcementLocation::Nodal,
+                                       tribol::EnforcementLocation::QuadraturePoint ),
+                      // Run grid and BVH searches with matching and 2:1 mortar/nonmortar interfaces.
+                      testing::Values( tribol::BINNING_GRID, tribol::BINNING_BVH ), testing::Bool() ) );
 
 //------------------------------------------------------------------------------
 #include "axom/slic/core/SimpleLogger.hpp"
