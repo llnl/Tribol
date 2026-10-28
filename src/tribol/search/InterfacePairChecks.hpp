@@ -6,7 +6,7 @@
 #ifndef SRC_TRIBOL_SEARCH_INTERFACEPAIRCHECKS_HPP_
 #define SRC_TRIBOL_SEARCH_INTERFACEPAIRCHECKS_HPP_
 
-#include <cmath>
+#include "axom/primal.hpp"
 
 #include "tribol/config.hpp"
 
@@ -54,66 +54,41 @@ struct InterfacePairChecks {
   TRIBOL_HOST_DEVICE static bool linearEdgeNormalsAreOpposing( const MeshData::Viewer& mesh1, IndexT element_id1,
                                                                const MeshData::Viewer& mesh2, IndexT element_id2 )
   {
-    RealT edge1_point0[2];
-    RealT edge1_point1[2];
-    RealT edge2_point0[2];
-    RealT edge2_point1[2];
-    getLinearEdgeEndpoints( mesh1, element_id1, edge1_point0, edge1_point1 );
-    getLinearEdgeEndpoints( mesh2, element_id2, edge2_point0, edge2_point1 );
+    const Vector2D edge1 = getLinearEdgeVector( mesh1, element_id1 );
+    const Vector2D edge2 = getLinearEdgeVector( mesh2, element_id2 );
 
-    RealT edge1_normal[2];
-    RealT edge2_normal[2];
-    if ( !computeLinearEdgeNormal( edge1_point0, edge1_point1, edge1_normal ) ||
-         !computeLinearEdgeNormal( edge2_point0, edge2_point1, edge2_normal ) ) {
+    const RealT minimum_edge_length_squared = minimum_edge_length_ * minimum_edge_length_;
+    if ( edge1.squared_norm() < minimum_edge_length_squared || edge2.squared_norm() < minimum_edge_length_squared ) {
       return false;
     }
-    return edge1_normal[0] * edge2_normal[0] + edge1_normal[1] * edge2_normal[1] <= 0.0;
+
+    // Rotating both directed edge vectors 90 degrees produces their normal vectors and preserves their dot product.
+    // Normalizing those vectors only divides the dot product by two positive edge lengths, so it cannot change the
+    // sign. The edge dot product therefore identifies opposing normals without constructing or normalizing them.
+    return edge1.dot( edge2 ) <= 0.0;
   }
 
  private:
   /** @brief Use the static checks without constructing an instance. */
   InterfacePairChecks() = delete;
 
+  using Point2D = axom::primal::Point<RealT, 2>;
+  using Vector2D = axom::primal::Vector<RealT, 2>;
+
   inline static constexpr RealT minimum_edge_length_ = 1.0e-14;  ///< Edge-length degeneracy threshold.
 
   /**
-   * @brief Read the first two finite-element nodes as straight-edge endpoints.
+   * @brief Return the directed edge from the first finite-element node to the second.
    * @param mesh Mesh view containing the edge.
-   * @param element_id Element whose endpoint coordinates are read.
-   * @param[out] point0 First endpoint, with two physical components.
-   * @param[out] point1 Second endpoint, with two physical components.
+   * @param element_id Element whose edge vector is read.
    */
-  TRIBOL_HOST_DEVICE static void getLinearEdgeEndpoints( const MeshData::Viewer& mesh, IndexT element_id, RealT* point0,
-                                                         RealT* point1 )
+  TRIBOL_HOST_DEVICE static Vector2D getLinearEdgeVector( const MeshData::Viewer& mesh, IndexT element_id )
   {
     const IndexT node0 = mesh.getGlobalNodeId( element_id, 0 );
     const IndexT node1 = mesh.getGlobalNodeId( element_id, 1 );
-    point0[0] = mesh.getPosition()[0][node0];
-    point0[1] = mesh.getPosition()[1][node0];
-    point1[0] = mesh.getPosition()[0][node1];
-    point1[1] = mesh.getPosition()[1][node1];
-  }
-
-  /**
-   * @brief Calculate the unit normal (dy, -dx) from ordered endpoints.
-   * @param point0 First endpoint, with two physical components.
-   * @param point1 Second endpoint, with two physical components.
-   * @param[out] normal Unit normal, or zero for a degenerate edge.
-   * @return Whether the edge meets the minimum physical length.
-   */
-  TRIBOL_HOST_DEVICE static bool computeLinearEdgeNormal( const RealT* point0, const RealT* point1, RealT* normal )
-  {
-    const RealT edge_x = point1[0] - point0[0];
-    const RealT edge_y = point1[1] - point0[1];
-    const RealT edge_length = std::sqrt( edge_x * edge_x + edge_y * edge_y );
-    if ( edge_length < minimum_edge_length_ ) {
-      normal[0] = RealT{};
-      normal[1] = RealT{};
-      return false;
-    }
-    normal[0] = edge_y / edge_length;
-    normal[1] = -edge_x / edge_length;
-    return true;
+    const Point2D point0{ mesh.getPosition()[0][node0], mesh.getPosition()[1][node0] };
+    const Point2D point1{ mesh.getPosition()[0][node1], mesh.getPosition()[1][node1] };
+    return Vector2D( point0, point1 );
   }
 };
 
