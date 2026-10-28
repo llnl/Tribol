@@ -7,6 +7,7 @@
 
 #include "axom/slic.hpp"
 
+#include "shared/common/BasicTypes.hpp"
 #include "shared/infrastructure/Profiling.hpp"
 
 #include "redecomp/RedecompTransfer.hpp"
@@ -22,7 +23,7 @@ RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, PartitionType method, i
 {
 }
 
-RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length, PartitionType method, int n_ranks )
+RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, shared::RealT ghost_length, PartitionType method, int n_ranks )
     : parent_{ parent }, mpi_{ parent.GetComm() }
 {
   TRIBOL_MARK_FUNCTION;
@@ -79,7 +80,7 @@ RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, std::unique_ptr<const P
 {
 }
 
-RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length,
+RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, shared::RealT ghost_length,
                             std::unique_ptr<const Partitioner> partitioner, int n_ranks )
     : parent_{ parent }, mpi_{ parent.GetComm() }
 {
@@ -129,13 +130,13 @@ RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, EntityIndexByRank&& p2r
   BuildRedecomp();
 }
 
-double RedecompMesh::DefaultGhostLength( const mfem::ParMesh& parent ) const
+shared::RealT RedecompMesh::DefaultGhostLength( const mfem::ParMesh& parent ) const
 {
   return 1.25 * MaxElementSize( parent, MPIUtility( parent.GetComm() ) );
 }
 
 EntityIndexByRank RedecompMesh::BuildP2RElementList( const Partitioner& partitioner, int n_parts,
-                                                     double ghost_length ) const
+                                                     shared::RealT ghost_length ) const
 {
   SLIC_ERROR_ROOT_IF( ghost_length < 0.0, "Ghost element layer length should be 0 or larger." );
   return partitioner.generatePartitioning( n_parts, { &parent_ }, ghost_length )[0];
@@ -175,9 +176,9 @@ void RedecompMesh::BuildRedecomp()
 
   // send vertex coords from parent to redecomp
   p2r_verts = vertex_transfer.P2RNodeList( false );
-  auto redecomp_coords = MPIArray<double, axom::Array<double, 2>>( &mpi_ );
+  auto redecomp_coords = MPIArray<shared::RealT, axom::Array<shared::RealT, 2>>( &mpi_ );
   redecomp_coords.SendRecvEach( [this, &p2r_verts]( int dest ) {
-    auto parent_coords = axom::Array<double, 2>();
+    auto parent_coords = axom::Array<shared::RealT, 2>();
     const auto& vert_idx = p2r_verts.first[dest];
     auto n_coords = vert_idx.Size();
     parent_coords.reserve( 3 * n_coords );
@@ -326,9 +327,9 @@ void RedecompMesh::BuildRedecomp()
 }
 
 // TODO: potentially improve the way this is calculated?
-double RedecompMesh::MaxElementSize( const mfem::ParMesh& parent, const MPIUtility& mpi )
+shared::RealT RedecompMesh::MaxElementSize( const mfem::ParMesh& parent, const MPIUtility& mpi )
 {
-  auto max_elem_size = 0.0;
+  shared::RealT max_elem_size = 0.0;
   for ( auto i = 0; i < parent.GetNE(); ++i ) {
     // TODO: const version of GetElementSize() NOTE: h_max (type = 2) not
     // implemented for surface meshes in GetElementSize(). The version called
@@ -337,7 +338,7 @@ double RedecompMesh::MaxElementSize( const mfem::ParMesh& parent, const MPIUtili
   }
 
   // Accounts for element diagonal lengths greater than aligned lengths
-  max_elem_size = max_elem_size * std::sqrt( static_cast<double>( parent.Dimension() ) );
+  max_elem_size = max_elem_size * std::sqrt( static_cast<shared::RealT>( parent.Dimension() ) );
 
   return mpi.AllreduceValue( max_elem_size, MPI_MAX );
 }

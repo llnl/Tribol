@@ -27,6 +27,7 @@
 
 // Tribol includes
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
@@ -35,7 +36,7 @@
  * @brief This tests the Tribol MFEM interface running a contact patch test.
  *
  */
-class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Element::Type, double>> {
+class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Element::Type, tribol::RealT>> {
  protected:
   tribol::RealT max_disp_;
   void SetUp() override
@@ -46,7 +47,7 @@ class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Eleme
     // polynomial order of the finite element discretization
     int order = 1;
 
-    double residual_gap = std::get<2>( GetParam() );
+    tribol::RealT residual_gap = std::get<2>( GetParam() );
 
     // fixed options
     // boundary element attributes of mortar surface
@@ -222,7 +223,7 @@ class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Eleme
 
 TEST_P( MfemMortarTest, check_mortar_displacement )
 {
-  double residual_gap = std::get<2>( GetParam() );
+  tribol::RealT residual_gap = std::get<2>( GetParam() );
   EXPECT_LT( std::abs( max_disp_ - ( 0.005 + residual_gap / 2.0 ) ), 1.0e-6 );
 
   MPI_Barrier( MPI_COMM_WORLD );

@@ -3,6 +3,7 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/interface/simple_tribol.hpp"
 
 // C/C++ includes
@@ -55,11 +56,12 @@ int Finalize( bool finalize_slic )
 }
 
 void SimpleCouplingSetup( const int dim, int cell_type, int contact_method, int mortar_numCells,
-                          int mortar_lengthNodalData, const tribol::IndexT* mortar_connectivity, const double* mortar_x,
-                          const double* mortar_y, const double* mortar_z, int nonmortar_numCells,
-                          int nonmortar_lengthNodalData, const tribol::IndexT* nonmortar_connectivity,
-                          const double* nonmortar_x, const double* nonmortar_y, const double* nonmortar_z,
-                          const double area_frac, double* mortar_gaps, double* mortar_pressures )
+                          int mortar_lengthNodalData, const tribol::IndexT* mortar_connectivity,
+                          const tribol::RealT* mortar_x, const tribol::RealT* mortar_y, const tribol::RealT* mortar_z,
+                          int nonmortar_numCells, int nonmortar_lengthNodalData,
+                          const tribol::IndexT* nonmortar_connectivity, const tribol::RealT* nonmortar_x,
+                          const tribol::RealT* nonmortar_y, const tribol::RealT* nonmortar_z,
+                          const tribol::RealT area_frac, tribol::RealT* mortar_gaps, tribol::RealT* mortar_pressures )
 {
   (void)dim;  // quiet compiler
 
@@ -106,7 +108,7 @@ void SimpleCouplingSetup( const int dim, int cell_type, int contact_method, int 
 }
 
 //------------------------------------------------------------------------------
-int Update( double& dt )
+int Update( tribol::RealT& dt )
 {
   int err = tribol::update( 1, 1., dt );
 
@@ -116,7 +118,7 @@ int Update( double& dt )
 }
 
 //------------------------------------------------------------------------------
-int GetSimpleCouplingCSR( int** I, int** J, double** vals, int* n_offsets, int* n_nonzeros )
+int GetSimpleCouplingCSR( int** I, int** J, tribol::RealT** vals, int* n_offsets, int* n_nonzeros )
 {
   int err = tribol::getJacobianCSRMatrix( I, J, vals, 0, n_offsets, n_nonzeros );
   return err;

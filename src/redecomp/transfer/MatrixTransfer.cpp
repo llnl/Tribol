@@ -10,6 +10,7 @@
 #include "mfem/general/forall.hpp"
 
 #include "redecomp/RedecompMesh.hpp"
+#include "shared/common/BasicTypes.hpp"
 #include "shared/math/ParSparseMat.hpp"
 #include "shared/infrastructure/Profiling.hpp"
 
@@ -66,7 +67,7 @@ void MatrixTransfer::validateDenseMatrices( const axom::Array<int>& test_elem_id
 
 void MatrixTransfer::validateFlatMatrices( const axom::Array<int>& test_elem_idx,
                                            const axom::Array<int>& trial_elem_idx,
-                                           const axom::Array<double>& src_elem_mat_data,
+                                           const axom::Array<shared::RealT>& src_elem_mat_data,
                                            const axom::Array<int>& src_elem_mat_offsets ) const
 {
   validateTransferInputs( test_elem_idx, trial_elem_idx, src_elem_mat_offsets.size(),
@@ -157,19 +158,19 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
   TRIBOL_MARK_BEGIN( "SendRecvEach" );
   // aggregate dense matrix values, send and assemble
   getMPIUtility().SendRecvEach(
-      type<axom::Array<double>>(),
+      type<axom::Array<shared::RealT>>(),
       [&comm_data, &src_elem_mat]( axom::IndexType dst ) {
-        auto send_vals = axom::Array<double>( 0, comm_data.send_num_mat_entries[dst] );
+        auto send_vals = axom::Array<shared::RealT>( 0, comm_data.send_num_mat_entries[dst] );
 
         for ( auto src_array_idx : comm_data.send_array_ids[dst] ) {
-          send_vals.append(
-              axom::ArrayView<double>( src_elem_mat[src_array_idx].Data(),
-                                       src_elem_mat[src_array_idx].Width() * src_elem_mat[src_array_idx].Height() ) );
+          send_vals.append( axom::ArrayView<shared::RealT>(
+              src_elem_mat[src_array_idx].Data(),
+              src_elem_mat[src_array_idx].Width() * src_elem_mat[src_array_idx].Height() ) );
         }
 
         return send_vals;
       },
-      [this, test_redecomp, &parentJ, &comm_data]( axom::Array<double>&& send_vals, axom::IndexType src ) {
+      [this, test_redecomp, &parentJ, &comm_data]( axom::Array<shared::RealT>&& send_vals, axom::IndexType src ) {
         if ( comm_data.recv_trial_elem_dofs[src].IsEmpty() ) {
           return;
         }
@@ -203,7 +204,7 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
 
 shared::ParSparseMat MatrixTransfer::TransferToParallel( const axom::Array<int>& test_elem_idx,
                                                          const axom::Array<int>& trial_elem_idx,
-                                                         const axom::Array<double>& src_elem_mat_data,
+                                                         const axom::Array<shared::RealT>& src_elem_mat_data,
                                                          const axom::Array<int>& src_elem_mat_offsets,
                                                          bool parallel_assemble ) const
 {
@@ -219,7 +220,7 @@ shared::ParSparseMat MatrixTransfer::TransferToParallel( const axom::Array<int>&
   struct Triplet {
     int row;
     HYPRE_BigInt col;
-    double val;
+    shared::RealT val;
   };
   std::vector<Triplet> triplets;
   // Estimate capacity to reduce reallocations
@@ -235,10 +236,10 @@ shared::ParSparseMat MatrixTransfer::TransferToParallel( const axom::Array<int>&
   TRIBOL_MARK_BEGIN( "SendRecvEach" );
   // aggregate dense matrix values, send and assemble
   getMPIUtility().SendRecvEach(
-      type<axom::Array<double>>(),
+      type<axom::Array<shared::RealT>>(),
       [&comm_data, &src_elem_mat_data, &src_elem_mat_offsets, &test_elem_idx, &trial_elem_idx,
        this]( axom::IndexType dst ) {
-        auto send_vals = axom::Array<double>( 0, comm_data.send_num_mat_entries[dst] );
+        auto send_vals = axom::Array<shared::RealT>( 0, comm_data.send_num_mat_entries[dst] );
 
         for ( auto src_array_idx : comm_data.send_array_ids[dst] ) {
           // Calculate size from FE spaces
@@ -249,12 +250,12 @@ shared::ParSparseMat MatrixTransfer::TransferToParallel( const axom::Array<int>&
           auto size = n_test_elem_vdofs * n_trial_elem_vdofs;
 
           send_vals.append(
-              axom::ArrayView<const double>( &src_elem_mat_data[src_elem_mat_offsets[src_array_idx]], size ) );
+              axom::ArrayView<const shared::RealT>( &src_elem_mat_data[src_elem_mat_offsets[src_array_idx]], size ) );
         }
 
         return send_vals;
       },
-      [this, test_redecomp, &triplets, &comm_data]( axom::Array<double>&& send_vals, axom::IndexType src ) {
+      [this, test_redecomp, &triplets, &comm_data]( axom::Array<shared::RealT>&& send_vals, axom::IndexType src ) {
         if ( comm_data.recv_trial_elem_dofs[src].IsEmpty() ) {
           return;
         }
@@ -306,7 +307,7 @@ shared::ParSparseMat MatrixTransfer::TransferToParallel( const axom::Array<int>&
   auto num_rows = parent_test_fes_.GetVSize();
   std::vector<int> I_ptr( num_rows + 1, 0 );
   std::vector<HYPRE_BigInt> J_ptr( num_unique_nonzeros );
-  std::vector<double> data_ptr( num_unique_nonzeros );
+  std::vector<shared::RealT> data_ptr( num_unique_nonzeros );
 
   // Initialize I_ptr with zeros
   for ( int i = 0; i <= num_rows; ++i ) {

@@ -12,6 +12,7 @@
 #include <iostream>
 
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 #include "gtest/gtest.h"
 
@@ -47,7 +48,7 @@ RealT SignedArea2DPolygon( const RealT* x, const RealT* y, int num_vert )
  */
 class EnzymePolyIntersectTest : public testing::Test {
  protected:
-  static constexpr double delta_{ 1.0e-8 };
+  static constexpr RealT delta_{ 1.0e-8 };
   void SetUp() override {}
 
   void CheckIntersectionJacobian( RealT* x1, RealT* x2, int* stencil_dir, RealT fd_tol = delta_,
@@ -75,7 +76,7 @@ class EnzymePolyIntersectTest : public testing::Test {
     }
     auto num_poly_verts = 0;
     auto d_num_poly_verts = 0;
-    auto d_length_tol = 0.0;
+    tribol::RealT d_length_tol = 0.0;
     RealT area = 0.0;
     constexpr int num_elem_coords = 4;
     constexpr bool check_orientation = true;
@@ -301,7 +302,7 @@ class EnzymePolyIntersectTest : public testing::Test {
 
 TEST_F( EnzymePolyIntersectTest, PerfectOverlap )
 {
-  constexpr auto length_tol = 10.0 * delta_;
+  constexpr RealT length_tol = 10.0 * delta_;
   RealT x1[8] = { 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
   RealT x2[8] = { 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
   int stencil_dir[4] = { 0, 0, 0, 0 };
@@ -310,7 +311,7 @@ TEST_F( EnzymePolyIntersectTest, PerfectOverlap )
 
 TEST_F( EnzymePolyIntersectTest, Mesh2VertexMovedPastLengthTol )
 {
-  constexpr auto length_tol = 10.0 * delta_;
+  constexpr RealT length_tol = 10.0 * delta_;
   RealT x1[8] = { 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
   // Move the vertex past the tolerance boundary.  Placing it exactly at length_tol makes the finite-difference stencil
   // cross a topology branch, so the derivative is not well-defined.
@@ -324,7 +325,7 @@ TEST_F( EnzymePolyIntersectTest, Mesh2VertexMovedPastLengthTol )
 // change in the overlap coordinate.
 TEST_F( EnzymePolyIntersectTest, NearlyParallelEdges )
 {
-  constexpr auto length_tol = 10.0 * delta_;
+  constexpr RealT length_tol = 10.0 * delta_;
   RealT x1[8] = { 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
   RealT x2[8] = { 0.0, 1.0, 1.0, 0.0, 0.0 - 2 * length_tol, 0.0 + 2 * length_tol, 1.0, 1.0 };
   int stencil_dir[4] = { 0, 1, 0, 0 };
@@ -333,8 +334,8 @@ TEST_F( EnzymePolyIntersectTest, NearlyParallelEdges )
 
 TEST_F( EnzymePolyIntersectTest, LessNearlyParallelEdges )
 {
-  constexpr auto length_tol = 10.0 * delta_;
-  constexpr auto offset = 0.2;
+  constexpr RealT length_tol = 10.0 * delta_;
+  constexpr tribol::RealT offset = 0.2;
   // shift node 3 in a little to prevent edge class change with FD
   RealT x1[8] = { 0.0, 1.0, 1.0 - length_tol, 0.0, 0.0, 0.0, 1.0 - length_tol, 1.0 };
   RealT x2[8] = { 0.0, 1.0, 1.0, 0.0, 0.0 - offset, 0.0 + offset, 1.0, 1.0 };
@@ -344,8 +345,8 @@ TEST_F( EnzymePolyIntersectTest, LessNearlyParallelEdges )
 
 TEST_F( EnzymePolyIntersectTest, OffsetElements )
 {
-  constexpr auto length_tol = 10.0 * delta_;
-  constexpr auto offset = 0.2;
+  constexpr RealT length_tol = 10.0 * delta_;
+  constexpr tribol::RealT offset = 0.2;
   RealT x1[8] = { 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
   RealT x2[8] = { 0.0 + offset, 1.0 + offset, 1.0 + offset, 0.0 + offset,
                   0.0 + offset, 0.0 + offset, 1.0 + offset, 1.0 + offset };
@@ -355,9 +356,9 @@ TEST_F( EnzymePolyIntersectTest, OffsetElements )
 
 TEST_F( EnzymePolyIntersectTest, EightOverlapVertices )
 {
-  constexpr auto length_tol = 10.0 * delta_;
-  auto xmin = -1.0 / std::sqrt( 2.0 ) + 0.5;
-  auto xmax = 1.0 / std::sqrt( 2.0 ) + 0.5;
+  constexpr RealT length_tol = 10.0 * delta_;
+  RealT xmin = -1.0 / std::sqrt( 2.0 ) + 0.5;
+  RealT xmax = 1.0 / std::sqrt( 2.0 ) + 0.5;
   RealT x1[8] = { 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
   RealT x2[8] = { 0.5, xmax, 0.5, xmin, xmin, 0.5, xmax, 0.5 };
   int stencil_dir[4] = { 0, 0, 0, 0 };

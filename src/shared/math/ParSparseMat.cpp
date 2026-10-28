@@ -3,6 +3,7 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+#include "shared/common/BasicTypes.hpp"
 #include "shared/math/ParSparseMat.hpp"
 
 #include <_hypre_parcsr_mv.h>
@@ -41,7 +42,7 @@ ParSparseMat operator-( const ParSparseMatView& lhs, const ParSparseMatView& rhs
   return ParSparseMatView::add( 1.0, lhs, -1.0, rhs );
 }
 
-ParSparseMat ParSparseMatView::operator*( double s ) const { return add( s, *this, 0.0, *this ); }
+ParSparseMat ParSparseMatView::operator*( RealT s ) const { return add( s, *this, 0.0, *this ); }
 
 ParSparseMat operator*( const ParSparseMatView& lhs, const ParSparseMatView& rhs )
 {
@@ -110,7 +111,7 @@ ParSparseMat ParSparseMatView::eliminateCols( const mfem::Array<int>& cols )
   return ParSparseMat( createHypreParMatrix<MemorySpace::Host>( [&]() { return mat_->EliminateCols( cols ); } ) );
 }
 
-ParSparseMat operator*( double s, const ParSparseMatView& mat ) { return mat * s; }
+ParSparseMat operator*( RealT s, const ParSparseMatView& mat ) { return mat * s; }
 
 ParVector operator*( const ParVectorView& x, const ParSparseMatView& mat )
 {
@@ -214,7 +215,7 @@ ParSparseMat& ParSparseMat::operator*=( const ParSparseMatView& other )
 }
 
 ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_size,
-                                           const mfem::Array<HYPRE_BigInt>& row_starts, double diag_val,
+                                           const mfem::Array<HYPRE_BigInt>& row_starts, RealT diag_val,
                                            const mfem::Array<int>& ordered_rows, bool skip_rows )
 {
   int num_local_rows = 0;
@@ -292,7 +293,7 @@ ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_si
 }
 
 ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_size, HYPRE_BigInt* row_starts,
-                                           double diag_val, const mfem::Array<int>& ordered_rows, bool skip_rows )
+                                           RealT diag_val, const mfem::Array<int>& ordered_rows, bool skip_rows )
 {
   int num_procs;
   MPI_Comm_size( comm, &num_procs );

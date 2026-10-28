@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 #include "gtest/gtest.h"
 
@@ -22,7 +23,7 @@
 namespace tribol {
 
 template <MemorySpace MSPACE, ExecutionMode EXEC>
-double runExample( int num_elems_1d );
+RealT runExample( int num_elems_1d );
 
 /**
  * @brief This tests the tribol common plane method on multiple platforms and
@@ -32,7 +33,7 @@ double runExample( int num_elems_1d );
  */
 class CommonPlaneGPUTest : public testing::Test {
  protected:
-  double max_error_;
+  RealT max_error_;
   void SetUp() override
   {
     int ref_level = 2;
@@ -57,12 +58,12 @@ TEST_F( CommonPlaneGPUTest, update_test )
 }
 
 template <MemorySpace MSPACE, ExecutionMode EXEC>
-double runExample( int num_elems_1d )
+RealT runExample( int num_elems_1d )
 {
   // Creating MFEM mesh
 
   int num_contact_elems = num_elems_1d * num_elems_1d;
-  double elem_height = 1.0 / static_cast<double>( num_elems_1d );
+  RealT elem_height = 1.0 / static_cast<RealT>( num_elems_1d );
 
   // create top mesh
   mfem::Mesh top_mesh = mfem::Mesh::MakeCartesian3D( num_elems_1d, num_elems_1d, 1, mfem::Element::Type::HEXAHEDRON,

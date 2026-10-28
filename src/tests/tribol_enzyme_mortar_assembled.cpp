@@ -12,6 +12,7 @@
 #include <iostream>
 
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 #include "gtest/gtest.h"
 
@@ -36,7 +37,7 @@ class EnzymeMortarAssembledTest : public testing::Test {
 
   void RunJacobianTest( mfem::Mesh& mesh, mfem::Vector* pressure, mfem::GridFunction* parent_coords, int bdry_attrib1,
                         int x_el1, int y_el1, int bdry_attrib2, int x_el2, int y_el2,
-                        const double* stencil_dir = nullptr )
+                        const RealT* stencil_dir = nullptr )
   {
     // create MFEM submesh
     mfem::Array<int> submesh_bdry_attribs( { bdry_attrib1, bdry_attrib2 } );
@@ -131,8 +132,8 @@ class EnzymeMortarAssembledTest : public testing::Test {
 
     // calc element force, gap, and Jacobians
     constexpr auto cycle = 1;
-    constexpr auto t = 1.0;
-    auto dt = 1.0;
+    constexpr tribol::RealT t = 1.0;
+    tribol::RealT dt = 1.0;
     update( cycle, t, dt );
 
     // get element Jacobian contributions and assemble
@@ -357,7 +358,7 @@ class EnzymeMortarAssembledTest : public testing::Test {
     force_base = force;
 
     // finite difference to obtain values to compare
-    auto delta = 1.0e-7;
+    tribol::RealT delta = 1.0e-7;
     setLagrangeMultiplierOptions( cs_id, ImplicitEvalMode::MORTAR_RESIDUAL, SparseMode::MFEM_ELEMENT_DENSE );
     mfem::DenseMatrix dfdx_fd( fe_space.GetVSize(), fe_space.GetVSize() );
     mfem::DenseMatrix dgdx_fd( fe_space_scalar.GetVSize(), fe_space.GetVSize() );
@@ -435,9 +436,9 @@ TEST_F( EnzymeMortarAssembledTest, FiniteDiffCheckShifted2x2Meshes )
   constexpr auto num_yel_mesh0 = 2;
   constexpr auto num_xel_mesh1 = 2;
   constexpr auto num_yel_mesh1 = 2;
-  constexpr auto el_width = 1.0;
-  constexpr auto el_height = 1.0;
-  constexpr auto xy_shift = 0.1;
+  constexpr tribol::RealT el_width = 1.0;
+  constexpr tribol::RealT el_height = 1.0;
+  constexpr tribol::RealT xy_shift = 0.1;
 
   constexpr auto mesh0_bdry_attrib = 7;
   constexpr auto mesh1_bdry_attrib = 8;
@@ -475,8 +476,8 @@ TEST_F( EnzymeMortarAssembledTest, FiniteDiffCheckShifted1x1Meshes )
   constexpr auto mesh0_bdry_attrib = 6;
   constexpr auto mesh1_bdry_attrib = 7;
 
-  constexpr double eps = 1.0e-7;
-  constexpr double xy_shift = eps * 10.0;
+  constexpr RealT eps = 1.0e-7;
+  constexpr RealT xy_shift = eps * 10.0;
   // clang-format off
   auto mesh = shared::MeshBuilder::Unify({
     shared::MeshBuilder::CubeMesh(1, 1, 1),
@@ -506,7 +507,7 @@ TEST_F( EnzymeMortarAssembledTest, FiniteDiffCheckWarped1x1Meshes )
   constexpr auto mesh0_bdry_attrib = 6;
   constexpr auto mesh1_bdry_attrib = 7;
 
-  constexpr double xy_shift = 0.2;
+  constexpr RealT xy_shift = 0.2;
   // clang-format off
   auto mesh = shared::MeshBuilder::Unify({
     shared::MeshBuilder::CubeMesh(1, 1, 1),
@@ -538,8 +539,8 @@ TEST_F( EnzymeMortarAssembledTest, FiniteDiffCheckShifted1x1MeshesV2 )
   constexpr auto mesh0_bdry_attrib = 6;
   constexpr auto mesh1_bdry_attrib = 7;
 
-  constexpr double eps = 1.0e-7;
-  constexpr double xy_shift = eps * 10.0;
+  constexpr RealT eps = 1.0e-7;
+  constexpr RealT xy_shift = eps * 10.0;
   // clang-format off
   auto mesh = shared::MeshBuilder::Unify({
     shared::MeshBuilder::CubeMesh(1, 1, 1),
@@ -602,9 +603,9 @@ TEST_F( EnzymeMortarAssembledTest, FiniteDiffCheckAligned1x1Mesh )
   constexpr auto num_yel_mesh0 = 1;
   constexpr auto num_xel_mesh1 = 1;
   constexpr auto num_yel_mesh1 = 1;
-  constexpr auto el_width = 1.0;
-  constexpr auto el_height = 1.0;
-  constexpr auto xy_shift = 0.0;
+  constexpr tribol::RealT el_width = 1.0;
+  constexpr tribol::RealT el_height = 1.0;
+  constexpr tribol::RealT xy_shift = 0.0;
 
   constexpr auto mesh0_bdry_attrib = 7;
   constexpr auto mesh1_bdry_attrib = 8;
@@ -627,9 +628,9 @@ TEST_F( EnzymeMortarAssembledTest, FiniteDiffCheckAligned1x1Mesh )
   // clang-format on
 
   // stencil direction (keeps finite differencing from changing the overlap polygons)
-  double stencil_dir[48] = { -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0,  1.0,  -1.0, -1.0,
-                             -1.0, -1.0, 1.0, 1.0, 1.0, 1.0,  1.0,  1.0, 1.0,  1.0, 1.0, 1.0,  -1.0, -1.0, 1.0,  1.0,
-                             1.0,  1.0,  1.0, 1.0, 1.0, 1.0,  1.0,  1.0, 1.0,  1.0, 1.0, 1.0,  -1.0, -1.0, -1.0, -1.0 };
+  RealT stencil_dir[48] = { -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0,  1.0,  -1.0, -1.0,
+                            -1.0, -1.0, 1.0, 1.0, 1.0, 1.0,  1.0,  1.0, 1.0,  1.0, 1.0, 1.0,  -1.0, -1.0, 1.0,  1.0,
+                            1.0,  1.0,  1.0, 1.0, 1.0, 1.0,  1.0,  1.0, 1.0,  1.0, 1.0, 1.0,  -1.0, -1.0, -1.0, -1.0 };
 
   RunJacobianTest( mesh, nullptr, nullptr, mesh0_bdry_attrib, num_xel_mesh0, num_yel_mesh0, mesh1_bdry_attrib,
                    num_xel_mesh1, num_yel_mesh1, stencil_dir );

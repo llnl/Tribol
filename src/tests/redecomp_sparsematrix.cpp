@@ -10,6 +10,7 @@
 #include "mfem.hpp"
 
 #include "tribol/config.hpp"
+#include "shared/common/BasicTypes.hpp"
 
 #include "redecomp/redecomp.hpp"
 
@@ -25,17 +26,17 @@ namespace redecomp {
  * definition accordingly.
  *
  */
-class SparseMatrixTest : public testing::TestWithParam<std::tuple<int, int, double>> {
+class SparseMatrixTest : public testing::TestWithParam<std::tuple<int, int, shared::RealT>> {
  protected:
-  double max_error_;
+  shared::RealT max_error_;
   void SetUp() override
   {
     auto dim = std::get<0>( GetParam() );            // spatial dimension of the mesh
     auto ref_levels = std::get<1>( GetParam() );     // number of times to refine the mesh
     auto filter_radius = std::get<2>( GetParam() );  // filter radius of the explicit density filter
 
-    double side_length = 1.0;  // side length of square domain
-    int n_elem_per_dim = 4;    // number of elements per dimension
+    shared::RealT side_length = 1.0;  // side length of square domain
+    int n_elem_per_dim = 4;           // number of elements per dimension
     mfem::Mesh serial_mesh;
     if ( dim == 2 ) {
       serial_mesh = mfem::Mesh::MakeCartesian2D( n_elem_per_dim, n_elem_per_dim, mfem::Element::Type::QUADRILATERAL,
@@ -52,7 +53,7 @@ class SparseMatrixTest : public testing::TestWithParam<std::tuple<int, int, doub
     // update the number of elements per dimension to reflect the refined mesh
     n_elem_per_dim *= std::pow( 2, ref_levels );
     // compute the element side length
-    double dx = side_length / n_elem_per_dim;
+    shared::RealT dx = side_length / n_elem_per_dim;
 
     // build a parallel mesh with associated 0-order, L2 finite element space
     mfem::ParMesh par_mesh{ MPI_COMM_WORLD, serial_mesh };
@@ -86,7 +87,7 @@ class SparseMatrixTest : public testing::TestWithParam<std::tuple<int, int, doub
       for ( int j = 0; j < n_local_elem; j++ ) {
         redecomp_mesh.GetElementCenter( j, xj );
         // evaluate kernel which takes in both element centroids
-        double Wij = filter_kernel( xi, xj );
+        shared::RealT Wij = filter_kernel( xi, xj );
         // if kernel returns a non-zero value, create entry in the sparse redecomp matrix
         if ( Wij > 0.0 ) {
           W_redecomp.Add( i, j, Wij );
@@ -109,8 +110,8 @@ class SparseMatrixTest : public testing::TestWithParam<std::tuple<int, int, doub
 
     // define analytical field for testing
     auto x_function = [&]( const mfem::Vector& x ) {
-      double pi = 3.1415;
-      double f = 0.0;
+      shared::RealT pi = 3.1415;
+      shared::RealT f = 0.0;
       for ( int i = 0; i < dim; i++ ) {
         f += std::sin( 2. * pi * x[i] / side_length );
       }
@@ -120,8 +121,8 @@ class SparseMatrixTest : public testing::TestWithParam<std::tuple<int, int, doub
     // leverage uniform mesh to write analytical definition of the filtered field
     auto xf_function = [&]( const mfem::Vector& x ) {
       mfem::Vector xj( dim );
-      double value = 0.0;
-      double denom = 0.0;
+      shared::RealT value = 0.0;
+      shared::RealT denom = 0.0;
       if ( dim == 2 ) {
         for ( int i = 0; i < n_elem_per_dim; i++ ) {
           xj( 0 ) = dx / 2. + i * dx;

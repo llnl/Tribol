@@ -55,11 +55,13 @@
 
 #include "redecomp/redecomp.hpp"
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 template <int NDIMS>
-void RedecompExample( mfem::ParMesh& pmesh1, mfem::ParMesh& pmesh2, int order, double max_out_of_balance );
+void RedecompExample( mfem::ParMesh& pmesh1, mfem::ParMesh& pmesh2, int order, tribol::RealT max_out_of_balance );
 
-std::unique_ptr<mfem::ParMesh> MakePMesh( MPI_Comm comm, const std::string& mesh_file, double theta, int ref_levels );
+std::unique_ptr<mfem::ParMesh> MakePMesh( MPI_Comm comm, const std::string& mesh_file, tribol::RealT theta,
+                                          int ref_levels );
 
 int main( int argc, char** argv )
 {
@@ -82,8 +84,8 @@ int main( int argc, char** argv )
   std::string mesh_file1 = TRIBOL_REPO_DIR "/data/star.mesh";
   std::string mesh_file2 = TRIBOL_REPO_DIR "/data/star.mesh";
   // angle of rotation of the mesh file (in the x-y plane)
-  double rot1 = 0.0;
-  double rot2 = 30.0;
+  tribol::RealT rot1 = 0.0;
+  tribol::RealT rot2 = 30.0;
   // number of times to uniformly refine the serial mesh before constructing the
   // parallel mesh
   int ref_levels = 0;
@@ -96,7 +98,7 @@ int main( int argc, char** argv )
   // max_out_of_balance from being so small that decomposition is impossible on
   // very coarse meshes, though the decomposition can still fail with the simple
   // checks implemented.
-  double max_out_of_balance = 0.05;
+  tribol::RealT max_out_of_balance = 0.05;
 
   axom::CLI::App app{ "multidomain_redecomp" };
   app.add_option( "--m1,--mesh1", mesh_file1, "First mesh file to use." )
@@ -148,7 +150,7 @@ int main( int argc, char** argv )
 }
 
 template <int NDIMS>
-void RedecompExample( mfem::ParMesh& pmesh1, mfem::ParMesh& pmesh2, int order, double max_out_of_balance )
+void RedecompExample( mfem::ParMesh& pmesh1, mfem::ParMesh& pmesh2, int order, tribol::RealT max_out_of_balance )
 {
   auto rank = pmesh1.GetMyRank();
   auto np = pmesh1.GetNRanks();
@@ -308,14 +310,14 @@ void RedecompExample( mfem::ParMesh& pmesh1, mfem::ParMesh& pmesh2, int order, d
     auto quad_val = mfem::Vector();
     quad_fn1.GetValues( e, quad_val );
     for ( int i{ 0 }; i < quad_val.Size(); ++i ) {
-      quad_val[i] = static_cast<double>( pmesh1.GetGlobalElementNum( e ) );
+      quad_val[i] = static_cast<tribol::RealT>( pmesh1.GetGlobalElementNum( e ) );
     }
   }
   for ( int e{ 0 }; e < pmesh2.GetNE(); ++e ) {
     auto quad_val = mfem::Vector();
     quad_fn2.GetValues( e, quad_val );
     for ( int i{ 0 }; i < quad_val.Size(); ++i ) {
-      quad_val[i] = static_cast<double>( pmesh2.GetGlobalElementNum( e ) );
+      quad_val[i] = static_cast<tribol::RealT>( pmesh2.GetGlobalElementNum( e ) );
     }
   }
 
@@ -432,14 +434,15 @@ void RedecompExample( mfem::ParMesh& pmesh1, mfem::ParMesh& pmesh2, int order, d
   }
 }
 
-std::unique_ptr<mfem::ParMesh> MakePMesh( MPI_Comm comm, const std::string& mesh_file, double theta, int ref_levels )
+std::unique_ptr<mfem::ParMesh> MakePMesh( MPI_Comm comm, const std::string& mesh_file, tribol::RealT theta,
+                                          int ref_levels )
 {
   auto mesh = std::make_unique<mfem::Mesh>( mesh_file.c_str(), 1, 1 );
 
   // rotate unrefined serial mesh
   if ( theta != 0.0 ) {
     theta = theta * redecomp::pi / 180.0;
-    auto R = axom::numerics::Matrix<double>::zeros( 3, 3 );
+    auto R = axom::numerics::Matrix<tribol::RealT>::zeros( 3, 3 );
     R( 0, 0 ) = cos( theta );
     R( 0, 1 ) = -sin( theta );
     R( 0, 2 ) = 0.0;
@@ -451,7 +454,7 @@ std::unique_ptr<mfem::ParMesh> MakePMesh( MPI_Comm comm, const std::string& mesh
     R( 2, 2 ) = 1.0;
     auto dim = mesh->Dimension();
     for ( int v{ 0 }; v < mesh->GetNV(); ++v ) {
-      auto tmp_vert = axom::Array<double>( dim, dim );
+      auto tmp_vert = axom::Array<tribol::RealT>( dim, dim );
       auto vert = mesh->GetVertex( v );
       axom::numerics::matrix_vector_multiply( R, vert, tmp_vert.data() );
       for ( int i{ 0 }; i < dim; ++i ) {
@@ -463,7 +466,7 @@ std::unique_ptr<mfem::ParMesh> MakePMesh( MPI_Comm comm, const std::string& mesh
       auto node_fes = node_gf->FESpace();
       auto vdim = node_fes->GetVDim();
       for ( int n{ 0 }; n < node_fes->GetNDofs(); ++n ) {
-        auto tmp_node = axom::Array<double>( vdim, vdim );
+        auto tmp_node = axom::Array<tribol::RealT>( vdim, vdim );
         for ( int i{ 0 }; i < vdim; ++i ) {
           for ( int j{ 0 }; j < vdim; ++j ) {
             tmp_node[i] = tmp_node[i] + R( i, j ) * ( *node_gf )( node_fes->DofToVDof( n, j ) );

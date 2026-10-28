@@ -10,6 +10,7 @@
 
 #include "mfem.hpp"
 
+#include "shared/common/BasicTypes.hpp"
 #include "redecomp/RedecompMesh.hpp"
 
 namespace redecomp {
@@ -34,7 +35,7 @@ class MultiRedecomp {
    * @param ghost_len_multiplier Multiplier for the ghost element layer (base
    * value set by the approximate largest element size)
    */
-  MultiRedecomp( int dim, MPI_Comm comm, PartitionType method = RCB, double ghost_len_multiplier = 1.25 );
+  MultiRedecomp( int dim, MPI_Comm comm, PartitionType method = RCB, shared::RealT ghost_len_multiplier = 1.25 );
 
   /**
    * @brief Construct a new MultiRedecomp object
@@ -47,7 +48,7 @@ class MultiRedecomp {
    * @param ghost_len_multiplier Multiplier for the ghost element layer (base
    * value set by the approximate largest element size)
    */
-  MultiRedecomp( std::unique_ptr<const Partitioner> partitioner, double ghost_len_multiplier = 1.25 );
+  MultiRedecomp( std::unique_ptr<const Partitioner> partitioner, shared::RealT ghost_len_multiplier = 1.25 );
 
   /**
    * @brief Get a vector of Redecomp meshes associated with MultiRedecomp
@@ -72,7 +73,7 @@ class MultiRedecomp {
    * @brief Multiplier of max element length to include in ghost regions of the
    * RedecompMeshes
    */
-  double ghost_len_multiplier_;
+  shared::RealT ghost_len_multiplier_;
 };
 
 }  // namespace redecomp

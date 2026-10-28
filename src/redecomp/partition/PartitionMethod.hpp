@@ -6,6 +6,7 @@
 #ifndef SRC_REDECOMP_PARTITION_PARTITIONMETHOD_HPP_
 #define SRC_REDECOMP_PARTITION_PARTITIONMETHOD_HPP_
 
+#include "shared/common/BasicTypes.hpp"
 #include "redecomp/common/CoordList.hpp"
 #include "redecomp/common/TypeDefs.hpp"
 
@@ -38,7 +39,7 @@ class PartitionMethod {
    */
   virtual std::vector<EntityIndexByRank> generatePartitioning( int n_parts,
                                                                const std::vector<CoordList<NDIMS>>& coords_by_mesh,
-                                                               double ghost_size ) const = 0;
+                                                               shared::RealT ghost_size ) const = 0;
 
   /**
    * @brief Returns the MPIUtility

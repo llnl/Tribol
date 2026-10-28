@@ -3,6 +3,7 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/physics/ContactFormulationFactory.hpp"
 #include "tribol/physics/EnergyMortarAdapter.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
@@ -46,7 +47,7 @@ namespace {
 template <template <typename> class EnforcementLocation, typename QuadratureRule>
 std::unique_ptr<ContactFormulation> createEnergyMortarAdapter( CouplingScheme* cs, QuadratureRule quadrature_rule )
 {
-  double k = 1000.0;
+  RealT k = 1000.0;
   const bool enzyme_quadrature = true;
 
   // ENERGY_MORTAR supports a penalty-style mode driven by the kinematic penalty parameters, even if the coupling

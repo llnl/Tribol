@@ -12,6 +12,7 @@
 #include "axom/core/NumericLimits.hpp"
 #include "axom/slic.hpp"
 
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/utils/Math.hpp"
@@ -1485,7 +1486,7 @@ inline FaceGeomException Intersection2DPolygonEnzyme( const RealT* xA, const Rea
                                                       const RealT* yB, int numVertexB, RealT lengthTolRatio,
                                                       RealT* polyX, RealT* polyY, int* numPolyVert )
 {
-  double area = 0.0;
+  RealT area = 0.0;
   constexpr bool orientCheck = true;
   return Intersection2DPolygon( xA, yA, numVertexA, xB, yB, numVertexB, lengthTolRatio, polyX, polyY, *numPolyVert,
                                 area, orientCheck );

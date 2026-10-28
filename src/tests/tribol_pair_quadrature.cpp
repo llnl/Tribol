@@ -25,7 +25,7 @@
 
 namespace {
 using namespace tribol;
-constexpr double tolerance = 1.0e-12;  ///< Absolute tolerance for coordinates, weights, and polynomial integrals.
+constexpr RealT tolerance = 1.0e-12;  ///< Absolute tolerance for coordinates, weights, and polynomial integrals.
 
 /** @brief Run local rule calculations in memory accessible to the selected backend. */
 class EdgeQuadratureTest : public detail::ExecutionTest {

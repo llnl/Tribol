@@ -3,6 +3,7 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/mesh/MfemData.hpp"
 
 #include "tribol/config.hpp"
@@ -89,7 +90,7 @@ shared::ParSparseMat BuildTrueDofExtract( const mfem::ParFiniteElementSpace& vec
 
   auto* I = new int[nrows + 1];
   auto* J = new int[nrows];
-  auto* data = new double[nrows];
+  auto* data = new RealT[nrows];
   for ( int i = 0; i < nrows + 1; ++i ) I[i] = i;
   for ( int r = 0; r < nrows; ++r ) {
     J[r] = tdofs_list[r];
@@ -127,7 +128,7 @@ shared::ParSparseMat BuildTrueDofInject( const mfem::ParFiniteElementSpace& vec_
   }
   const int nnz = I[nrows];
   auto* J = new int[nnz];
-  auto* data = new double[nnz];
+  auto* data = new RealT[nnz];
   for ( int k = 0; k < nnz; ++k ) data[k] = 1.0;
 
   std::vector<int> next( static_cast<size_t>( nrows ), 0 );
@@ -256,7 +257,7 @@ shared::ParSparseMat RedecompJacobianAssembler::Assemble() const
 {
   axom::Array<int> row_redecomp_ids;
   axom::Array<int> col_redecomp_ids;
-  axom::Array<double> jacobian_data;
+  axom::Array<RealT> jacobian_data;
   axom::Array<int> value_offsets;
 
   for ( const auto& contrib : contributions_ ) {
@@ -278,7 +279,7 @@ shared::ParSparseMat RedecompJacobianAssembler::Assemble() const
     }
 
     if ( contrib.jacobian_data.size() > 0 ) {
-      jacobian_data.append( axom::ArrayView<const double>( contrib.jacobian_data ) );
+      jacobian_data.append( axom::ArrayView<const RealT>( contrib.jacobian_data ) );
     }
 
     // Offsets are stored relative to each contribution chunk, so remap them into the
@@ -1017,7 +1018,7 @@ void MfemMeshData::ComputeElementThicknesses()
 
     mfem::Vector d_hat( parent_mesh_.Dimension() );
     J.MultTranspose( norm, d_hat );
-    double h = std::sqrt( ( d_hat * d_hat ) / ( norm * norm ) );
+    RealT h = std::sqrt( ( d_hat * d_hat ) / ( norm * norm ) );
 
     // Step 3
     mfem::Vector quad_val;

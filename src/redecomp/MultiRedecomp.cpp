@@ -7,13 +7,14 @@
 
 #include "axom/slic.hpp"
 
+#include "shared/common/BasicTypes.hpp"
 #include "redecomp/partition/Partitioner.hpp"
 #include "redecomp/partition/PartitionElements.hpp"
 #include "redecomp/partition/RCB.hpp"
 
 namespace redecomp {
 
-MultiRedecomp::MultiRedecomp( int dim, MPI_Comm comm, PartitionType method, double ghost_len_multiplier )
+MultiRedecomp::MultiRedecomp( int dim, MPI_Comm comm, PartitionType method, shared::RealT ghost_len_multiplier )
     : ghost_len_multiplier_{ ghost_len_multiplier }
 {
   // create partitioner
@@ -47,7 +48,7 @@ MultiRedecomp::MultiRedecomp( int dim, MPI_Comm comm, PartitionType method, doub
   }
 }
 
-MultiRedecomp::MultiRedecomp( std::unique_ptr<const Partitioner> partitioner, double ghost_len_multiplier )
+MultiRedecomp::MultiRedecomp( std::unique_ptr<const Partitioner> partitioner, shared::RealT ghost_len_multiplier )
     : partitioner_{ std::move( partitioner ) }, ghost_len_multiplier_{ ghost_len_multiplier }
 {
 }
@@ -95,7 +96,7 @@ std::vector<std::unique_ptr<RedecompMesh>> MultiRedecomp::createRedecompMeshes(
   // Compute the number of parts the redecomp mesh should have and the size of
   // the ghost layer
   auto n_parts = 0;
-  auto ghost_size = 0.0;
+  shared::RealT ghost_size = 0.0;
   for ( auto parent : parents ) {
     n_parts = std::max( n_parts, static_cast<int>( parent->GetGlobalNE() ) );
     ghost_size = std::max( ghost_size, RedecompMesh::MaxElementSize( *parent, partitioner_->getMPIUtility() ) );

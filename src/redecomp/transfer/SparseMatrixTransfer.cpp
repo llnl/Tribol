@@ -9,6 +9,7 @@
 
 #include "axom/slic.hpp"
 
+#include "shared/common/BasicTypes.hpp"
 #include "redecomp/utils/MPIUtility.hpp"
 #include "redecomp/utils/MPIArray.hpp"
 #include "redecomp/RedecompMesh.hpp"
@@ -68,13 +69,13 @@ std::unique_ptr<mfem::HypreParMatrix> SparseMatrixTransfer::TransferToParallel( 
   // with the first index corresponding to the parent rank and the nested array holding sorted ghost element indices.
 
   // package the entries to send to other ranks
-  MPIArray<double> recv_matrix_data( &getMPIUtility() );
+  MPIArray<shared::RealT> recv_matrix_data( &getMPIUtility() );
   MPIArray<int> recv_parent_local_row( &getMPIUtility() );
   MPIArray<int> recv_parent_local_col( &getMPIUtility() );
   MPIArray<int> recv_parent_col_ranks( &getMPIUtility() );
   {
     // values to send to parent ranks
-    MPIArray<double> send_matrix_data( &getMPIUtility() );
+    MPIArray<shared::RealT> send_matrix_data( &getMPIUtility() );
     // indices in redecomp_mesh_.p2r_elems_ (to obtain parent element id)
     MPIArray<int> send_parent_local_row_offsets( &getMPIUtility() );
     // indices in redecomp_mesh_.p2r_elems_ (to obtain parent element id)
@@ -239,9 +240,9 @@ std::unique_ptr<mfem::HypreParMatrix> SparseMatrixTransfer::TransferToParallel( 
   axom::Array<int> i_diag_ct( parent_test_space_.GetVSize(), parent_test_space_.GetVSize() );
   axom::Array<int> i_offd_ct( parent_test_space_.GetVSize(), parent_test_space_.GetVSize() );
   mfem::Memory<HYPRE_Int> j_diag( diag_nnz );
-  mfem::Memory<double> data_diag( diag_nnz );
+  mfem::Memory<shared::RealT> data_diag( diag_nnz );
   mfem::Memory<HYPRE_Int> j_offd( offd_nnz );
-  mfem::Memory<double> data_offd( offd_nnz );
+  mfem::Memory<shared::RealT> data_offd( offd_nnz );
   for ( int r{ 0 }; r < n_ranks; ++r ) {
     for ( int i{ 0 }; i < recv_parent_col_ranks[r].Size(); ++i ) {
       auto curr_row = recv_parent_local_row[r][i];

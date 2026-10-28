@@ -14,6 +14,7 @@
 #include "axom/fmt.hpp"
 
 // tribol includes
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/utils/Math.hpp"
 #include "tribol/utils/TestUtils.hpp"
@@ -84,14 +85,14 @@ primal::BoundingBox<T, D> getBoundingBox( const std::vector<T>& mins, const std:
  * \brief Holds command line arguments (with defaults) for the examples.
  */
 struct Arguments {
-  int dimension{ 3 };              // problem dimension, i.e., 2 or 3.
-  int refinement_factor{ 0 };      // factor to control number of contact cells
-  int numcycles{ 10 };             // total number of cycles
-  int m;                           // number of vertices in polygon A (intersection ex.)
-  int n;                           // number of vertices in polygon B (intersection ex.)
-  std::string output_dir{};        // directory for file output
-  double penalty_stiffness{ 1. };  // penalty stiffness
-  bool dump_vis{ false };          // should the example dump visualization files?
+  int dimension{ 3 };             // problem dimension, i.e., 2 or 3.
+  int refinement_factor{ 0 };     // factor to control number of contact cells
+  int numcycles{ 10 };            // total number of cycles
+  int m;                          // number of vertices in polygon A (intersection ex.)
+  int n;                          // number of vertices in polygon B (intersection ex.)
+  std::string output_dir{};       // directory for file output
+  RealT penalty_stiffness{ 1. };  // penalty stiffness
+  bool dump_vis{ false };         // should the example dump visualization files?
 
   /// input arguments for examples that use the TestMesh class
   std::vector<int> block1_res{ 4, 4, 4 };                 // block1 -- number of elements in each direction
@@ -391,7 +392,7 @@ int tribol_register_and_update( tribol::TestMesh& mesh, tribol::ContactMethod me
   // method.                          //
   //                                  //
   //////////////////////////////////////
-  double dt = 1.0;
+  RealT dt = 1.0;
   int err = tribol::update( 1, 1., dt );
 
   // specific to TestMesh class; dump mesh to vtk for visualization

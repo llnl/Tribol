@@ -81,14 +81,14 @@ ParVector operator-( const ParVectorView& lhs, const ParVectorView& rhs )
   return result;
 }
 
-ParVector ParVectorView::operator*( double s ) const
+ParVector ParVectorView::operator*( RealT s ) const
 {
   ParVector result( *vec_ );
   result.get() *= s;
   return result;
 }
 
-ParVector operator*( double s, const ParVectorView& vec ) { return vec * s; }
+ParVector operator*( RealT s, const ParVectorView& vec ) { return vec * s; }
 
 ParVector& ParVector::operator+=( const ParVectorView& other )
 {
@@ -102,7 +102,7 @@ ParVector& ParVector::operator-=( const ParVectorView& other )
   return *this;
 }
 
-ParVector& ParVector::operator*=( double s )
+ParVector& ParVector::operator*=( RealT s )
 {
   *vec_ *= s;
   return *this;

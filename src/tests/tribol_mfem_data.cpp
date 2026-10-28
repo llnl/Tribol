@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -34,8 +35,8 @@ constexpr int lower_boundary_attribute = 1;
 constexpr int first_contact_attribute = 6;
 constexpr int second_contact_attribute = 7;
 constexpr int unused_upper_boundary_attribute = 8;
-constexpr double contact_surface_offset = 1.0;
-constexpr double binning_proximity_scale = 1.0;
+constexpr tribol::RealT contact_surface_offset = 1.0;
+constexpr tribol::RealT binning_proximity_scale = 1.0;
 constexpr bool forces_redecomp_rebuild = true;
 constexpr bool pressure_uses_device = false;
 constexpr bool transfers_fields_through_lor = false;
@@ -51,14 +52,14 @@ constexpr int x_component = 0;
 constexpr int y_component = 1;
 constexpr int z_component = 2;
 constexpr int scalar_component = 0;
-constexpr double velocity_x_offset = 1.0;
-constexpr double velocity_y_offset = 2.0;
-constexpr double velocity_z_offset = 3.0;
-constexpr double pressure_offset = 4.0;
-constexpr double pressure_y_weight = 2.0;
-constexpr double comparison_tolerance = 1.0e-12;
-constexpr double minimum_comparison_norm = 1.0;
-constexpr double zero = 0.0;
+constexpr tribol::RealT velocity_x_offset = 1.0;
+constexpr tribol::RealT velocity_y_offset = 2.0;
+constexpr tribol::RealT velocity_z_offset = 3.0;
+constexpr tribol::RealT pressure_offset = 4.0;
+constexpr tribol::RealT pressure_y_weight = 2.0;
+constexpr tribol::RealT comparison_tolerance = 1.0e-12;
+constexpr tribol::RealT minimum_comparison_norm = 1.0;
+constexpr tribol::RealT zero = 0.0;
 
 mfem::ParMesh MakeContactMesh()
 {
@@ -266,7 +267,7 @@ TEST_P( HigherOrderMfemDataTest, direct_transfer_retains_higher_order_fields )
   parent_response = zero;
   mesh_data.GetParentResponse( parent_response );
   EXPECT_EQ( parent_response.Size(), velocity.Size() );
-  double parent_response_norm = parent_response.Norml2();
+  tribol::RealT parent_response_norm = parent_response.Norml2();
   MPI_Allreduce( MPI_IN_PLACE, &parent_response_norm, scalar_mpi_value_count, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
   EXPECT_GT( parent_response_norm, zero );
 

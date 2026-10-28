@@ -7,6 +7,7 @@
 
 #include "mfem.hpp"
 
+#include "shared/common/BasicTypes.hpp"
 #include "shared/math/ParSparseMat.hpp"
 
 #include "redecomp/redecomp.hpp"
@@ -16,10 +17,10 @@ namespace redecomp {
 
 namespace {
 
-double MaxAbsEntry( mfem::HypreParMatrix& mat )
+shared::RealT MaxAbsEntry( mfem::HypreParMatrix& mat )
 {
   // Hypre stores diagonal and off-diagonal CSR blocks separately, so inspect both.
-  double local_max = 0.0;
+  shared::RealT local_max = 0.0;
   HYPRE_ParCSRMatrix csr = mat;
   auto* parcsr = (hypre_ParCSRMatrix*)csr;
 
@@ -39,12 +40,12 @@ double MaxAbsEntry( mfem::HypreParMatrix& mat )
     }
   }
 
-  double global_max = 0.0;
+  shared::RealT global_max = 0.0;
   MPI_Allreduce( &local_max, &global_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD );
   return global_max;
 }
 
-double MaxAbsDiff( const shared::ParSparseMat& A, const shared::ParSparseMat& B )
+shared::RealT MaxAbsDiff( const shared::ParSparseMat& A, const shared::ParSparseMat& B )
 {
   auto* A_nc = const_cast<mfem::HypreParMatrix*>( &A.get() );
   auto* B_nc = const_cast<mfem::HypreParMatrix*>( &B.get() );
@@ -84,7 +85,7 @@ TEST( MatrixTransfer, dense_and_flat_overloads_match )
   auto elem_idx = redecomp::ArrayUtility::IndexArray<int>( n_els );
 
   axom::Array<mfem::DenseMatrix> elem_mats( n_els, n_els );
-  axom::Array<double> flat_data;
+  axom::Array<shared::RealT> flat_data;
   axom::Array<int> flat_offsets( n_els, n_els );
 
   int total_values = 0;
@@ -97,7 +98,7 @@ TEST( MatrixTransfer, dense_and_flat_overloads_match )
   for ( int e = 0; e < n_els; ++e ) {
     flat_offsets[e] = flat_data.size();
     const int size = elem_mats[e].Height() * elem_mats[e].Width();
-    flat_data.append( axom::ArrayView<const double>( elem_mats[e].GetData(), size ) );
+    flat_data.append( axom::ArrayView<const shared::RealT>( elem_mats[e].GetData(), size ) );
   }
 
   redecomp::MatrixTransfer xfer( par_test_fes, par_trial_fes, redecomp_test_fes, redecomp_trial_fes );

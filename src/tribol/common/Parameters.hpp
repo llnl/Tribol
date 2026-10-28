@@ -495,7 +495,7 @@ struct Parameters {
 
   bool auto_interpen_check = false;  ///! True if the auto-contact interpenetration check is used for full-overlap pairs
 
-  double auto_contact_len_scale_factor;  ///! Scale factor applied to element thickness for auto contact length scale
+  RealT auto_contact_len_scale_factor;  ///! Scale factor applied to element thickness for auto contact length scale
 
   // Interpenetration check for auto-contact. If true, this will check a full-overlap
   // face-pair configuration in the computational geoemtry routines to preclude
