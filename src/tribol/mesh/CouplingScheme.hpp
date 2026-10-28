@@ -697,7 +697,7 @@ class CouplingScheme {
    *
    * @return effective binning proximity scale
    */
-  RealT getEffectiveBinningProximityScale() const { return m_effective_binning_proximity_scale; }
+  RealT getEffectiveBinningProximityScale() const;
 
   /**
    * @brief Enables Enzyme AD for exact Jacobian calculations
@@ -747,9 +747,6 @@ class CouplingScheme {
    * @brief Rebuilds the contact formulation based on the current scheme parameters
    */
   void updateContactFormulation();
-
-  /** @brief Update the element-size multiplier used to expand coarse-search bounds */
-  void updateEffectiveBinningProximityScale();
 
   /**
    * @brief Check if a ContactFormulation implementation is set
@@ -971,10 +968,6 @@ class CouplingScheme {
   CouplingSchemeInfo m_couplingSchemeInfo;      ///< struct handling info to be printed
 
   PairReportingData m_pairReportingData;  ///< struct handling on-rank pair reporting data from computational geometry
-
-  RealT m_effective_binning_proximity_scale;  ///< Binning proximity scaled by the LOR factor. Scaling by the LOR factor
-                                              ///< makes proximity detection independent of the LOR factor and based on
-                                              ///< the HO mesh when using the MFEM interface.
 
 #ifdef BUILD_REDECOMP
 

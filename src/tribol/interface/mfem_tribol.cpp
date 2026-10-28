@@ -337,8 +337,6 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
     }
   }
   cs.setMfemMeshData( std::move( mfem_data ) );
-  // Attaching MFEM data makes the LOR factor available for the effective coarse-search scale.
-  cs.updateEffectiveBinningProximityScale();
   if ( contact_method == ENERGY_MORTAR ) {
     cs.updateContactFormulation();
   }
@@ -355,8 +353,6 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the LOR factor." );
   cs->getMfemMeshData()->SetLORFactor( lor_factor );
-  // The formulation captures the effective scale, so update the LOR-adjusted value before rebuilding it.
-  cs->updateEffectiveBinningProximityScale();
 
   if ( cs->getMfemSubmeshData() ) {
     cs->getMfemSubmeshData()->SetLORMesh( cs->getMfemMeshData()->GetLORMesh() );

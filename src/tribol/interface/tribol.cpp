@@ -349,8 +349,6 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale )
   }
 
   cs->getParameters().binning_proximity_scale = binning_proximity_scale;
-  // The formulation captures the effective scale, so update the LOR-adjusted value before rebuilding it.
-  cs->updateEffectiveBinningProximityScale();
   if ( cs->hasContactFormulation() ) {
     cs->updateContactFormulation();
   }
