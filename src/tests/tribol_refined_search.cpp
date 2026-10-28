@@ -11,7 +11,8 @@
  * without nondegenerate opposing normals. After filtering, the tests verify that the input candidates remain unchanged
  * and retained pairs are returned in a separate array. They also cover deferred overlap calculation, updated
  * coordinates, and empty results.
- * Individual geometry checks are tested in tribol_interface_pair_checks.cpp.
+ * Direct tests of same-element detection, shared-node detection, and opposing edge normals are in
+ * tribol_interface_pair_checks.cpp.
  * Tests run with sequential execution and each enabled OpenMP, CUDA, or HIP backend. GPU cases use device arrays,
  * and assertions read copies on the host. Results may list accepted pairs in any order.
  */

@@ -3,7 +3,6 @@
 #include "axom/slic.hpp"
 #include "tribol/common/Enzyme.hpp"
 #include "tribol/integ/BasisFunction.hpp"
-#include "tribol/search/InterfacePairChecks.hpp"
 
 #include <algorithm>
 #include <array>
@@ -22,6 +21,9 @@ using LinearEdgeBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
 // View each endpoint as one [node][physical component] row so the owning coordinates retain the basis layout.
 using LinearEdgePointView = MdSpan<const double, LinearEdgeBasis::spatial_dimension>;
 using LinearEdgeCoordinates = MdArray<double, LinearEdgeBasis::node_count, LinearEdgeBasis::spatial_dimension>;
+
+constexpr double minimum_edge_length = 1.0e-14;
+constexpr double minimum_projection_determinant = 1.0e-12;
 
 // This MUST match what the ContactParams struct has in EnergyMortarAdapter
 // These had to be saved locally in order for enzyme to work correctly
@@ -148,7 +150,7 @@ TRIBOL_ENZYME_INLINE void find_intersection( const double* A0, const double* A1,
   const double d[2] = { p[0] - A0[0], p[1] - A0[1] };
 
   const double nlen = std::sqrt( nB[0] * nB[0] + nB[1] * nB[1] );
-  if ( nlen < 1e-14 ) {
+  if ( nlen < minimum_edge_length ) {
     intersection[0] = p[0];
     intersection[1] = p[1];
     return;
@@ -158,7 +160,7 @@ TRIBOL_ENZYME_INLINE void find_intersection( const double* A0, const double* A1,
   const double det = tA[0] * n[1] - tA[1] * n[0];
 
   // If the projection direction is nearly parallel to edge A, use p as a safe fallback.
-  if ( std::abs( det ) < 1e-12 ) {
+  if ( std::abs( det ) < minimum_projection_determinant ) {
     intersection[0] = p[0];
     intersection[1] = p[1];
     return;
@@ -176,10 +178,42 @@ TRIBOL_ENZYME_INLINE void find_intersection( const double* A0, const double* A1,
 TRIBOL_ENZYME_INLINE void get_projections( const double* A0, const double* A1, const double* B0, const double* B1,
                                            double* projections )
 {
-  // Filtering and integration must use the same projection construction or they can disagree near support endpoints.
-  const auto projection = InterfacePairChecks::computeLinearEdgeProjectionBounds( A0, A1, B0, B1 );
-  projections[0] = projection.bounds[0];
-  projections[1] = projection.bounds[1];
+  const double projected_edge_x = B1[0] - B0[0];
+  const double projected_edge_y = B1[1] - B0[1];
+  const double projected_edge_length = std::sqrt( projected_edge_x * projected_edge_x +
+                                                  projected_edge_y * projected_edge_y );
+  const double integration_edge_x = A1[0] - A0[0];
+  const double integration_edge_y = A1[1] - A0[1];
+  const double integration_edge_length_squared =
+      integration_edge_x * integration_edge_x + integration_edge_y * integration_edge_y;
+  if ( projected_edge_length < minimum_edge_length ||
+       integration_edge_length_squared <= minimum_edge_length * minimum_edge_length ) {
+    projections[0] = 0.0;
+    projections[1] = 0.0;
+    return;
+  }
+
+  double projected_normal[2] = { 0.0, 0.0 };
+  find_normal( B0, B1, projected_normal );
+
+  double projected_point0[2] = { 0.0, 0.0 };
+  find_intersection( A0, A1, B0, projected_normal, projected_point0 );
+  const double integration_fraction0 =
+      ( ( projected_point0[0] - A0[0] ) * integration_edge_x +
+        ( projected_point0[1] - A0[1] ) * integration_edge_y ) /
+      integration_edge_length_squared;
+
+  double projected_point1[2] = { 0.0, 0.0 };
+  find_intersection( A0, A1, B1, projected_normal, projected_point1 );
+  const double integration_fraction1 =
+      ( ( projected_point1[0] - A0[0] ) * integration_edge_x +
+        ( projected_point1[1] - A0[1] ) * integration_edge_y ) /
+      integration_edge_length_squared;
+
+  const double normalized_coordinate0 = 2.0 * integration_fraction0 - 1.0;
+  const double normalized_coordinate1 = 2.0 * integration_fraction1 - 1.0;
+  projections[0] = std::min( normalized_coordinate0, normalized_coordinate1 );
+  projections[1] = std::max( normalized_coordinate0, normalized_coordinate1 );
 }
 
 // Isolate each endpoint to avoid incorrect loop-local tape reuse in Enzyme reverse mode.

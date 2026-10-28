@@ -10,23 +10,9 @@
 
 #include "tribol/config.hpp"
 
-#include "tribol/common/Enzyme.hpp"
-#include "tribol/common/MdArray.hpp"
 #include "tribol/mesh/MeshData.hpp"
 
 namespace tribol {
-
-/**
- * @brief Normalized projection bounds; invalid edges return zero bounds and valid=false.
- * @tparam Value Coordinate scalar type.
- */
-template <typename Value>
-struct EdgeProjection {
-  /** @brief Increasing bounds in the integration edge's normalized coordinate; zero when invalid */
-  MdArray<Value, 2> bounds{ Value{}, Value{} };
-  /** @brief Whether both edges are nondegenerate; overlap with the integration edge is checked separately */
-  bool valid{ false };
-};
 
 /**
  * @brief Provides allocation-free checks that contact formulations can compose when filtering coarse candidates
@@ -84,103 +70,11 @@ struct InterfacePairChecks {
     return edge1_normal[0] * edge2_normal[0] + edge1_normal[1] * edge2_normal[1] < 0.0;
   }
 
-  /**
-   * @brief Project a linear edge onto an integration edge and return normalized bounds on the integration edge
-   *
-   * The projected edge normal defines the projection direction. The returned interval uses the integration edge's
-   * normalized `[-1, 1]` coordinate and may extend outside the finite integration edge. When a projection direction is
-   * nearly parallel to the integration edge, each projected endpoint falls back to its original position, matching the
-   * existing EnergyMortar construction.
-   *
-   * @param integration_point0 First endpoint of the integration edge
-   * @param integration_point1 Second endpoint of the integration edge
-   * @param projected_point0 First endpoint of the projected edge
-   * @param projected_point1 Second endpoint of the projected edge
-   * @tparam Value Coordinate value type; EnergyMortar uses double even when Tribol configures RealT differently
-   * @return Increasing bounds with valid == true for nondegenerate edges; otherwise zero bounds and valid == false
-   */
-  template <typename Value>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static EdgeProjection<Value> computeLinearEdgeProjectionBounds(
-      const Value* integration_point0, const Value* integration_point1, const Value* projected_point0,
-      const Value* projected_point1 )
-  {
-    Value projected_normal[2];
-    if ( !computeLinearEdgeNormal( projected_point0, projected_point1, projected_normal ) ) {
-      return {};
-    }
-
-    const Value integration_x = integration_point1[0] - integration_point0[0];
-    const Value integration_y = integration_point1[1] - integration_point0[1];
-    const Value integration_length_squared = integration_x * integration_x + integration_y * integration_y;
-    const Value minimum_edge_length = static_cast<Value>( minimum_edge_length_ );
-    if ( integration_length_squared <= minimum_edge_length * minimum_edge_length ) {
-      return {};
-    }
-
-    Value projected_intersection0[2];
-    findLineIntersection( integration_point0, integration_point1, projected_point0, projected_normal,
-                          projected_intersection0 );
-    const Value integration_fraction0 = ( ( projected_intersection0[0] - integration_point0[0] ) * integration_x +
-                                          ( projected_intersection0[1] - integration_point0[1] ) * integration_y ) /
-                                        integration_length_squared;
-
-    Value projected_intersection1[2];
-    findLineIntersection( integration_point0, integration_point1, projected_point1, projected_normal,
-                          projected_intersection1 );
-    const Value integration_fraction1 = ( ( projected_intersection1[0] - integration_point0[0] ) * integration_x +
-                                          ( projected_intersection1[1] - integration_point0[1] ) * integration_y ) /
-                                        integration_length_squared;
-
-    const Value coordinate0 = 2.0 * integration_fraction0 - 1.0;
-    const Value coordinate1 = 2.0 * integration_fraction1 - 1.0;
-    return { MdArray<Value, 2>{ coordinate0 < coordinate1 ? coordinate0 : coordinate1,
-                                coordinate0 < coordinate1 ? coordinate1 : coordinate0 },
-             true };
-  }
-
-  /**
-   * @brief Project one mesh edge onto another without requiring callers to gather endpoint coordinates
-   *
-   * @param integration_mesh Mesh containing the edge whose normalized coordinate receives the projected interval
-   * @param integration_element Element ID of the integration edge
-   * @param projected_mesh Mesh containing the edge projected along its own normal
-   * @param projected_element Element ID of the projected edge
-   * @return Increasing bounds with valid == true for nondegenerate edges; otherwise zero bounds and valid == false
-   */
-  TRIBOL_HOST_DEVICE static EdgeProjection<RealT> computeLinearEdgeProjectionBounds(
-      const MeshData::Viewer& integration_mesh, IndexT integration_element, const MeshData::Viewer& projected_mesh,
-      IndexT projected_element )
-  {
-    RealT integration_point0[2];
-    RealT integration_point1[2];
-    RealT projected_point0[2];
-    RealT projected_point1[2];
-    getLinearEdgeEndpoints( integration_mesh, integration_element, integration_point0, integration_point1 );
-    getLinearEdgeEndpoints( projected_mesh, projected_element, projected_point0, projected_point1 );
-    return computeLinearEdgeProjectionBounds( integration_point0, integration_point1, projected_point0,
-                                              projected_point1 );
-  }
-
-  /**
-   * @brief Return whether a projected interval has positive measure inside an edge's smoothed support
-   *
-   * EnergyMortar expresses smoothing as an edge-length fraction. Normalized `[-1, 1]` coordinates double that fraction,
-   * so the supported interval is `[-1 - 2 * smoothing_fraction, 1 + 2 * smoothing_fraction]`. Merely touching a support
-   * endpoint produces no integration measure and returns false.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static bool projectionIntervalOverlapsSmoothedSupport(
-      MdSpan<const RealT, 2> projection_bounds, RealT smoothing_fraction )
-  {
-    const RealT support_extension = 2.0 * smoothing_fraction;
-    return projection_bounds[1] > -1.0 - support_extension && projection_bounds[0] < 1.0 + support_extension;
-  }
-
  private:
   /** @brief Use the static checks without constructing an instance. */
   InterfacePairChecks() = delete;
 
-  inline static constexpr RealT minimum_edge_length_ = 1.0e-14;             ///< Edge-length degeneracy threshold.
-  inline static constexpr RealT minimum_projection_determinant_ = 1.0e-12;  ///< Line-intersection fallback threshold.
+  inline static constexpr RealT minimum_edge_length_ = 1.0e-14;  ///< Edge-length degeneracy threshold.
 
   /**
    * @brief Read the first two finite-element nodes as straight-edge endpoints.
@@ -202,59 +96,24 @@ struct InterfacePairChecks {
 
   /**
    * @brief Calculate the unit normal (dy, -dx) from ordered endpoints.
-   * @tparam Value Coordinate scalar type.
    * @param point0 First endpoint, with two physical components.
    * @param point1 Second endpoint, with two physical components.
    * @param[out] normal Unit normal, or zero for a degenerate edge.
    * @return Whether the edge meets the minimum physical length.
    */
-  template <typename Value>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static bool computeLinearEdgeNormal( const Value* point0, const Value* point1,
-                                                                               Value* normal )
+  TRIBOL_HOST_DEVICE static bool computeLinearEdgeNormal( const RealT* point0, const RealT* point1, RealT* normal )
   {
-    const Value edge_x = point1[0] - point0[0];
-    const Value edge_y = point1[1] - point0[1];
-    const Value edge_length = std::sqrt( edge_x * edge_x + edge_y * edge_y );
-    if ( edge_length < static_cast<Value>( minimum_edge_length_ ) ) {
-      normal[0] = Value{};
-      normal[1] = Value{};
+    const RealT edge_x = point1[0] - point0[0];
+    const RealT edge_y = point1[1] - point0[1];
+    const RealT edge_length = std::sqrt( edge_x * edge_x + edge_y * edge_y );
+    if ( edge_length < minimum_edge_length_ ) {
+      normal[0] = RealT{};
+      normal[1] = RealT{};
       return false;
     }
     normal[0] = edge_y / edge_length;
     normal[1] = -edge_x / edge_length;
     return true;
-  }
-
-  /**
-   * @brief Intersect a target line and a line through the projected point.
-   * @tparam Value Coordinate scalar type.
-   * @param line_point0 First endpoint of the target line.
-   * @param line_point1 Second endpoint of the target line.
-   * @param projected_point Physical point to project.
-   * @param projection_direction Unit direction of the projection line.
-   * @param[out] intersection Intersection, or projected_point when the determinant is below its threshold.
-   */
-  template <typename Value>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void findLineIntersection( const Value* line_point0,
-                                                                            const Value* line_point1,
-                                                                            const Value* projected_point,
-                                                                            const Value* projection_direction,
-                                                                            Value* intersection )
-  {
-    const Value line_x = line_point1[0] - line_point0[0];
-    const Value line_y = line_point1[1] - line_point0[1];
-    const Value point_x = projected_point[0] - line_point0[0];
-    const Value point_y = projected_point[1] - line_point0[1];
-    const Value determinant = line_x * projection_direction[1] - line_y * projection_direction[0];
-    if ( std::abs( determinant ) < static_cast<Value>( minimum_projection_determinant_ ) ) {
-      intersection[0] = projected_point[0];
-      intersection[1] = projected_point[1];
-      return;
-    }
-
-    const Value line_fraction = ( point_x * projection_direction[1] - point_y * projection_direction[0] ) / determinant;
-    intersection[0] = line_point0[0] + line_fraction * line_x;
-    intersection[1] = line_point0[1] + line_fraction * line_y;
   }
 };
 
