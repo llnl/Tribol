@@ -34,12 +34,12 @@ class ProjectedEdgeSearch final : public RefinedSearch {
   }
 
   /**
-   * @brief Return accepted pairs without changing candidate or mesh arrays.
+   * @brief Return candidates that pass topology and orientation checks without changing the inputs.
    *
    * @param candidate_pairs Coarse candidate pairs in mesh1/mesh2 order.
    * @param mesh1 Current source mesh view.
    * @param mesh2 Current target mesh view.
-   * @return Owned accepted pairs in the input allocator; their order is unspecified.
+   * @return Owned retained candidates in the input allocator; their order is unspecified.
    */
   ArrayT<InterfacePair> filterCandidatePairs( const ArrayT<InterfacePair>& candidate_pairs, MeshData::Viewer mesh1,
                                               MeshData::Viewer mesh2 ) const override;
