@@ -224,8 +224,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   /**
    * @brief Find and store candidate pairs for the current meshes
    *
-   * Coarse search finds spatial candidates. Refined search then removes exact self-pairs, optionally removes shared-node
-   * pairs, and rejects edges without nondegenerate opposing normals.
+   * Coarse search finds spatial candidates. Refined search then removes exact self-pairs, optionally removes
+   * shared-node pairs, and rejects edges without nondegenerate opposing normals.
    */
   void findCandidatePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 );
 

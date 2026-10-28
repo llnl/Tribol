@@ -180,8 +180,8 @@ TRIBOL_ENZYME_INLINE void get_projections( const double* A0, const double* A1, c
 {
   const double projected_edge_x = B1[0] - B0[0];
   const double projected_edge_y = B1[1] - B0[1];
-  const double projected_edge_length = std::sqrt( projected_edge_x * projected_edge_x +
-                                                  projected_edge_y * projected_edge_y );
+  const double projected_edge_length =
+      std::sqrt( projected_edge_x * projected_edge_x + projected_edge_y * projected_edge_y );
   const double integration_edge_x = A1[0] - A0[0];
   const double integration_edge_y = A1[1] - A0[1];
   const double integration_edge_length_squared =
@@ -199,15 +199,13 @@ TRIBOL_ENZYME_INLINE void get_projections( const double* A0, const double* A1, c
   double projected_point0[2] = { 0.0, 0.0 };
   find_intersection( A0, A1, B0, projected_normal, projected_point0 );
   const double integration_fraction0 =
-      ( ( projected_point0[0] - A0[0] ) * integration_edge_x +
-        ( projected_point0[1] - A0[1] ) * integration_edge_y ) /
+      ( ( projected_point0[0] - A0[0] ) * integration_edge_x + ( projected_point0[1] - A0[1] ) * integration_edge_y ) /
       integration_edge_length_squared;
 
   double projected_point1[2] = { 0.0, 0.0 };
   find_intersection( A0, A1, B1, projected_normal, projected_point1 );
   const double integration_fraction1 =
-      ( ( projected_point1[0] - A0[0] ) * integration_edge_x +
-        ( projected_point1[1] - A0[1] ) * integration_edge_y ) /
+      ( ( projected_point1[0] - A0[0] ) * integration_edge_x + ( projected_point1[1] - A0[1] ) * integration_edge_y ) /
       integration_edge_length_squared;
 
   const double normalized_coordinate0 = 2.0 * integration_fraction0 - 1.0;
