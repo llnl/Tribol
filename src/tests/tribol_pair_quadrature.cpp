@@ -28,7 +28,7 @@ using namespace tribol;
 constexpr RealT tolerance = 1.0e-12;  ///< Absolute tolerance for coordinates, weights, and polynomial integrals.
 
 /** @brief Run local rule calculations in memory accessible to the selected backend. */
-class EdgeQuadratureTest : public detail::ExecutionTest {
+class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
  protected:
   /**
    * @brief Integrate each supported monomial on the reference interval using all three point counts.
@@ -348,7 +348,7 @@ TEST_P( EdgeQuadratureTest, composes_with_a_different_integration_mapping )
   EXPECT_NEAR( values[2], 2.0, tolerance );
 }
 
-INSTANTIATE_TEST_SUITE_P( execution, EdgeQuadratureTest, detail::enabledExecutionModes() );
+INSTANTIATE_TEST_SUITE_P( execution, EdgeQuadratureTest, tribol::detail::enabledExecutionModes() );
 
 // Polynomial order selects the smallest registered rule that integrates that degree.
 TEST( QuadratureRuleFactory, selects_registered_rule_by_polynomial_order )
