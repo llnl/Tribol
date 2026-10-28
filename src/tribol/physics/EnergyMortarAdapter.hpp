@@ -213,15 +213,16 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
 
  private:
   /**
-   * @brief Search the current meshes and replace the pairs used for this calculation
+   * @brief Find and store candidate pairs for the current meshes
    *
-   * Coarse search supplies spatial candidates. Refined search rejects shared nodes and incompatible edge normals.
-   * Quadrature generation determines the contributing interval within each pair calculation.
+   * Coarse search finds spatial candidates. Refined search then removes exact self-pairs, optionally removes
+   * shared-node pairs, and rejects edges without nondegenerate opposing normals. Quadrature generation determines the
+   * contributing interval within each pair calculation.
    *
    * @param mesh1 Current non-mortar mesh.
    * @param mesh2 Current mortar mesh.
    */
-  void refreshInterfacePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 );
+  void findCandidatePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 );
 
   /**
    * @brief Controls penalty vs. Lagrange multiplier (LM) mode

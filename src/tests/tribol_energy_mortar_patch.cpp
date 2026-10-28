@@ -60,8 +60,11 @@ class MfemMortarEnergyPatchTest
   {
     int ref_levels = std::get<0>( GetParam() );
     tribol::EnforcementLocation enforcement_location = std::get<1>( GetParam() );
-    tribol::BinningMethod binning_method = std::get<2>( GetParam() );
-    const bool unequal_meshes = std::get<3>( GetParam() );
+    // The physical patch response must be independent of whether coarse search uses a grid or BVH.
+    const tribol::BinningMethod binning_method = std::get<2>( GetParam() );
+    // Refining only the mortar mesh makes incorrect mortar/nonmortar ordering observable through different element
+    // counts.
+    const bool uses_refined_mortar_mesh = std::get<3>( GetParam() );
     int order = 1;
 
     auto mortar_attrs = std::set<int>( { 5 } );
@@ -74,7 +77,7 @@ class MfemMortarEnergyPatchTest
 
     constexpr int mortar_refinement_ratio = 2;
     constexpr double inactive_pressure_tolerance = 1.0e-12;
-    const int mortar_nel = unequal_meshes ? mortar_refinement_ratio * nel_per_dir : nel_per_dir;
+    const int mortar_nel = uses_refined_mortar_mesh ? mortar_refinement_ratio * nel_per_dir : nel_per_dir;
 
     // clang-format off
     mfem::ParMesh mesh = shared::ParMeshBuilder(MPI_COMM_WORLD, shared::MeshBuilder::Unify({
@@ -396,8 +399,7 @@ INSTANTIATE_TEST_SUITE_P( tribol, MfemMortarEnergyPatchTest,
                           testing::Combine( testing::Values( 2 ),
                                             testing::Values( tribol::EnforcementLocation::Nodal,
                                                              tribol::EnforcementLocation::QuadraturePoint ),
-                                            // Both standalone searches must supply equivalent candidates to the same
-                                            // ENERGY_MORTAR checks and produce the same physical patch response.
+                                            // Run grid and BVH searches with matching and 2:1 mortar/nonmortar interfaces.
                                             testing::Values( tribol::BINNING_GRID, tribol::BINNING_BVH ),
                                             testing::Bool() ) );
 

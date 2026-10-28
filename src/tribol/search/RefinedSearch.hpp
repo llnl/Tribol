@@ -12,14 +12,15 @@
 
 namespace tribol {
 
-/** @brief Runtime interface for refining coarse spatial candidates into method-approved element pairs */
+/** @brief Runtime interface for applying method-specific checks to coarse spatial candidates */
 class RefinedSearch {
  public:
   virtual ~RefinedSearch() = default;
 
   /**
-   * @brief Filter current candidates and return an owned array of accepted pairs
+   * @brief Filter current candidates and return those that pass the implementation's checks
    *
+   * Returned pairs remain candidates; implementations are not required to compute or store overlap geometry.
    * Candidates and mesh arrays are borrowed for this call and remain unchanged. Implementations retain configuration,
    * not mesh views or search results. Returned pair order is unspecified; element IDs preserve the input mesh order.
    * Candidate element IDs must be valid for the corresponding meshes. Implementations finish all work using borrowed

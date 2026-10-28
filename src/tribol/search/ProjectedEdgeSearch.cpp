@@ -27,56 +27,56 @@ ArrayT<InterfacePair> ProjectedEdgeSearch::filterCandidatePairs( const ArrayT<In
       "Refined-search meshes and candidates must use the same allocator." );
   const IndexT candidate_count = candidate_pairs.size();
   const int allocator_id = mesh1.getAllocatorId();
-  ArrayT<bool> accepted( axom::ArrayOptions::Uninitialized{}, candidate_count, candidate_count, allocator_id );
-  ArrayT<IndexT> accepted_count_data( { 0 }, allocator_id );
+  ArrayT<bool> passes_checks( axom::ArrayOptions::Uninitialized{}, candidate_count, candidate_count, allocator_id );
+  ArrayT<IndexT> retained_count_data( { 0 }, allocator_id );
 
   const auto candidates = candidate_pairs.view();
-  auto accepted_values = accepted.view();
-  auto accepted_count = accepted_count_data.view();
+  auto passes_checks_values = passes_checks.view();
+  auto retained_count = retained_count_data.view();
   const bool checks_shared_nodes = checks_shared_nodes_;
 
-  // Save each decision so returning accepted pairs does not repeat the checks.
+  // Save each result so returning retained candidates does not repeat the checks.
   forAllExec( execution_mode_, candidate_count,
-              [mesh1, mesh2, candidates, accepted_values, accepted_count,
+              [mesh1, mesh2, candidates, passes_checks_values, retained_count,
                checks_shared_nodes] TRIBOL_HOST_DEVICE( IndexT candidate_index ) {
                 const InterfacePair& pair = candidates[candidate_index];
-                bool accepts_pair =
+                bool pair_passes_checks =
                     !InterfacePairChecks::isSameElementPair( mesh1, pair.element_id1_, mesh2, pair.element_id2_ );
-                if ( accepts_pair && checks_shared_nodes ) {
-                  accepts_pair =
+                if ( pair_passes_checks && checks_shared_nodes ) {
+                  pair_passes_checks =
                       !InterfacePairChecks::elementsShareNode( mesh1, pair.element_id1_, mesh2, pair.element_id2_ );
                 }
-                if ( accepts_pair ) {
-                  accepts_pair = InterfacePairChecks::linearEdgeNormalsAreOpposing( mesh1, pair.element_id1_, mesh2,
-                                                                                    pair.element_id2_ );
+                if ( pair_passes_checks ) {
+                  pair_passes_checks = InterfacePairChecks::linearEdgeNormalsAreOpposing( mesh1, pair.element_id1_,
+                                                                                          mesh2, pair.element_id2_ );
                 }
 
-                accepted_values[candidate_index] = accepts_pair;
-                if ( accepts_pair ) {
-                  tribol::atomicInc( accepted_count.data() );
+                passes_checks_values[candidate_index] = pair_passes_checks;
+                if ( pair_passes_checks ) {
+                  tribol::atomicInc( retained_count.data() );
                 }
               } );
 
-  ArrayT<IndexT, 1, MemorySpace::Host> accepted_count_host( accepted_count_data );
-  ArrayT<InterfacePair> accepted_pairs( axom::ArrayOptions::Uninitialized{}, accepted_count_host[0],
-                                        accepted_count_host[0], allocator_id );
+  ArrayT<IndexT, 1, MemorySpace::Host> retained_count_host( retained_count_data );
+  ArrayT<InterfacePair> retained_pairs( axom::ArrayOptions::Uninitialized{}, retained_count_host[0],
+                                        retained_count_host[0], allocator_id );
 
-  accepted_count_data.fill( 0 );
-  auto accepted_pairs_view = accepted_pairs.view();
-  // Synchronous execution keeps candidates and scratch arrays alive until all accepted pairs have been copied.
-  forAllExec(
-      execution_mode_, candidate_count,
-      [candidates, accepted_values, accepted_count, accepted_pairs_view] TRIBOL_HOST_DEVICE( IndexT candidate_index ) {
-        if ( !accepted_values[candidate_index] ) {
-          return;
-        }
-        const IndexT accepted_index = tribol::atomicInc( accepted_count.data() );
-        accepted_pairs_view[accepted_index] = candidates[candidate_index];
-      } );
+  retained_count_data.fill( 0 );
+  auto retained_pairs_view = retained_pairs.view();
+  // Synchronous execution keeps candidates and scratch arrays alive until all retained pairs have been copied.
+  forAllExec( execution_mode_, candidate_count,
+              [candidates, passes_checks_values, retained_count,
+               retained_pairs_view] TRIBOL_HOST_DEVICE( IndexT candidate_index ) {
+                if ( !passes_checks_values[candidate_index] ) {
+                  return;
+                }
+                const IndexT retained_index = tribol::atomicInc( retained_count.data() );
+                retained_pairs_view[retained_index] = candidates[candidate_index];
+              } );
 
-  SLIC_INFO( "Projected-edge search accepted " << accepted_pairs.size() << " of " << candidate_count
+  SLIC_INFO( "Projected-edge search retained " << retained_pairs.size() << " of " << candidate_count
                                                << " spatial candidate pairs." );
-  return accepted_pairs;
+  return retained_pairs;
 }
 
 }  // namespace tribol

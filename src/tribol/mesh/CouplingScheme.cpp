@@ -1186,8 +1186,6 @@ bool CouplingScheme::init()
     // set individual coupling scheme logging level
     this->setSlicLoggingLevel();
 
-    updateEffectiveBinningProximityScale();
-
     // compute the face data
     // different element normals for enzyme + mortar (matching Puso and Laursen)
     if ( this->isEnzymeEnabled() && this->m_contactMethod == SINGLE_MORTAR ) {
@@ -1211,14 +1209,15 @@ bool CouplingScheme::init()
 }
 
 //------------------------------------------------------------------------------
-void CouplingScheme::updateEffectiveBinningProximityScale()
+RealT CouplingScheme::getEffectiveBinningProximityScale() const
 {
-  m_effective_binning_proximity_scale = getParameters().binning_proximity_scale;
+  RealT effective_binning_proximity_scale = m_parameters.binning_proximity_scale;
 #ifdef BUILD_REDECOMP
   if ( hasMfemData() && getMfemMeshData()->GetLORFactor() > 1 ) {
-    m_effective_binning_proximity_scale *= static_cast<RealT>( getMfemMeshData()->GetLORFactor() );
+    effective_binning_proximity_scale *= static_cast<RealT>( getMfemMeshData()->GetLORFactor() );
   }
 #endif
+  return effective_binning_proximity_scale;
 }
 
 //------------------------------------------------------------------------------
@@ -1806,7 +1805,7 @@ void CouplingScheme::createNodalNormalJacobianData()
 //------------------------------------------------------------------------------
 CouplingScheme::Viewer::Viewer( CouplingScheme& cs )
     : m_parameters( cs.m_parameters ),
-      m_effective_binning_proximity_scale( cs.m_effective_binning_proximity_scale ),
+      m_effective_binning_proximity_scale( cs.getEffectiveBinningProximityScale() ),
       m_contact_mode( cs.m_contactMode ),
       m_contact_case( cs.m_contactCase ),
       m_contact_method( cs.m_contactMethod ),

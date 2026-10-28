@@ -5,11 +5,14 @@
 
 /**
  * @file
- * @brief Test how ProjectedEdgeSearch filters candidate pairs and returns the accepted pairs.
+ * @brief Test ProjectedEdgeSearch candidate-pair filtering.
  *
- * These tests check that filtering keeps only accepted pairs, leaves the input unchanged, and returns a separate array.
- * They also check shared-node rejection, deferred overlap calculation, updated coordinates, and empty results.
- * Individual geometry checks are tested in tribol_interface_pair_checks.cpp.
+ * These tests check that filtering removes exact self-pairs, optionally removes shared-node pairs, and rejects edges
+ * without nondegenerate opposing normals. After filtering, the tests verify that the input candidates remain unchanged
+ * and retained pairs are returned in a separate array. They also cover deferred overlap calculation, updated
+ * coordinates, and empty results.
+ * Direct tests of same-element detection, shared-node detection, and opposing edge normals are in
+ * tribol_interface_pair_checks.cpp.
  * Tests run with sequential execution and each enabled OpenMP, CUDA, or HIP backend. GPU cases use device arrays,
  * and assertions read copies on the host. Results may list accepted pairs in any order.
  */
@@ -75,8 +78,8 @@ TEST_P( RefinedSearchTest, filters_and_compacts_without_consuming_candidates )
   EXPECT_EQ( pairIds( accepted ), ( PairIds{ { 0, 0 }, { 1, 2 } } ) );
 }
 
-// Self-pairs are always rejected; the shared-node setting controls only the pair that reuses endpoint IDs.
-TEST_P( RefinedSearchTest, applies_shared_node_setting )
+// ProjectedEdgeSearch always rejects exact self-pairs and rejects shared-node pairs only when configured.
+TEST_P( RefinedSearchTest, applies_self_pair_and_shared_node_checks )
 {
   // The third edge uses distinct node IDs even though its endpoints lie inside the first edge.
   const auto x = copyToExecutionSpace<tribol::RealT>( { 0.0, 1.0, 0.75, 0.25 } );

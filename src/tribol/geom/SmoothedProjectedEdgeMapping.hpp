@@ -14,7 +14,6 @@
 #include <cmath>
 #include "tribol/common/Enzyme.hpp"
 #include "tribol/common/MdArray.hpp"
-#include "tribol/search/InterfacePairChecks.hpp"
 #include "tribol/integ/Quadrature.hpp"
 
 namespace tribol {
@@ -80,8 +79,7 @@ struct SmoothedProjectedEdgeMapping {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurface<Value> makeIntegrationSurface(
       MdSpan<const Value, 2, 2> source, MdSpan<const Value, 2, 2> target ) const
   {
-    const auto interval = InterfacePairChecks::computeLinearEdgeProjectionBounds( source.data(), source.data() + 2,
-                                                                                  target.data(), target.data() + 2 );
+    const auto interval = projectTargetOntoSource( source, target );
     if ( !interval.valid ) return { interval.bounds, false };
     const Value delta = static_cast<Value>( smoothing_fraction );
     const Value support_min = -1.0 - 2.0 * delta;
@@ -118,8 +116,7 @@ struct SmoothedProjectedEdgeMapping {
     const Value dx2 = mesh2( 1, 0 ) - mesh2( 0, 0 ), dy2 = mesh2( 1, 1 ) - mesh2( 0, 1 );
     const Value length1 = std::sqrt( dx1 * dx1 + dy1 * dy1 );
     const Value length2 = std::sqrt( dx2 * dx2 + dy2 * dy2 );
-    constexpr double minimum_edge_length = 1.0e-14;
-    if ( length1 < minimum_edge_length || length2 < minimum_edge_length ) {
+    if ( length1 < minimum_edge_length_ || length2 < minimum_edge_length_ ) {
       return { QuadratureStatus::InvalidGeometry, 0 };
     }
     const IndexT count = reference.numberOfPoints();
@@ -137,6 +134,75 @@ struct SmoothedProjectedEdgeMapping {
   }
 
  private:
+  inline static constexpr double minimum_edge_length_ = 1.0e-14;
+  inline static constexpr double minimum_projection_determinant_ = 1.0e-12;
+
+  /**
+   * @brief Project both target endpoints along the target normal onto the infinite source line.
+   * @tparam Value Coordinate scalar type.
+   * @param source Source endpoints indexed by endpoint, then physical component.
+   * @param target Target endpoints indexed by endpoint, then physical component.
+   * @return Increasing source parent-coordinate bounds, or invalid zero bounds when either edge is degenerate.
+   */
+  template <typename Value>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static IntegrationSurface<Value> projectTargetOntoSource(
+      MdSpan<const Value, 2, 2> source, MdSpan<const Value, 2, 2> target )
+  {
+    const Value target_x = target( 1, 0 ) - target( 0, 0 );
+    const Value target_y = target( 1, 1 ) - target( 0, 1 );
+    const Value target_length = std::sqrt( target_x * target_x + target_y * target_y );
+    const Value source_x = source( 1, 0 ) - source( 0, 0 );
+    const Value source_y = source( 1, 1 ) - source( 0, 1 );
+    const Value source_length_squared = source_x * source_x + source_y * source_y;
+    if ( target_length < static_cast<Value>( minimum_edge_length_ ) ||
+         source_length_squared <= static_cast<Value>( minimum_edge_length_ * minimum_edge_length_ ) ) {
+      return { MdArray<Value, 2>{ Value{}, Value{} }, false };
+    }
+
+    const MdArray<Value, 2> target_normal{ target_y / target_length, -target_x / target_length };
+    const auto projected_point0 = projectTargetPointOntoSourceLine( source, target, 0, target_normal );
+    const auto projected_point1 = projectTargetPointOntoSourceLine( source, target, 1, target_normal );
+    const Value source_fraction0 =
+        ( ( projected_point0[0] - source( 0, 0 ) ) * source_x + ( projected_point0[1] - source( 0, 1 ) ) * source_y ) /
+        source_length_squared;
+    const Value source_fraction1 =
+        ( ( projected_point1[0] - source( 0, 0 ) ) * source_x + ( projected_point1[1] - source( 0, 1 ) ) * source_y ) /
+        source_length_squared;
+    const Value coordinate0 = 2.0 * source_fraction0 - 1.0;
+    const Value coordinate1 = 2.0 * source_fraction1 - 1.0;
+    return { MdArray<Value, 2>{ coordinate0 < coordinate1 ? coordinate0 : coordinate1,
+                                coordinate0 < coordinate1 ? coordinate1 : coordinate0 },
+             true };
+  }
+
+  /**
+   * @brief Project one target endpoint along the target normal onto the infinite source line.
+   * @tparam Value Coordinate scalar type.
+   * @param source Source endpoints defining the destination line.
+   * @param target Target endpoints containing the point to project.
+   * @param target_endpoint Target endpoint index.
+   * @param target_normal Direction from the target point to the source line.
+   * @return Intersection point, or the target point when the two lines are nearly parallel.
+   */
+  template <typename Value>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static MdArray<Value, 2> projectTargetPointOntoSourceLine(
+      MdSpan<const Value, 2, 2> source, MdSpan<const Value, 2, 2> target, int target_endpoint,
+      const MdArray<Value, 2>& target_normal )
+  {
+    const Value source_x = source( 1, 0 ) - source( 0, 0 );
+    const Value source_y = source( 1, 1 ) - source( 0, 1 );
+    const Value point_x = target( target_endpoint, 0 ) - source( 0, 0 );
+    const Value point_y = target( target_endpoint, 1 ) - source( 0, 1 );
+    const Value determinant = source_x * target_normal[1] - source_y * target_normal[0];
+    if ( std::abs( determinant ) < static_cast<Value>( minimum_projection_determinant_ ) ) {
+      return MdArray<Value, 2>{ target( target_endpoint, 0 ), target( target_endpoint, 1 ) };
+    }
+
+    const Value source_fraction = ( point_x * target_normal[1] - point_y * target_normal[0] ) / determinant;
+    return MdArray<Value, 2>{ source( 0, 0 ) + source_fraction * source_x,
+                              source( 0, 1 ) + source_fraction * source_y };
+  }
+
   /**
    * @brief Apply quadratic smoothing near the source reference endpoints.
    *
