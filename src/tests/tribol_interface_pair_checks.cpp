@@ -43,16 +43,18 @@ TEST( InterfacePairChecks, identifies_same_and_topologically_adjacent_elements )
   EXPECT_FALSE( tribol::InterfacePairChecks::elementsShareNode( mesh_view, 0, mesh_view, 2 ) );
 }
 
-TEST( InterfacePairChecks, requires_opposing_nondegenerate_edge_normals )
+TEST( InterfacePairChecks, accepts_nondegenerate_edge_normals_separated_by_at_least_90_degrees )
 {
-  // Endpoint ordering defines each edge normal, so reversing the upper edge makes the two valid edges oppose one
-  // another.
+  // Endpoint ordering defines each edge normal. Reversing the upper edge gives a 180-degree separation, while the
+  // vertical edge gives the 90-degree cutoff used by geomFilter().
   constexpr std::array<tribol::IndexT, 2> connectivity{ 0, 1 };
   constexpr std::array<tribol::RealT, 2> lower_x{ 0.0, 1.0 };
   constexpr std::array<tribol::RealT, 2> lower_y{ 0.0, 0.0 };
   constexpr std::array<tribol::RealT, 2> upper_reversed_x{ 1.0, 0.0 };
   constexpr std::array<tribol::RealT, 2> upper_y{ 0.1, 0.1 };
   constexpr std::array<tribol::RealT, 2> upper_forward_x{ 0.0, 1.0 };
+  constexpr std::array<tribol::RealT, 2> perpendicular_x{ 0.5, 0.5 };
+  constexpr std::array<tribol::RealT, 2> perpendicular_y{ 0.0, 1.0 };
   constexpr std::array<tribol::RealT, 2> degenerate_x{ 0.0, 0.0 };
   constexpr std::array<tribol::RealT, 2> degenerate_y{ 0.0, 0.0 };
 
@@ -64,12 +66,17 @@ TEST( InterfacePairChecks, requires_opposing_nondegenerate_edge_normals )
   tribol::MeshData upper_forward( opposing_mesh_id, 1, upper_forward_x.size(), connectivity.data(), tribol::EDGE,
                                   tribol::LINEAR_LAGRANGE, upper_forward_x.data(), upper_y.data(), nullptr,
                                   tribol::MemorySpace::Host );
+  tribol::MeshData perpendicular( opposing_mesh_id, 1, perpendicular_x.size(), connectivity.data(), tribol::EDGE,
+                                  tribol::LINEAR_LAGRANGE, perpendicular_x.data(), perpendicular_y.data(), nullptr,
+                                  tribol::MemorySpace::Host );
   tribol::MeshData degenerate( opposing_mesh_id, 1, degenerate_x.size(), connectivity.data(), tribol::EDGE,
                                tribol::LINEAR_LAGRANGE, degenerate_x.data(), degenerate_y.data(), nullptr,
                                tribol::MemorySpace::Host );
 
   EXPECT_TRUE(
       tribol::InterfacePairChecks::linearEdgeNormalsAreOpposing( lower.getView(), 0, upper_reversed.getView(), 0 ) );
+  EXPECT_TRUE(
+      tribol::InterfacePairChecks::linearEdgeNormalsAreOpposing( lower.getView(), 0, perpendicular.getView(), 0 ) );
   EXPECT_FALSE(
       tribol::InterfacePairChecks::linearEdgeNormalsAreOpposing( lower.getView(), 0, upper_forward.getView(), 0 ) );
   EXPECT_FALSE(

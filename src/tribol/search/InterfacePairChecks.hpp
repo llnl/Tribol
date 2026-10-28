@@ -46,7 +46,7 @@ struct InterfacePairChecks {
   }
 
   /**
-   * @brief Return whether two linear-edge normals point into opposing half-planes
+   * @brief Return whether two linear-edge normals are separated by at least 90 degrees
    *
    * Normals are computed directly from endpoint coordinates so formulations do not require MeshData::computeFaceData()
    * before filtering candidates. Degenerate edges do not define an orientation and return false.
@@ -67,7 +67,7 @@ struct InterfacePairChecks {
          !computeLinearEdgeNormal( edge2_point0, edge2_point1, edge2_normal ) ) {
       return false;
     }
-    return edge1_normal[0] * edge2_normal[0] + edge1_normal[1] * edge2_normal[1] < 0.0;
+    return edge1_normal[0] * edge2_normal[0] + edge1_normal[1] * edge2_normal[1] <= 0.0;
   }
 
  private:
