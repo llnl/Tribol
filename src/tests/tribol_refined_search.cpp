@@ -78,8 +78,8 @@ TEST_P( RefinedSearchTest, filters_and_compacts_without_consuming_candidates )
   EXPECT_EQ( pairIds( accepted ), ( PairIds{ { 0, 0 }, { 1, 2 } } ) );
 }
 
-// Self-pairs are always rejected; the shared-node setting controls only the pair that reuses endpoint IDs.
-TEST_P( RefinedSearchTest, applies_shared_node_setting )
+// ProjectedEdgeSearch always rejects exact self-pairs and rejects shared-node pairs only when configured.
+TEST_P( RefinedSearchTest, applies_self_pair_and_shared_node_checks )
 {
   // The third edge uses distinct node IDs even though its endpoints lie inside the first edge.
   const auto x = copyToExecutionSpace<tribol::RealT>( { 0.0, 1.0, 0.75, 0.25 } );
