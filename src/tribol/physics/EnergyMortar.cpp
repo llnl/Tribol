@@ -563,7 +563,8 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   ContactSmoothing::bounds_from_projections( projs, kp->del, bounds );
   double xi_bounds[2];
   ContactSmoothing::smooth_bounds( bounds, kp->del, xi_bounds );
-  // A collapsed integration interval has no quadrature points to activate.
+  // A zero-length projected interval has zero quadrature weight. Return before evaluating the gap so the pair remains
+  // inactive and contributes no energy.
   if ( xi_bounds[1] <= xi_bounds[0] ) {
     *energy = 0.0;
     return;
