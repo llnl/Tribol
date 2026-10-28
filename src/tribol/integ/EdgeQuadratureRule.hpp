@@ -27,45 +27,39 @@ struct EdgeQuadratureRule {
   static constexpr int points_per_base_rule = NumPoints;      ///< Points per nonempty interval.
   static constexpr int polynomial_order = 2 * NumPoints - 1;  ///< Exactly integrated reference degree.
 
-  /** @brief Local reference points and weights. @tparam Value Coordinate and weight scalar type. */
-  template <typename Value>
-  using ReferenceQuadrature = ReferenceQuadratureData<Value, parent_dimension, NumPoints>;
+  /** @brief Local reference points and weights. */
+  using ReferenceQuadrature = ReferenceQuadratureData<parent_dimension, NumPoints>;
 
   /**
    * @brief Generate reference points on the supplied interval.
-   * @tparam Value Coordinate and weight scalar type.
    * @param interval Integration bounds; invalid geometry returns InvalidGeometry with zero points.
    * @return Local reference quadrature; collapsed or reversed valid bounds give Success with zero points.
    */
-  template <typename Value>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE ReferenceQuadrature<Value> generate(
-      EdgeQuadratureInterval<Value> interval = {} ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE ReferenceQuadrature generate( EdgeQuadratureInterval interval = {} ) const
   {
     if ( !interval.valid ) {
-      ReferenceQuadrature<Value> result{};
+      ReferenceQuadrature result{};
       result.result.status = QuadratureStatus::InvalidGeometry;
       return result;
     }
-    return generate<Value>( interval.bounds.view() );
+    return generate( interval.bounds.view() );
   }
 
   /**
    * @brief Map the fixed Gauss rule onto supplied parent bounds.
    *
-   * @tparam Value Coordinate and weight scalar type.
    * @param bounds Lower and upper normalized source coordinates.
    * @return NumPoints points for increasing bounds; Success with zero points for collapsed or reversed bounds.
    */
-  template <typename Value>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static ReferenceQuadrature<Value> generate( MdSpan<const Value, 2> bounds )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static ReferenceQuadrature generate( MdSpan<const RealT, 2> bounds )
   {
-    ReferenceQuadrature<Value> result{};
+    ReferenceQuadrature result{};
     if ( bounds[1] <= bounds[0] ) return result;
-    const Value scale = 0.5 * ( bounds[1] - bounds[0] );
-    const Value center = 0.5 * ( bounds[1] + bounds[0] );
+    const RealT scale = 0.5 * ( bounds[1] - bounds[0] );
+    const RealT center = 0.5 * ( bounds[1] + bounds[0] );
     for ( int q = 0; q < NumPoints; ++q ) {
-      result.parent_coordinates( q, 0 ) = scale * gaussPoint<Value>( q ) + center;
-      result.reference_weights[q] = scale * gaussWeight<Value>( q );
+      result.parent_coordinates( q, 0 ) = scale * gaussPoint( q ) + center;
+      result.reference_weights[q] = scale * gaussWeight( q );
     }
     result.result.required_point_count = NumPoints;
     return result;
@@ -75,31 +69,27 @@ struct EdgeQuadratureRule {
   /**
    * @brief Select a Gauss-Legendre parent coordinate on [-1, 1].
    *
-   * @tparam Value Coordinate and weight scalar type.
    * @param q Point index in [0, NumPoints).
    * @return Parent coordinate for point q.
    */
-  template <typename Value>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static Value gaussPoint( int q )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static RealT gaussPoint( int q )
   {
-    if constexpr ( NumPoints == 1 ) return Value{ 0.0 };
-    if constexpr ( NumPoints == 2 ) return ( q == 0 ? -1.0 : 1.0 ) / std::sqrt( Value{ 3.0 } );
-    if constexpr ( NumPoints == 3 ) return ( q - 1 ) * std::sqrt( Value{ 3.0 } / Value{ 5.0 } );
+    if constexpr ( NumPoints == 1 ) return RealT{ 0.0 };
+    if constexpr ( NumPoints == 2 ) return ( q == 0 ? -1.0 : 1.0 ) / std::sqrt( RealT{ 3.0 } );
+    if constexpr ( NumPoints == 3 ) return ( q - 1 ) * std::sqrt( RealT{ 3.0 } / RealT{ 5.0 } );
   }
 
   /**
    * @brief Select a Gauss-Legendre weight on [-1, 1].
    *
-   * @tparam Value Coordinate and weight scalar type.
    * @param q Point index in [0, NumPoints).
    * @return Reference weight; the complete base rule has weight two.
    */
-  template <typename Value>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static Value gaussWeight( int q )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static RealT gaussWeight( int q )
   {
-    if constexpr ( NumPoints == 1 ) return Value{ 2.0 };
-    if constexpr ( NumPoints == 2 ) return Value{ 1.0 };
-    if constexpr ( NumPoints == 3 ) return q == 1 ? Value{ 8.0 } / Value{ 9.0 } : Value{ 5.0 } / Value{ 9.0 };
+    if constexpr ( NumPoints == 1 ) return RealT{ 2.0 };
+    if constexpr ( NumPoints == 2 ) return RealT{ 1.0 };
+    if constexpr ( NumPoints == 3 ) return q == 1 ? RealT{ 8.0 } / RealT{ 9.0 } : RealT{ 5.0 } / RealT{ 9.0 };
   }
 };
 

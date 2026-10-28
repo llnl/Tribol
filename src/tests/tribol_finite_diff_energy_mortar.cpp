@@ -794,8 +794,7 @@ void checkSelectedRuleDerivatives( bool varying )
                                         LinearEdgePointView{ baseline.data() + 2, 2 } };
   const LinearEdgeCoordinates initial2{ LinearEdgePointView{ baseline.data() + 4, 2 },
                                         LinearEdgePointView{ baseline.data() + 6, 2 } };
-  const auto reference =
-      quadrature_rule.template generateReferenceQuadrature<double>( initial1.view(), initial2.view() );
+  const auto reference = quadrature_rule.generateReferenceQuadrature( initial1.view(), initial2.view() );
   const auto evaluate = [&]() {
     std::array<double, 4> values{};
     if ( varying ) {

@@ -46,81 +46,67 @@ class PairQuadratureRule {
   {
   }
 
-  /** @brief Local integration-surface points and weights. @tparam Value Coordinate and weight scalar type. */
-  template <typename Value>
-  using ReferenceQuadrature = typename BaseQuadratureRule::template ReferenceQuadrature<Value>;
-  /** @brief Local paired parent coordinates and physical weights. @tparam Value Coordinate and weight scalar type. */
-  template <typename Value>
-  using QuadratureData = PairQuadratureData<Value, parent_dimension, parent_dimension2, points_per_base_rule>;
+  /** @brief Local integration-surface points and weights. */
+  using ReferenceQuadrature = typename BaseQuadratureRule::ReferenceQuadrature;
+  /** @brief Local paired parent coordinates and physical weights. */
+  using QuadratureData = PairQuadratureData<parent_dimension, parent_dimension2, points_per_base_rule>;
 
   /**
    * @brief Construct the integration surface and place reference points on it.
-   * @tparam Value Coordinate and weight scalar type.
    * @param mesh1 Current first-element coordinates, with geometry defined by Mesh1Geometry.
    * @param mesh2 Current second-element coordinates, with geometry defined by Mesh2Geometry.
    * @return Local reference quadrature with generation status; invalid geometry has zero points.
    */
-  template <typename Value>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE ReferenceQuadrature<Value> generateReferenceQuadrature(
-      typename Mesh1Geometry::template Coordinates<Value> mesh1,
-      typename Mesh2Geometry::template Coordinates<Value> mesh2 ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE ReferenceQuadrature generateReferenceQuadrature(
+      typename Mesh1Geometry::Coordinates mesh1, typename Mesh2Geometry::Coordinates mesh2 ) const
   {
-    return base_rule_.template generate<Value>( mapping_.template makeIntegrationSurface<Value>( mesh1, mesh2 ) );
+    return base_rule_.generate( mapping_.makeIntegrationSurface( mesh1, mesh2 ) );
   }
 
   /**
    * @brief Reverse-map existing reference points using current geometry, without repeating overlap calculations.
-   * @tparam Value Coordinate and weight scalar type.
    * @param mesh1 Current first-element coordinates.
    * @param mesh2 Current second-element coordinates.
    * @param reference Integration-surface parent points and reference weights.
    * @return Local paired quadrature with generation status; invalid geometry has zero points.
    */
-  template <typename Value>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData<Value> mapReferenceQuadrature(
-      typename Mesh1Geometry::template Coordinates<Value> mesh1,
-      typename Mesh2Geometry::template Coordinates<Value> mesh2,
-      ReferenceQuadratureView<const Value, BaseQuadratureRule::parent_dimension> reference ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData
+  mapReferenceQuadrature( typename Mesh1Geometry::Coordinates mesh1, typename Mesh2Geometry::Coordinates mesh2,
+                          ReferenceQuadratureView<BaseQuadratureRule::parent_dimension> reference ) const
   {
-    QuadratureData<Value> output{};
-    output.result = mapping_.template mapToElements<Value>( mesh1, mesh2, reference, output.getOutputView() );
+    QuadratureData output{};
+    output.result = mapping_.mapToElements( mesh1, mesh2, reference, output.getOutputView() );
     return output;
   }
 
   /**
    * @brief Generate a complete rule into caller-provided storage.
-   * @tparam Value Coordinate and weight scalar type.
    * @param mesh1 Current first-element coordinates.
    * @param mesh2 Current second-element coordinates.
    * @param [out] output Parent coordinates on both elements and physical weights.
    * @return Generation status and full point count; failures must not be consumed. No allocation or retry is performed.
    */
-  template <typename Value>
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult
-  generate( typename Mesh1Geometry::template Coordinates<Value> mesh1,
-            typename Mesh2Geometry::template Coordinates<Value> mesh2,
-            PairQuadratureView<Value, parent_dimension, parent_dimension2> output ) const
+  generate( typename Mesh1Geometry::Coordinates mesh1, typename Mesh2Geometry::Coordinates mesh2,
+            PairQuadratureView<parent_dimension, parent_dimension2> output ) const
   {
-    const auto reference = generateReferenceQuadrature<Value>( mesh1, mesh2 );
+    const auto reference = generateReferenceQuadrature( mesh1, mesh2 );
     // Return fields explicitly so Enzyme can identify their integer types.
     if ( reference.result.status != QuadratureStatus::Success ) return { QuadratureStatus::InvalidGeometry, 0 };
-    return mapping_.template mapToElements<Value>( mesh1, mesh2, reference.getView(), output );
+    return mapping_.mapToElements( mesh1, mesh2, reference.getView(), output );
   }
 
   /**
    * @brief Generate and reverse-map one pair into local fixed-capacity storage.
-   * @tparam Value Coordinate and weight scalar type.
    * @param mesh1 Current first-element coordinates.
    * @param mesh2 Current second-element coordinates.
    * @return Local paired quadrature with generation status; valid zero measure has zero points.
    */
-  template <typename Value>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData<Value> generate(
-      typename Mesh1Geometry::template Coordinates<Value> mesh1,
-      typename Mesh2Geometry::template Coordinates<Value> mesh2 ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData generate( typename Mesh1Geometry::Coordinates mesh1,
+                                                                   typename Mesh2Geometry::Coordinates mesh2 ) const
   {
-    QuadratureData<Value> output{};
-    output.result = generate<Value>( mesh1, mesh2, output.getOutputView() );
+    QuadratureData output{};
+    output.result = generate( mesh1, mesh2, output.getOutputView() );
     return output;
   }
 

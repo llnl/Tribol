@@ -44,7 +44,7 @@ class EdgeQuadratureTest : public detail::ExecutionTest {
     const auto output = integrals.view();
     const auto status = results.view();
     forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
-      const auto rule = Rule{}.template generate<RealT>();
+      const auto rule = Rule{}.generate();
       status[0] = rule.result;
       const auto points = rule.getView();
       for ( int degree = 0; degree < degree_count; ++degree ) {
@@ -95,14 +95,12 @@ class EdgeQuadratureTest : public detail::ExecutionTest {
                                            MdArray<RealT, 2>{ test.target_left, 0.2 } };
         const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<Count>> generator{
             SmoothedProjectedEdgeMapping{ test.smoothing } };
-        const auto rule = generator.template generate<RealT>( source.view(), target.view() );
+        const auto rule = generator.generate( source.view(), target.view() );
         status[0] = rule.result;
         const auto points = rule.getView();
         for ( IndexT q = 0; q < rule.result.required_point_count; ++q ) {
-          const auto physical1 =
-              LinearEdgeGeometry::position<RealT>( source.view(), points.mesh1_parent_coordinates( q, 0 ) );
-          const auto physical2 =
-              LinearEdgeGeometry::position<RealT>( target.view(), points.mesh2_parent_coordinates( q, 0 ) );
+          const auto physical1 = LinearEdgeGeometry::position( source.view(), points.mesh1_parent_coordinates( q, 0 ) );
+          const auto physical2 = LinearEdgeGeometry::position( target.view(), points.mesh2_parent_coordinates( q, 0 ) );
           output( q, 0 ) = points.mesh1_parent_coordinates( q, 0 );
           output( q, 1 ) = physical1[0];
           output( q, 2 ) = physical1[1];
@@ -166,14 +164,14 @@ TEST_P( EdgeQuadratureTest, rejects_invalid_geometry_and_insufficient_storage )
     const MdArray<RealT, 2, 2> source{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } },
         target{ MdArray<RealT, 2>{ 4.0, 0.2 }, MdArray<RealT, 2>{ 0.0, 0.2 } };
     const MdArray<RealT, 2, 2> degenerate{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 0.0, 0.0 } };
-    status[0] = generator.template generate<RealT>( degenerate.view(), target.view() ).result;
-    status[1] = generator.template generate<RealT>( source.view(), degenerate.view() ).result;
+    status[0] = generator.generate( degenerate.view(), target.view() ).result;
+    status[1] = generator.generate( source.view(), degenerate.view() ).result;
     // A capacity of one has a guard entry on either side of its weight array.
     MdArray<RealT, 1, 1> parent;
     MdArray<RealT, 1, 1> target_parent;
-    const PairQuadratureView<RealT, 1, 1> bounded{
+    const PairQuadratureView<1, 1> bounded{
         { parent.data(), { 1, 1 } }, { target_parent.data(), { 1, 1 } }, { output.data() + 1, 1 } };
-    status[2] = generator.template generate<RealT>( source.view(), target.view(), bounded );
+    status[2] = generator.generate( source.view(), target.view(), bounded );
   } );
   const ArrayT<QuadratureResult, 1, MemorySpace::Host> statuses( results );
   for ( int invalid : { 0, 1 } ) {
@@ -194,13 +192,11 @@ TEST_P( EdgeQuadratureTest, maps_frozen_reference_points_to_current_geometry )
   const auto output = records.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
     const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<3>> generator{};
-    const auto reference = EdgeQuadratureRule<3>{}.template generate<RealT>();
+    const auto reference = EdgeQuadratureRule<3>{}.generate();
     const MdArray<RealT, 2, 2> source{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } },
         stretched{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 8.0, 0.0 } };
-    const auto original =
-        generator.template mapReferenceQuadrature<RealT>( source.view(), source.view(), reference.getView() );
-    const auto changed =
-        generator.template mapReferenceQuadrature<RealT>( stretched.view(), source.view(), reference.getView() );
+    const auto original = generator.mapReferenceQuadrature( source.view(), source.view(), reference.getView() );
+    const auto changed = generator.mapReferenceQuadrature( stretched.view(), source.view(), reference.getView() );
     output[0] = changed.mesh1_parent_coordinates( 0, 0 ) - original.mesh1_parent_coordinates( 0, 0 );
     output[1] = changed.physical_weights[0] / original.physical_weights[0];
   } );
@@ -225,16 +221,13 @@ TEST_P( EdgeQuadratureTest, maps_both_parent_coordinates_and_preserves_source_me
     const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<count>> generator{
         SmoothedProjectedEdgeMapping{ 0.0 } };
     // Use a full source interval so this check isolates reverse mapping from overlap selection.
-    const auto reference = EdgeQuadratureRule<count>{}.template generate<RealT>();
-    const auto rule =
-        generator.template mapReferenceQuadrature<RealT>( source.view(), target.view(), reference.getView() );
+    const auto reference = EdgeQuadratureRule<count>{}.generate();
+    const auto rule = generator.mapReferenceQuadrature( source.view(), target.view(), reference.getView() );
     status[0] = rule.result;
     const auto points = rule.getView();
     for ( int q = 0; q < count; ++q ) {
-      const auto physical1 =
-          LinearEdgeGeometry::position<RealT>( source.view(), points.mesh1_parent_coordinates( q, 0 ) );
-      const auto physical2 =
-          LinearEdgeGeometry::position<RealT>( target.view(), points.mesh2_parent_coordinates( q, 0 ) );
+      const auto physical1 = LinearEdgeGeometry::position( source.view(), points.mesh1_parent_coordinates( q, 0 ) );
+      const auto physical2 = LinearEdgeGeometry::position( target.view(), points.mesh2_parent_coordinates( q, 0 ) );
       output( q, 0 ) = physical1[0];
       output( q, 1 ) = physical2[0];
       output( q, 2 ) = physical2[1];
@@ -271,11 +264,9 @@ TEST_P( EdgeQuadratureTest, remaps_frozen_points_to_updated_target )
     const MdArray<RealT, 2, 2> target{ MdArray<RealT, 2>{ 4.0, 0.2 }, MdArray<RealT, 2>{ 0.0, 0.2 } };
     const MdArray<RealT, 2, 2> translated{ MdArray<RealT, 2>{ 5.0, 0.2 }, MdArray<RealT, 2>{ 1.0, 0.2 } };
     const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<1>> generator{};
-    const auto reference = generator.template generateReferenceQuadrature<RealT>( source.view(), target.view() );
-    const auto original =
-        generator.template mapReferenceQuadrature<RealT>( source.view(), target.view(), reference.getView() );
-    const auto changed =
-        generator.template mapReferenceQuadrature<RealT>( source.view(), translated.view(), reference.getView() );
+    const auto reference = generator.generateReferenceQuadrature( source.view(), target.view() );
+    const auto original = generator.mapReferenceQuadrature( source.view(), target.view(), reference.getView() );
+    const auto changed = generator.mapReferenceQuadrature( source.view(), translated.view(), reference.getView() );
     output[0] = changed.mesh1_parent_coordinates( 0, 0 ) - original.mesh1_parent_coordinates( 0, 0 );
     output[1] = changed.mesh2_parent_coordinates( 0, 0 ) - original.mesh2_parent_coordinates( 0, 0 );
     output[2] = changed.physical_weights[0] - original.physical_weights[0];
@@ -298,39 +289,35 @@ struct ParallelEdgeMapping {
 
   /**
    * @brief Find the common physical-x interval of the two horizontal edges.
-   * @tparam Value Coordinate scalar type.
    * @param mesh1 Left-to-right first edge.
    * @param mesh2 Right-to-left second edge.
    * @return Common interval in physical x; nonincreasing bounds give zero measure.
    */
-  template <typename Value>
-  TRIBOL_HOST_DEVICE EdgeQuadratureInterval<Value> makeIntegrationSurface(
-      LinearEdgeGeometry::Coordinates<Value> mesh1, LinearEdgeGeometry::Coordinates<Value> mesh2 ) const
+  TRIBOL_HOST_DEVICE EdgeQuadratureInterval makeIntegrationSurface( LinearEdgeGeometry::Coordinates mesh1,
+                                                                    LinearEdgeGeometry::Coordinates mesh2 ) const
   {
-    const Value left = mesh1( 0, 0 ) > mesh2( 1, 0 ) ? mesh1( 0, 0 ) : mesh2( 1, 0 );
-    const Value right = mesh1( 1, 0 ) < mesh2( 0, 0 ) ? mesh1( 1, 0 ) : mesh2( 0, 0 );
-    return { MdArray<Value, 2>{ left, right }, true };
+    const RealT left = mesh1( 0, 0 ) > mesh2( 1, 0 ) ? mesh1( 0, 0 ) : mesh2( 1, 0 );
+    const RealT right = mesh1( 1, 0 ) < mesh2( 0, 0 ) ? mesh1( 1, 0 ) : mesh2( 0, 0 );
+    return { MdArray<RealT, 2>{ left, right }, true };
   }
 
   /**
    * @brief Map physical-x integration points onto each horizontal edge.
-   * @tparam Value Coordinate and weight scalar type.
    * @param mesh1 First edge endpoints.
    * @param mesh2 Second edge endpoints.
    * @param reference Points and weights expressed in physical x.
    * @param [out] output Parent coordinates on both elements and physical weights.
    * @return Success with initialized count, or InsufficientCapacity with the full count and untouched output.
    */
-  template <typename Value>
-  TRIBOL_HOST_DEVICE QuadratureResult mapToElements( LinearEdgeGeometry::Coordinates<Value> mesh1,
-                                                     LinearEdgeGeometry::Coordinates<Value> mesh2,
-                                                     ReferenceQuadratureView<const Value, 1> reference,
-                                                     PairQuadratureView<Value, 1, 1> output ) const
+  TRIBOL_HOST_DEVICE QuadratureResult mapToElements( LinearEdgeGeometry::Coordinates mesh1,
+                                                     LinearEdgeGeometry::Coordinates mesh2,
+                                                     ReferenceQuadratureView<1> reference,
+                                                     PairQuadratureView<1, 1> output ) const
   {
     const IndexT count = reference.numberOfPoints();
     if ( output.capacity() < count ) return { QuadratureStatus::InsufficientCapacity, count };
     for ( IndexT q = 0; q < count; ++q ) {
-      const Value x = reference.parent_coordinates( q, 0 );
+      const RealT x = reference.parent_coordinates( q, 0 );
       output.mesh1_parent_coordinates( q, 0 ) = 2.0 * ( x - mesh1( 0, 0 ) ) / ( mesh1( 1, 0 ) - mesh1( 0, 0 ) ) - 1.0;
       output.mesh2_parent_coordinates( q, 0 ) = 2.0 * ( x - mesh2( 0, 0 ) ) / ( mesh2( 1, 0 ) - mesh2( 0, 0 ) ) - 1.0;
       output.physical_weights[q] = reference.reference_weights[q];
@@ -348,7 +335,7 @@ TEST_P( EdgeQuadratureTest, composes_with_a_different_integration_mapping )
     const MdArray<RealT, 2, 2> source{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } };
     const MdArray<RealT, 2, 2> target{ MdArray<RealT, 2>{ 3.0, 0.2 }, MdArray<RealT, 2>{ 1.0, 0.2 } };
     const PairQuadratureRule<ParallelEdgeMapping, EdgeQuadratureRule<1>> generator{};
-    const auto rule = generator.template generate<RealT>( source.view(), target.view() );
+    const auto rule = generator.generate( source.view(), target.view() );
     const auto points = rule.getView();
     output[0] = points.mesh1_parent_coordinates( 0, 0 );
     output[1] = points.mesh2_parent_coordinates( 0, 0 );

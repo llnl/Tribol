@@ -89,7 +89,7 @@ class EnergyMortarCalculator {
                  "Energy Mortar currently supports linear-edge rules." );
 
  public:
-  using ReferenceQuadrature = typename QuadratureRule::template ReferenceQuadrature<double>;
+  using ReferenceQuadrature = typename QuadratureRule::ReferenceQuadrature;
 
   /// Borrow a generator; it must outlive this evaluator. Current geometry is supplied to each calculation.
   EnergyMortarCalculator( const ContactParams& p, const QuadratureRule& quadrature_rule )

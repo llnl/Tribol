@@ -63,7 +63,7 @@ TRIBOL_ENZYME_INLINE void endpoints( const MeshData::Viewer& mesh, int elem_id, 
 
 // Integrate the nodal smoothed gap and tributary area contributions over edge A.
 // The generated weights already contain the physical integration measure.
-TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, PairQuadratureView<const double, 1, 1> quadrature,
+TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, PairQuadratureView<1, 1, true> quadrature,
                                          double residual_gap, double* g_tilde_out, double* A_out )
 {
   // x stores the two endpoints of edge A followed by the two endpoints of edge B.
@@ -95,10 +95,9 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, PairQuadratureView<con
         MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &xiA, LinearEdgeBasis::parent_dimension },
         basis_values );
 
-    const auto x1 = LinearEdgeGeometry::position<double>( { x, LinearEdgeCoordinates::size() }, xiA );
-    const auto x2 =
-        LinearEdgeGeometry::position<double>( { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() },
-                                              quadrature.mesh2_parent_coordinates( i, 0 ) );
+    const auto x1 = LinearEdgeGeometry::position( { x, LinearEdgeCoordinates::size() }, xiA );
+    const auto x2 = LinearEdgeGeometry::position( { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() },
+                                                  quadrature.mesh2_parent_coordinates( i, 0 ) );
     const double gn = ( x2[0] - x1[0] ) * nB[0] + ( x2[1] - x1[1] ) * nB[1];
     const double g = effective_gap( gn, eta, residual_gap );
 
@@ -130,9 +129,8 @@ template <typename QuadratureRule, KernelOutput Output>
 static void kernel_out( const double* x, const void* reference_void, const void* kp_void, double* out )
 {
   const auto* kp = static_cast<const KernelParams<QuadratureRule>*>( kp_void );
-  const auto* reference =
-      static_cast<const typename QuadratureRule::template ReferenceQuadrature<double>*>( reference_void );
-  const auto quadrature = kp->quadrature_rule.template mapReferenceQuadrature<double>(
+  const auto* reference = static_cast<const typename QuadratureRule::ReferenceQuadrature*>( reference_void );
+  const auto quadrature = kp->quadrature_rule.mapReferenceQuadrature(
       { x, LinearEdgeCoordinates::size() }, { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() },
       reference->getView() );
   double gt[2];
@@ -152,7 +150,7 @@ static void kernel_out( const double* x, const void* reference_void, const void*
 
 // Differentiate the selected fixed-quadrature scalar kernel with respect to the 8 endpoint coordinates.
 template <typename QuadratureRule, KernelOutput Output>
-void grad_kernel( const double* x, const typename QuadratureRule::template ReferenceQuadrature<double>* reference,
+void grad_kernel( const double* x, const typename QuadratureRule::ReferenceQuadrature* reference,
                   const KernelParams<QuadratureRule>* kp, double* dout_du )
 {
   double dx[8] = { 0.0 };
@@ -174,7 +172,7 @@ template <typename QuadratureRule, KernelOutput Output>
 static void kernel_out_enzyme( const double* x, const void* kp_void, double* out )
 {
   const KernelParams<QuadratureRule>* kp = static_cast<const KernelParams<QuadratureRule>*>( kp_void );
-  const auto quadrature = kp->quadrature_rule.template generate<double>(
+  const auto quadrature = kp->quadrature_rule.generate(
       { x, LinearEdgeCoordinates::size() }, { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() } );
 
   double gt[2];
@@ -252,7 +250,7 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   double B0[2] = { x[4], x[5] };
   double B1[2] = { x[6], x[7] };
 
-  const auto generated = kp->quadrature_rule.template generate<double>(
+  const auto generated = kp->quadrature_rule.generate(
       { x, LinearEdgeCoordinates::size() }, { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() } );
   const auto quadrature = generated.getView();
 
@@ -266,11 +264,10 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   const double eta = ( dot < 0 ) ? dot : 0.0;
   double value = 0.0;
   for ( int i = 0; i < quadrature.physical_weights.size(); ++i ) {
-    const auto x1 = LinearEdgeGeometry::position<double>( { x, LinearEdgeCoordinates::size() },
-                                                          quadrature.mesh1_parent_coordinates( i, 0 ) );
-    const auto x2 =
-        LinearEdgeGeometry::position<double>( { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() },
-                                              quadrature.mesh2_parent_coordinates( i, 0 ) );
+    const auto x1 = LinearEdgeGeometry::position( { x, LinearEdgeCoordinates::size() },
+                                                  quadrature.mesh1_parent_coordinates( i, 0 ) );
+    const auto x2 = LinearEdgeGeometry::position( { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() },
+                                                  quadrature.mesh2_parent_coordinates( i, 0 ) );
     value += qp_penalty_kernel_qp_energy( quadrature.physical_weights[i], x1.data(), x2.data(), nB, eta,
                                           kp->residual_gap, kp->k, pair_has_active_qp );
   }
@@ -311,7 +308,7 @@ void d2_qp_penalty_kernel( const double* x, const KernelParams<QuadratureRule>* 
 
 // Compute the Hessian of the selected fixed-quadrature scalar kernel.
 template <typename QuadratureRule, KernelOutput Output>
-void d2_kernel_quad( const double* x, const typename QuadratureRule::template ReferenceQuadrature<double>* reference,
+void d2_kernel_quad( const double* x, const typename QuadratureRule::ReferenceQuadrature* reference,
                      const KernelParams<QuadratureRule>* kp, double* H )
 {
   for ( int col = 0; col < 8; ++col ) {
@@ -339,8 +336,7 @@ EnergyMortarCalculator<QuadratureRule>::constructReferenceQuadrature( const Inte
   LinearEdgeCoordinates coords1, coords2;
   mesh1.getFaceCoords( pair.element_id1_, coords1.data() );
   mesh2.getFaceCoords( pair.element_id2_, coords2.data() );
-  const auto reference =
-      quadrature_rule_.template generateReferenceQuadrature<double>( coords1.view(), coords2.view() );
+  const auto reference = quadrature_rule_.generateReferenceQuadrature( coords1.view(), coords2.view() );
   if ( reference.result.status == QuadratureStatus::InvalidGeometry ) {
     throw std::invalid_argument( "Cannot generate a quadrature rule for invalid pair geometry." );
   }
@@ -387,7 +383,7 @@ NodalContactData EnergyMortarCalculator<QuadratureRule>::compute_nodal_contact_d
   double x[8];
   mesh1.getFaceCoords( pair.element_id1_, x );
   mesh2.getFaceCoords( pair.element_id2_, x + 4 );
-  const auto quadrature = quadrature_rule_.template generate<double>(
+  const auto quadrature = quadrature_rule_.generate(
       { x, LinearEdgeCoordinates::size() }, { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() } );
   NodalContactData result{};
   gtilde_kernel( x, quadrature.getView(), p_.residual_gap, result.g_tilde.data(), result.AI.data() );

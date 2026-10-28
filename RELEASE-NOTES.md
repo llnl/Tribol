@@ -66,7 +66,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   `SmoothedProjectedEdgeMapping` selects the integration interval and maps its points to both elements' parent
   coordinates, applying the mesh1 physical Jacobian once. `EdgeQuadratureRule<NumPoints>` only places Gauss points and
   reference weights on an interval. The calculator evaluates fields at the returned parent points on both elements.
-  Mapping types identify their element geometries; the implemented mapping supports straight two-dimensional edges.
+  Coordinates and weights use `RealT`. Mapping types identify their element geometries; the implemented mapping supports
+  straight two-dimensional edges.
 - `EnergyMortarAdapter` owns its configured pair rule, and its calculator borrows that generator. The mapping owns
   smoothing settings; refined search leaves overlap determination to quadrature generation. `ContactParams` no longer
   carries a runtime quadrature count or smoothing length. Frozen reference points are mapped to both current elements,
