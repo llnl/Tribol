@@ -687,13 +687,11 @@ class CouplingScheme {
   void printPairReportingData();
 
   /**
-   * @brief Get the effective binning proximity scale
+   * @brief Return the binning proximity scale adjusted for the current MFEM LOR factor
    *
    * @note The effective binning proximity scale is the user supplied binning proximity scaled by the LOR factor. Thus,
    * the effective binning proximity is independent of the low-order mesh when a higher-order mesh is used with the MFEM
    * interface. This is generally the binning proximity that should be used in binning and geometric filtering.
-   *
-   * @pre CouplingScheme::init() must be called prior
    *
    * @return effective binning proximity scale
    */
