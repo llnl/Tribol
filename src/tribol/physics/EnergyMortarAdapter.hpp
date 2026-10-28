@@ -222,12 +222,12 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
 
  private:
   /**
-   * @brief Search the current meshes and replace the pairs used for this calculation
+   * @brief Find and store candidate pairs for the current meshes
    *
-   * Coarse search supplies spatial candidates. ENERGY_MORTAR then applies its topology, orientation, and projected-
-   * support checks before any element calculation sees the pairs.
+   * Coarse search finds spatial candidates. Refined search then removes exact self-pairs, optionally removes shared-node
+   * pairs, and rejects edges without nondegenerate opposing normals.
    */
-  void refreshInterfacePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 );
+  void findCandidatePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 );
 
   /**
    * @brief Controls penalty vs. Lagrange multiplier (LM) mode

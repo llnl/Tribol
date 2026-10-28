@@ -63,7 +63,7 @@ void EnergyMortarAdapter<EnforcementLocation>::updateIntegrationRule( MeshData::
 }
 
 template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::refreshInterfacePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 )
+void EnergyMortarAdapter<EnforcementLocation>::findCandidatePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 )
 {
   const auto candidates = coarse_search_->findCandidatePairs( mesh1, mesh2 );
   pairs_ = refined_search_->filterCandidatePairs( candidates, mesh1, mesh2 );
@@ -73,7 +73,7 @@ template <typename Adapter>
 void Nodal<Adapter>::updateNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 )
 {
   auto* adapter = static_cast<Adapter*>( this );
-  adapter->refreshInterfacePairs( mesh1, mesh2 );
+  adapter->findCandidatePairs( mesh1, mesh2 );
 
   // NOTE: user should have called updateMfemParallelDecomposition() with updated coords before calling this
 
@@ -466,7 +466,7 @@ template <typename Adapter>
 void QuadraturePoint<Adapter>::updateNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 )
 {
   auto* adapter = static_cast<Adapter*>( this );
-  adapter->refreshInterfacePairs( mesh1, mesh2 );
+  adapter->findCandidatePairs( mesh1, mesh2 );
 
   SLIC_ERROR_ROOT_IF( !adapter->use_penalty_,
                       "ENERGY_MORTAR quadrature-point enforcement requires penalty enforcement." );
