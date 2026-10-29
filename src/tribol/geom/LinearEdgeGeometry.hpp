@@ -24,7 +24,7 @@ namespace tribol {
  * basis.
  *
  * Zero-length edges can be constructed and inspected. Normal and projection calculations require a nondegenerate edge;
- * callers choose their degeneracy tolerance before using those operations. No mesh views are retained.
+ * callers choose their degeneracy tolerance before using those operations. No input coordinate views are retained.
  */
 class LinearEdgeGeometry {
  public:
