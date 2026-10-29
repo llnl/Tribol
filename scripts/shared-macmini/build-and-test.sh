@@ -37,7 +37,8 @@ print_run_log cd $PROJECT_DIR
 # Update repo
 print_run_log git checkout develop
 print_run_log git submodule deinit --force --all
-print_run_log git pull --recurse-submodules
+print_run_log git pull
+print_run_log git submodule update --init --recursive
 
 # Clear previous build(s)
 print_run_log rm -rf _tribol_build_and_test*
