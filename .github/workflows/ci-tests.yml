@@ -39,29 +39,37 @@ jobs:
         - job_name: llvm@19.1.1, shared
           host_config: llvm@19.1.1.cmake
           compiler_image: ${{ needs.set_image_vars.outputs.clang_docker_image }}
-          cmake_opts: "-DENABLE_DOCS=OFF -DBUILD_REDECOMP=ON"
-        # TODO re-add cuda testing
+          cmake_opts: "-DBUILD_SHARED_LIBS=ON -DENABLE_DOCS=OFF"
+        # # Not enough disk space to run CUDA container
         # https://github.com/LLNL/smith/issues/1479
-        # - job_name: gcc@12.3.0, shared, cuda, no tests/install/warnings as errors
-        #   host_config: gcc@12.3.0_cuda.cmake
+        # - job_name: gcc@13.3.0, shared, cuda, no tests/install/warnings as errors
+        #   host_config: gcc@13.3.0_cuda.cmake
         #   compiler_image: ${{ needs.set_image_vars.outputs.cuda_docker_image }}
-        #   cmake_opts: "-DENABLE_DOCS=OFF -DENABLE_WARNINGS_AS_ERRORS=OFF"
+        #   cmake_opts: "-DBUILD_SHARED_LIBS=ON -DENABLE_DOCS=OFF -DENABLE_WARNINGS_AS_ERRORS=OFF"
         #   build_src_opts: "--skip-install --skip-tests"
         - job_name: gcc@14.2.0, shared
           host_config: gcc@14.2.0.cmake
           compiler_image: ${{ needs.set_image_vars.outputs.gcc_docker_image }}
-          cmake_opts: "-DENABLE_DOCS=OFF -DBUILD_REDECOMP=ON"
+          cmake_opts: "-DBUILD_SHARED_LIBS=ON -DENABLE_DOCS=OFF"
+        include:
+        - build_type: Debug
+          config:
+            job_name: llvm@19.1.1, shared, codevelop
+            host_config: llvm@19.1.1.cmake
+            compiler_image: ${{ needs.set_image_vars.outputs.clang_docker_image }}
+            cmake_opts: "-DBUILD_SHARED_LIBS=ON -DENABLE_DOCS=OFF -DSMITH_ENABLE_CODEVELOP=ON"
+            build_src_opts: "--skip-install"
     name: ${{ matrix.build_type }} - ${{ matrix.config.job_name }}
     container:
       image: ${{ matrix.config.compiler_image }}
       volumes:
-      - /home/smith
+      - /home/smith/smith
       # Required - default is set to user "smith"
       options: --user root
     steps:
       - name: Checkout Tribol
-        uses: actions/checkout@v4
-        with: 
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
           submodules: recursive
       - name: Print Matrix Variables
         run: |
@@ -73,7 +81,6 @@ jobs:
       - name: Build and Test ${{ matrix.config.host_config }} ${{ matrix.build_type }}
         timeout-minutes: 60
         run: |
-          pwd && ls -lha && ls -lha /home && \
           ./scripts/llnl/build_src.py ${{ matrix.config.build_src_opts }} \
             --verbose \
             --host-config ${{ matrix.config.host_config }} \
@@ -82,7 +89,7 @@ jobs:
       - name: Upload Test Results
         # CUDA containers do not run tests, because runners don't have GPUs, so skip upload in that case
         if: ${{ matrix.config.compiler_image != needs.set_image_vars.outputs.cuda_docker_image }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: Test Results ${{ matrix.config.host_config }} ${{ matrix.build_type }} ${{ matrix.config.cmake_opts }}
           path: "**/Test.xml"
@@ -99,7 +106,7 @@ jobs:
     container:
       image: ${{ needs.set_image_vars.outputs.clang_docker_image }}
       volumes:
-      - /home/smith
+      - /home/smith/smith
       # Required - default is set to user "smith"
       options: --user root
       env:
@@ -107,14 +114,14 @@ jobs:
         HOST_CONFIG: llvm@19.1.1.cmake
     steps:
     - name: Checkout Tribol
-      uses: actions/checkout@v4
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         submodules: recursive
     - name: Check ${{ matrix.check_type }}
       run: ./scripts/github-actions/linux-check.sh
     - name: Upload coverage to Codecov
       if: ${{ matrix.check_type == 'coverage' }}
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6
       with:
         fail_ci_if_error: true
         files: smith_coverage.info.cleaned
