@@ -26,6 +26,7 @@ set(tribol_headers
     geom/ElementNormal.hpp
     geom/GeomUtilities.hpp
     geom/Hyperplane.hpp
+    geom/LinearEdgeGeometry.hpp
     geom/NodalNormal.hpp
     geom/SmoothedProjectedEdgeMapping.hpp
 

@@ -60,6 +60,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Pair quadrature prepares owning element geometry once per pair calculation. Linear-edge geometry supplies Primal
+  points, parent projection coordinates, normals, and Jacobians; mappings consume the prepared geometry by reference.
 - Energy Mortar generates and consumes quadrature locally for each pair during gap and force calculations. Independent
   quadrature output is deferred, and the unused `ContactFormulation::updateIntegrationRule()` operation is removed.
 - `PairQuadratureRule<Mapping, BaseQuadratureRule>` combines an element-pair integration mapping with a reference rule.
@@ -67,12 +69,13 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   coordinates, applying the mesh1 physical Jacobian once. `EdgeQuadratureRule<NumPoints>` only places Gauss points and
   reference weights on an interval. The calculator evaluates fields at the returned parent points on both elements.
   Coordinates and weights use `RealT`. Mapping types identify their element geometries; the implemented mapping supports
-  straight two-dimensional edges.
+  straight two-dimensional edges. Co-oriented edge pairs produce valid zero-point rules before point generation,
+  including when mapping existing reference points; they cannot contribute tributary area or residual-gap forces.
 - `EnergyMortarAdapter` owns its configured pair rule, and its calculator borrows that generator. The mapping owns
   smoothing settings; refined search leaves overlap determination to quadrature generation. `ContactParams` no longer
   carries a runtime quadrature count or smoothing length. Frozen reference points are mapped to both current elements,
   preserving the varying and frozen derivative modes. Assembly remains host-only; the generators are device-callable.
-- Energy Mortar calculates straight-edge normal gaps from the corresponding element points. Very short nondegenerate target
+- Energy Mortar calculates straight-edge normal gaps from the corresponding element points. Very short nondegenerate mortar
   edges retain their normal gap instead of depending on a line-intersection tolerance. The calculator's unused
   `compute_projection_bounds()` helper was removed. Surface-region representations beyond edge intervals remain future
   work.

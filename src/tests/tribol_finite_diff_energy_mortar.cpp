@@ -745,6 +745,34 @@ TEST( EnergyMortarCoordinates, disjoint_projected_intervals_have_zero_contributi
   for ( const double stiffness : penalty.stiffness ) EXPECT_EQ( stiffness, 0.0 );
 }
 
+// Calling the calculator without search must give no gap, area, or penalty contribution for co-oriented edges.
+TEST( EnergyMortarCoordinates, cooriented_pairs_have_zero_contribution_without_search )
+{
+  const RealT x1[] = { 0.0, 1.0 }, y1[] = { 0.0, 0.0 };
+  const RealT x2[] = { 0.0, 1.0 }, y2[] = { 0.1, 0.1 };
+  const IndexT connectivity[] = { 0, 1 };
+  MeshData mesh1( 0, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
+  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<3>> quadrature_rule;
+  // A positive residual gap must not turn an excluded pair into an active constraint.
+  for ( const RealT residual_gap : { 0.0, 0.15 } ) {
+    SCOPED_TRACE( residual_gap );
+    const EnergyMortarCalculator calculator( ContactParams{ 1.0, true, residual_gap }, quadrature_rule );
+    NodalContactData nodal{};
+    calculator.compute_gtilde_and_area( { 0, 0 }, mesh1.getView(), mesh2.getView(), nodal.g_tilde.data(),
+                                        nodal.AI.data() );
+    for ( int node = 0; node < LinearEdgeBasis::node_count; ++node ) {
+      EXPECT_EQ( nodal.g_tilde[node], 0.0 );
+      EXPECT_EQ( nodal.AI[node], 0.0 );
+    }
+    const auto penalty = calculator.compute_quadrature_point_penalty_data( { 0, 0 }, mesh1.getView(), mesh2.getView() );
+    EXPECT_FALSE( penalty.has_active_qp );
+    EXPECT_EQ( penalty.energy, 0.0 );
+    for ( const auto force : penalty.force ) EXPECT_EQ( force, 0.0 );
+    for ( const auto stiffness : penalty.stiffness ) EXPECT_EQ( stiffness, 0.0 );
+  }
+}
+
 // A short valid edge must retain its normal distance; small edge length does not imply zero separation.
 TEST( EnergyMortarGap, calculates_normal_distance_for_short_valid_edges )
 {
