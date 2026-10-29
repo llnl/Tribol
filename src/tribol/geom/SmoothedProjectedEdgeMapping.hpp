@@ -12,6 +12,8 @@
 #define SRC_TRIBOL_GEOM_SMOOTHEDPROJECTEDEDGEMAPPING_HPP_
 
 #include <cmath>
+
+#include "tribol/geom/LinearEdgeGeometry.hpp"
 #include "tribol/common/Enzyme.hpp"
 #include "tribol/common/MdArray.hpp"
 #include "tribol/integ/Quadrature.hpp"
@@ -19,61 +21,36 @@
 namespace tribol {
 
 /**
- * @brief Geometry of a straight edge with two endpoints in two physical dimensions, independent of an FE basis.
- */
-struct LinearEdgeGeometry {
-  static constexpr int endpoint_count = 2;     ///< Endpoints defining the straight edge.
-  static constexpr int parent_dimension = 1;   ///< Components in normalized [-1, 1] parent coordinates.
-  static constexpr int spatial_dimension = 2;  ///< Physical components per endpoint.
-
-  /** @brief Borrow endpoints by endpoint, then physical component. */
-  using Coordinates = MdSpan<const RealT, endpoint_count, spatial_dimension>;
-
-  /**
-   * @brief Evaluate a physical point on the straight edge, allowing extrapolation.
-   * @param coordinates Edge endpoint coordinates.
-   * @param parent Normalized parent coordinate.
-   * @return Physical point at parent.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static MdArray<RealT, spatial_dimension> position( Coordinates coordinates,
-                                                                                             RealT parent )
-  {
-    MdArray<RealT, spatial_dimension> result;
-    for ( int d = 0; d < spatial_dimension; ++d ) {
-      result[d] = 0.5 * ( ( 1.0 - parent ) * coordinates( 0, d ) + ( 1.0 + parent ) * coordinates( 1, d ) );
-    }
-    return result;
-  }
-};
-
-/**
- * @brief Integrate on mesh1's smoothed projected interval and map its points to both straight edges.
+ * @brief Integrate on geometry1's smoothed projected interval and map its points to both straight edges.
  *
- * The forward mapping projects mesh2's endpoints along its normal onto mesh1. The reverse mapping keeps each point's
- * mesh1 parent coordinate and projects its physical position along mesh2's normal onto mesh2. Parent points may lie
- * outside [-1, 1]. Weights use mesh1's physical measure exactly once; mesh2 adds no Jacobian factor.
+ * The forward mapping projects geometry2's endpoints along its normal onto geometry1. The reverse mapping keeps each
+ * point's geometry1 parent coordinate and projects its physical position along geometry2's normal onto geometry2.
+ * Parent points may lie outside [-1, 1]. Weights use geometry1's physical measure exactly once; geometry2 adds no
+ * Jacobian factor. Co-oriented normals contribute no points; perpendicular normals remain allowed.
  * Only configuration is retained; current endpoint coordinates are supplied to each operation.
  */
 struct SmoothedProjectedEdgeMapping {
-  using Mesh1Geometry = LinearEdgeGeometry;  ///< Non-mortar integration geometry.
-  using Mesh2Geometry = LinearEdgeGeometry;  ///< Mortar projection geometry.
-  /** @brief Native integration surface, expressed in mesh1 parent coordinates. */
+  using Mesh1Geometry = LinearEdgeGeometry;   ///< Non-mortar integration geometry.
+  using Mesh2Geometry = LinearEdgeGeometry;   ///< Mortar projection geometry.
+  using Point = LinearEdgeGeometry::Point;    ///< Physical point used for forward and reverse projection.
+  using Vector = LinearEdgeGeometry::Vector;  ///< Directed edge, normal, or point displacement.
+  /** @brief Native integration surface, expressed in geometry1 parent coordinates. */
   using IntegrationSurface = EdgeQuadratureInterval;
-  RealT smoothing_fraction{ 0.1 };  ///< Smoothing length as a fraction of mesh1 edge length.
+  RealT smoothing_fraction{ 0.1 };  ///< Smoothing length as a fraction of geometry1 edge length.
 
   /**
-   * @brief Calculate projected source bounds and smooth them near its reference endpoints.
+   * @brief Calculate projected geometry1 bounds and smooth them near its reference endpoints.
    *
-   * A valid collapsed interval has zero integration measure.
+   * Co-oriented geometry returns a valid collapsed interval with zero integration measure.
    *
-   * @param source Source endpoints indexed by endpoint, then physical component.
-   * @param target Target endpoints projected along their edge normal.
-   * @return Smoothed source bounds; degenerate edges return zero bounds and valid=false.
+   * @param geometry1 Current non-mortar integration geometry.
+   * @param geometry2 Current mortar geometry projected along its edge normal.
+   * @return Smoothed geometry1 bounds; degenerate edges return zero bounds and valid=false.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurface
-  makeIntegrationSurface( MdSpan<const RealT, 2, 2> source, MdSpan<const RealT, 2, 2> target ) const
+  makeIntegrationSurface( const Mesh1Geometry& geometry1, const Mesh2Geometry& geometry2 ) const
   {
-    const auto interval = projectTargetOntoSource( source, target );
+    const auto interval = projectedBounds( geometry1, geometry2 );
     if ( !interval.valid ) return { interval.bounds, false };
     const RealT delta = smoothing_fraction;
     const RealT support_min = -1.0 - 2.0 * delta;
@@ -92,113 +69,108 @@ struct SmoothedProjectedEdgeMapping {
   /**
    * @brief Map integration-interval points onto both current elements and scale their reference weights.
    *
-   * No overlap search is repeated. This also maps frozen mesh1 parent points while geometry changes.
-   * @param mesh1 Non-mortar endpoint coordinates.
-   * @param mesh2 Mortar endpoint coordinates.
-   * @param reference Points on the source parent interval and their reference weights.
+   * No overlap search is repeated. This also maps frozen geometry1 parent points while geometry changes. Co-oriented
+   * current geometry contributes zero points even when the supplied reference rule is nonempty.
+   * @param geometry1 Current non-mortar integration geometry.
+   * @param geometry2 Current mortar projection geometry.
+   * @param reference Points on the geometry1 parent interval and their reference weights.
    * @param [out] output Parent points on both elements and physical integration weights.
    * @return Success with the initialized count, InsufficientCapacity with the full count, or InvalidGeometry with zero
    * points. Invalid geometry and insufficient capacity leave output untouched. Valid zero measure returns zero points.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult mapToElements( Mesh1Geometry::Coordinates mesh1,
-                                                                          Mesh2Geometry::Coordinates mesh2,
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult mapToElements( const Mesh1Geometry& geometry1,
+                                                                          const Mesh2Geometry& geometry2,
                                                                           ReferenceQuadratureView<1> reference,
                                                                           PairQuadratureView<1, 1> output ) const
   {
-    const RealT dx1 = mesh1( 1, 0 ) - mesh1( 0, 0 ), dy1 = mesh1( 1, 1 ) - mesh1( 0, 1 );
-    const RealT dx2 = mesh2( 1, 0 ) - mesh2( 0, 0 ), dy2 = mesh2( 1, 1 ) - mesh2( 0, 1 );
-    const RealT length1 = std::sqrt( dx1 * dx1 + dy1 * dy1 );
-    const RealT length2 = std::sqrt( dx2 * dx2 + dy2 * dy2 );
-    if ( length1 < minimum_edge_length_ || length2 < minimum_edge_length_ ) {
+    if ( geometry1.squaredLength() < minimum_edge_length_squared_ ||
+         geometry2.squaredLength() < minimum_edge_length_squared_ ) {
       return { QuadratureStatus::InvalidGeometry, 0 };
     }
+    if ( normalsAreCooriented( geometry1, geometry2 ) ) return { QuadratureStatus::Success, 0 };
     const IndexT count = reference.numberOfPoints();
     if ( output.capacity() < count ) return { QuadratureStatus::InsufficientCapacity, count };
+    if ( count == 0 ) return { QuadratureStatus::Success, 0 };
+    const RealT jacobian = geometry1.jacobian();
     for ( IndexT q = 0; q < count; ++q ) {
       const RealT parent1 = reference.parent_coordinates( q, 0 );
-      const auto physical = Mesh1Geometry::position( mesh1, parent1 );
-      const RealT fraction2 =
-          ( ( physical[0] - mesh2( 0, 0 ) ) * dx2 + ( physical[1] - mesh2( 0, 1 ) ) * dy2 ) / ( dx2 * dx2 + dy2 * dy2 );
+      const auto physical = geometry1.position( parent1 );
       output.mesh1_parent_coordinates( q, 0 ) = parent1;
-      output.mesh2_parent_coordinates( q, 0 ) = 2.0 * fraction2 - 1.0;
-      output.physical_weights[q] = reference.reference_weights[q] * ( 0.5 * length1 );
+      output.mesh2_parent_coordinates( q, 0 ) = geometry2.parentCoordinate( physical );
+      output.physical_weights[q] = reference.reference_weights[q] * jacobian;
     }
     return { QuadratureStatus::Success, count };
   }
 
  private:
-  inline static constexpr RealT minimum_edge_length_ = 1.0e-14;
-  inline static constexpr RealT minimum_projection_determinant_ = 1.0e-12;
+  inline static constexpr RealT minimum_edge_length_ = 1.0e-14;  ///< Shortest accepted physical edge length.
+  inline static constexpr RealT minimum_edge_length_squared_ =
+      minimum_edge_length_ * minimum_edge_length_;  ///< Squared threshold; equality is accepted on either element.
+  inline static constexpr RealT minimum_projection_determinant_ = 1.0e-12;  ///< Line-intersection fallback threshold.
 
   /**
-   * @brief Project both target endpoints along the target normal onto the infinite source line.
-   * @param source Source endpoints indexed by endpoint, then physical component.
-   * @param target Target endpoints indexed by endpoint, then physical component.
-   * @return Increasing source parent-coordinate bounds, or invalid zero bounds when either edge is degenerate.
+   * @brief Check whether the two edge normals have a positive dot product without normalizing them.
+   * @param geometry1 Current integration geometry.
+   * @param geometry2 Current projection geometry.
+   * @pre Both edges are nondegenerate.
+   * @return True for co-oriented normals; perpendicular normals remain allowed.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static IntegrationSurface projectTargetOntoSource(
-      MdSpan<const RealT, 2, 2> source, MdSpan<const RealT, 2, 2> target )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static bool normalsAreCooriented( const Mesh1Geometry& geometry1,
+                                                                            const Mesh2Geometry& geometry2 )
   {
-    const RealT target_x = target( 1, 0 ) - target( 0, 0 );
-    const RealT target_y = target( 1, 1 ) - target( 0, 1 );
-    const RealT target_length = std::sqrt( target_x * target_x + target_y * target_y );
-    const RealT source_x = source( 1, 0 ) - source( 0, 0 );
-    const RealT source_y = source( 1, 1 ) - source( 0, 1 );
-    const RealT source_length_squared = source_x * source_x + source_y * source_y;
-    if ( target_length < minimum_edge_length_ ||
-         source_length_squared <= minimum_edge_length_ * minimum_edge_length_ ) {
+    // Rotating both directed edges to their normals preserves the dot product's sign.
+    return geometry1.direction().dot( geometry2.direction() ) > 0.0;
+  }
+
+  /**
+   * @brief Project both geometry2 endpoints along its normal onto the infinite geometry1 line.
+   * @param geometry1 Non-mortar integration edge.
+   * @param geometry2 Mortar projection edge.
+   * @return Increasing geometry1 parent bounds, valid zero bounds for co-oriented normals, or invalid zero bounds
+   * when either edge is degenerate.
+   */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static IntegrationSurface projectedBounds( const Mesh1Geometry& geometry1,
+                                                                                     const Mesh2Geometry& geometry2 )
+  {
+    if ( geometry1.squaredLength() < minimum_edge_length_squared_ ||
+         geometry2.squaredLength() < minimum_edge_length_squared_ ) {
       return { MdArray<RealT, 2>{ 0.0, 0.0 }, false };
     }
-
-    const MdArray<RealT, 2> target_normal{ target_y / target_length, -target_x / target_length };
-    const auto projected_point0 = projectTargetPointOntoSourceLine( source, target, 0, target_normal );
-    const auto projected_point1 = projectTargetPointOntoSourceLine( source, target, 1, target_normal );
-    const RealT source_fraction0 =
-        ( ( projected_point0[0] - source( 0, 0 ) ) * source_x + ( projected_point0[1] - source( 0, 1 ) ) * source_y ) /
-        source_length_squared;
-    const RealT source_fraction1 =
-        ( ( projected_point1[0] - source( 0, 0 ) ) * source_x + ( projected_point1[1] - source( 0, 1 ) ) * source_y ) /
-        source_length_squared;
-    const RealT coordinate0 = 2.0 * source_fraction0 - 1.0;
-    const RealT coordinate1 = 2.0 * source_fraction1 - 1.0;
+    if ( normalsAreCooriented( geometry1, geometry2 ) ) return { MdArray<RealT, 2>{ 0.0, 0.0 }, true };
+    const auto normal = geometry2.normal();
+    const RealT determinant = Vector::cross_product( geometry1.direction(), normal )[2];
+    const RealT coordinate0 = projectedParentCoordinate( geometry1, geometry2.origin(), normal, determinant );
+    const RealT coordinate1 = projectedParentCoordinate( geometry1, geometry2.position( 1.0 ), normal, determinant );
     return { MdArray<RealT, 2>{ coordinate0 < coordinate1 ? coordinate0 : coordinate1,
                                 coordinate0 < coordinate1 ? coordinate1 : coordinate0 },
              true };
   }
 
   /**
-   * @brief Project one target endpoint along the target normal onto the infinite source line.
-   * @param source Source endpoints defining the destination line.
-   * @param target Target endpoints containing the point to project.
-   * @param target_endpoint Target endpoint index.
-   * @param target_normal Direction from the target point to the source line.
-   * @return Intersection point, or the target point when the two lines are nearly parallel.
+   * @brief Calculate the geometry1 parent coordinate of a geometry2 point projected along its normal.
+   * @param geometry1 Non-mortar integration edge.
+   * @param point Physical point on geometry2.
+   * @param normal Projection direction from geometry2 to the geometry1 line.
+   * @param determinant Cross product of the geometry1 direction and projection normal, shared by both endpoints.
+   * @return Parent coordinate of the intersection; nearly parallel lines use the point's orthogonal parent coordinate.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static MdArray<RealT, 2> projectTargetPointOntoSourceLine(
-      MdSpan<const RealT, 2, 2> source, MdSpan<const RealT, 2, 2> target, int target_endpoint,
-      const MdArray<RealT, 2>& target_normal )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static RealT projectedParentCoordinate( const Mesh1Geometry& geometry1,
+                                                                                  const Point& point,
+                                                                                  const Vector& normal,
+                                                                                  RealT determinant )
   {
-    const RealT source_x = source( 1, 0 ) - source( 0, 0 );
-    const RealT source_y = source( 1, 1 ) - source( 0, 1 );
-    const RealT point_x = target( target_endpoint, 0 ) - source( 0, 0 );
-    const RealT point_y = target( target_endpoint, 1 ) - source( 0, 1 );
-    const RealT determinant = source_x * target_normal[1] - source_y * target_normal[0];
-    if ( std::abs( determinant ) < minimum_projection_determinant_ ) {
-      return MdArray<RealT, 2>{ target( target_endpoint, 0 ), target( target_endpoint, 1 ) };
-    }
-
-    const RealT source_fraction = ( point_x * target_normal[1] - point_y * target_normal[0] ) / determinant;
-    return MdArray<RealT, 2>{ source( 0, 0 ) + source_fraction * source_x,
-                              source( 0, 1 ) + source_fraction * source_y };
+    if ( std::abs( determinant ) < minimum_projection_determinant_ ) return geometry1.parentCoordinate( point );
+    const RealT fraction = Vector::cross_product( Vector( geometry1.origin(), point ), normal )[2] / determinant;
+    return 2.0 * fraction - 1.0;
   }
 
   /**
-   * @brief Apply quadratic smoothing near the source reference endpoints.
+   * @brief Apply quadratic smoothing near the geometry1 reference endpoints.
    *
    * Keep endpoint calls separate so Enzyme does not reuse loop-local reverse-mode tape entries.
    *
-   * @param bound Source parent coordinate after clipping to the expanded support.
-   * @param delta Smoothing length as a fraction of physical source length; zero leaves bound unchanged.
+   * @param bound Mesh1 parent coordinate after clipping to the expanded support.
+   * @param delta Smoothing length as a fraction of physical geometry1 length; zero leaves bound unchanged.
    * @return Smoothed parent coordinate.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static RealT smoothBound( RealT bound, RealT delta )
@@ -207,13 +179,11 @@ struct SmoothedProjectedEdgeMapping {
     RealT smoothed = unit;
     if ( delta != 0.0 ) {
       if ( -delta <= unit && unit <= delta ) {
-        smoothed = unit * unit / ( 4.0 * delta ) + 0.5 * unit + delta / 4.0;
+        const RealT distance = unit + delta;
+        smoothed = distance * distance / ( 4.0 * delta );
       } else if ( 1.0 - delta <= unit && unit <= 1.0 + delta ) {
-        const RealT b = -1.0 / ( 4.0 * delta );
-        const RealT c = 0.5 + 1.0 / ( 2.0 * delta );
-        const RealT d = 1.0 - delta + ( 1.0 - delta ) * ( 1.0 - delta ) / ( 4.0 * delta ) - 0.5 * ( 1.0 - delta ) -
-                        ( 1.0 - delta ) / ( 2.0 * delta );
-        smoothed = b * unit * unit + c * unit + d;
+        const RealT distance = 1.0 + delta - unit;
+        smoothed = 1.0 - distance * distance / ( 4.0 * delta );
       }
     }
     return 2.0 * smoothed - 1.0;

@@ -33,6 +33,22 @@ struct KernelParams {
   RealT residual_gap;
 };
 
+/**
+ * @brief Report a failed rule before any quadrature data is consumed.
+ *
+ * Keep exception construction outside differentiated functions; the integer status has no derivative.
+ * @param status Unsuccessful quadrature generation status.
+ * @throws std::invalid_argument The element-pair geometry is invalid.
+ * @throws std::length_error The rule requires more output storage.
+ */
+[[noreturn, gnu::noinline]] MFEM_ENZYME_INACTIVE void reportQuadratureFailure( QuadratureStatus status )
+{
+  if ( status == QuadratureStatus::InsufficientCapacity ) {
+    throw std::length_error( "Insufficient storage for the pair quadrature rule." );
+  }
+  throw std::invalid_argument( "Cannot generate a quadrature rule for invalid pair geometry." );
+}
+
 TRIBOL_ENZYME_INLINE RealT effective_gap( RealT gap_normal, RealT normal_cosine, RealT residual_gap )
 {
   return gap_normal * normal_cosine - residual_gap;
@@ -131,9 +147,11 @@ static void kernel_out( const RealT* x, const void* reference_void, const void* 
 {
   const auto* kp = static_cast<const KernelParams<QuadratureRule>*>( kp_void );
   const auto* reference = static_cast<const typename QuadratureRule::ReferenceQuadrature*>( reference_void );
+  if ( reference->result.status != QuadratureStatus::Success ) reportQuadratureFailure( reference->result.status );
   const auto quadrature = kp->quadrature_rule.mapReferenceQuadrature(
       { x, LinearEdgeCoordinates::size() }, { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() },
       reference->getView() );
+  if ( quadrature.result.status != QuadratureStatus::Success ) reportQuadratureFailure( quadrature.result.status );
   RealT gt[2];
   RealT A_out[2];
   gtilde_kernel( x, quadrature.getView(), kp->residual_gap, gt, A_out );
@@ -176,6 +194,7 @@ static void kernel_out_enzyme( const RealT* x, const void* kp_void, RealT* out )
   const auto quadrature = kp->quadrature_rule.generate(
       { x, LinearEdgeCoordinates::size() }, { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() } );
 
+  if ( quadrature.result.status != QuadratureStatus::Success ) reportQuadratureFailure( quadrature.result.status );
   RealT gt[2];
   RealT A_out[2];
   gtilde_kernel( x, quadrature.getView(), kp->residual_gap, gt, A_out );
@@ -253,6 +272,7 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const RealT* x, const KernelParams<
 
   const auto generated = kp->quadrature_rule.generate(
       { x, LinearEdgeCoordinates::size() }, { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() } );
+  if ( generated.result.status != QuadratureStatus::Success ) reportQuadratureFailure( generated.result.status );
   const auto quadrature = generated.getView();
 
   RealT nB[2];
@@ -338,9 +358,7 @@ EnergyMortarCalculator<QuadratureRule>::constructReferenceQuadrature( const Inte
   mesh1.getFaceCoords( pair.element_id1_, coords1.data() );
   mesh2.getFaceCoords( pair.element_id2_, coords2.data() );
   const auto reference = quadrature_rule_.generateReferenceQuadrature( coords1.view(), coords2.view() );
-  if ( reference.result.status == QuadratureStatus::InvalidGeometry ) {
-    throw std::invalid_argument( "Cannot generate a quadrature rule for invalid pair geometry." );
-  }
+  if ( reference.result.status != QuadratureStatus::Success ) reportQuadratureFailure( reference.result.status );
   return reference;
 }
 
@@ -385,6 +403,7 @@ NodalContactData EnergyMortarCalculator<QuadratureRule>::compute_nodal_contact_d
   mesh2.getFaceCoords( pair.element_id2_, x + 4 );
   const auto quadrature = quadrature_rule_.generate(
       { x, LinearEdgeCoordinates::size() }, { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() } );
+  if ( quadrature.result.status != QuadratureStatus::Success ) reportQuadratureFailure( quadrature.result.status );
   NodalContactData result{};
   gtilde_kernel( x, quadrature.getView(), p_.residual_gap, result.g_tilde.data(), result.AI.data() );
   return result;

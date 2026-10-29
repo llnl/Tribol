@@ -48,7 +48,7 @@ struct EdgeQuadratureRule {
   /**
    * @brief Map the fixed Gauss rule onto supplied parent bounds.
    *
-   * @param bounds Lower and upper normalized source coordinates.
+   * @param bounds Lower and upper integration-interval coordinates.
    * @return NumPoints points for increasing bounds; Success with zero points for collapsed or reversed bounds.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static ReferenceQuadrature generate( MdSpan<const RealT, 2> bounds )

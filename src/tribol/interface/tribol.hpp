@@ -154,8 +154,7 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
  *
  * Currently supported for ENERGY_MORTAR linear edges and orders 0-5: orders 0-1 use one Gauss-Legendre point, 2-3 use
  * two, and 4-5 use three. The default is order 5, preserving three-point integration.
- * An existing formulation is rebuilt; previously returned quadrature data remains valid. Unsupported orders or methods
- * are rejected without changing the scheme.
+ * An existing formulation is rebuilt. Unsupported orders or methods are rejected without changing the scheme.
  */
 void setQuadratureOrder( IndexT cs_id, int order );
 

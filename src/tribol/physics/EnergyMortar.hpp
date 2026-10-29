@@ -83,6 +83,8 @@ struct FiniteDiffResult {
 /// one face from mesh1, treated as edge A/non-mortar/integration side, and one
 /// face from mesh2, treated as edge B/mortar/projection side. Local edge coordinates use the normalized [-1, 1]
 /// interval shared by BasisFunction.
+/// Calculations throw std::invalid_argument for invalid pair geometry and std::length_error for insufficient quadrature
+/// storage. Failed quadrature data is never consumed; valid zero-point rules retain their zero contribution.
 template <typename QuadratureRule>
 class EnergyMortarCalculator {
   static_assert( QuadratureRule::parent_dimension == 1 && QuadratureRule::endpoint_count == 2 &&
