@@ -9,20 +9,28 @@
 # Add single source tests
 #------------------------------------------------------------------------------
 set( tribol_tests
+     tribol_basis_function.cpp
      tribol_check_tpl.cpp
      tribol_common_plane_penalty.cpp
      tribol_common_plane_gap_rate.cpp
      tribol_common_plane_gpu.cpp
      tribol_comp_geom_2d.cpp
      tribol_comp_geom_3d.cpp
+     tribol_coarse_search.cpp
      tribol_coupling_scheme.cpp
      tribol_coupling_scheme_manager.cpp
      tribol_enforcement_options.cpp
      tribol_execution_modes.cpp
      tribol_hex_mesh.cpp
+     tribol_refined_search.cpp
+     tribol_interface_pair_checks.cpp
+     tribol_interface_pair_finder.cpp
      tribol_inv_iso.cpp
      tribol_iso_integ.cpp
      tribol_math.cpp
+     tribol_mdarray.cpp
+     tribol_mdspan.cpp
+     tribol_mesh_data.cpp
      tribol_mortar_data_geom.cpp
      tribol_mortar_data_weights.cpp
      tribol_mortar_force.cpp
@@ -158,6 +166,7 @@ endif()
 if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 
   set( combined_tests
+      tribol_mfem_data.cpp
       tribol_mfem_common_plane.cpp
       tribol_mfem_mortar_lm.cpp
       tribol_mfem_jacobian.cpp

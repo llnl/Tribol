@@ -31,7 +31,7 @@ class CompGeomPair {
   {
   }
 
-  virtual ~CompGeomPair() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE virtual ~CompGeomPair() = default;
 
  public:
   int m_dim;
@@ -54,6 +54,8 @@ class ContactPlanePair : public CompGeomPair {
    *
    */
   TRIBOL_HOST_DEVICE inline ContactPlanePair( InterfacePair* pair, const Parameters& params, const int dim );
+
+  TRIBOL_DEFAULT_HOST_DEVICE ~ContactPlanePair() = default;
 
   /*!
    * \brief Compute a local basis on the contact plane
@@ -296,28 +298,28 @@ class ContactPlanePair : public CompGeomPair {
    *
    * \return Face id
    */
-  TRIBOL_HOST_DEVICE inline IndexT getCpElementId1() const { return m_pair->m_element_id1; }
+  TRIBOL_HOST_DEVICE inline IndexT getCpElementId1() const { return m_pair->element_id1_; }
 
   /*!
    * \brief Get the id of the second element that forms the contact plane
    *
    * \return Face id
    */
-  TRIBOL_HOST_DEVICE inline IndexT getCpElementId2() const { return m_pair->m_element_id2; }
+  TRIBOL_HOST_DEVICE inline IndexT getCpElementId2() const { return m_pair->element_id2_; }
 
   /*!
    * \brief Set the first contact plane element id
    *
    * \param [in] element_id element id
    */
-  void setCpElementId1( IndexT element_id ) { m_pair->m_element_id1 = element_id; }
+  void setCpElementId1( IndexT element_id ) { m_pair->element_id1_ = element_id; }
 
   /*!
    * \brief Set the second contact plane element id
    *
    * \param [in] element_id element id
    */
-  void setCpElementId2( IndexT element_id ) { m_pair->m_element_id2 = element_id; }
+  void setCpElementId2( IndexT element_id ) { m_pair->element_id2_ = element_id; }
 
   /// @}
 };
@@ -343,7 +345,7 @@ class CommonPlanePair : public ContactPlanePair {
    * \brief Destructor
    *
    */
-  ~CommonPlanePair() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE ~CommonPlanePair() = default;
 
   /*!
    * \brief check to see if common plane face-pairs are interacting
@@ -537,7 +539,7 @@ class MortarPlanePair : public ContactPlanePair {
    * \brief Destructor
    *
    */
-  ~MortarPlanePair() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE ~MortarPlanePair() = default;
   /*!
    * \brief check to see if mortar plane face-pairs are interacting
    *
@@ -634,7 +636,7 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    * \brief Destructor
    *
    */
-  ~AlignedMortarPlanePair() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE ~AlignedMortarPlanePair() = default;
 
   /*!
    * \brief check to see if aligned mortar plane face-pairs are interacting
@@ -933,12 +935,8 @@ class CompGeom {
  * \param [in] params coupling-scheme specific parameters
  * \param [in] cMethod the Tribol contact method
  * \param [in] cCase the Tribol contact Case
- * \param [in,out] isInteracting true if pair passes all computational geometry filters
  * \param [in,out] cg viewer of the computational geometry container
  * \param [in,out] plane_ct number of contact planes in the array views
- *
- * \note isInteracting is true indicating a contact candidate for intersecting or
- *       nearly intersecting face-pairs with a positive area of overlap
  *
  * \return 0 if no exception, non-zero (via FaceGeomException enum) otherwise
  *
@@ -948,8 +946,7 @@ class CompGeom {
 TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePair( InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                                 const MeshData::Viewer& mesh2, const Parameters& params,
                                                                 ContactMethod const cMethod, ContactCase const cCase,
-                                                                bool& isInteracting, CompGeom::Viewer& cg,
-                                                                IndexT* plane_ct );
+                                                                CompGeom::Viewer& cg, IndexT* plane_ct );
 
 //-----------------------------------------------------------------------------
 // Implementations
@@ -958,7 +955,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePair( InterfacePair& p
 template <typename T>
 TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePairByMethod(
     InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, const Parameters& params,
-    ContactCase TRIBOL_UNUSED_PARAM( cCase ), bool& isInteracting, CompGeom::Viewer& cg, IndexT* plane_ct )
+    ContactCase TRIBOL_UNUSED_PARAM( cCase ), CompGeom::Viewer& cg, IndexT* plane_ct )
 {
   auto dim = mesh1.spatialDimension();
   T my_plane( &pair, params, dim );
@@ -970,16 +967,13 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePairByMethod(
   }
 
   if ( face_err != NO_FACE_GEOM_EXCEPTION ) {
-    isInteracting = false;
 #ifdef TRIBOL_USE_HOST
     SLIC_DEBUG( "face_err: " << face_err );
 #endif
   } else if ( my_plane.m_inContact ) {
+    // Increment the count only when storing a plane so plane_ct remains the number of initialized entries.
     auto idx = tribol::atomicInc( plane_ct );
     cg.getPlane<T>( idx ) = my_plane;
-    isInteracting = true;
-  } else {
-    isInteracting = false;
   }
 
   return face_err;
@@ -989,8 +983,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePairByMethod(
 TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePair( InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                                 const MeshData::Viewer& mesh2, const Parameters& params,
                                                                 ContactMethod cMethod, ContactCase cCase,
-                                                                bool& isInteracting, CompGeom::Viewer& cg,
-                                                                IndexT* plane_ct )
+                                                                CompGeom::Viewer& cg, IndexT* plane_ct )
 {
   FaceGeomException face_err = NO_FACE_GEOM_EXCEPTION;
 
@@ -1000,18 +993,15 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePair( InterfacePair& p
   switch ( cMethod ) {
     case MORTAR_WEIGHTS:
     case SINGLE_MORTAR: {
-      face_err =
-          CheckInterfacePairByMethod<MortarPlanePair>( pair, mesh1, mesh2, params, cCase, isInteracting, cg, plane_ct );
+      face_err = CheckInterfacePairByMethod<MortarPlanePair>( pair, mesh1, mesh2, params, cCase, cg, plane_ct );
       break;
     }
     case COMMON_PLANE: {
-      face_err =
-          CheckInterfacePairByMethod<CommonPlanePair>( pair, mesh1, mesh2, params, cCase, isInteracting, cg, plane_ct );
+      face_err = CheckInterfacePairByMethod<CommonPlanePair>( pair, mesh1, mesh2, params, cCase, cg, plane_ct );
       break;
     }
     case ALIGNED_MORTAR: {
-      face_err = CheckInterfacePairByMethod<AlignedMortarPlanePair>( pair, mesh1, mesh2, params, cCase, isInteracting,
-                                                                     cg, plane_ct );
+      face_err = CheckInterfacePairByMethod<AlignedMortarPlanePair>( pair, mesh1, mesh2, params, cCase, cg, plane_ct );
       break;
     }
     default: {
@@ -1570,8 +1560,8 @@ TRIBOL_HOST_DEVICE inline void CommonPlanePair::resetPlanePointAndCentroidGap( c
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE inline void CommonPlanePair::computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
 {
-  IndexT fId1 = m_pair->m_element_id1;
-  IndexT fId2 = m_pair->m_element_id2;
+  IndexT fId1 = m_pair->element_id1_;
+  IndexT fId2 = m_pair->element_id2_;
   m_nZ = 0.0;
 
   // INTERMEDIATE (I.E. COMMON) PLANE normal calculation:
@@ -1603,7 +1593,7 @@ TRIBOL_HOST_DEVICE inline void MortarPlanePair::computeNormal( const MeshData::V
                                                                const MeshData::Viewer& m2 )
 {
   // mesh id 2 is the projection/mortar plane
-  IndexT fId2 = m_pair->m_element_id2;
+  IndexT fId2 = m_pair->element_id2_;
   m_nZ = 0.0;
 
   // the projection plane is the nonmortar (i.e. mesh id 2) surface so
@@ -1632,7 +1622,7 @@ TRIBOL_HOST_DEVICE inline void AlignedMortarPlanePair::computeNormal( const Mesh
                                                                       const MeshData::Viewer& m2 )
 {
   // side 2 is the mortar/projection plane
-  IndexT fId2 = m_pair->m_element_id2;
+  IndexT fId2 = m_pair->element_id2_;
   m_nZ = 0.0;
 
   // the projection plane is the nonmortar (i.e. mesh id 2) surface so
@@ -1662,8 +1652,8 @@ TRIBOL_HOST_DEVICE inline void CommonPlanePair::computePlanePoint( const MeshDat
 {
   // compute the cp centroid as the average of the two face's centers.
   // This is the default method of computing the cp centroid
-  IndexT fId1 = m_pair->m_element_id1;
-  IndexT fId2 = m_pair->m_element_id2;
+  IndexT fId1 = m_pair->element_id1_;
+  IndexT fId2 = m_pair->element_id2_;
 
   // INTERMEDIATE (I.E. COMMON) PLANE point calculation:
   // average two face vertex averaged centroids
@@ -1683,7 +1673,7 @@ TRIBOL_HOST_DEVICE inline void MortarPlanePair::computePlanePoint( const MeshDat
                                                                    const MeshData::Viewer& m2 )
 {
   // take side 2 as the projection plane
-  IndexT fId2 = m_pair->m_element_id2;
+  IndexT fId2 = m_pair->element_id2_;
 
   // MORTAR calculation using the vertex averaged
   // centroid of the nonmortar face
@@ -1704,7 +1694,7 @@ TRIBOL_HOST_DEVICE inline void AlignedMortarPlanePair::computePlanePoint(
     const MeshData::Viewer& TRIBOL_UNUSED_PARAM( m1 ), const MeshData::Viewer& m2 )
 {
   // take side 2 as the projection plane
-  IndexT fId2 = m_pair->m_element_id2;
+  IndexT fId2 = m_pair->element_id2_;
 
   // set plane centroid to mesh 2 face centroid (i.e. non-mortar)
   m_cX = m2.getElementCentroids()[0][fId2];
@@ -1918,8 +1908,8 @@ TRIBOL_HOST_DEVICE inline void CommonPlanePair::centroidGap( const MeshData::Vie
   }
 
   bool is_parallel = false;
-  IndexT fId1 = m_pair->m_element_id1;
-  IndexT fId2 = m_pair->m_element_id2;
+  IndexT fId1 = m_pair->element_id1_;
+  IndexT fId2 = m_pair->element_id2_;
 
   // get face normmals
   constexpr int max_dim = 3;
@@ -2104,7 +2094,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
           }
 
           SLIC_ERROR( "CommonPlanePair::computeOverlap3D(): too many segment-face intersections; "
-                      << "check for degenerate face " << m_pair->m_element_id1 << "on mesh " << mesh[i]->meshId()
+                      << "check for degenerate face " << m_pair->element_id1_ << "on mesh " << mesh[i]->meshId()
                       << "." );
 #endif
           return DEGENERATE_OVERLAP;

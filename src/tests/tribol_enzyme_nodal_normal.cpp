@@ -111,7 +111,7 @@ TEST_F( EnzymeNodalNormalTest, TwoElementsFlatNormalJacobian )
   }
   IndexT conn[8] = { 0, 1, 4, 3, 1, 2, 5, 4 };
   constexpr auto mesh_id = 0;
-  registerMesh( mesh_id, 2, 6, conn, InterfaceElementType::LINEAR_QUAD, x, x + 6, x + 12 );
+  registerMesh( mesh_id, 2, 6, conn, InterfaceElementType::QUAD, LINEAR_LAGRANGE, x, x + 6, x + 12 );
   registerNodalReferenceCoords( mesh_id, xref, xref + 6, xref + 12 );
   auto& mesh_data = MeshManager::getInstance().at( mesh_id );
 

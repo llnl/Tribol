@@ -161,9 +161,9 @@ TEST_F( MortarGeomTest, mortar_good_patch )
   }
 
   // setup simple coupling
-  SimpleCouplingSetup( 3, (int)( tribol::LINEAR_QUAD ), tribol::MORTAR_WEIGHTS, this->numMortarCells,
-                       this->lengthMortarNodes, ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells,
-                       this->lengthNonmortarNodes, ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures );
+  SimpleCouplingSetup( 3, (int)( tribol::QUAD ), tribol::MORTAR_WEIGHTS, this->numMortarCells, this->lengthMortarNodes,
+                       ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells, this->lengthNonmortarNodes,
+                       ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures );
 
   RealT dt = 1.0;
   int err = Update( dt );
@@ -263,9 +263,9 @@ TEST_F( MortarGeomTest, mortar_bad_patch )
   }
 
   // setup simple coupling
-  SimpleCouplingSetup( 3, (int)( tribol::LINEAR_QUAD ), tribol::MORTAR_WEIGHTS, this->numMortarCells,
-                       this->lengthMortarNodes, ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells,
-                       this->lengthNonmortarNodes, ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures );
+  SimpleCouplingSetup( 3, (int)( tribol::QUAD ), tribol::MORTAR_WEIGHTS, this->numMortarCells, this->lengthMortarNodes,
+                       ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells, this->lengthNonmortarNodes,
+                       ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures );
 
   RealT dt = 1.0;
   int err = Update( dt );
@@ -365,9 +365,9 @@ TEST_F( MortarGeomTest, mortar_ironing )
   }
 
   // setup simple coupling
-  SimpleCouplingSetup( 3, (int)( tribol::LINEAR_QUAD ), tribol::MORTAR_WEIGHTS, this->numMortarCells,
-                       this->lengthMortarNodes, ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells,
-                       this->lengthNonmortarNodes, ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures );
+  SimpleCouplingSetup( 3, (int)( tribol::QUAD ), tribol::MORTAR_WEIGHTS, this->numMortarCells, this->lengthMortarNodes,
+                       ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells, this->lengthNonmortarNodes,
+                       ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures );
 
   RealT dt = 1.0;
   int err = Update( dt );
@@ -497,9 +497,9 @@ TEST_F( MortarGeomTest, mortar_ironing_block_sub_mesh )
   }
 
   // setup simple coupling
-  SimpleCouplingSetup( 3, (int)( tribol::LINEAR_QUAD ), tribol::MORTAR_WEIGHTS, this->numMortarCells,
-                       this->lengthMortarNodes, ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells,
-                       this->lengthNonmortarNodes, ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures );
+  SimpleCouplingSetup( 3, (int)( tribol::QUAD ), tribol::MORTAR_WEIGHTS, this->numMortarCells, this->lengthMortarNodes,
+                       ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells, this->lengthNonmortarNodes,
+                       ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures );
 
   RealT dt = 1.0;
   int err = Update( dt );

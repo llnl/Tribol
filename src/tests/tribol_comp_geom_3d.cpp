@@ -526,8 +526,8 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_2 )
   // register contact mesh
   tribol::IndexT mesh_id = 0;
   tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
-  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::QUAD ), tribol::LINEAR_LAGRANGE,
+                        &x[0], &y[0], &z[0], tribol::MemorySpace::Host );
 
   RealT dt = 1.0;
   int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
@@ -636,8 +636,8 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3 )
   // register contact mesh
   tribol::IndexT mesh_id = 0;
   tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
-  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::QUAD ), tribol::LINEAR_LAGRANGE,
+                        &x[0], &y[0], &z[0], tribol::MemorySpace::Host );
 
   RealT dt = 1.0;
   int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
@@ -749,8 +749,8 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3_warped )
   // register contact mesh
   tribol::IndexT mesh_id = 0;
   tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
-  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::QUAD ), tribol::LINEAR_LAGRANGE,
+                        &x[0], &y[0], &z[0], tribol::MemorySpace::Host );
 
   RealT dt = 1.0;
   int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
@@ -860,8 +860,8 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_4 )
   // register contact mesh
   tribol::IndexT mesh_id = 0;
   tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
-  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::QUAD ), tribol::LINEAR_LAGRANGE,
+                        &x[0], &y[0], &z[0], tribol::MemorySpace::Host );
 
   RealT dt = 1.0;
   int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
@@ -974,8 +974,8 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_5 )
   // register contact mesh
   tribol::IndexT mesh_id = 0;
   tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
-  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::QUAD ), tribol::LINEAR_LAGRANGE,
+                        &x[0], &y[0], &z[0], tribol::MemorySpace::Host );
 
   RealT dt = 1.0;
   int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
@@ -1091,8 +1091,8 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_6 )
   // register contact mesh
   tribol::IndexT mesh_id = 0;
   tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
-  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::QUAD ), tribol::LINEAR_LAGRANGE,
+                        &x[0], &y[0], &z[0], tribol::MemorySpace::Host );
 
   RealT dt = 1.0;
   int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
@@ -1206,8 +1206,8 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_7 )
   // register contact mesh
   tribol::IndexT mesh_id = 0;
   tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
-  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::QUAD ), tribol::LINEAR_LAGRANGE,
+                        &x[0], &y[0], &z[0], tribol::MemorySpace::Host );
 
   RealT dt = 1.0;
   int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
@@ -1298,8 +1298,8 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_8 )
   // register contact mesh
   tribol::IndexT mesh_id = 0;
   tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
-  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::QUAD ), tribol::LINEAR_LAGRANGE,
+                        &x[0], &y[0], &z[0], tribol::MemorySpace::Host );
 
   RealT dt = 1.0;
   int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
@@ -1397,8 +1397,8 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_9 )
   // register contact mesh
   tribol::IndexT mesh_id = 0;
   tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
-  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::QUAD ), tribol::LINEAR_LAGRANGE,
+                        &x[0], &y[0], &z[0], tribol::MemorySpace::Host );
 
   RealT dt = 1.0;
   int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
@@ -1523,8 +1523,8 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_10 )
   // register contact mesh
   tribol::IndexT mesh_id = 0;
   tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
-  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::QUAD ), tribol::LINEAR_LAGRANGE,
+                        &x[0], &y[0], &z[0], tribol::MemorySpace::Host );
 
   RealT dt = 1.0;
   int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
@@ -1786,8 +1786,8 @@ TEST_F( CompGeomTest, common_plane_host_code_test )
   // register contact mesh
   tribol::IndexT mesh_id = 0;
   tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
-  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::QUAD ), tribol::LINEAR_LAGRANGE,
+                        &x[0], &y[0], &z[0], tribol::MemorySpace::Host );
 
   RealT dt = 1.0;
   int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
@@ -2127,8 +2127,8 @@ TEST_F( CompGeomTest, codirectional_normals_3d )
   // register contact mesh
   tribol::IndexT mesh_id = 0;
   tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
-  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::QUAD ), tribol::LINEAR_LAGRANGE,
+                        &x[0], &y[0], &z[0], tribol::MemorySpace::Host );
 
   RealT dt = 1.0;
   int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
@@ -2199,8 +2199,8 @@ TEST_F( CompGeomTest, auto_contact_lt_max_interpen )
   // register contact mesh
   tribol::IndexT mesh_id = 0;
   tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 7, 6, 5 };  // hard coded for a two face problem
-  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::QUAD ), tribol::LINEAR_LAGRANGE,
+                        &x[0], &y[0], &z[0], tribol::MemorySpace::Host );
 
   tribol::registerRealElementField( mesh_id, tribol::ELEMENT_THICKNESS, &element_thickness[0] );
   m_isElementThicknessRegistered = true;
@@ -2273,8 +2273,8 @@ TEST_F( CompGeomTest, auto_contact_gt_max_interpen )
   // register contact mesh
   tribol::IndexT mesh_id = 0;
   tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 7, 6, 5 };  // hard coded for a two face problem
-  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
-                        tribol::MemorySpace::Host );
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::QUAD ), tribol::LINEAR_LAGRANGE,
+                        &x[0], &y[0], &z[0], tribol::MemorySpace::Host );
 
   tribol::registerRealElementField( mesh_id, tribol::ELEMENT_THICKNESS, &element_thickness[0] );
   m_isElementThicknessRegistered = true;

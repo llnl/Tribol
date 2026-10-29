@@ -341,6 +341,9 @@ class ParentRedecompTransfer {
  * handles transferring field data to/from different mesh representations used
  * by Tribol.
  *
+ * When ParentRedecompTransfer has no SubmeshLORTransfer, the redecomp grid function uses the same finite element
+ * collection and polynomial order as the parent-linked boundary submesh.
+ *
  * @note Example parent vector fields include displacement and velocity.
  */
 class ParentField {
@@ -467,6 +470,9 @@ class ParentField {
  *
  * This class handles transferring pressure field data to/from representations
  * used by MFEM from/to representations used by Tribol.
+ *
+ * When SubmeshRedecompTransfer has no SubmeshLORTransfer, the redecomp grid function uses the same finite element
+ * collection and polynomial order as the pressure field on the parent-linked boundary submesh.
  */
 class PressureField {
  public:
@@ -603,10 +609,13 @@ class MfemMeshData {
    * in the first Tribol registered mesh
    * @param attributes_2 Mesh boundary attributes identifying surface elements
    * in the second Tribol registered mesh
+   * @param transfers_fields_through_lor When true, higher-order fields transfer through a low-order refined mesh. When
+   * false, the redecomp mesh uses the higher-order boundary submesh directly and redecomp fields retain the source
+   * finite element order.
    */
   MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParMesh& parent_mesh,
                 const mfem::ParGridFunction& current_coords, std::set<int>&& attributes_1, std::set<int>&& attributes_2,
-                ExecutionMode exec_mode, MemorySpace mem_space );
+                ExecutionMode exec_mode, MemorySpace mem_space, bool transfers_fields_through_lor = true );
 
   /**
    * @brief Get coordinate grid function on the parent mesh
@@ -681,21 +690,38 @@ class MfemMeshData {
    *
    * @return IndexT
    */
-  IndexT GetMesh1NE() const { return GetUpdateData().conn_1_.size() / GetUpdateData().num_verts_per_elem_; }
+  IndexT GetMesh1NE() const { return GetUpdateData().conn_1_.shape()[0]; }
 
   /**
    * @brief Get the number of elements in the second Tribol registered mesh
    *
    * @return IndexT
    */
-  IndexT GetMesh2NE() const { return GetUpdateData().conn_2_.size() / GetUpdateData().num_verts_per_elem_; }
+  IndexT GetMesh2NE() const { return GetUpdateData().conn_2_.shape()[0]; }
 
   /**
-   * @brief Get the total number of vertices in both Tribol registered meshes
+   * @brief Get the total number of geometric vertices in both Tribol registered meshes
    *
    * @return int
    */
   int GetNV() const { return GetUpdateData().redecomp_mesh_.GetNV(); }
+
+  /**
+   * @brief Get the number of finite-element coordinate DOFs in the Redecomp mesh
+   *
+   * The Redecomp coordinate GridFunction stores this many DOFs for each spatial component. Connectivity values index
+   * those component blocks; use GetNodesPerElement() for the connectivity row width.
+   *
+   * @return int
+   */
+  int GetNumNodes() const { return GetUpdateData().num_nodes_; }
+
+  /**
+   * @brief Get the number of finite-element nodes in each contact element
+   *
+   * @return int
+   */
+  int GetNodesPerElement() const { return GetUpdateData().nodes_per_elem_; }
 
   /**
    * @brief Get the connectivity for the first Tribol registered mesh
@@ -717,6 +743,13 @@ class MfemMeshData {
    * @return InterfaceElementType
    */
   InterfaceElementType GetElemType() const { return GetUpdateData().elem_type_; }
+
+  /**
+   * @brief Get the finite-element face order for both Tribol registered meshes
+   *
+   * @return FaceOrderType
+   */
+  FaceOrderType GetFaceOrder() const { return GetUpdateData().face_order_; }
 
   /**
    * @brief Get pointers to component arrays of the coordinates on the
@@ -1013,7 +1046,8 @@ class MfemMeshData {
    *
    * @return mfem::ParMesh*
    *
-   * @note nullptr if no refined mesh exists (polynomial order of parent is 1)
+   * @note nullptr if the parent is first order or this object transfers fields directly from the higher-order boundary
+   * submesh
    */
   mfem::ParMesh* GetLORMesh() { return lor_mesh_.get(); }
 
@@ -1061,7 +1095,8 @@ class MfemMeshData {
    *
    * @return const mfem::ParFiniteElementSpace*
    *
-   * @note nullptr if no LOR mesh exists (polynomial order of parent is 1)
+   * @note nullptr if the parent is first order or this object transfers fields directly from the higher-order boundary
+   * submesh
    */
   const mfem::ParFiniteElementSpace* GetLORMeshFESpace() const
   {
@@ -1083,6 +1118,9 @@ class MfemMeshData {
    *
    * @note The LOR factor corresponds to the number of LOR elements per HO element applied to each dimension on the LOR
    * mesh.
+   *
+   * @note When direct higher-order field transfer was selected at construction, this method leaves the LOR factor
+   * unchanged.
    *
    * @param lor_factor LOR factor
    */
@@ -1154,14 +1192,12 @@ class MfemMeshData {
     ParentRedecompTransfer vector_xfer_;
 
     /**
-     * @brief Redecomp mesh element connectivity for the first Tribol registered
-     * mesh
+     * @brief Redecomp mesh finite-element node connectivity for the first Tribol registered mesh
      */
     Array2D<IndexT> conn_1_;
 
     /**
-     * @brief Redecomp mesh element connectivity for the second Tribol
-     * registered mesh
+     * @brief Redecomp mesh finite-element node connectivity for the second Tribol registered mesh
      */
     Array2D<IndexT> conn_2_;
 
@@ -1183,9 +1219,19 @@ class MfemMeshData {
     InterfaceElementType elem_type_;
 
     /**
-     * @brief Number of vertices on each element in the contact meshes
+     * @brief Finite-element face order on the contact meshes
      */
-    int num_verts_per_elem_;
+    FaceOrderType face_order_;
+
+    /**
+     * @brief Number of finite-element nodes on each element in the contact meshes
+     */
+    int nodes_per_elem_;
+
+    /**
+     * @brief Number of finite-element coordinate DOFs in the Redecomp mesh
+     */
+    int num_nodes_;
 
     /**
      * @brief Umpire allocator ID for Tribol data
@@ -1205,7 +1251,7 @@ class MfemMeshData {
     void UpdateConnectivity( const std::set<int>& attributes_1, const std::set<int>& attributes_2 );
 
     /**
-     * @brief Sets the number of vertices per element and the element type for the redecomp mesh
+     * @brief Sets the element type, face order, nodes per element, and coordinate DOF count for the Redecomp mesh
      */
     void SetElementData();
   };
@@ -1281,6 +1327,14 @@ class MfemMeshData {
    * @brief Submesh grid function to temporarily hold values being transferred
    */
   mfem::ParGridFunction submesh_xfer_gridfn_;
+
+  /**
+   * @brief Whether higher-order fields transfer through a low-order refined mesh
+   *
+   * When this is false, RedecompMesh must use the higher-order boundary submesh as its parent so direct field transfers
+   * use matching element and DOF lists.
+   */
+  const bool transfers_fields_through_lor_;
 
   /**
    * @brief Refinement factor for refined mesh

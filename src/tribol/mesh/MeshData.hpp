@@ -87,6 +87,21 @@ struct MeshElemData {
   bool isValidRatePenalty( PenaltyEnforcementOptions& pen_options );  ///< True if rate penalty option is valid
 };
 
+/**
+ * @brief Stores non-owning views of a contact surface mesh and its fields
+ *
+ * Each mesh contains one surface element shape and one finite element face order. Connectivity entry i corresponds to
+ * parent node i from FaceElementTraits, which follows MFEM's native H1 ordering so copied fields retain the same local
+ * node numbers. A quadratic edge lists its two vertices followed by its midpoint. A quadratic quadrilateral lists its
+ * four vertices, the midpoint of edges (0,1), (1,2), (2,3), and (3,0), and then its center node.
+ *
+ * Higher-order connectivity includes nodes that are not polygon corners. Code that computes polygon geometry must
+ * account for the face order rather than treating every connectivity entry as a corner. MeshData currently prevents
+ * computeFaceData() from applying its linear geometry formulas to higher-order connectivity.
+ *
+ * MeshData does not own the connectivity or field arrays. The caller must keep them alive while the mesh or one of its
+ * viewers is in use.
+ */
 class MeshData {
  public:
   /**
@@ -116,6 +131,16 @@ class MeshData {
      * @return element type
      */
     TRIBOL_HOST_DEVICE InterfaceElementType getElementType() const { return m_element_type; }
+
+    /**
+     * @brief Get the finite element order represented by the connectivity
+     *
+     * The element type identifies the edge or face shape. The face order separately identifies how many finite element
+     * nodes belong to that shape.
+     *
+     * @return finite element face order
+     */
+    TRIBOL_HOST_DEVICE FaceOrderType getFaceOrder() const { return m_face_order; }
 
     /**
      * @brief Get the memory space of the data for the current mesh view
@@ -384,6 +409,9 @@ class MeshData {
     /// Type of elements in the mesh
     const InterfaceElementType m_element_type;
 
+    /// Finite element order represented by each connectivity row
+    const FaceOrderType m_face_order;
+
     /// Number of nodes in the mesh
     const IndexT m_num_nodes;
 
@@ -432,28 +460,28 @@ class MeshData {
   };  // end class MeshData::Viewer
 
   /**
-   * @brief Construct a new MeshData object
+   * @brief Construct mesh data with an explicit finite element face order
    *
-   * \param [in] mesh_id the ID of the contact surface
-   * \param [in] num_elements the number of elements on the contact surface
-   * \param [in] num_nodes length of the data arrays being registered
-   * \param [in] connectivity mesh connectivity array for the contact surface
-   * \param [in] element_type the cell type of the contact surface elements
-   * \param [in] x array of x-components of the mesh coordinates
-   * \param [in] y array of y-components of the mesh coordinates
-   * \param [in] z array of z-components of the mesh coordinates (3D only)
-   * \param [in] m_space Memory space of the connectivity and coordinate arrays
+   * @param mesh_id ID of the contact surface
+   * @param num_elements number of elements on the contact surface
+   * @param num_nodes length of the nodal field arrays
+   * @param connectivity caller-owned finite element node connectivity
+   * @param element_type edge or face shape of the contact elements
+   * @param face_order finite element order represented by each connectivity row
+   * @param x caller-owned x-components of the mesh coordinates
+   * @param y caller-owned y-components of the mesh coordinates
+   * @param z caller-owned z-components of the mesh coordinates, or nullptr in two dimensions
+   * @param mem_space memory space containing the connectivity and coordinate arrays
    *
-   * \pre connectivity != nullptr
-   * \pre x != nullptr
-   * \pre y != nullptr
-   * \pre z != nullptr (3D only)
+   * Quadratic connectivity contains every finite element node, not only the polygon corners. MeshData stores non-owning
+   * views of the connectivity and field arrays, so the caller must keep them alive while the mesh is used.
    *
-   * \note connectivity is a 2D array with num_elements rows and num_nodes
-   * columns with row-major ordering
+   * @note Quadratic connectivity uses the MFEM-compatible local node ordering described in the MeshData class
+   * documentation.
    */
   MeshData( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity,
-            InterfaceElementType element_type, const RealT* x, const RealT* y, const RealT* z, MemorySpace mem_space );
+            InterfaceElementType element_type, FaceOrderType face_order, const RealT* x, const RealT* y, const RealT* z,
+            MemorySpace mem_space );
 
   /**
    * @brief Get the element type
@@ -463,6 +491,13 @@ class MeshData {
    * @return element type
    */
   InterfaceElementType getElementType() const { return m_element_type; }
+
+  /**
+   * @brief Get the finite element order represented by the connectivity
+   *
+   * @return finite element face order
+   */
+  FaceOrderType getFaceOrder() const { return m_face_order; }
 
   /**
    * @brief Spatial dimension of the mesh
@@ -662,6 +697,7 @@ class MeshData {
 
   IndexT m_mesh_id;                     ///< Mesh Id associated with this data
   InterfaceElementType m_element_type;  ///< Type of interface element in mesh
+  FaceOrderType m_face_order;           ///< Finite element order represented by the connectivity
   int m_dim;                            ///< Spatial dimension of the mesh coordinates
   IndexT m_num_nodes;
 
