@@ -97,7 +97,9 @@ class PairQuadratureRule {
     const Mesh2Geometry geometry2( coordinates2 );
     const auto reference = base_rule_.generate( mapping_.makeIntegrationSurface( geometry1, geometry2 ) );
     // Return fields explicitly so Enzyme can identify their integer types.
-    if ( reference.result.status != QuadratureStatus::Success ) return { QuadratureStatus::InvalidGeometry, 0 };
+    if ( reference.result.status != QuadratureStatus::Success ) {
+      return { reference.result.status, reference.result.required_point_count };
+    }
     return mapping_.mapToElements( geometry1, geometry2, reference.getView(), output );
   }
 

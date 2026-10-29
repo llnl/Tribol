@@ -90,12 +90,14 @@ struct SmoothedProjectedEdgeMapping {
     if ( normalsAreCooriented( geometry1, geometry2 ) ) return { QuadratureStatus::Success, 0 };
     const IndexT count = reference.numberOfPoints();
     if ( output.capacity() < count ) return { QuadratureStatus::InsufficientCapacity, count };
+    if ( count == 0 ) return { QuadratureStatus::Success, 0 };
+    const RealT jacobian = geometry1.jacobian();
     for ( IndexT q = 0; q < count; ++q ) {
       const RealT parent1 = reference.parent_coordinates( q, 0 );
       const auto physical = geometry1.position( parent1 );
       output.mesh1_parent_coordinates( q, 0 ) = parent1;
       output.mesh2_parent_coordinates( q, 0 ) = geometry2.parentCoordinate( physical );
-      output.physical_weights[q] = reference.reference_weights[q] * geometry1.jacobian();
+      output.physical_weights[q] = reference.reference_weights[q] * jacobian;
     }
     return { QuadratureStatus::Success, count };
   }
@@ -136,29 +138,30 @@ struct SmoothedProjectedEdgeMapping {
     }
     if ( normalsAreCooriented( geometry1, geometry2 ) ) return { MdArray<RealT, 2>{ 0.0, 0.0 }, true };
     const auto normal = geometry2.normal();
-    const auto point0 = projectPoint( geometry1, geometry2.origin(), normal );
-    const auto point1 = projectPoint( geometry1, geometry2.position( 1.0 ), normal );
-    const RealT coordinate0 = geometry1.parentCoordinate( point0 );
-    const RealT coordinate1 = geometry1.parentCoordinate( point1 );
+    const RealT determinant = Vector::cross_product( geometry1.direction(), normal )[2];
+    const RealT coordinate0 = projectedParentCoordinate( geometry1, geometry2.origin(), normal, determinant );
+    const RealT coordinate1 = projectedParentCoordinate( geometry1, geometry2.position( 1.0 ), normal, determinant );
     return { MdArray<RealT, 2>{ coordinate0 < coordinate1 ? coordinate0 : coordinate1,
                                 coordinate0 < coordinate1 ? coordinate1 : coordinate0 },
              true };
   }
 
   /**
-   * @brief Project a geometry2 point along its normal onto the infinite geometry1 line.
+   * @brief Calculate the geometry1 parent coordinate of a geometry2 point projected along its normal.
    * @param geometry1 Non-mortar integration edge.
    * @param point Physical point on geometry2.
    * @param normal Projection direction from geometry2 to the geometry1 line.
-   * @return Intersection point, or point when the two lines are nearly parallel.
+   * @param determinant Cross product of the geometry1 direction and projection normal, shared by both endpoints.
+   * @return Parent coordinate of the intersection; nearly parallel lines use the point's orthogonal parent coordinate.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static Point projectPoint( const Mesh1Geometry& geometry1, const Point& point,
-                                                                     const Vector& normal )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static RealT projectedParentCoordinate( const Mesh1Geometry& geometry1,
+                                                                                  const Point& point,
+                                                                                  const Vector& normal,
+                                                                                  RealT determinant )
   {
-    const RealT determinant = Vector::cross_product( geometry1.direction(), normal )[2];
-    if ( std::abs( determinant ) < minimum_projection_determinant_ ) return point;
+    if ( std::abs( determinant ) < minimum_projection_determinant_ ) return geometry1.parentCoordinate( point );
     const RealT fraction = Vector::cross_product( Vector( geometry1.origin(), point ), normal )[2] / determinant;
-    return geometry1.origin() + fraction * geometry1.direction();
+    return 2.0 * fraction - 1.0;
   }
 
   /**
@@ -176,13 +179,11 @@ struct SmoothedProjectedEdgeMapping {
     RealT smoothed = unit;
     if ( delta != 0.0 ) {
       if ( -delta <= unit && unit <= delta ) {
-        smoothed = unit * unit / ( 4.0 * delta ) + 0.5 * unit + delta / 4.0;
+        const RealT distance = unit + delta;
+        smoothed = distance * distance / ( 4.0 * delta );
       } else if ( 1.0 - delta <= unit && unit <= 1.0 + delta ) {
-        const RealT b = -1.0 / ( 4.0 * delta );
-        const RealT c = 0.5 + 1.0 / ( 2.0 * delta );
-        const RealT d = 1.0 - delta + ( 1.0 - delta ) * ( 1.0 - delta ) / ( 4.0 * delta ) - 0.5 * ( 1.0 - delta ) -
-                        ( 1.0 - delta ) / ( 2.0 * delta );
-        smoothed = b * unit * unit + c * unit + d;
+        const RealT distance = 1.0 + delta - unit;
+        smoothed = 1.0 - distance * distance / ( 4.0 * delta );
       }
     }
     return 2.0 * smoothed - 1.0;

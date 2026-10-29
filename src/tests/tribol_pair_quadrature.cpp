@@ -7,7 +7,7 @@
  * @file
  * @brief Tests base and paired edge quadrature on every enabled backend: polynomial accuracy, interval selection,
  * bounded writes, invalid geometry, owned edge geometry, and frozen reference points mapped to changed geometry.
- * Factory tests check order selection.
+ * Pair generation preserves base-rule failures. Factory tests check order selection.
  */
 
 #include <cmath>
@@ -192,6 +192,25 @@ TEST_P( EdgeQuadratureTest, selects_mesh1_interval_from_projection )
   checkIntervals<1>();
   checkIntervals<2>();
   checkIntervals<3>();
+}
+
+// Oblique edges require projection along geometry2's normal, rather than orthogonal projection onto geometry1.
+TEST_P( EdgeQuadratureTest, projects_oblique_edges_to_parent_bounds )
+{
+  ArrayT<RealT> bounds( 2, 2, allocatorId() );
+  const auto output = bounds.view();
+  forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
+    const MdArray<RealT, 2, 2> coordinates1{ MdArray<RealT, 2>{ 1.0, 2.0 }, MdArray<RealT, 2>{ 4.0, 6.0 } };
+    const MdArray<RealT, 2, 2> coordinates2{ MdArray<RealT, 2>{ 4.0, 5.0 }, MdArray<RealT, 2>{ 2.0, 4.0 } };
+    const auto interval = SmoothedProjectedEdgeMapping{ 0.0 }.makeIntegrationSurface(
+        LinearEdgeGeometry( coordinates1.view() ), LinearEdgeGeometry( coordinates2.view() ) );
+    output[0] = interval.bounds[0];
+    output[1] = interval.bounds[1];
+  } );
+  const ArrayT<RealT, 1, MemorySpace::Host> values( bounds );
+  // Projection along (-1,2) meets geometry1 at fractions 0.4 and 0.9, giving parent coordinates -0.2 and 0.8.
+  EXPECT_NEAR( values[0], -0.2, tolerance );
+  EXPECT_NEAR( values[1], 0.8, tolerance );
 }
 
 // Parallel projection lines retain mesh2 endpoints; their equal mesh1 coordinates form a valid zero-point rule.
@@ -481,6 +500,47 @@ struct ParallelEdgeMapping {
     return { QuadratureStatus::Success, count };
   }
 };
+
+/** @brief Test a base rule whose required point count exceeds its local storage. */
+struct UndersizedEdgeQuadratureRule : EdgeQuadratureRule<1> {
+  static constexpr IndexT required_points = points_per_base_rule + 1;  ///< Complete rule exceeds capacity by one point.
+
+  /**
+   * @brief Report the storage needed without exposing incomplete points.
+   * @param interval Integration bounds; this test rule reports insufficient capacity for every interval.
+   * @return Unpopulated reference quadrature with InsufficientCapacity and the full required count.
+   */
+  TRIBOL_HOST_DEVICE ReferenceQuadrature generate( [[maybe_unused]] EdgeQuadratureInterval interval ) const
+  {
+    ReferenceQuadrature output{};
+    output.result = { QuadratureStatus::InsufficientCapacity, required_points };
+    return output;
+  }
+};
+
+// A base rule's storage failure must reach the caller with its required count, without writing paired output.
+TEST_P( EdgeQuadratureTest, preserves_base_rule_failure_and_required_count )
+{
+  constexpr RealT unwritten = -1.0;
+  ArrayT<RealT> records( 1, 1, allocatorId() );
+  ArrayT<QuadratureResult> results( 1, 1, allocatorId() );
+  const auto output = records.view();
+  const auto status = results.view();
+  forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
+    const MdArray<RealT, 2, 2> coordinates1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 } };
+    const MdArray<RealT, 2, 2> coordinates2{ MdArray<RealT, 2>{ 1.0, 0.2 }, MdArray<RealT, 2>{ 0.0, 0.2 } };
+    output[0] = unwritten;
+    const PairQuadratureView<1, 1> no_storage{
+        { output.data(), { 0, 1 } }, { output.data(), { 0, 1 } }, { output.data(), 0 } };
+    const PairQuadratureRule<SmoothedProjectedEdgeMapping, UndersizedEdgeQuadratureRule> rule{};
+    status[0] = rule.generate( coordinates1.view(), coordinates2.view(), no_storage );
+  } );
+  const ArrayT<QuadratureResult, 1, MemorySpace::Host> statuses( results );
+  const ArrayT<RealT, 1, MemorySpace::Host> values( records );
+  EXPECT_EQ( statuses[0].status, QuadratureStatus::InsufficientCapacity );
+  EXPECT_EQ( statuses[0].required_point_count, UndersizedEdgeQuadratureRule::required_points );
+  EXPECT_EQ( values[0], unwritten );
+}
 
 // The same base Gauss rule must also work when integration points are expressed independently of both elements.
 TEST_P( EdgeQuadratureTest, composes_with_a_different_integration_mapping )
