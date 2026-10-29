@@ -36,7 +36,7 @@ print_run_log cd $PROJECT_DIR
 
 # Update repo
 print_run_log git checkout develop
-print_run_log git deinit --force --all
+print_run_log git submodule deinit --force --all
 print_run_log git pull --recurse-submodules
 
 # Clear previous build(s)
