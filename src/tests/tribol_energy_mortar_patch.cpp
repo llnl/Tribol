@@ -25,6 +25,8 @@
 #include "tribol/common/Parameters.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
+#include "tribol/mesh/CouplingScheme.hpp"
+#include "tribol/mesh/MfemData.hpp"
 
 /**
  * @brief Contact patch test using ENERGY_MORTAR with zero initial gap
@@ -39,7 +41,8 @@
  *   u_y(x,y) = eps_yy * y
  *   u_x(x,y) = eps_xx * x
  */
-class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int, tribol::EnforcementLocation>> {
+class MfemMortarEnergyPatchTest
+    : public testing::TestWithParam<std::tuple<int, tribol::EnforcementLocation, tribol::BinningMethod, bool>> {
  protected:
   tribol::RealT max_disp_;
   double l2_err_vec_;
@@ -57,6 +60,11 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int, 
   {
     int ref_levels = std::get<0>( GetParam() );
     tribol::EnforcementLocation enforcement_location = std::get<1>( GetParam() );
+    // The physical patch response must be independent of whether coarse search uses a grid or BVH.
+    const tribol::BinningMethod binning_method = std::get<2>( GetParam() );
+    // Refining only the mortar mesh makes incorrect mortar/nonmortar ordering observable through different element
+    // counts.
+    const bool uses_refined_mortar_mesh = std::get<3>( GetParam() );
     int order = 1;
 
     auto mortar_attrs = std::set<int>( { 5 } );
@@ -67,6 +75,10 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int, 
 
     int nel_per_dir = std::pow( 2, ref_levels );
 
+    constexpr int mortar_refinement_ratio = 2;
+    constexpr double inactive_pressure_tolerance = 1.0e-12;
+    const int mortar_nel = uses_refined_mortar_mesh ? mortar_refinement_ratio * nel_per_dir : nel_per_dir;
+
     // clang-format off
     mfem::ParMesh mesh = shared::ParMeshBuilder(MPI_COMM_WORLD, shared::MeshBuilder::Unify({
       shared::MeshBuilder::SquareMesh(nel_per_dir, nel_per_dir)
@@ -74,7 +86,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int, 
         .updateBdrAttrib(2, 2)   // right 
         .updateBdrAttrib(3, 3)   // top  (NonMortar)
         .updateBdrAttrib(4, 4),  // left (X-fixed)
-      shared::MeshBuilder::SquareMesh(nel_per_dir, nel_per_dir)
+      shared::MeshBuilder::SquareMesh(mortar_nel, nel_per_dir)
         .translate({0.0, 1.0})
         .updateBdrAttrib(1, 5)   // bottom (Mortar)
         .updateBdrAttrib(2, 2)   // right 
@@ -173,9 +185,9 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int, 
     tribol::RealT dt = 1.0 / num_timesteps_;
     int cs_id = 0, mesh1_id = 0, mesh2_id = 1;
 
-    tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
+    tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, nonmortar_attrs, mortar_attrs,
                                         tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
-                                        tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID );
+                                        tribol::FRICTIONLESS, tribol::PENALTY, binning_method );
     tribol::setEnforcementLocation( cs_id, enforcement_location );
     tribol::setMfemKinematicConstantPenalty( cs_id, 100.0, 100.0 );
 
@@ -206,6 +218,31 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int, 
 
       tribol::updateMfemParallelDecomposition();
       tribol::update( step, step * dt, dt );
+
+      if ( enforcement_location == tribol::EnforcementLocation::Nodal && step == num_timesteps_ ) {
+        // Pressure must live on mesh 1 (non-mortar), even when mesh 2 has a different element count.
+        auto* cs = tribol::CouplingSchemeManager::getInstance().findData( cs_id );
+        ASSERT_NE( cs, nullptr );
+        auto& pressure_fes = cs->getMfemSubmeshData()->GetSubmeshFESpace();
+        mfem::ParGridFunction pressure( const_cast<mfem::ParFiniteElementSpace*>( &pressure_fes ) );
+        pressure.SetFromTrueDofs( tribol::getMfemContactPressure( cs_id ) );
+        double local_nonmortar_pressure = 0.0;
+        for ( int e = 0; e < pressure_fes.GetNE(); ++e ) {
+          mfem::Array<int> dofs;
+          pressure_fes.GetElementDofs( e, dofs );
+          for ( int i = 0; i < dofs.Size(); ++i ) {
+            const double value = pressure( dofs[i] );
+            if ( nonmortar_attrs.contains( pressure_fes.GetAttribute( e ) ) ) {
+              local_nonmortar_pressure += value * value;
+            } else {
+              EXPECT_NEAR( value, 0.0, inactive_pressure_tolerance );
+            }
+          }
+        }
+        double global_nonmortar_pressure = 0.0;
+        MPI_Allreduce( &local_nonmortar_pressure, &global_nonmortar_pressure, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
+        EXPECT_GT( global_nonmortar_pressure, 0.0 );
+      }
 
       auto A_cont_ptr = tribol::getMfemDfDx( cs_id );
       ASSERT_TRUE( A_cont_ptr != nullptr );
@@ -358,10 +395,13 @@ TEST_P( MfemMortarEnergyPatchTest, check_patch_test )
   MPI_Barrier( MPI_COMM_WORLD );
 }
 
-INSTANTIATE_TEST_SUITE_P( tribol, MfemMortarEnergyPatchTest,
-                          testing::Combine( testing::Values( 2 ),
-                                            testing::Values( tribol::EnforcementLocation::Nodal,
-                                                             tribol::EnforcementLocation::QuadraturePoint ) ) );
+INSTANTIATE_TEST_SUITE_P(
+    tribol, MfemMortarEnergyPatchTest,
+    testing::Combine( testing::Values( 2 ),
+                      testing::Values( tribol::EnforcementLocation::Nodal,
+                                       tribol::EnforcementLocation::QuadraturePoint ),
+                      // Run grid and BVH searches with matching and 2:1 mortar/nonmortar interfaces.
+                      testing::Values( tribol::BINNING_GRID, tribol::BINNING_BVH ), testing::Bool() ) );
 
 //------------------------------------------------------------------------------
 #include "axom/slic/core/SimpleLogger.hpp"

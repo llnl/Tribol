@@ -433,18 +433,18 @@ class EnzymeElementMortarTest : public testing::Test {
 
     // NOTE: This will still work for triangles since the unused nodes are ignored.
     IndexT conn[4] = { 0, 1, 2, 3 };
-    tribol::InterfaceElementType interface_element_type = tribol::InterfaceElementType::LINEAR_QUAD;
+    tribol::InterfaceElementType interface_element_type = tribol::InterfaceElementType::QUAD;
     if ( num_nodes == 3 ) {
-      interface_element_type = tribol::InterfaceElementType::LINEAR_TRIANGLE;
+      interface_element_type = tribol::InterfaceElementType::TRIANGLE;
     }
     constexpr int num_elems = 1;
 
     constexpr int mesh_id1 = 0;
-    registerMesh( mesh_id1, num_elems, num_nodes, conn, interface_element_type, x1, x1 + num_nodes, x1 + 2 * num_nodes,
-                  MemorySpace::Host );
+    registerMesh( mesh_id1, num_elems, num_nodes, conn, interface_element_type, LINEAR_LAGRANGE, x1, x1 + num_nodes,
+                  x1 + 2 * num_nodes, MemorySpace::Host );
     constexpr int mesh_id2 = 1;
-    registerMesh( mesh_id2, num_elems, num_nodes, conn, interface_element_type, x2, x2 + num_nodes, x2 + 2 * num_nodes,
-                  MemorySpace::Host );
+    registerMesh( mesh_id2, num_elems, num_nodes, conn, interface_element_type, LINEAR_LAGRANGE, x2, x2 + num_nodes,
+                  x2 + 2 * num_nodes, MemorySpace::Host );
     constexpr int cs_id = 0;
     // mortar then nonmortar surfaces
     registerCouplingScheme( cs_id, mesh_id2, mesh_id1, ContactMode::SURFACE_TO_SURFACE, ContactCase::NO_CASE,

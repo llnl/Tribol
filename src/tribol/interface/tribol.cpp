@@ -349,6 +349,9 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale )
   }
 
   cs->getParameters().binning_proximity_scale = binning_proximity_scale;
+  if ( cs->hasContactFormulation() ) {
+    cs->updateContactFormulation();
+  }
 
 }  // end setBinningProximityScale()
 
@@ -363,8 +366,8 @@ void setResidualGap( IndexT cs_id, RealT residual_gap )
   SLIC_ERROR_ROOT_IF( residual_gap < 0.0, "tribol::setResidualGap(): residual gap must be nonnegative." );
 
   cs->getParameters().residual_gap = residual_gap;
-  if ( cs->getContactFormulation() ) {
-    cs->getContactFormulation()->setResidualGap( residual_gap );
+  if ( cs->hasContactFormulation() ) {
+    cs->updateContactFormulation();
   }
 
 }  // end setResidualGap()
@@ -401,11 +404,11 @@ void enableEnzyme( IndexT cs_id, [[maybe_unused]] bool use_enzyme )
 
 //------------------------------------------------------------------------------
 void registerMesh( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity, int element_type,
-                   const RealT* x, const RealT* y, const RealT* z, MemorySpace mem_space )
+                   FaceOrderType face_order, const RealT* x, const RealT* y, const RealT* z, MemorySpace mem_space )
 {
   MeshManager::getInstance().addData(
       mesh_id, MeshData( mesh_id, num_elements, num_nodes, connectivity,
-                         static_cast<InterfaceElementType>( element_type ), x, y, z, mem_space ) );
+                         static_cast<InterfaceElementType>( element_type ), face_order, x, y, z, mem_space ) );
 }  // end registerMesh()
 
 //------------------------------------------------------------------------------
@@ -819,6 +822,12 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
 
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setInterfacePairs(): invalid coupling scheme index." );
 
+  // Formulations own pair search and filtering so externally supplied pairs cannot bypass method-specific checks.
+  if ( cs->hasContactFormulation() || cs->getContactMethod() == ENERGY_MORTAR ) {
+    SLIC_ERROR_ROOT( "tribol::setInterfacePairs() is not supported for formulation-backed contact methods." );
+    return;
+  }
+
   auto& pairs = cs->getInterfacePairs();
   pairs.clear();
   pairs.reserve( numPairs );
@@ -827,10 +836,10 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
   for ( int i = 0; i < numPairs; ++i ) {
     // perform initial face-pair validity checks to add valid face-pairs
     // to interface pair manager. Note, further computational geometry
-    // filtering will be performed on each face-pair indendifying
+    // filtering will be performed on each face-pair identifying
     // contact candidates.
     if ( geomFilter( cs->getView(), pairIndex1[i], pairIndex2[i] ) ) {
-      pairs.emplace_back( pairIndex1[i], pairIndex2[i], true );
+      pairs.emplace_back( InterfacePair{ pairIndex1[i], pairIndex2[i] } );
     }
   }
 

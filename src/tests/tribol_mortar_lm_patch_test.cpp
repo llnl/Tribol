@@ -5,6 +5,7 @@
 
 // Tribol includes
 #include "tribol/interface/tribol.hpp"
+#include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/utils/TestUtils.hpp"
 #include "tribol/common/Parameters.hpp"
 
@@ -262,10 +263,21 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
     tribol::setLagrangeMultiplierOptions( 0, tribol::ImplicitEvalMode::MORTAR_RESIDUAL,
                                           tribol::SparseMode::MFEM_LINKED_LIST );
 
+    auto& coupling_scheme = tribol::CouplingSchemeManager::getInstance().at( 0 );
+    const tribol::IndexT active_pair_count = coupling_scheme.getNumActivePairs();
+    auto& binned_pairs = coupling_scheme.getInterfacePairs();
+
+    // A distant cross-pair remains in the fixed binned array but does not create a contact plane. The residual update
+    // checks that SingleMortar and AlignedMortar traverse compact contact planes rather than inactive binned pairs.
+    binned_pairs.emplace_back( tribol::InterfacePair{ 0, this->m_mesh.numNonmortarFaces - 1 } );
+    coupling_scheme.setFixedBinning( true );
+
     RealT dt = 1.0;
     int tribol_update_err = tribol::update( 1, 1., dt );
 
     EXPECT_EQ( tribol_update_err, 0 );
+    EXPECT_GT( coupling_scheme.getInterfacePairs().size(), active_pair_count );
+    EXPECT_EQ( coupling_scheme.getNumActivePairs(), active_pair_count );
 
     // sum the nodal force contributions on the nonmortar side
     for ( int i = 0; i < this->m_mesh.numNonmortarSurfaceNodes; ++i ) {

@@ -37,7 +37,8 @@ class NodalNormalTest : public ::testing::Test {
   {
     // register the mesh with tribol
     const tribol::IndexT mesh_id = 0;
-    tribol::registerMesh( mesh_id, numCells, numNodes, conn, cell_type, x, y, z, tribol::MemorySpace::Host );
+    tribol::registerMesh( mesh_id, numCells, numNodes, conn, cell_type, tribol::LINEAR_LAGRANGE, x, y, z,
+                          tribol::MemorySpace::Host );
 
     // get instance of mesh in order to compute nodally averaged normals
     tribol::MeshManager& meshManager = tribol::MeshManager::getInstance();
@@ -71,7 +72,7 @@ TEST_F( NodalNormalTest, two_quad_inverted_v )
   //
   int numFaces = 2;
   int numNodesPerFace = 4;
-  int cellType = (int)( tribol::LINEAR_QUAD );
+  int cellType = (int)( tribol::QUAD );
   tribol::Array2D<tribol::IndexT> conn( numFaces, numNodesPerFace );
 
   // setup connectivity for the two faces ensuring nodes

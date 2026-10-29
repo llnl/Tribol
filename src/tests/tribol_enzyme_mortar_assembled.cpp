@@ -85,11 +85,11 @@ class EnzymeMortarAssembledTest : public testing::Test {
     }
     auto coords_ptr = coords.Read();
     constexpr auto mesh0_id = 0;
-    registerMesh( mesh0_id, num_contact_els_mesh0, fe_space.GetNDofs(), mesh0_conn.data(), LINEAR_QUAD, coords_ptr,
-                  coords_ptr + fe_space.GetNDofs(), coords_ptr + 2 * fe_space.GetNDofs() );
+    registerMesh( mesh0_id, num_contact_els_mesh0, fe_space.GetNDofs(), mesh0_conn.data(), QUAD, LINEAR_LAGRANGE,
+                  coords_ptr, coords_ptr + fe_space.GetNDofs(), coords_ptr + 2 * fe_space.GetNDofs() );
     constexpr auto mesh1_id = 1;
-    registerMesh( mesh1_id, num_contact_els_mesh1, fe_space.GetNDofs(), mesh1_conn.data(), LINEAR_QUAD, coords_ptr,
-                  coords_ptr + fe_space.GetNDofs(), coords_ptr + 2 * fe_space.GetNDofs() );
+    registerMesh( mesh1_id, num_contact_els_mesh1, fe_space.GetNDofs(), mesh1_conn.data(), QUAD, LINEAR_LAGRANGE,
+                  coords_ptr, coords_ptr + fe_space.GetNDofs(), coords_ptr + 2 * fe_space.GetNDofs() );
     // mesh will move when we do finite differencing
     auto ref_coords_ptr = ref_coords.Read();
     registerNodalReferenceCoords( mesh0_id, ref_coords_ptr, ref_coords_ptr + fe_space.GetNDofs(),

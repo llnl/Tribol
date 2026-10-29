@@ -86,11 +86,11 @@ class EnforcementOptionsTest : public ::testing::Test {
                                nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0., 0. );
 
     // register meshes
-    tribol::registerMesh( mesh->mortarMeshId, mesh->numMortarFaces, mesh->numTotalNodes, mesh->faceConn1, 3, mesh->x,
-                          mesh->y, mesh->z, tribol::MemorySpace::Host );
+    tribol::registerMesh( mesh->mortarMeshId, mesh->numMortarFaces, mesh->numTotalNodes, mesh->faceConn1, tribol::QUAD,
+                          tribol::LINEAR_LAGRANGE, mesh->x, mesh->y, mesh->z, tribol::MemorySpace::Host );
 
-    tribol::registerMesh( mesh->nonmortarMeshId, mesh->numNonmortarFaces, mesh->numTotalNodes, mesh->faceConn2, 3,
-                          mesh->x, mesh->y, mesh->z, tribol::MemorySpace::Host );
+    tribol::registerMesh( mesh->nonmortarMeshId, mesh->numNonmortarFaces, mesh->numTotalNodes, mesh->faceConn2,
+                          tribol::QUAD, tribol::LINEAR_LAGRANGE, mesh->x, mesh->y, mesh->z, tribol::MemorySpace::Host );
 
     // register nodal responses (i.e. nodal forces)
     tribol::allocRealArray( &mesh->fx1, mesh->numTotalNodes, 0. );

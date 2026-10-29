@@ -156,8 +156,8 @@ void ComputeAlignedMortarGaps( CouplingScheme* cs )
   ElementAvgNodalNormal normal_method;
   normal_method.Compute( nonmortarMeshData );
 
-  auto pairs = cs->getInterfacePairs();
-  const IndexT numPairs = pairs.size();
+  // Number of stored aligned-mortar planes that contribute to the gap calculation.
+  const IndexT contact_plane_count = cs->getNumActivePairs();
 
   ////////////////////////////////////////////////////////////////////////
   //
@@ -178,22 +178,15 @@ void ComputeAlignedMortarGaps( CouplingScheme* cs )
   ////////////////////////////
   // compute nonmortar gaps //
   ////////////////////////////
-  int cpID = 0;
-  for ( IndexT kp = 0; kp < numPairs; ++kp ) {
-    auto& pair = pairs[kp];
-
-    if ( !pair.m_is_contact_candidate ) {
-      continue;
-    }
-
-    auto& cg_pairs = cs->getCompGeom();
-    auto& plane = cg_pairs.getAlignedMortarPlane( cpID );
+  auto& cg_pairs = cs->getCompGeom();
+  for ( IndexT contact_plane_index = 0; contact_plane_index < contact_plane_count; ++contact_plane_index ) {
+    auto& plane = cg_pairs.getAlignedMortarPlane( contact_plane_index );
 
     Array2D<RealT> overlapX( plane.m_numPolyVert, dim );
 
     // get pair indices
-    IndexT index1 = pair.m_element_id1;
-    IndexT index2 = pair.m_element_id2;
+    IndexT index1 = plane.getCpElementId1();
+    IndexT index2 = plane.getCpElementId2();
 
     // populate nodal coordinates array. For the aligned mortar
     // gap equations, the nodal coordinates are NOT to be projected
@@ -222,8 +215,6 @@ void ComputeAlignedMortarGaps( CouplingScheme* cs )
     // all nonmortar face nodes.
     elem_for_gap.numActiveGaps = numNodesPerFace;
 
-    ++cpID;
-
   }  // end loop over pairs for nonmortar gap calculations
 
 }  // end ComputeAlignedMortarGaps()
@@ -240,8 +231,8 @@ int ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
   ///////////////////////////////////////////////////////
   ComputeAlignedMortarGaps( cs );
 
-  auto pairs = cs->getInterfacePairs();
-  const IndexT numPairs = pairs.size();
+  // Number of stored aligned-mortar planes that contribute to the residual and/or Jacobian terms.
+  const IndexT contact_plane_count = cs->getNumActivePairs();
   auto& cg_pairs = cs->getCompGeom();
   // auto planes = cg_pairs.getAlignedMortarPlanePairs();
 
@@ -278,17 +269,12 @@ int ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
   ////////////////////////////////////////////////////////////////
   // compute equilibrium residual and/or Jacobian contributions //
   ////////////////////////////////////////////////////////////////
-  int cpID = 0;
-  for ( IndexT kp = 0; kp < numPairs; ++kp ) {
-    auto& pair = pairs[kp];
-
-    if ( !pair.m_is_contact_candidate ) {
-      continue;
-    }
+  for ( IndexT contact_plane_index = 0; contact_plane_index < contact_plane_count; ++contact_plane_index ) {
+    auto& plane = cg_pairs.getAlignedMortarPlane( contact_plane_index );
 
     // get pair indices
-    IndexT index1 = pair.m_element_id1;
-    IndexT index2 = pair.m_element_id2;
+    IndexT index1 = plane.getCpElementId1();
+    IndexT index2 = plane.getCpElementId2();
 
     //////////////////////////////////
     // compute equilibrium residual //
@@ -341,9 +327,6 @@ int ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
     const LagrangeMultiplierImplicitOptions& lm_options = enforcement_options.lm_implicit_options;
     if ( lm_options.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
          lm_options.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ) {
-      // auto& plane = planes[cpID];
-      auto& plane = cg_pairs.getAlignedMortarPlane( cpID );
-
       // get projected face coords and overlap coords
       Array2D<RealT> mortarX_bar( numNodesPerFace, dim );
       Array2D<RealT> nonmortarX_bar( numNodesPerFace, dim );
@@ -365,8 +348,6 @@ int ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
       ComputeAlignedMortarWeights( elem_for_jac );
       ComputeAlignedMortarJacobian( elem_for_jac );
       static_cast<MortarData*>( cs->getMethodData() )->assembleJacobian( elem_for_jac, lm_options.sparse_mode );
-
-      ++cpID;
 
     }  // end if-jacobian related output
 

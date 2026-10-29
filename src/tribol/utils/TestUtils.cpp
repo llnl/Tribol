@@ -299,7 +299,7 @@ void TestMesh::setupContactMeshHex( int numElemsX1, int numElemsY1, int numElems
   // AT THE MOMENT.
 
   // allocate mesh data arrays
-  this->cellType = (int)( tribol::LINEAR_QUAD );
+  this->cellType = (int)( tribol::QUAD );
   this->numNodesPerElement = 8;  // hard coded for hex8 elements
   this->numNodesPerFace = 4;     // hard code for quad4 faces
   int numElementsBlock1, numNodesBlock1;
@@ -507,7 +507,7 @@ void TestMesh::setupContactMeshTet( int numElemsX1, int numElemsY1, int numElems
   // from hex mesh data
   int numTetsPerHex = 6;
   this->mesh_constructed = false;  // will reset after tet mesh has been constructed
-  this->cellType = (int)( tribol::LINEAR_TRIANGLE );
+  this->cellType = (int)( tribol::TRIANGLE );
   this->numNodesPerFace = 3;                                        // linear triangle faces
   this->numNodesPerElement = 4;                                     // linear four node tets
   this->numTotalElements = numTetsPerHex * this->numTotalElements;  // 6 tets per hex
@@ -961,10 +961,10 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
 
   // register mesh. Note: Tribol will still work with global integer
   // ids for the connectivity and array lengths of numTotalNodes.
-  registerMesh( this->mortarMeshId, this->numMortarFaces, this->numTotalNodes, this->faceConn1, this->cellType, x, y, z,
-                MemorySpace::Host );
-  registerMesh( this->nonmortarMeshId, this->numNonmortarFaces, this->numTotalNodes, this->faceConn2, this->cellType, x,
-                y, z, MemorySpace::Host );
+  registerMesh( this->mortarMeshId, this->numMortarFaces, this->numTotalNodes, this->faceConn1, this->cellType,
+                LINEAR_LAGRANGE, x, y, z, MemorySpace::Host );
+  registerMesh( this->nonmortarMeshId, this->numNonmortarFaces, this->numTotalNodes, this->faceConn2, this->cellType,
+                LINEAR_LAGRANGE, x, y, z, MemorySpace::Host );
 
   // register nodal forces. Note, I was getting a seg fault when
   // registering the same pointer to a single set of force arrays
@@ -1366,11 +1366,11 @@ void TestMesh::setupMfemMesh( bool fix_orientation )
       mConn[idx] = this->elConn1[index];
     }
     switch ( this->cellType ) {
-      case LINEAR_TRIANGLE: {
+      case TRIANGLE: {
         this->mfem_mesh->AddTet( mConn.data() );
         break;
       }
-      case LINEAR_QUAD: {
+      case QUAD: {
         this->mfem_mesh->AddHex( mConn.data() );
         break;
       }
@@ -1399,11 +1399,11 @@ void TestMesh::setupMfemMesh( bool fix_orientation )
       sConn[idx] = this->elConn2[index];
     }
     switch ( this->cellType ) {
-      case LINEAR_TRIANGLE: {
+      case TRIANGLE: {
         this->mfem_mesh->AddTet( &sConn[0] );
         break;
       }
-      case LINEAR_QUAD: {
+      case QUAD: {
         this->mfem_mesh->AddHex( &sConn[0] );
         break;
       }
@@ -1426,11 +1426,11 @@ void TestMesh::setupMfemMesh( bool fix_orientation )
   int gen_edges = 0;  // mfem default
   int refine = 0;     // mfem default
   switch ( this->cellType ) {
-    case LINEAR_TRIANGLE: {
+    case TRIANGLE: {
       this->mfem_mesh->FinalizeTetMesh( gen_edges, refine, fix_orientation );
       break;
     }
-    case LINEAR_QUAD: {
+    case QUAD: {
       this->mfem_mesh->FinalizeHexMesh( gen_edges, refine, fix_orientation );
       break;
     }
