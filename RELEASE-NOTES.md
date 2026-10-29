@@ -71,6 +71,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Coordinates and weights use `RealT`. Mapping types identify their element geometries; the implemented mapping supports
   straight two-dimensional edges. Co-oriented edge pairs produce valid zero-point rules before point generation,
   including when mapping existing reference points; they cannot contribute tributary area or residual-gap forces.
+  Failed quadrature generation reports an exception before Energy Mortar consumes the data, including differentiated
+  calculations; invalid geometry is not treated as a valid zero-point rule.
 - `EnergyMortarAdapter` owns its configured pair rule, and its calculator borrows that generator. The mapping owns
   smoothing settings; refined search leaves overlap determination to quadrature generation. `ContactParams` no longer
   carries a runtime quadrature count or smoothing length. Frozen reference points are mapped to both current elements,
