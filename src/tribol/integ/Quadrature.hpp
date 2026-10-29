@@ -126,53 +126,56 @@ struct ReferenceQuadratureData {
  * @brief Borrow parent points on both elements and weights for one physical integration measure.
  *
  * Arrays are indexed by point, then parent component. Mapping to the second element does not add another Jacobian.
- * @tparam ParentDimension1 Parent components on mesh1.
- * @tparam ParentDimension2 Parent components on mesh2.
+ * @tparam ParentDimension1 Parent components on geometry1.
+ * @tparam ParentDimension2 Parent components on geometry2.
  * @tparam ReadOnly Whether the borrowed coordinates and weights are read-only.
  */
 template <int ParentDimension1, int ParentDimension2, bool ReadOnly = false>
 struct PairQuadratureView {
   using Value = std::conditional_t<ReadOnly, const RealT, RealT>;  ///< RealT with the requested write access.
-  ArrayViewT<Value, 2> mesh1_parent_coordinates;                   ///< Points on mesh1 [point][parent component].
-  ArrayViewT<Value, 2> mesh2_parent_coordinates;  ///< Corresponding points on mesh2 [point][parent component].
-  ArrayViewT<Value> physical_weights;             ///< Weights including the mapping's physical integration measure.
+  ArrayViewT<Value, 2> geometry1_parent_coordinates;               ///< Points on geometry1 [point][parent component].
+  ArrayViewT<Value, 2> geometry2_parent_coordinates;  ///< Corresponding points on geometry2 [point][parent component].
+  ArrayViewT<Value> physical_weights;                 ///< Weights including the mapping's physical integration measure.
 
   /** @brief Return the available point capacity. @return Number of weight entries. */
   TRIBOL_HOST_DEVICE IndexT capacity() const { return physical_weights.size(); }
 
   /**
    * @brief Borrow matching coordinate and weight arrays.
-   * @param mesh1 Parent coordinates on mesh1.
-   * @param mesh2 Parent coordinates on mesh2.
+   * @param geometry1_points Parent-coordinate array for the first geometry.
+   * @param geometry2_points Parent-coordinate array for the second geometry.
    * @param weights Physical integration weights.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureView( ArrayViewT<Value, 2> mesh1, ArrayViewT<Value, 2> mesh2,
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureView( ArrayViewT<Value, 2> geometry1_points,
+                                                              ArrayViewT<Value, 2> geometry2_points,
                                                               ArrayViewT<Value> weights )
-      : mesh1_parent_coordinates( mesh1 ), mesh2_parent_coordinates( mesh2 ), physical_weights( weights )
+      : geometry1_parent_coordinates( geometry1_points ),
+        geometry2_parent_coordinates( geometry2_points ),
+        physical_weights( weights )
   {
-    assert( mesh1.shape()[0] == weights.size() && mesh1.shape()[1] == ParentDimension1 );
-    assert( mesh2.shape()[0] == weights.size() && mesh2.shape()[1] == ParentDimension2 );
+    assert( geometry1_points.shape()[0] == weights.size() && geometry1_points.shape()[1] == ParentDimension1 );
+    assert( geometry2_points.shape()[0] == weights.size() && geometry2_points.shape()[1] == ParentDimension2 );
   }
 };
 
 /**
  * @brief Fixed-capacity quadrature consumed within one element-pair calculation.
- * @tparam ParentDimension1 Parent components on mesh1.
- * @tparam ParentDimension2 Parent components on mesh2.
+ * @tparam ParentDimension1 Parent components on geometry1.
+ * @tparam ParentDimension2 Parent components on geometry2.
  * @tparam Capacity Available points in the local backing arrays.
  */
 template <int ParentDimension1, int ParentDimension2, IndexT Capacity>
 struct PairQuadratureData {
-  MdArray<RealT, Capacity, ParentDimension1> mesh1_parent_coordinates{};  ///< Owned mesh1 parent points.
-  MdArray<RealT, Capacity, ParentDimension2> mesh2_parent_coordinates{};  ///< Owned mesh2 parent points.
-  MdArray<RealT, Capacity> physical_weights{};                            ///< Owned physical integration weights.
-  QuadratureResult result{};                                              ///< Status and initialized point count.
+  MdArray<RealT, Capacity, ParentDimension1> geometry1_parent_coordinates{};  ///< Owned geometry1 parent points.
+  MdArray<RealT, Capacity, ParentDimension2> geometry2_parent_coordinates{};  ///< Owned geometry2 parent points.
+  MdArray<RealT, Capacity> physical_weights{};                                ///< Owned physical integration weights.
+  QuadratureResult result{};                                                  ///< Status and initialized point count.
 
   /** @brief Borrow all available output storage. @return Writable arrays valid while this owner is alive. */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureView<ParentDimension1, ParentDimension2> getOutputView() &
   {
-    return { { mesh1_parent_coordinates.data(), { Capacity, ParentDimension1 } },
-             { mesh2_parent_coordinates.data(), { Capacity, ParentDimension2 } },
+    return { { geometry1_parent_coordinates.data(), { Capacity, ParentDimension1 } },
+             { geometry2_parent_coordinates.data(), { Capacity, ParentDimension2 } },
              { physical_weights.data(), Capacity } };
   }
 
@@ -186,8 +189,8 @@ struct PairQuadratureData {
     assert( result.status == QuadratureStatus::Success );
     assert( result.required_point_count >= 0 && result.required_point_count <= Capacity );
     const IndexT count = result.required_point_count;
-    return { { mesh1_parent_coordinates.data(), { count, ParentDimension1 } },
-             { mesh2_parent_coordinates.data(), { count, ParentDimension2 } },
+    return { { geometry1_parent_coordinates.data(), { count, ParentDimension1 } },
+             { geometry2_parent_coordinates.data(), { count, ParentDimension2 } },
              { physical_weights.data(), count } };
   }
 

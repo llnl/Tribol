@@ -63,14 +63,15 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Numerical coordinates, fields, matrix entries, and parameters consistently use `RealT` across Tribol, shared helpers,
   Redecomp, examples, and tests. Public C++ declarations retain their existing types because `RealT` aliases `double`;
   generated C/Fortran interfaces retain their concrete types. Single precision remains unsupported.
-- Pair quadrature prepares owning element geometry once per pair calculation. Linear-edge geometry supplies Primal
-  points, parent projection coordinates, normals, and Jacobians; mappings consume the prepared geometry by reference.
+- Pair quadrature constructs element geometry objects once per pair calculation. For linear edges, each object copies
+  the endpoints and caches the edge vector and squared length. Mappings use these objects by const reference to compute
+  Primal points, parent projection coordinates, normals, and Jacobians.
 - Energy Mortar generates and consumes quadrature locally for each pair during gap and force calculations. Independent
   quadrature output is deferred, and the unused `ContactFormulation::updateIntegrationRule()` operation is removed.
 - `PairQuadratureRule<Mapping, BaseQuadratureRule>` combines an element-pair integration mapping with a reference rule.
   `SmoothedProjectedEdgeMapping` selects the integration interval and maps its points to both elements' parent
-  coordinates, applying the mesh1 physical Jacobian once. `EdgeQuadratureRule<NumPoints>` only places Gauss points and
-  reference weights on an interval. The calculator evaluates fields at the returned parent points on both elements.
+  coordinates, applying the first geometry's physical Jacobian once. `EdgeQuadratureRule<NumPoints>` only places Gauss
+  points and reference weights on an interval. The calculator evaluates fields at the returned parent points on both elements.
   Coordinates and weights use `RealT`. Mapping types identify their element geometries; the implemented mapping supports
   straight two-dimensional edges. Co-oriented edge pairs produce valid zero-point rules before point generation,
   including when mapping existing reference points; they cannot contribute tributary area or residual-gap forces.

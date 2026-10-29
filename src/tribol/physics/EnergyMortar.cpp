@@ -104,7 +104,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const RealT* x, PairQuadratureView<1, 1
   RealT AI_1 = 0.0, AI_2 = 0.0;
 
   for ( int i = 0; i < quadrature.physical_weights.size(); ++i ) {
-    const RealT xiA = quadrature.mesh1_parent_coordinates( i, 0 );
+    const RealT xiA = quadrature.geometry1_parent_coordinates( i, 0 );
     const RealT w = quadrature.physical_weights[i];
 
     RealT basis_values[LinearEdgeBasis::node_count];
@@ -114,7 +114,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const RealT* x, PairQuadratureView<1, 1
 
     const auto x1 = LinearEdgeGeometry::position( { x, LinearEdgeCoordinates::size() }, xiA );
     const auto x2 = LinearEdgeGeometry::position( { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() },
-                                                  quadrature.mesh2_parent_coordinates( i, 0 ) );
+                                                  quadrature.geometry2_parent_coordinates( i, 0 ) );
     const RealT gn = ( x2[0] - x1[0] ) * nB[0] + ( x2[1] - x1[1] ) * nB[1];
     const RealT g = effective_gap( gn, eta, residual_gap );
 
@@ -286,9 +286,9 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const RealT* x, const KernelParams<
   RealT value = 0.0;
   for ( int i = 0; i < quadrature.physical_weights.size(); ++i ) {
     const auto x1 = LinearEdgeGeometry::position( { x, LinearEdgeCoordinates::size() },
-                                                  quadrature.mesh1_parent_coordinates( i, 0 ) );
+                                                  quadrature.geometry1_parent_coordinates( i, 0 ) );
     const auto x2 = LinearEdgeGeometry::position( { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() },
-                                                  quadrature.mesh2_parent_coordinates( i, 0 ) );
+                                                  quadrature.geometry2_parent_coordinates( i, 0 ) );
     value += qp_penalty_kernel_qp_energy( quadrature.physical_weights[i], x1.data(), x2.data(), nB, eta,
                                           kp->residual_gap, kp->k, pair_has_active_qp );
   }

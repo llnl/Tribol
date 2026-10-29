@@ -19,19 +19,21 @@ namespace tribol {
  *
  * Mapping defines element geometry types constructible from Coordinates views and the integration surface passed to
  * BaseQuadratureRule. It owns forward surface construction and reverse point mapping, including the physical measure.
- * Prepared geometry is local to each call and is never retained by this generator.
+ * Each call constructs element geometry objects from the supplied coordinates and discards them before returning.
+ * For linear edges, these objects copy the endpoints and cache the edge vector and squared length for reuse by the
+ * mapping.
  * @tparam Mapping Integration-surface construction and mapping to both elements.
  * @tparam BaseQuadratureRule Points and reference weights on the mapping's integration surface.
  */
 template <typename Mapping, typename BaseQuadratureRule>
 class PairQuadratureRule {
  public:
-  using Mesh1Geometry = typename Mapping::Mesh1Geometry;                    ///< Geometry type of coordinates1 elements.
-  using Mesh2Geometry = typename Mapping::Mesh2Geometry;                    ///< Geometry type of coordinates2 elements.
-  static constexpr int parent_dimension = Mesh1Geometry::parent_dimension;  ///< Mesh1 parent components.
-  static constexpr int parent_dimension2 = Mesh2Geometry::parent_dimension;   ///< Mesh2 parent components.
-  static constexpr int spatial_dimension = Mesh1Geometry::spatial_dimension;  ///< Physical components.
-  static constexpr int endpoint_count = Mesh1Geometry::endpoint_count;        ///< Mesh1 endpoints per element.
+  using FirstGeometry = typename Mapping::FirstGeometry;                    ///< Geometry type of coordinates1 elements.
+  using SecondGeometry = typename Mapping::SecondGeometry;                  ///< Geometry type of coordinates2 elements.
+  static constexpr int parent_dimension = FirstGeometry::parent_dimension;  ///< First geometry parent components.
+  static constexpr int parent_dimension2 = SecondGeometry::parent_dimension;  ///< Second geometry parent components.
+  static constexpr int spatial_dimension = FirstGeometry::spatial_dimension;  ///< Physical components.
+  static constexpr int endpoint_count = FirstGeometry::endpoint_count;        ///< First geometry endpoints per element.
   static constexpr int points_per_base_rule = BaseQuadratureRule::points_per_base_rule;  ///< Local point capacity.
   static constexpr int polynomial_order = BaseQuadratureRule::polynomial_order;          ///< Exact reference degree.
 
@@ -54,15 +56,15 @@ class PairQuadratureRule {
 
   /**
    * @brief Construct the integration surface and place reference points on it.
-   * @param coordinates1 Current first-element coordinates, with geometry defined by Mesh1Geometry.
-   * @param coordinates2 Current second-element coordinates, with geometry defined by Mesh2Geometry.
+   * @param coordinates1 Current first-element coordinates, with geometry defined by FirstGeometry.
+   * @param coordinates2 Current second-element coordinates, with geometry defined by SecondGeometry.
    * @return Local reference quadrature with generation status; invalid geometry has zero points.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE ReferenceQuadrature generateReferenceQuadrature(
-      typename Mesh1Geometry::Coordinates coordinates1, typename Mesh2Geometry::Coordinates coordinates2 ) const
+      typename FirstGeometry::Coordinates coordinates1, typename SecondGeometry::Coordinates coordinates2 ) const
   {
     return base_rule_.generate(
-        mapping_.makeIntegrationSurface( Mesh1Geometry( coordinates1 ), Mesh2Geometry( coordinates2 ) ) );
+        mapping_.makeIntegrationSurface( FirstGeometry( coordinates1 ), SecondGeometry( coordinates2 ) ) );
   }
 
   /**
@@ -73,11 +75,11 @@ class PairQuadratureRule {
    * @return Local paired quadrature with generation status; invalid geometry has zero points.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData mapReferenceQuadrature(
-      typename Mesh1Geometry::Coordinates coordinates1, typename Mesh2Geometry::Coordinates coordinates2,
+      typename FirstGeometry::Coordinates coordinates1, typename SecondGeometry::Coordinates coordinates2,
       ReferenceQuadratureView<BaseQuadratureRule::parent_dimension> reference ) const
   {
     QuadratureData output{};
-    output.result = mapping_.mapToElements( Mesh1Geometry( coordinates1 ), Mesh2Geometry( coordinates2 ), reference,
+    output.result = mapping_.mapToElements( FirstGeometry( coordinates1 ), SecondGeometry( coordinates2 ), reference,
                                             output.getOutputView() );
     return output;
   }
@@ -90,11 +92,11 @@ class PairQuadratureRule {
    * @return Generation status and full point count; failures must not be consumed. No allocation or retry is performed.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult
-  generate( typename Mesh1Geometry::Coordinates coordinates1, typename Mesh2Geometry::Coordinates coordinates2,
+  generate( typename FirstGeometry::Coordinates coordinates1, typename SecondGeometry::Coordinates coordinates2,
             PairQuadratureView<parent_dimension, parent_dimension2> output ) const
   {
-    const Mesh1Geometry geometry1( coordinates1 );
-    const Mesh2Geometry geometry2( coordinates2 );
+    const FirstGeometry geometry1( coordinates1 );
+    const SecondGeometry geometry2( coordinates2 );
     const auto reference = base_rule_.generate( mapping_.makeIntegrationSurface( geometry1, geometry2 ) );
     // Return fields explicitly so Enzyme can identify their integer types.
     if ( reference.result.status != QuadratureStatus::Success ) {
@@ -110,7 +112,7 @@ class PairQuadratureRule {
    * @return Local paired quadrature with generation status; valid zero measure has zero points.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData
-  generate( typename Mesh1Geometry::Coordinates coordinates1, typename Mesh2Geometry::Coordinates coordinates2 ) const
+  generate( typename FirstGeometry::Coordinates coordinates1, typename SecondGeometry::Coordinates coordinates2 ) const
   {
     QuadratureData output{};
     output.result = generate( coordinates1, coordinates2, output.getOutputView() );
@@ -118,7 +120,7 @@ class PairQuadratureRule {
   }
 
  private:
-  Mapping mapping_{};               ///< Owned mapping configuration; no generated surfaces or mesh views are retained.
+  Mapping mapping_{};  ///< Owned mapping configuration; no generated surfaces or coordinate views are retained.
   BaseQuadratureRule base_rule_{};  ///< Owned reference point-generation configuration.
 };
 
