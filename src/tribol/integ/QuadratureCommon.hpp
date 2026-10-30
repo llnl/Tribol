@@ -192,7 +192,7 @@ struct PairQuadratureData {
   }
 
   /**
-   * @brief Return views of the initialized points in a completed rule.
+   * @brief Return read-only views of the initialized quadrature coordinates and weights.
    * @pre result.status is Success and required_point_count does not exceed Capacity.
    * @return Read-only arrays valid while this owner is alive.
    */
