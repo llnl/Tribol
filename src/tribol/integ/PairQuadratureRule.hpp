@@ -76,7 +76,8 @@ concept IntegrationSurfaceRuleGeneratorFor =
     };
 
 /**
- * @brief Generate paired parent points and physical weights locally, without retaining geometry or point data.
+ * @brief Generate quadrature points in each element's parametric coordinates and physical weights, without retaining
+ * geometry or point data.
  *
  * Mapping defines element geometry types constructible from Coords views and the integration surface passed to
  * IntegrationSurfaceRuleGenerator. It owns forward surface construction and reverse point mapping, including the
@@ -117,7 +118,7 @@ class PairQuadratureRule {
 
   /** @brief Quadrature points and weights expressed in the integration surface's coordinates. */
   using IntegrationSurfaceRule = typename IntegrationSurfaceRuleGenerator::IntegrationSurfaceRule;
-  /** @brief Local paired parent coordinates and physical weights. */
+  /** @brief Local paired parametric coordinates and physical weights. */
   using QuadratureData = PairQuadratureData<parent_dimension, parent_dimension2, max_points>;
 
   /**
@@ -161,7 +162,7 @@ class PairQuadratureRule {
    * @brief Generate a complete rule into caller-provided storage.
    * @param element1_coords Current first-element coordinates.
    * @param element2_coords Current second-element coordinates.
-   * @param [out] output Parent coordinates on both elements and physical weights.
+   * @param [out] output Parametric coordinates on both elements and physical weights.
    * @return Generation status and full point count; failures must not be consumed. No allocation or retry is performed.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult
