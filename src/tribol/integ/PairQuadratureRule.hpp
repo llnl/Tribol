@@ -13,7 +13,7 @@
 #include <concepts>
 #include <type_traits>
 
-#include "tribol/integ/Quadrature.hpp"
+#include "tribol/integ/QuadratureCommon.hpp"
 
 namespace tribol {
 

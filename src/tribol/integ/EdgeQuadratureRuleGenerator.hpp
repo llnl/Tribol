@@ -12,7 +12,7 @@
 #define SRC_TRIBOL_INTEG_EDGEQUADRATURERULEGENERATOR_HPP_
 
 #include <cmath>
-#include "tribol/integ/Quadrature.hpp"
+#include "tribol/integ/QuadratureCommon.hpp"
 
 namespace tribol {
 

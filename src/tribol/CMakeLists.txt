@@ -35,7 +35,7 @@ set(tribol_headers
     integ/FE.hpp
     integ/Integration.hpp
     integ/PairQuadratureRule.hpp
-    integ/Quadrature.hpp
+    integ/QuadratureCommon.hpp
     integ/QuadratureRuleFactory.hpp
 
     interface/mfem_tribol.hpp

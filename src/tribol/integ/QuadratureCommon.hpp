@@ -11,8 +11,8 @@
  * representations for additional element topologies or geometries here alongside EdgeQuadratureInterval.
  */
 
-#ifndef SRC_TRIBOL_INTEG_QUADRATURE_HPP_
-#define SRC_TRIBOL_INTEG_QUADRATURE_HPP_
+#ifndef SRC_TRIBOL_INTEG_QUADRATURECOMMON_HPP_
+#define SRC_TRIBOL_INTEG_QUADRATURECOMMON_HPP_
 
 #include <cassert>
 #include <type_traits>

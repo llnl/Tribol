@@ -16,7 +16,7 @@
 #include "tribol/geom/LinearEdgeGeometry.hpp"
 #include "tribol/common/Enzyme.hpp"
 #include "tribol/common/MdArray.hpp"
-#include "tribol/integ/Quadrature.hpp"
+#include "tribol/integ/QuadratureCommon.hpp"
 
 namespace tribol {
 
