@@ -22,6 +22,7 @@ set( tribol_tests
      tribol_enforcement_options.cpp
      tribol_execution_modes.cpp
      tribol_hex_mesh.cpp
+     tribol_pair_quadrature.cpp
      tribol_refined_search.cpp
      tribol_interface_pair_checks.cpp
      tribol_interface_pair_finder.cpp
@@ -217,6 +218,7 @@ if( TRIBOL_USE_ENZYME )
       tribol_enzyme_nodal_normal.cpp
       tribol_enzyme_mortar_assembled.cpp
       tribol_enzyme_poly_intersect.cpp
+      tribol_energy_mortar_quadrature_settings.cpp
       tribol_energy_mortar_patch.cpp
       tribol_energy_mortar_patch_LM.cpp
       tribol_finite_diff_energy_mortar.cpp

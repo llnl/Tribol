@@ -5,6 +5,8 @@
 
 #include "tribol.hpp"
 
+#include <stdexcept>
+
 // Tribol includes
 #include "tribol/common/Parameters.hpp"
 
@@ -183,6 +185,18 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location )
 
   // Automatically rebuild the formulation to reflect the new setting
   cs->updateContactFormulation();
+}
+
+//------------------------------------------------------------------------------
+void setQuadratureOrder( IndexT cs_id, int order )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  if ( !cs || cs->getContactMethod() != ENERGY_MORTAR || order < 0 || order > 5 ) {
+    throw std::invalid_argument(
+        "setQuadratureOrder requires a registered ENERGY_MORTAR scheme and an order from 0 through 5." );
+  }
+  cs->getParameters().quadrature_order = order;
+  if ( cs->hasContactFormulation() ) cs->updateContactFormulation();
 }
 
 //------------------------------------------------------------------------------

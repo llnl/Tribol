@@ -26,11 +26,17 @@ set(tribol_headers
     geom/ElementNormal.hpp
     geom/GeomUtilities.hpp
     geom/Hyperplane.hpp
+    geom/LinearEdgeGeometry.hpp
     geom/NodalNormal.hpp
+    geom/SmoothedProjectedEdgeMapping.hpp
 
     integ/BasisFunction.hpp
+    integ/EdgeQuadratureRuleGenerator.hpp
     integ/FE.hpp
     integ/Integration.hpp
+    integ/PairQuadratureRule.hpp
+    integ/QuadratureCommon.hpp
+    integ/QuadratureRuleFactory.hpp
 
     interface/mfem_tribol.hpp
     interface/simple_tribol.hpp

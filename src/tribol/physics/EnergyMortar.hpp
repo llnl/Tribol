@@ -7,22 +7,17 @@
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
+#include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
+#include "tribol/integ/PairQuadratureRule.hpp"
+#include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 
 namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
-/// Stores quadrature-point locations and weights for the supported Gauss-Legendre rule.
-struct QuadPoints {
-  std::array<double, 3> qp;  ///< Quadrature-point locations in the normalized [-1, 1] integration-edge coordinate.
-  std::array<double, 3> w;   ///< Quadrature weights mapped to the local integration interval.
-};
-
 /// Parameters controlling ENERGY_MORTAR contact evaluation.
 struct ContactParams {
-  double del;                  ///< Smoothing length as a fraction of the integration-edge length.
   double k;                    ///< Penalty stiffness.
-  int N;                       ///< Number of quadrature points.
   bool enzyme_quadrature;      ///< Whether Enzyme differentiates the quadrature construction.
   double residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
 };
@@ -79,32 +74,6 @@ struct FiniteDiffResult {
   double g_tilde2_baseline{ 0.0 };
 };
 
-/// Stores fixed quadrature data passed to differentiated kernels.
-struct Gparams {
-  std::array<double, 3> qp;    ///< Quadrature-point locations in the normalized [-1, 1] edge coordinate.
-  std::array<double, 3> w;     ///< Quadrature weights mapped to the local integration interval.
-  double residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
-};
-
-/// Provides smoothing operations for the Energy Mortar contact formulation.
-///
-/// This class stores the contact parameters and provides helper routines for
-/// constructing smoothed integration bounds from projected overlap intervals.
-class ContactSmoothing {
- public:
-  /// Clamp the projected overlap interval to the extended smoothing support.
-  ///
-  /// The input `projections` contains normalized [-1, 1] projection bounds of edge B onto edge A. The output `bounds`
-  /// is restricted to the extended local range `[-1 - 2 * del, 1 + 2 * del]`.
-  static void bounds_from_projections( const double* projections, double del, double* bounds );
-
-  /// Smooth the integration bounds using the smoothing length `del`.
-  ///
-  /// The output `smooth_bounds` is obtained by applying the endpoint smoothing map to
-  /// the clamped integration interval. When `del = 0`, the bounds are unchanged.
-  static void smooth_bounds( const double* bounds, double del, double* smooth_bounds );
-};
-
 /// Evaluates Energy Mortar contact quantities for a single interface pair.
 ///
 /// This class computes the smoothed mortar gap, tributary areas, contact energy,
@@ -113,29 +82,29 @@ class ContactSmoothing {
 /// one face from mesh1, treated as edge A/non-mortar/integration side, and one
 /// face from mesh2, treated as edge B/mortar/projection side. Local edge coordinates use the normalized [-1, 1]
 /// interval shared by BasisFunction.
+/// Calculations throw std::invalid_argument for invalid pair geometry and std::length_error for insufficient quadrature
+/// storage. Failed quadrature data is never consumed; valid zero-point rules retain their zero contribution.
+template <typename QuadratureRule>
 class EnergyMortarCalculator {
+  static_assert( QuadratureRule::FirstGeometry::parametric_dimension == 1 &&
+                     QuadratureRule::FirstGeometry::vertex_count == 2 &&
+                     QuadratureRule::FirstGeometry::spatial_dimension == 2,
+                 "Energy Mortar requires a one-dimensional first geometry with two vertices in 2D." );
+  static_assert( QuadratureRule::SecondGeometry::parametric_dimension == 1 &&
+                     QuadratureRule::SecondGeometry::vertex_count == 2 &&
+                     QuadratureRule::SecondGeometry::spatial_dimension == 2,
+                 "Energy Mortar requires a one-dimensional second geometry with two vertices in 2D." );
+
  public:
-  /// Construct a contact evaluator with the supplied contact parameters.
-  ///
-  /// The parameters define the penalty stiffness, smoothing length, and
-  /// derivative path used by the evaluator.
-  explicit EnergyMortarCalculator( const ContactParams& p )
-      : p_( p ), smoother_() {}  // constructor - copies params into the object
+  using IntegrationSurfaceRule = typename QuadratureRule::IntegrationSurfaceRule;
 
-  int get_N() const { return p_.N; }
-
-  std::array<double, 2> compute_projection_bounds( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                   const MeshData::Viewer& mesh2 ) const
+  /// Store a reference to the generator, which must outlive this calculator. Geometry is supplied for each calculation.
+  EnergyMortarCalculator( const ContactParams& p, const QuadratureRule& quadrature_rule )
+      : p_( p ), quadrature_rule_( quadrature_rule )
   {
-    return projections( pair, mesh1, mesh2 );
   }
 
-  /// Construct a three-point Gauss-Legendre quadrature rule over local bounds.
-  ///
-  /// The input bounds are local coordinates on edge A. The returned quadrature
-  /// points and weights are mapped from the reference interval to
-  /// `[xi_bounds[0], xi_bounds[1]]` and written to `quadrature`.
-  static void compute_quadrature( const double* xi_bounds, int N, QuadPoints* quadrature );
+  EnergyMortarCalculator( const ContactParams&, const QuadratureRule&& ) = delete;
 
   /// Compute the nodal smoothed gap integrals and tributary areas.
   ///
@@ -219,7 +188,8 @@ class EnergyMortarCalculator {
   /// quadrature fixed isolates derivatives of the gap kernel from derivatives
   /// of the geometry-dependent quadrature construction.
   std::pair<double, double> eval_gtilde_fixed_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                  const MeshData::Viewer& mesh2, const QuadPoints& qp_fixed ) const;
+                                                  const MeshData::Viewer& mesh2,
+                                                  const IntegrationSurfaceRule& qp_fixed ) const;
 
   /// Validate second derivatives of the smoothed gap integrals using finite differences.
   ///
@@ -230,32 +200,21 @@ class EnergyMortarCalculator {
                                      double epsilon = 1e-7 ) const;
 
  private:
-  /// Contact parameters controlling penalty stiffness, smoothing, and derivative behavior.
+  /// Contact parameters controlling penalty stiffness and derivative behavior.
   ContactParams p_;
-  /// Helper used to construct smoothed integration bounds
-  ContactSmoothing smoother_;
+  /// Generator owned by the adapter or caller; no mesh views or generated quadrature are retained here.
+  const QuadratureRule& quadrature_rule_;
 
-  /// Construct the gap-kernel parameter bundle for the current interface pair.
-  ///
-  /// This builds the smoothed integration bounds, quadrature points, quadrature
-  /// weights, and projected quadrature-point coordinates needed by the lower-level
-  /// gap kernel.
-  Gparams construct_gparams( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                             const MeshData::Viewer& mesh2 ) const;
-
-  /// Compute the local projection bounds of edge B onto edge A.
-  ///
-  /// The returned values are local coordinates on edge A and define the interval
-  /// used to construct the smoothed integration bounds.
-  std::array<double, 2> projections( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                     const MeshData::Viewer& mesh2 ) const;
+  /// Gather current element coordinates and generate an integration-surface rule for frozen-quadrature derivatives.
+  IntegrationSurfaceRule generateIntegrationSurfaceRule( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                         const MeshData::Viewer& mesh2 ) const;
 
   /// Compute smoothed gap gradients while holding the quadrature rule fixed.
   ///
   /// This is used by finite-difference verification routines to isolate
   /// derivatives of the gap kernel from derivatives of the quadrature rule.
   void grad_gtilde_with_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                            const QuadPoints& qp_fixed, double dgt1_dx[8], double dgt2_dx[8] ) const;
+                            const IntegrationSurfaceRule& qp_fixed, double dgt1_dx[8], double dgt2_dx[8] ) const;
 
   /// Evaluate the signed normal gap at a local coordinate on edge A.
   ///

@@ -33,7 +33,7 @@ namespace tribol {
  * `G = d(g_tilde)/dx`.
  */
 
-template <template <typename> class EnforcementLocation>
+template <template <typename> class EnforcementLocation, typename QuadratureRule>
 class EnergyMortarAdapter;
 
 /**
@@ -131,8 +131,8 @@ class QuadraturePoint : public ContactFormulation {
   void init( Adapter* /*adapter*/ ) {}
 };
 
-template <template <typename> class EnforcementLocation>
-class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<EnforcementLocation>> {
+template <template <typename> class EnforcementLocation, typename QuadratureRule>
+class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<EnforcementLocation, QuadratureRule>> {
  public:
   /**
    * @brief Construct a new EnergyMortarAdapter
@@ -143,9 +143,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @param coarse_search Coarse search whose ownership is transferred to this formulation; must be non-null
    * @param refined_search Refined search whose ownership is transferred to this formulation; must be non-null
    * @param k Penalty stiffness
-   * @param delta Smoothing length
-   * @param N Quadrature order
-   * @param enzyme_quadrature If true, use Enzyme-assisted quadrature
+   * @param quadrature_rule Source quadrature generator owned by this adapter
+   * @param enzyme_quadrature If true, differentiate the reference-rule construction with respect to geometry
    * @param use_penalty If true, interpret the dual field as pressure; otherwise interpret it as a Lagrange multiplier
    * vector (LM mode)
    * @param residual_gap Nonnegative gap offset subtracted from the kinematic gap. Positive values enforce separation
@@ -156,21 +155,13 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
                        std::unique_ptr<CoarseSearch> coarse_search, std::unique_ptr<RefinedSearch> refined_search,
-                       double k, double delta, int N, bool enzyme_quadrature, bool use_penalty = true,
+                       double k, QuadratureRule quadrature_rule, bool enzyme_quadrature, bool use_penalty = true,
                        RealT residual_gap = 0.0 );
 
   /**
    * @brief Default destructor
    */
   virtual ~EnergyMortarAdapter() = default;
-
-  /**
-   * @brief Update internal integration rule data
-   *
-   * @note This is currently a no-op. ENERGY_MORTAR directly assembles gap/force quantities over the stored interface
-   * pairs in updateNodalGaps() and updateNodalForces().
-   */
-  void updateIntegrationRule( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) override;
 
   /**
    * @brief Reports if formulation has a maximum allowable timestep calculation
@@ -225,7 +216,11 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @brief Find and store candidate pairs for the current meshes
    *
    * Coarse search finds spatial candidates. Refined search then removes exact self-pairs, optionally removes
-   * shared-node pairs, and rejects edges without nondegenerate opposing normals.
+   * shared-node pairs, and rejects edges without nondegenerate opposing normals. Quadrature generation determines the
+   * contributing interval within each pair calculation.
+   *
+   * @param mesh1 Current non-mortar mesh.
+   * @param mesh2 Current mortar mesh.
    */
   void findCandidatePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 );
 
@@ -242,6 +237,9 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
 
   /** @brief Refined search supplied by the caller and owned by this formulation */
   std::unique_ptr<RefinedSearch> refined_search_;
+
+  /** @brief Value-owned generator configured by the factory; current geometry is supplied at each call */
+  QuadratureRule quadrature_rule_;
 
   /**
    * @brief Tolerance used to avoid division by zero for area-weighted quantities
@@ -270,14 +268,15 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   MfemJacobianData& jac_data_;
 
   /**
-   * @brief Contact parameters (penalty, smoothing, quadrature)
+   * @brief Contact stiffness, residual gap, and derivative settings
    */
   ContactParams params_;
 
   /**
-   * @brief Evaluator implementing ENERGY_MORTAR element-level computations
+   * @brief Evaluator holding a reference to quadrature_rule_, which remains alive until after the evaluator is
+   * destroyed
    */
-  std::unique_ptr<EnergyMortarCalculator> evaluator_;
+  std::unique_ptr<EnergyMortarCalculator<QuadratureRule>> evaluator_;
 
   // Stored InterfacePairs
 
