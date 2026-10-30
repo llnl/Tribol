@@ -93,7 +93,7 @@ class EnergyMortarCalculator {
  public:
   using IntegrationSurfaceRule = typename QuadratureRule::IntegrationSurfaceRule;
 
-  /// Borrow a generator; it must outlive this evaluator. Current geometry is supplied to each calculation.
+  /// Store a reference to the generator, which must outlive this calculator. Geometry is supplied for each calculation.
   EnergyMortarCalculator( const ContactParams& p, const QuadratureRule& quadrature_rule )
       : p_( p ), quadrature_rule_( quadrature_rule )
   {

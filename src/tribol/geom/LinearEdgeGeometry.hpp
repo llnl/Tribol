@@ -52,14 +52,20 @@ class LinearEdgeGeometry {
   {
   }
 
-  /** @brief Borrow the first endpoint. @return Origin valid while this geometry remains alive. */
+  /**
+   * @brief Access the first edge vertex.
+   * @return Read-only reference valid while this geometry remains alive.
+   */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE const Point& origin() const& { return origin_; }
-  /** @brief Prevent borrowing an origin from temporary geometry. */
+  /** @brief Prevent returning a vertex reference from a temporary geometry object. */
   const Point& origin() const&& = delete;
 
-  /** @brief Borrow the directed edge vector. @return Displacement valid while this geometry remains alive. */
+  /**
+   * @brief Access the edge vector from the first vertex to the second.
+   * @return Read-only reference to the unnormalized edge vector, valid while this geometry remains alive.
+   */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE const Vector& direction() const& { return edge_; }
-  /** @brief Prevent borrowing a direction from temporary geometry. */
+  /** @brief Prevent returning an edge vector reference from a temporary geometry object. */
   const Vector& direction() const&& = delete;
 
   /** @brief Read the cached squared length. @return Squared physical edge length, including zero. */

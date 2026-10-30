@@ -118,11 +118,11 @@ struct Edges {
   std::array<tribol::RealT, 2> y1{ 0.0, 0.0 };         ///< Source endpoint y coordinates.
   std::array<tribol::RealT, 2> x2{ 2.0, 0.0 };         ///< Oppositely ordered target endpoint x coordinates.
   std::array<tribol::RealT, 2> y2{ 0.1, 0.1 };         ///< Target endpoint y coordinates.
-  /// @brief Source mesh containing one edge and borrowing this object's coordinate and connectivity arrays.
+  /// @brief First mesh containing one edge and using this object's coordinate and connectivity arrays.
   tribol::MeshData mesh1{
       0,         1,         2,       connectivity.data(),      tribol::EDGE, tribol::LINEAR_LAGRANGE,
       x1.data(), y1.data(), nullptr, tribol::MemorySpace::Host };
-  /// @brief Target mesh containing one edge and borrowing this object's coordinate and connectivity arrays.
+  /// @brief Second mesh containing one edge and using this object's coordinate and connectivity arrays.
   tribol::MeshData mesh2{
       1,         1,         2,       connectivity.data(),      tribol::EDGE, tribol::LINEAR_LAGRANGE,
       x2.data(), y2.data(), nullptr, tribol::MemorySpace::Host };

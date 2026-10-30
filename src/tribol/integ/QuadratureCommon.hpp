@@ -53,28 +53,28 @@ struct QuadratureResult {
 };
 
 /**
- * @brief Borrow read-only quadrature points and weights expressed in the integration surface's coordinates.
+ * @brief Provide read-only access to quadrature points and weights in the integration surface's coordinates.
  *
  * The mapping defines the coordinates and any conversion of weights to physical integration weights. Arrays are
- * indexed by point, then coordinate component. The caller retains ownership.
+ * indexed by point, then coordinate component. The caller's arrays must remain alive while this view is used.
  *
  * @tparam CoordinateDimension Number of coordinate components stored for each integration-surface quadrature point.
  */
 template <int CoordinateDimension>
 struct IntegrationSurfaceRuleView {
   static_assert( CoordinateDimension == 1 || CoordinateDimension == 2 );
-  ArrayViewT<const RealT, 2> coords;  ///< Borrowed integration-surface coordinates [point][component].
-  ArrayViewT<const RealT> weights;    ///< Borrowed weights in integration-surface coordinates.
+  ArrayViewT<const RealT, 2> coords;  ///< Integration-surface coordinates [point][component].
+  ArrayViewT<const RealT> weights;    ///< Weights in integration-surface coordinates.
 
   /**
-   * @brief Return the number of borrowed integration-surface quadrature points.
+   * @brief Return the number of integration-surface quadrature points.
    *
    * @return Length of weights.
    */
   TRIBOL_HOST_DEVICE IndexT numberOfPoints() const { return weights.size(); }
 
   /**
-   * @brief Borrow matching coordinate and weight arrays.
+   * @brief View matching coordinate and weight arrays without copying their entries.
    *
    * Both arrays must have the same point count and remain alive while the view is used.
    *
@@ -93,7 +93,7 @@ struct IntegrationSurfaceRuleView {
  * @brief Own fixed-capacity integration-surface quadrature points and weights that can remain frozen as geometry
  * changes.
  *
- * Views borrow this object's arrays and must not outlive it.
+ * Views refer to this object's arrays and must not outlive it.
  *
  * @tparam CoordinateDimension Number of coordinate components stored for each integration-surface quadrature point.
  * @tparam Capacity Number of points available in the fixed-size backing arrays.
@@ -105,11 +105,11 @@ struct IntegrationSurfaceRule {
   QuadratureResult result{};                               ///< Completion status and number of populated points.
 
   /**
-   * @brief Borrow only completed integration-surface quadrature points and weights.
+   * @brief Return a view of the completed integration-surface quadrature points and weights.
    *
    * @pre result.status is Success and required_point_count does not exceed Capacity.
    *
-   * @return Read-only points and weights valid while this object remains alive.
+   * @return Read-only views of the initialized points and weights, valid while this object remains alive.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceRuleView<CoordinateDimension> getView() const&
   {
@@ -121,20 +121,21 @@ struct IntegrationSurfaceRule {
   }
 
   /**
-   * @brief Prevent borrowing integration-surface quadrature from a temporary owner.
+   * @brief Prevent returning a view of arrays in a temporary rule.
    */
   IntegrationSurfaceRuleView<CoordinateDimension> getView() const&& = delete;
 };
 
 /**
- * @brief Borrow quadrature points in each element's parametric coordinates and physical integration weights.
+ * @brief Provide views of quadrature points in each element's parametric coordinates and physical integration weights.
  *
  * Parametric coordinates are the local element variables used for geometry mapping and basis evaluation.
  * LinearEdgeGeometry uses one coordinate, xi, with vertices at -1 and 1. Arrays are indexed by point, then coordinate
- * component. Mapping to the second element does not add another Jacobian.
+ * component. Mapping to the second element does not add another Jacobian. The caller's arrays must remain alive while
+ * this view is used.
  * @tparam ParametricDimension1 Number of coordinates used to parameterize geometry1: one for an edge, two for a face.
  * @tparam ParametricDimension2 Number of coordinates used to parameterize geometry2: one for an edge, two for a face.
- * @tparam ReadOnly Whether the borrowed coordinates and weights are read-only.
+ * @tparam ReadOnly Whether array entries are read-only.
  */
 template <int ParametricDimension1, int ParametricDimension2, bool ReadOnly = false>
 struct PairQuadratureView {
@@ -147,7 +148,7 @@ struct PairQuadratureView {
   TRIBOL_HOST_DEVICE IndexT capacity() const { return weights.size(); }
 
   /**
-   * @brief Borrow matching coordinate and weight arrays.
+   * @brief View matching coordinate and weight arrays without copying their entries.
    * @param geometry1_points Quadrature-point coordinates in geometry1's element parameterization.
    * @param geometry2_points Quadrature-point coordinates in geometry2's element parameterization.
    * @param weights Physical integration weights.
@@ -181,7 +182,7 @@ struct PairQuadratureData {
   MdArray<RealT, Capacity> weights{};  ///< Owned physical integration weights.
   QuadratureResult result{};           ///< Status and initialized point count.
 
-  /** @brief Borrow all available output storage. @return Writable arrays valid while this owner is alive. */
+  /** @brief Return views of all available output storage. @return Writable views valid while this object is alive. */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureView<ParametricDimension1, ParametricDimension2>
   getOutputView() &
   {
@@ -191,7 +192,7 @@ struct PairQuadratureData {
   }
 
   /**
-   * @brief Borrow only initialized points of a completed rule.
+   * @brief Return views of the initialized points in a completed rule.
    * @pre result.status is Success and required_point_count does not exceed Capacity.
    * @return Read-only arrays valid while this owner is alive.
    */
@@ -206,9 +207,9 @@ struct PairQuadratureData {
              { weights.data(), count } };
   }
 
-  /** @brief Prevent borrowing output arrays from a temporary. */
+  /** @brief Prevent returning output views from a temporary rule. */
   PairQuadratureView<ParametricDimension1, ParametricDimension2> getOutputView() && = delete;
-  /** @brief Prevent borrowing initialized arrays from a temporary. */
+  /** @brief Prevent returning initialized point views from a temporary rule. */
   PairQuadratureView<ParametricDimension1, ParametricDimension2, true> getView() const&& = delete;
 };
 

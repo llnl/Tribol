@@ -852,7 +852,7 @@ void checkSelectedRuleDerivatives( bool varying )
   using QuadratureRule = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<Count>>;
   using Calculator = EnergyMortarCalculator<QuadratureRule>;
   static_assert( !std::is_constructible_v<Calculator, const ContactParams&, QuadratureRule&&>,
-                 "A calculator must not borrow a temporary quadrature-rule object." );
+                 "A calculator must not retain a reference to a temporary rule generator." );
   constexpr int dofs = 2 * LinearEdgeBasis::node_count * LinearEdgeBasis::spatial_dimension;
   constexpr double step = 1.0e-4;
   constexpr double gradient_tolerance = 2.0e-7;

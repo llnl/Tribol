@@ -180,8 +180,7 @@ TEST_P( EdgeQuadratureTest, owns_coordinate_snapshot )
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
     MdArray<RealT, 2, 2> coords{ MdArray<RealT, 2>{ 1.0, 2.0 }, MdArray<RealT, 2>{ 4.0, 6.0 } };
     const LinearEdgeGeometry edge( coords.view() );
-    // Deliberately change the caller's input array to verify that edge copied the endpoints rather than borrowing
-    // them. Its private endpoint snapshot and cached edge quantities must still describe the original edge.
+    // Changing the input array must leave the edge's stored vertices, edge vector, and squared length unchanged.
     coords( 0, 0 ) = -5.0;
     coords( 1, 1 ) = 8.0;
     const auto midpoint = edge.position( 0.0 );

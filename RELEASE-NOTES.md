@@ -84,11 +84,11 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   residual-gap forces.
   Failed quadrature generation reports an exception before Energy Mortar consumes the data, including differentiated
   calculations; invalid geometry is not treated as a valid zero-point rule.
-- `EnergyMortarAdapter` owns its configured pair rule, and its calculator borrows that generator. The mapping owns
-  smoothing settings; refined search leaves overlap determination to quadrature generation. `ContactParams` no longer
-  carries a runtime quadrature count or smoothing length. Frozen integration-surface quadrature points are mapped to
-  both current elements, preserving the varying and frozen derivative modes. Assembly remains host-only; the generators
-  are device-callable.
+- `EnergyMortarAdapter` owns its configured pair rule, and its calculator keeps a reference to that generator.
+  The mapping owns smoothing settings; refined search leaves overlap determination to quadrature generation.
+  `ContactParams` no longer carries a runtime quadrature count or smoothing length. Frozen integration-surface
+  quadrature points are mapped to both current elements, preserving the varying and frozen derivative modes.
+  Assembly remains host-only; the generators are device-callable.
 - Energy Mortar calculates straight-edge normal gaps from the corresponding element points. Very short nondegenerate mortar
   edges retain their normal gap instead of depending on a line-intersection tolerance. The calculator's unused
   `compute_projection_bounds()` helper was removed. Surface-region representations beyond edge intervals remain future
