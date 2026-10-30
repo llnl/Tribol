@@ -28,7 +28,8 @@ struct EdgeQuadratureRuleGenerator {
   static_assert( NumPoints >= 1 && NumPoints <= 3 );
   static constexpr int parent_dimension = 1;    ///< Components on the integration interval.
   static constexpr int max_points = NumPoints;  ///< Maximum number of points in a successfully generated rule.
-  static constexpr int polynomial_order = 2 * NumPoints - 1;  ///< Exactly integrated reference degree.
+  /// Maximum polynomial degree integrated exactly in integration-surface coordinates.
+  static constexpr int polynomial_order = 2 * NumPoints - 1;
 
   /** @brief Quadrature points and weights expressed in the supplied interval's coordinates. */
   using IntegrationSurfaceRule = tribol::IntegrationSurfaceRule<parent_dimension, NumPoints>;

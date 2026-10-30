@@ -94,8 +94,8 @@ class PairQuadratureRule {
   using SecondGeometry = typename Mapping::SecondGeometry;  ///< Geometry type of the second element.
   /// Maximum number of points in a successfully generated rule.
   static constexpr int max_points = IntegrationSurfaceRuleGenerator::max_points;
-  static constexpr int polynomial_order =
-      IntegrationSurfaceRuleGenerator::polynomial_order;  ///< Exact reference degree.
+  /// Maximum polynomial degree integrated exactly in integration-surface coordinates.
+  static constexpr int polynomial_order = IntegrationSurfaceRuleGenerator::polynomial_order;
 
   /** @brief Use a default mapping and integration-surface rule generator. */
   TRIBOL_DEFAULT_HOST_DEVICE PairQuadratureRule() = default;
