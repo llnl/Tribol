@@ -29,8 +29,8 @@
 #include "tribol/interface/tribol.hpp"
 
 // Checks local Energy Mortar response and finite-difference derivatives. Selected-rule coverage includes one, two,
-// and three points with frozen and varying reference quadrature. Invalid geometry must report an error for values and
-// derivatives; portable rule values are tested separately.
+// and three points with frozen and varying integration-surface quadrature. Invalid geometry must report an error for
+// values and derivatives; portable rule values are tested separately.
 namespace tribol {
 
 using LinearEdgeBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
@@ -70,8 +70,8 @@ FiniteDiffResult EnergyMortarCalculator<QuadratureRule>::validate_g_tilde( const
   auto viewer1 = mesh1.getView();
   auto viewer2 = mesh2.getView();
 
-  ReferenceQuadrature qp0{};
-  if ( !p_.enzyme_quadrature ) qp0 = constructReferenceQuadrature( pair, viewer1, viewer2 );
+  IntegrationSurfaceQuadrature qp0{};
+  if ( !p_.enzyme_quadrature ) qp0 = constructIntegrationSurfaceQuadrature( pair, viewer1, viewer2 );
 
   auto [g1_base, g2_base] = eval_gtilde( pair, viewer1, viewer2 );
 
@@ -217,7 +217,7 @@ FiniteDiffResult EnergyMortarCalculator<QuadratureRule>::validate_g_tilde( const
 template <typename QuadratureRule>
 std::pair<double, double> EnergyMortarCalculator<QuadratureRule>::eval_gtilde_fixed_qp(
     const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-    const ReferenceQuadrature& qp_fixed ) const
+    const IntegrationSurfaceQuadrature& qp_fixed ) const
 {
   double A0[2], A1[2];
   endpoints( mesh1, pair.element_id1_, A0, A1 );
@@ -228,8 +228,8 @@ std::pair<double, double> EnergyMortarCalculator<QuadratureRule>::eval_gtilde_fi
   double gt1 = 0.0, gt2 = 0.0;
 
   for ( IndexT i = 0; i < qp_fixed.result.required_point_count; ++i ) {
-    const double xiA = qp_fixed.parent_coordinates( i, 0 );
-    const double w = qp_fixed.reference_weights[i];
+    const double xiA = qp_fixed.coordinates( i, 0 );
+    const double w = qp_fixed.weights[i];
 
     double basis_values[LinearEdgeBasis::node_count];
     LinearEdgeBasis::Eval(
@@ -297,8 +297,8 @@ FiniteDiffResult EnergyMortarCalculator<QuadratureRule>::validate_hessian( const
     }
   }
 
-  ReferenceQuadrature qp0{};
-  if ( !p_.enzyme_quadrature ) qp0 = constructReferenceQuadrature( pair, viewer1, viewer2 );
+  IntegrationSurfaceQuadrature qp0{};
+  if ( !p_.enzyme_quadrature ) qp0 = constructIntegrationSurfaceQuadrature( pair, viewer1, viewer2 );
 
   auto eval_from_offsets = [&]( const std::array<double, 8>& du ) -> std::pair<double, double> {
     auto x1 = x1_orig;
@@ -872,7 +872,7 @@ void checkSelectedRuleDerivatives( bool varying )
                                         LinearEdgePointView{ baseline.data() + 2, 2 } };
   const LinearEdgeCoordinates initial2{ LinearEdgePointView{ baseline.data() + 4, 2 },
                                         LinearEdgePointView{ baseline.data() + 6, 2 } };
-  const auto reference = quadrature_rule.generateReferenceQuadrature( initial1.view(), initial2.view() );
+  const auto reference = quadrature_rule.generateIntegrationSurfaceQuadrature( initial1.view(), initial2.view() );
   const auto evaluate = [&]() {
     std::array<double, 4> values{};
     if ( varying ) {
@@ -885,8 +885,8 @@ void checkSelectedRuleDerivatives( bool varying )
       const double dx = x1[1] - x1[0], dy = y1[1] - y1[0];
       const double jacobian = 0.5 * std::sqrt( dx * dx + dy * dy );
       for ( int q = 0; q < Count; ++q ) {
-        values[2] += 0.5 * ( 1.0 - reference.parent_coordinates( q, 0 ) ) * reference.reference_weights[q] * jacobian;
-        values[3] += 0.5 * ( 1.0 + reference.parent_coordinates( q, 0 ) ) * reference.reference_weights[q] * jacobian;
+        values[2] += 0.5 * ( 1.0 - reference.coordinates( q, 0 ) ) * reference.weights[q] * jacobian;
+        values[3] += 0.5 * ( 1.0 + reference.coordinates( q, 0 ) ) * reference.weights[q] * jacobian;
       }
     }
     return values;

@@ -5,7 +5,7 @@
 
 /**
  * @file
- * @brief Gauss-Legendre points and reference weights on a supplied interval.
+ * @brief Gauss-Legendre quadrature points and weights on a supplied interval.
  */
 
 #ifndef SRC_TRIBOL_INTEG_EDGEQUADRATURERULE_HPP_
@@ -17,7 +17,7 @@
 namespace tribol {
 
 /**
- * @brief Place Gauss points and reference weights on a one-dimensional interval without element geometry.
+ * @brief Place Gauss points and weights on a one-dimensional interval without element geometry.
  * @tparam NumPoints Points per nonempty base rule: one, two, or three.
  */
 template <int NumPoints>
@@ -27,18 +27,19 @@ struct EdgeQuadratureRule {
   static constexpr int points_per_base_rule = NumPoints;      ///< Points per nonempty interval.
   static constexpr int polynomial_order = 2 * NumPoints - 1;  ///< Exactly integrated reference degree.
 
-  /** @brief Local reference points and weights. */
-  using ReferenceQuadrature = ReferenceQuadratureData<parent_dimension, NumPoints>;
+  /** @brief Quadrature points and weights expressed in the supplied interval's coordinates. */
+  using IntegrationSurfaceQuadrature = IntegrationSurfaceQuadratureData<parent_dimension, NumPoints>;
 
   /**
-   * @brief Generate reference points on the supplied interval.
+   * @brief Generate quadrature points and weights on the supplied interval.
    * @param interval Integration bounds; invalid geometry returns InvalidGeometry with zero points.
-   * @return Local reference quadrature; collapsed or reversed valid bounds give Success with zero points.
+   * @return Integration-surface quadrature; collapsed or reversed valid bounds give Success with zero points.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE ReferenceQuadrature generate( EdgeQuadratureInterval interval = {} ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceQuadrature
+  generate( EdgeQuadratureInterval interval = {} ) const
   {
     if ( !interval.valid ) {
-      ReferenceQuadrature result{};
+      IntegrationSurfaceQuadrature result{};
       result.result.status = QuadratureStatus::InvalidGeometry;
       return result;
     }
@@ -51,15 +52,15 @@ struct EdgeQuadratureRule {
    * @param bounds Lower and upper integration-interval coordinates.
    * @return NumPoints points for increasing bounds; Success with zero points for collapsed or reversed bounds.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static ReferenceQuadrature generate( MdSpan<const RealT, 2> bounds )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static IntegrationSurfaceQuadrature generate( MdSpan<const RealT, 2> bounds )
   {
-    ReferenceQuadrature result{};
+    IntegrationSurfaceQuadrature result{};
     if ( bounds[1] <= bounds[0] ) return result;
     const RealT scale = 0.5 * ( bounds[1] - bounds[0] );
     const RealT center = 0.5 * ( bounds[1] + bounds[0] );
     for ( int q = 0; q < NumPoints; ++q ) {
-      result.parent_coordinates( q, 0 ) = scale * gaussPoint( q ) + center;
-      result.reference_weights[q] = scale * gaussWeight( q );
+      result.coordinates( q, 0 ) = scale * gaussPoint( q ) + center;
+      result.weights[q] = scale * gaussWeight( q );
     }
     result.result.required_point_count = NumPoints;
     return result;

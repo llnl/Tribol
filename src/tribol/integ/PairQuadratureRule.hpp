@@ -5,7 +5,7 @@
 
 /**
  * @file
- * @brief Compose an element-pair integration mapping with a reference quadrature rule.
+ * @brief Compose an element-pair integration mapping with an integration-surface quadrature rule.
  */
 #ifndef SRC_TRIBOL_INTEG_PAIRQUADRATURERULE_HPP_
 #define SRC_TRIBOL_INTEG_PAIRQUADRATURERULE_HPP_
@@ -23,7 +23,7 @@ namespace tribol {
  * For linear edges, these objects copy the endpoints and cache the edge vector and squared length for reuse by the
  * mapping.
  * @tparam Mapping Integration-surface construction and mapping to both elements.
- * @tparam BaseQuadratureRule Points and reference weights on the mapping's integration surface.
+ * @tparam BaseQuadratureRule Points and weights expressed in the mapping's integration-surface coordinates.
  */
 template <typename Mapping, typename BaseQuadratureRule>
 class PairQuadratureRule {
@@ -42,25 +42,29 @@ class PairQuadratureRule {
   /**
    * @brief Copy mapping and base-rule configuration.
    * @param mapping Forward and reverse mapping configuration.
-   * @param base_rule Reference point-generation configuration.
+   * @param base_rule Integration-surface quadrature configuration.
    */
   TRIBOL_HOST_DEVICE explicit PairQuadratureRule( Mapping mapping, BaseQuadratureRule base_rule = {} )
       : mapping_( mapping ), base_rule_( base_rule )
   {
   }
 
-  /** @brief Local integration-surface points and weights. */
-  using ReferenceQuadrature = typename BaseQuadratureRule::ReferenceQuadrature;
+  /** @brief Quadrature points and weights expressed in the integration surface's coordinates. */
+  using IntegrationSurfaceQuadrature = typename BaseQuadratureRule::IntegrationSurfaceQuadrature;
   /** @brief Local paired parent coordinates and physical weights. */
   using QuadratureData = PairQuadratureData<parent_dimension, parent_dimension2, points_per_base_rule>;
 
   /**
-   * @brief Construct the integration surface and place reference points on it.
+   * @brief Construct the integration surface and generate quadrature points and weights in its coordinates.
+   *
+   * The mapping defines these coordinates. SmoothedProjectedEdgeMapping uses edge1's parent coordinate, with vertices
+   * at -1 and 1; its weights do not yet include edge1's physical Jacobian.
+   *
    * @param coordinates1 Current first-element coordinates, with geometry defined by FirstGeometry.
    * @param coordinates2 Current second-element coordinates, with geometry defined by SecondGeometry.
-   * @return Local reference quadrature with generation status; invalid geometry has zero points.
+   * @return Integration-surface quadrature with generation status; invalid geometry has zero points.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE ReferenceQuadrature generateReferenceQuadrature(
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceQuadrature generateIntegrationSurfaceQuadrature(
       typename FirstGeometry::Coordinates coordinates1, typename SecondGeometry::Coordinates coordinates2 ) const
   {
     return base_rule_.generate(
@@ -68,15 +72,17 @@ class PairQuadratureRule {
   }
 
   /**
-   * @brief Reverse-map existing reference points using current geometry, without repeating overlap calculations.
+   * @brief Map integration-surface quadrature points to both elements using their current geometry.
+   *
+   * The integration surface and its quadrature are not recalculated.
    * @param coordinates1 Current first-element coordinates.
    * @param coordinates2 Current second-element coordinates.
-   * @param reference Integration-surface parent points and reference weights.
+   * @param reference Quadrature points and weights expressed in the integration surface's coordinates.
    * @return Local paired quadrature with generation status; invalid geometry has zero points.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData mapReferenceQuadrature(
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData mapIntegrationSurfaceQuadratureToElements(
       typename FirstGeometry::Coordinates coordinates1, typename SecondGeometry::Coordinates coordinates2,
-      ReferenceQuadratureView<BaseQuadratureRule::parent_dimension> reference ) const
+      IntegrationSurfaceQuadratureView<BaseQuadratureRule::parent_dimension> reference ) const
   {
     QuadratureData output{};
     output.result = mapping_.mapToElements( FirstGeometry( coordinates1 ), SecondGeometry( coordinates2 ), reference,
@@ -121,7 +127,7 @@ class PairQuadratureRule {
 
  private:
   Mapping mapping_{};  ///< Owned mapping configuration; no generated surfaces or coordinate views are retained.
-  BaseQuadratureRule base_rule_{};  ///< Owned reference point-generation configuration.
+  BaseQuadratureRule base_rule_{};  ///< Owned integration-surface quadrature configuration.
 };
 
 }  // namespace tribol

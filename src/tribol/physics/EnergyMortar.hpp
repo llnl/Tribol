@@ -91,7 +91,7 @@ class EnergyMortarCalculator {
                  "Energy Mortar currently supports linear-edge rules." );
 
  public:
-  using ReferenceQuadrature = typename QuadratureRule::ReferenceQuadrature;
+  using IntegrationSurfaceQuadrature = typename QuadratureRule::IntegrationSurfaceQuadrature;
 
   /// Borrow a generator; it must outlive this evaluator. Current geometry is supplied to each calculation.
   EnergyMortarCalculator( const ContactParams& p, const QuadratureRule& quadrature_rule )
@@ -184,7 +184,7 @@ class EnergyMortarCalculator {
   /// of the geometry-dependent quadrature construction.
   std::pair<double, double> eval_gtilde_fixed_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                   const MeshData::Viewer& mesh2,
-                                                  const ReferenceQuadrature& qp_fixed ) const;
+                                                  const IntegrationSurfaceQuadrature& qp_fixed ) const;
 
   /// Validate second derivatives of the smoothed gap integrals using finite differences.
   ///
@@ -200,16 +200,17 @@ class EnergyMortarCalculator {
   /// Generator owned by the adapter or caller; no mesh views or generated quadrature are retained here.
   const QuadratureRule& quadrature_rule_;
 
-  /// Gather current element coordinates and construct reference data for frozen-quadrature derivatives.
-  ReferenceQuadrature constructReferenceQuadrature( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                    const MeshData::Viewer& mesh2 ) const;
+  /// Gather current element coordinates and construct integration-surface quadrature for frozen-quadrature derivatives.
+  IntegrationSurfaceQuadrature constructIntegrationSurfaceQuadrature( const InterfacePair& pair,
+                                                                      const MeshData::Viewer& mesh1,
+                                                                      const MeshData::Viewer& mesh2 ) const;
 
   /// Compute smoothed gap gradients while holding the quadrature rule fixed.
   ///
   /// This is used by finite-difference verification routines to isolate
   /// derivatives of the gap kernel from derivatives of the quadrature rule.
   void grad_gtilde_with_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                            const ReferenceQuadrature& qp_fixed, double dgt1_dx[8], double dgt2_dx[8] ) const;
+                            const IntegrationSurfaceQuadrature& qp_fixed, double dgt1_dx[8], double dgt2_dx[8] ) const;
 
   /// Evaluate the signed normal gap at a local coordinate on edge A.
   ///
