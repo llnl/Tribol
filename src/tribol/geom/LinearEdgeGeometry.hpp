@@ -37,8 +37,11 @@ class LinearEdgeGeometry {
       MdSpan<const RealT, vertex_count, spatial_dimension>;  ///< Input coordinates [vertex][spatial component].
 
   /**
-   * @brief Copy the endpoint geometry and calculate the directed edge and squared length once.
-   * @param coords Current endpoints indexed by endpoint, then physical component.
+   * @brief Copy the edge vertices and calculate the edge vector and squared length once.
+   *
+   * The edge vector is (x1 - x0, y1 - y0), directed from the first input vertex to the second.
+   * Its magnitude is the physical edge length; no normalization is applied.
+   * @param coords Current vertices indexed by vertex, then physical component.
    * @pre Coordinates are finite.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE explicit LinearEdgeGeometry( Coords coords )
