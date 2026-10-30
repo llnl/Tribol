@@ -179,7 +179,7 @@ class PairQuadratureRule {
   }
 
   /**
-   * @brief Generate and reverse-map one pair into local fixed-capacity storage.
+   * @brief Generate quadrature for an element pair and map its points into each element's parametric coordinates.
    * @param element1_coords Current first-element coordinates.
    * @param element2_coords Current second-element coordinates.
    * @return Local paired quadrature with generation status; valid zero measure has zero points.
