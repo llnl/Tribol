@@ -125,8 +125,9 @@ struct SmoothedProjectedEdgeMapping {
    * @brief Project both edge2 endpoints along its normal onto the infinite edge1 line.
    * @param edge1 Non-mortar integration edge.
    * @param edge2 Mortar projection edge.
-   * @return Increasing edge1 parent bounds, valid zero bounds for co-oriented normals, or invalid zero bounds
-   * when either edge is degenerate.
+   * @return Lower and upper projected coordinates in edge1's parameterization, without clipping to [-1,1].
+   * makeIntegrationSurface() clips and smooths these bounds. Co-oriented normals return valid zero bounds;
+   * degenerate edges return invalid zero bounds.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static IntegrationSurface projectedBounds( const FirstGeometry& edge1,
                                                                                      const SecondGeometry& edge2 )
