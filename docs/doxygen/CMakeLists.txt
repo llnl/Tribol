@@ -3,4 +3,4 @@
 #
 # SPDX-License-Identifier: (MIT)
 
-blt_add_doxygen_target( tribol_doxygen )
+blt_add_doxygen_target( TARGET tribol_doxygen )
