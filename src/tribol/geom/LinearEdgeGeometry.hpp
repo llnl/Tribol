@@ -86,10 +86,13 @@ class LinearEdgeGeometry {
   }
 
   /**
-   * @brief Orthogonally project a physical point and return its normalized parent coordinate.
-   * @param point Physical point, not necessarily on the line.
+   * @brief Return the parametric coordinate of a physical point's orthogonal projection onto the edge's line.
+   *
+   * Projection is along the edge normal. The first vertex has xi = -1 and the second has xi = 1.
+   * The projection lies on the edge segment for xi in [-1,1] and beyond a vertex otherwise.
+   * @param point Physical point to project.
    * @pre The edge is nondegenerate.
-   * @return Unclamped parent coordinate of the projection; values outside [-1,1] are allowed.
+   * @return Parametric coordinate xi of the projection.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT parentCoordinate( const Point& point ) const
   {
