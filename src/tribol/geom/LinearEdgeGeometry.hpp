@@ -67,13 +67,13 @@ class LinearEdgeGeometry {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT jacobian() const { return 0.5 * length(); }
 
   /**
-   * @brief Interpolate or extrapolate a point using normalized parent coordinates.
-   * @param parent Parent coordinate; endpoints are -1 and 1.
-   * @return Physical point on the infinite edge line, including for degenerate geometry.
+   * @brief Map a parametric edge coordinate to a point in the current physical configuration.
+   * @param xi Parametric coordinate; vertices are at -1 and 1. Values outside [-1,1] allow extrapolation.
+   * @return Physical point, including for degenerate edge geometry.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Point position( RealT parent ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Point position( RealT xi ) const
   {
-    return Point::lerp( origin_, end_, 0.5 * ( parent + 1.0 ) );
+    return Point::lerp( origin_, end_, 0.5 * ( xi + 1.0 ) );
   }
 
   /**
@@ -100,14 +100,14 @@ class LinearEdgeGeometry {
   }
 
   /**
-   * @brief Evaluate a physical point directly from borrowed coordinates.
-   * @param coords Current edge endpoints.
-   * @param parent Normalized parent coordinate.
-   * @return Interpolated or extrapolated point; no input views are retained.
+   * @brief Map a parametric edge coordinate using the supplied physical vertex coordinates.
+   * @param coords Current edge vertex coordinates.
+   * @param xi Parametric coordinate; vertices are at -1 and 1. Values outside [-1,1] allow extrapolation.
+   * @return Physical point; no input views are retained.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static Point position( Coords coords, RealT parent )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static Point position( Coords coords, RealT xi )
   {
-    return LinearEdgeGeometry( coords ).position( parent );
+    return LinearEdgeGeometry( coords ).position( xi );
   }
 
  private:
