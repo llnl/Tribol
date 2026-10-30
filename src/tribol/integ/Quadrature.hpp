@@ -6,6 +6,9 @@
 /**
  * @file
  * @brief Integration-surface and element-pair quadrature arrays, views, and generation results.
+ *
+ * Integration-surface representations shared by mappings and rule generators belong in this header. Keep
+ * representations for additional element topologies or geometries here alongside EdgeQuadratureInterval.
  */
 
 #ifndef SRC_TRIBOL_INTEG_QUADRATURE_HPP_
