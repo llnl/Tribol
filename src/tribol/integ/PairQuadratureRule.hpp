@@ -20,8 +20,8 @@ namespace tribol {
 /**
  * @brief Requires element geometry types and integration-surface construction for a pair of elements.
  *
- * Geometry types must be constructible from their coordinate views. Dimensions and vertex counts must be compile-time
- * constants. Geometry validity remains a runtime responsibility.
+ * Geometry types must be constructible from their coordinate views and provide positive compile-time parametric
+ * dimensions. Geometry validity remains a runtime responsibility.
  * @tparam Mapping Type supplying the element geometries and constructing the integration surface.
  */
 template <typename Mapping>
@@ -31,8 +31,6 @@ concept ElementPairMapping =
               const typename Mapping::FirstGeometry& geometry1, const typename Mapping::SecondGeometry& geometry2 ) {
       typename std::integral_constant<int, Mapping::FirstGeometry::parent_dimension>;
       typename std::integral_constant<int, Mapping::SecondGeometry::parent_dimension>;
-      typename std::integral_constant<int, Mapping::FirstGeometry::spatial_dimension>;
-      typename std::integral_constant<int, Mapping::FirstGeometry::vertex_count>;
       requires( Mapping::FirstGeometry::parent_dimension > 0 && Mapping::SecondGeometry::parent_dimension > 0 );
       { typename Mapping::FirstGeometry( element1_coords ) } -> std::same_as<typename Mapping::FirstGeometry>;
       { typename Mapping::SecondGeometry( element2_coords ) } -> std::same_as<typename Mapping::SecondGeometry>;
@@ -92,13 +90,8 @@ template <ElementPairMapping Mapping, typename IntegrationSurfaceRuleGenerator>
   requires IntegrationSurfaceRuleGeneratorFor<IntegrationSurfaceRuleGenerator, Mapping>
 class PairQuadratureRule {
  public:
-  using FirstGeometry = typename Mapping::FirstGeometry;                    ///< Geometry type of the first element.
-  using SecondGeometry = typename Mapping::SecondGeometry;                  ///< Geometry type of the second element.
-  static constexpr int parent_dimension = FirstGeometry::parent_dimension;  ///< First element's parametric dimension.
-  static constexpr int parent_dimension2 =
-      SecondGeometry::parent_dimension;  ///< Second element's parametric dimension.
-  static constexpr int spatial_dimension = FirstGeometry::spatial_dimension;  ///< Physical dimension.
-  static constexpr int vertex_count = FirstGeometry::vertex_count;  ///< Number of vertices in the first geometry.
+  using FirstGeometry = typename Mapping::FirstGeometry;    ///< Geometry type of the first element.
+  using SecondGeometry = typename Mapping::SecondGeometry;  ///< Geometry type of the second element.
   /// Maximum number of points in a successfully generated rule.
   static constexpr int max_points = IntegrationSurfaceRuleGenerator::max_points;
   static constexpr int polynomial_order =
@@ -120,7 +113,8 @@ class PairQuadratureRule {
   /** @brief Quadrature points and weights expressed in the integration surface's coordinates. */
   using IntegrationSurfaceRule = typename IntegrationSurfaceRuleGenerator::IntegrationSurfaceRule;
   /** @brief Local paired parametric coordinates and physical weights. */
-  using QuadratureData = PairQuadratureData<parent_dimension, parent_dimension2, max_points>;
+  using QuadratureData =
+      PairQuadratureData<FirstGeometry::parent_dimension, SecondGeometry::parent_dimension, max_points>;
 
   /**
    * @brief Construct the integration surface and generate quadrature points and weights in its coordinates.
@@ -168,7 +162,7 @@ class PairQuadratureRule {
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult
   generate( typename FirstGeometry::Coords element1_coords, typename SecondGeometry::Coords element2_coords,
-            PairQuadratureView<parent_dimension, parent_dimension2> output ) const
+            PairQuadratureView<FirstGeometry::parent_dimension, SecondGeometry::parent_dimension> output ) const
   {
     const FirstGeometry geometry1( element1_coords );
     const SecondGeometry geometry2( element2_coords );

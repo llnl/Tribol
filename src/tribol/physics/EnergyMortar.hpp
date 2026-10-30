@@ -86,9 +86,14 @@ struct FiniteDiffResult {
 /// storage. Failed quadrature data is never consumed; valid zero-point rules retain their zero contribution.
 template <typename QuadratureRule>
 class EnergyMortarCalculator {
-  static_assert( QuadratureRule::parent_dimension == 1 && QuadratureRule::vertex_count == 2 &&
-                     QuadratureRule::spatial_dimension == 2,
-                 "Energy Mortar currently supports linear-edge rules." );
+  static_assert( QuadratureRule::FirstGeometry::parent_dimension == 1 &&
+                     QuadratureRule::FirstGeometry::vertex_count == 2 &&
+                     QuadratureRule::FirstGeometry::spatial_dimension == 2,
+                 "Energy Mortar requires a one-dimensional first geometry with two vertices in 2D." );
+  static_assert( QuadratureRule::SecondGeometry::parent_dimension == 1 &&
+                     QuadratureRule::SecondGeometry::vertex_count == 2 &&
+                     QuadratureRule::SecondGeometry::spatial_dimension == 2,
+                 "Energy Mortar requires a one-dimensional second geometry with two vertices in 2D." );
 
  public:
   using IntegrationSurfaceRule = typename QuadratureRule::IntegrationSurfaceRule;
