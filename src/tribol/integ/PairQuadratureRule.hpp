@@ -92,11 +92,12 @@ template <ElementPairMapping Mapping, typename IntegrationSurfaceRuleGenerator>
   requires IntegrationSurfaceRuleGeneratorFor<IntegrationSurfaceRuleGenerator, Mapping>
 class PairQuadratureRule {
  public:
-  using FirstGeometry = typename Mapping::FirstGeometry;                      ///< Geometry type of the first element.
-  using SecondGeometry = typename Mapping::SecondGeometry;                    ///< Geometry type of the second element.
-  static constexpr int parent_dimension = FirstGeometry::parent_dimension;    ///< First geometry parent components.
-  static constexpr int parent_dimension2 = SecondGeometry::parent_dimension;  ///< Second geometry parent components.
-  static constexpr int spatial_dimension = FirstGeometry::spatial_dimension;  ///< Physical components.
+  using FirstGeometry = typename Mapping::FirstGeometry;                    ///< Geometry type of the first element.
+  using SecondGeometry = typename Mapping::SecondGeometry;                  ///< Geometry type of the second element.
+  static constexpr int parent_dimension = FirstGeometry::parent_dimension;  ///< First element's parametric dimension.
+  static constexpr int parent_dimension2 =
+      SecondGeometry::parent_dimension;  ///< Second element's parametric dimension.
+  static constexpr int spatial_dimension = FirstGeometry::spatial_dimension;  ///< Physical dimension.
   static constexpr int vertex_count = FirstGeometry::vertex_count;  ///< Number of vertices in the first geometry.
   /// Maximum number of points in a successfully generated rule.
   static constexpr int max_points = IntegrationSurfaceRuleGenerator::max_points;
