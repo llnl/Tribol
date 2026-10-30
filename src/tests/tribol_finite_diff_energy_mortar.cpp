@@ -35,7 +35,7 @@ namespace tribol {
 
 using LinearEdgeBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
 using LinearEdgePointView = MdSpan<const double, LinearEdgeBasis::spatial_dimension>;
-using LinearEdgeCoordinates = MdArray<double, LinearEdgeBasis::node_count, LinearEdgeBasis::spatial_dimension>;
+using LinearEdgeCoords = MdArray<double, LinearEdgeBasis::node_count, LinearEdgeBasis::spatial_dimension>;
 
 inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], double P1[2] )
 {
@@ -222,13 +222,13 @@ std::pair<double, double> EnergyMortarCalculator<QuadratureRule>::eval_gtilde_fi
   double A0[2], A1[2];
   endpoints( mesh1, pair.element_id1_, A0, A1 );
 
-  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
-  const double J = ComputeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coordinates.view() );
+  const LinearEdgeCoords edge_coords{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
+  const double J = ComputeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coords.view() );
 
   double gt1 = 0.0, gt2 = 0.0;
 
   for ( IndexT i = 0; i < qp_fixed.result.required_point_count; ++i ) {
-    const double xiA = qp_fixed.coordinates( i, 0 );
+    const double xiA = qp_fixed.coords( i, 0 );
     const double w = qp_fixed.weights[i];
 
     double basis_values[LinearEdgeBasis::node_count];
@@ -863,15 +863,15 @@ void checkSelectedRuleDerivatives( bool varying )
   const IndexT connectivity[] = { 0, 1 };
   MeshData mesh1( 0, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
   MeshData mesh2( 1, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
-  std::array<RealT*, dofs> coordinates{ &x1[0], &y1[0], &x1[1], &y1[1], &x2[0], &y2[0], &x2[1], &y2[1] };
+  std::array<RealT*, dofs> coords{ &x1[0], &y1[0], &x1[1], &y1[1], &x2[0], &y2[0], &x2[1], &y2[1] };
   std::array<RealT, dofs> baseline;
-  for ( int i = 0; i < dofs; ++i ) baseline[i] = *coordinates[i];
+  for ( int i = 0; i < dofs; ++i ) baseline[i] = *coords[i];
   const QuadratureRule quadrature_rule{ SmoothedProjectedEdgeMapping{ 0.2 } };
   const Calculator calculator( ContactParams{ 7.0, varying, 0.05 }, quadrature_rule );
-  const LinearEdgeCoordinates initial1{ LinearEdgePointView{ baseline.data(), 2 },
-                                        LinearEdgePointView{ baseline.data() + 2, 2 } };
-  const LinearEdgeCoordinates initial2{ LinearEdgePointView{ baseline.data() + 4, 2 },
-                                        LinearEdgePointView{ baseline.data() + 6, 2 } };
+  const LinearEdgeCoords initial1{ LinearEdgePointView{ baseline.data(), 2 },
+                                   LinearEdgePointView{ baseline.data() + 2, 2 } };
+  const LinearEdgeCoords initial2{ LinearEdgePointView{ baseline.data() + 4, 2 },
+                                   LinearEdgePointView{ baseline.data() + 6, 2 } };
   const auto integration_surface_rule =
       quadrature_rule.generateIntegrationSurfaceRule( initial1.view(), initial2.view() );
   const auto evaluate = [&]() {
@@ -887,10 +887,10 @@ void checkSelectedRuleDerivatives( bool varying )
       const double dx = x1[1] - x1[0], dy = y1[1] - y1[0];
       const double jacobian = 0.5 * std::sqrt( dx * dx + dy * dy );
       for ( int q = 0; q < Count; ++q ) {
-        values[2] += 0.5 * ( 1.0 - integration_surface_rule.coordinates( q, 0 ) ) *
-                     integration_surface_rule.weights[q] * jacobian;
-        values[3] += 0.5 * ( 1.0 + integration_surface_rule.coordinates( q, 0 ) ) *
-                     integration_surface_rule.weights[q] * jacobian;
+        values[2] +=
+            0.5 * ( 1.0 - integration_surface_rule.coords( q, 0 ) ) * integration_surface_rule.weights[q] * jacobian;
+        values[3] +=
+            0.5 * ( 1.0 + integration_surface_rule.coords( q, 0 ) ) * integration_surface_rule.weights[q] * jacobian;
       }
     }
     return values;
@@ -903,11 +903,11 @@ void checkSelectedRuleDerivatives( bool varying )
   calculator.compute_d2A_d2u( { 0, 0 }, mesh1.getView(), mesh2.getView(), hessian[2].data(), hessian[3].data() );
   const auto original = evaluate();
   for ( int row = 0; row < dofs; ++row ) {
-    *coordinates[row] = baseline[row] + step;
+    *coords[row] = baseline[row] + step;
     const auto plus = evaluate();
-    *coordinates[row] = baseline[row] - step;
+    *coords[row] = baseline[row] - step;
     const auto minus = evaluate();
-    *coordinates[row] = baseline[row];
+    *coords[row] = baseline[row];
     for ( std::size_t output = 0; output < gradient.size(); ++output ) {
       EXPECT_NEAR( gradient[output][row], ( plus[output] - minus[output] ) / ( 2.0 * step ), gradient_tolerance );
       EXPECT_NEAR( hessian[output][row * dofs + row],
@@ -918,13 +918,13 @@ void checkSelectedRuleDerivatives( bool varying )
       int sample = 0;
       for ( const double row_sign : { 1.0, -1.0 } ) {
         for ( const double col_sign : { 1.0, -1.0 } ) {
-          *coordinates[row] = baseline[row] + row_sign * step;
-          *coordinates[col] = baseline[col] + col_sign * step;
+          *coords[row] = baseline[row] + row_sign * step;
+          *coords[col] = baseline[col] + col_sign * step;
           samples[sample++] = evaluate();
         }
       }
-      *coordinates[row] = baseline[row];
-      *coordinates[col] = baseline[col];
+      *coords[row] = baseline[row];
+      *coords[col] = baseline[col];
       for ( std::size_t output = 0; output < hessian.size(); ++output ) {
         const double expected = ( samples[0][output] - samples[1][output] - samples[2][output] + samples[3][output] ) /
                                 ( 4.0 * step * step );
@@ -938,11 +938,11 @@ void checkSelectedRuleDerivatives( bool varying )
   const auto penalty = calculator.compute_quadrature_point_penalty_data( { 0, 0 }, mesh1.getView(), mesh2.getView() );
   ASSERT_TRUE( penalty.has_active_qp );
   for ( int col = 0; col < dofs; ++col ) {
-    *coordinates[col] = baseline[col] + step;
+    *coords[col] = baseline[col] + step;
     const auto plus = calculator.compute_quadrature_point_penalty_data( { 0, 0 }, mesh1.getView(), mesh2.getView() );
-    *coordinates[col] = baseline[col] - step;
+    *coords[col] = baseline[col] - step;
     const auto minus = calculator.compute_quadrature_point_penalty_data( { 0, 0 }, mesh1.getView(), mesh2.getView() );
-    *coordinates[col] = baseline[col];
+    *coords[col] = baseline[col];
     EXPECT_NEAR( penalty.force[col], ( plus.energy - minus.energy ) / ( 2.0 * step ), gradient_tolerance );
     for ( int row = 0; row < dofs; ++row ) {
       EXPECT_NEAR( penalty.stiffness[row * dofs + col], ( plus.force[row] - minus.force[row] ) / ( 2.0 * step ),

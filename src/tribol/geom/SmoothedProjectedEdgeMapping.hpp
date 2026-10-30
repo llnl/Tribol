@@ -92,10 +92,10 @@ struct SmoothedProjectedEdgeMapping {
     if ( count == 0 ) return { QuadratureStatus::Success, 0 };
     const RealT jacobian = edge1.jacobian();
     for ( IndexT q = 0; q < count; ++q ) {
-      const RealT parent1 = integration_surface_rule.coordinates( q, 0 );
+      const RealT parent1 = integration_surface_rule.coords( q, 0 );
       const auto physical = edge1.position( parent1 );
-      output.geometry1_coordinates( q, 0 ) = parent1;
-      output.geometry2_coordinates( q, 0 ) = edge2.parentCoordinate( physical );
+      output.geometry1_coords( q, 0 ) = parent1;
+      output.geometry2_coords( q, 0 ) = edge2.parentCoordinate( physical );
       output.weights[q] = integration_surface_rule.weights[q] * jacobian;
     }
     return { QuadratureStatus::Success, count };

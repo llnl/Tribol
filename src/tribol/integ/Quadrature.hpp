@@ -60,8 +60,8 @@ struct QuadratureResult {
 template <int CoordinateDimension>
 struct IntegrationSurfaceRuleView {
   static_assert( CoordinateDimension == 1 || CoordinateDimension == 2 );
-  ArrayViewT<const RealT, 2> coordinates;  ///< Borrowed integration-surface coordinates [point][component].
-  ArrayViewT<const RealT> weights;         ///< Borrowed weights in integration-surface coordinates.
+  ArrayViewT<const RealT, 2> coords;  ///< Borrowed integration-surface coordinates [point][component].
+  ArrayViewT<const RealT> weights;    ///< Borrowed weights in integration-surface coordinates.
 
   /**
    * @brief Return the number of borrowed integration-surface quadrature points.
@@ -75,14 +75,14 @@ struct IntegrationSurfaceRuleView {
    *
    * Both arrays must have the same point count and remain alive while the view is used.
    *
-   * @param coordinates Integration-surface coordinate array [point][CoordinateDimension].
+   * @param coords Integration-surface coordinate array [point][CoordinateDimension].
    * @param weights Weights in the integration surface's coordinates, one per point.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceRuleView( ArrayViewT<const RealT, 2> coordinates,
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceRuleView( ArrayViewT<const RealT, 2> coords,
                                                                       ArrayViewT<const RealT> weights )
-      : coordinates( coordinates ), weights( weights )
+      : coords( coords ), weights( weights )
   {
-    assert( coordinates.shape()[0] == weights.size() && coordinates.shape()[1] == CoordinateDimension );
+    assert( coords.shape()[0] == weights.size() && coords.shape()[1] == CoordinateDimension );
   }
 };
 
@@ -97,9 +97,9 @@ struct IntegrationSurfaceRuleView {
  */
 template <int CoordinateDimension, IndexT Capacity>
 struct IntegrationSurfaceRule {
-  MdArray<RealT, Capacity, CoordinateDimension> coordinates{};  ///< Integration-surface coordinates [point][component].
-  MdArray<RealT, Capacity> weights{};                           ///< Owned weights in integration-surface coordinates.
-  QuadratureResult result{};                                    ///< Completion status and number of populated points.
+  MdArray<RealT, Capacity, CoordinateDimension> coords{};  ///< Integration-surface coordinates [point][component].
+  MdArray<RealT, Capacity> weights{};                      ///< Owned weights in integration-surface coordinates.
+  QuadratureResult result{};                               ///< Completion status and number of populated points.
 
   /**
    * @brief Borrow only completed integration-surface quadrature points and weights.
@@ -113,7 +113,7 @@ struct IntegrationSurfaceRule {
     assert( result.status == QuadratureStatus::Success );
     assert( result.required_point_count >= 0 && result.required_point_count <= Capacity );
     const axom::StackArray<axom::IndexType, 2> shape{ result.required_point_count, CoordinateDimension };
-    return { ArrayViewT<const RealT, 2>{ coordinates.data(), shape },
+    return { ArrayViewT<const RealT, 2>{ coords.data(), shape },
              ArrayViewT<const RealT>{ weights.data(), result.required_point_count } };
   }
 
@@ -136,11 +136,9 @@ struct IntegrationSurfaceRule {
 template <int ParametricDimension1, int ParametricDimension2, bool ReadOnly = false>
 struct PairQuadratureView {
   using Value = std::conditional_t<ReadOnly, const RealT, RealT>;  ///< RealT with the requested write access.
-  ArrayViewT<Value, 2>
-      geometry1_coordinates;  ///< Quadrature-point coordinates in geometry1's element parameterization.
-  ArrayViewT<Value, 2>
-      geometry2_coordinates;  ///< Quadrature-point coordinates in geometry2's element parameterization.
-  ArrayViewT<Value> weights;  ///< Weights including the mapping's physical integration measure.
+  ArrayViewT<Value, 2> geometry1_coords;  ///< Quadrature-point coordinates in geometry1's element parameterization.
+  ArrayViewT<Value, 2> geometry2_coords;  ///< Quadrature-point coordinates in geometry2's element parameterization.
+  ArrayViewT<Value> weights;              ///< Weights including the mapping's physical integration measure.
 
   /** @brief Return the available point capacity. @return Number of weight entries. */
   TRIBOL_HOST_DEVICE IndexT capacity() const { return weights.size(); }
@@ -154,7 +152,7 @@ struct PairQuadratureView {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureView( ArrayViewT<Value, 2> geometry1_points,
                                                               ArrayViewT<Value, 2> geometry2_points,
                                                               ArrayViewT<Value> weights )
-      : geometry1_coordinates( geometry1_points ), geometry2_coordinates( geometry2_points ), weights( weights )
+      : geometry1_coords( geometry1_points ), geometry2_coords( geometry2_points ), weights( weights )
   {
     assert( geometry1_points.shape()[0] == weights.size() && geometry1_points.shape()[1] == ParametricDimension1 );
     assert( geometry2_points.shape()[0] == weights.size() && geometry2_points.shape()[1] == ParametricDimension2 );
@@ -174,9 +172,9 @@ struct PairQuadratureView {
 template <int ParametricDimension1, int ParametricDimension2, IndexT Capacity>
 struct PairQuadratureData {
   MdArray<RealT, Capacity, ParametricDimension1>
-      geometry1_coordinates{};  ///< Quadrature-point coordinates in geometry1's element parameterization.
+      geometry1_coords{};  ///< Quadrature-point coordinates in geometry1's element parameterization.
   MdArray<RealT, Capacity, ParametricDimension2>
-      geometry2_coordinates{};         ///< Quadrature-point coordinates in geometry2's element parameterization.
+      geometry2_coords{};              ///< Quadrature-point coordinates in geometry2's element parameterization.
   MdArray<RealT, Capacity> weights{};  ///< Owned physical integration weights.
   QuadratureResult result{};           ///< Status and initialized point count.
 
@@ -184,8 +182,8 @@ struct PairQuadratureData {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureView<ParametricDimension1, ParametricDimension2>
   getOutputView() &
   {
-    return { { geometry1_coordinates.data(), { Capacity, ParametricDimension1 } },
-             { geometry2_coordinates.data(), { Capacity, ParametricDimension2 } },
+    return { { geometry1_coords.data(), { Capacity, ParametricDimension1 } },
+             { geometry2_coords.data(), { Capacity, ParametricDimension2 } },
              { weights.data(), Capacity } };
   }
 
@@ -200,8 +198,8 @@ struct PairQuadratureData {
     assert( result.status == QuadratureStatus::Success );
     assert( result.required_point_count >= 0 && result.required_point_count <= Capacity );
     const IndexT count = result.required_point_count;
-    return { { geometry1_coordinates.data(), { count, ParametricDimension1 } },
-             { geometry2_coordinates.data(), { count, ParametricDimension2 } },
+    return { { geometry1_coords.data(), { count, ParametricDimension1 } },
+             { geometry2_coords.data(), { count, ParametricDimension2 } },
              { weights.data(), count } };
   }
 

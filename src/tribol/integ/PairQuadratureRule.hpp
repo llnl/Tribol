@@ -26,16 +26,16 @@ namespace tribol {
  */
 template <typename Mapping>
 concept ElementPairMapping =
-    requires( const Mapping& mapping, typename Mapping::FirstGeometry::Coordinates element1_coordinates,
-              typename Mapping::SecondGeometry::Coordinates element2_coordinates,
+    requires( const Mapping& mapping, typename Mapping::FirstGeometry::Coords element1_coords,
+              typename Mapping::SecondGeometry::Coords element2_coords,
               const typename Mapping::FirstGeometry& geometry1, const typename Mapping::SecondGeometry& geometry2 ) {
       typename std::integral_constant<int, Mapping::FirstGeometry::parent_dimension>;
       typename std::integral_constant<int, Mapping::SecondGeometry::parent_dimension>;
       typename std::integral_constant<int, Mapping::FirstGeometry::spatial_dimension>;
       typename std::integral_constant<int, Mapping::FirstGeometry::vertex_count>;
       requires( Mapping::FirstGeometry::parent_dimension > 0 && Mapping::SecondGeometry::parent_dimension > 0 );
-      { typename Mapping::FirstGeometry( element1_coordinates ) } -> std::same_as<typename Mapping::FirstGeometry>;
-      { typename Mapping::SecondGeometry( element2_coordinates ) } -> std::same_as<typename Mapping::SecondGeometry>;
+      { typename Mapping::FirstGeometry( element1_coords ) } -> std::same_as<typename Mapping::FirstGeometry>;
+      { typename Mapping::SecondGeometry( element2_coords ) } -> std::same_as<typename Mapping::SecondGeometry>;
       mapping.makeIntegrationSurface( geometry1, geometry2 );
     };
 
@@ -78,7 +78,7 @@ concept IntegrationSurfaceRuleGeneratorFor =
 /**
  * @brief Generate paired parent points and physical weights locally, without retaining geometry or point data.
  *
- * Mapping defines element geometry types constructible from Coordinates views and the integration surface passed to
+ * Mapping defines element geometry types constructible from Coords views and the integration surface passed to
  * IntegrationSurfaceRuleGenerator. It owns forward surface construction and reverse point mapping, including the
  * physical measure. Each call constructs element geometry objects from the supplied coordinates and discards them
  * before returning. For linear edges, these objects copy the endpoints and cache the edge vector and squared length for
@@ -126,54 +126,50 @@ class PairQuadratureRule {
    * The mapping defines these coordinates. SmoothedProjectedEdgeMapping uses edge1's parent coordinate, with vertices
    * at -1 and 1; its weights do not yet include edge1's physical Jacobian.
    *
-   * @param element1_coordinates Current first-element coordinates, with geometry defined by FirstGeometry.
-   * @param element2_coordinates Current second-element coordinates, with geometry defined by SecondGeometry.
+   * @param element1_coords Current first-element coordinates, with geometry defined by FirstGeometry.
+   * @param element2_coords Current second-element coordinates, with geometry defined by SecondGeometry.
    * @return Integration-surface rule with generation status; invalid geometry has zero points.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceRule
-  generateIntegrationSurfaceRule( typename FirstGeometry::Coordinates element1_coordinates,
-                                  typename SecondGeometry::Coordinates element2_coordinates ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceRule generateIntegrationSurfaceRule(
+      typename FirstGeometry::Coords element1_coords, typename SecondGeometry::Coords element2_coords ) const
   {
-    return integration_surface_rule_generator_.generate( mapping_.makeIntegrationSurface(
-        FirstGeometry( element1_coordinates ), SecondGeometry( element2_coordinates ) ) );
+    return integration_surface_rule_generator_.generate(
+        mapping_.makeIntegrationSurface( FirstGeometry( element1_coords ), SecondGeometry( element2_coords ) ) );
   }
 
   /**
    * @brief Map integration-surface quadrature points to both elements using their current geometry.
    *
    * The integration surface and its rule are not recalculated.
-   * @param element1_coordinates Current first-element coordinates.
-   * @param element2_coordinates Current second-element coordinates.
+   * @param element1_coords Current first-element coordinates.
+   * @param element2_coords Current second-element coordinates.
    * @param integration_surface_rule Quadrature points and weights expressed in the integration surface's
    * coordinates.
    * @return Local paired quadrature with generation status; invalid geometry has zero points.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData mapIntegrationSurfaceRuleToElements(
-      typename FirstGeometry::Coordinates element1_coordinates,
-      typename SecondGeometry::Coordinates element2_coordinates,
+      typename FirstGeometry::Coords element1_coords, typename SecondGeometry::Coords element2_coords,
       IntegrationSurfaceRuleView<IntegrationSurfaceRuleGenerator::parent_dimension> integration_surface_rule ) const
   {
     QuadratureData output{};
-    output.result =
-        mapping_.mapToElements( FirstGeometry( element1_coordinates ), SecondGeometry( element2_coordinates ),
-                                integration_surface_rule, output.getOutputView() );
+    output.result = mapping_.mapToElements( FirstGeometry( element1_coords ), SecondGeometry( element2_coords ),
+                                            integration_surface_rule, output.getOutputView() );
     return output;
   }
 
   /**
    * @brief Generate a complete rule into caller-provided storage.
-   * @param element1_coordinates Current first-element coordinates.
-   * @param element2_coordinates Current second-element coordinates.
+   * @param element1_coords Current first-element coordinates.
+   * @param element2_coords Current second-element coordinates.
    * @param [out] output Parent coordinates on both elements and physical weights.
    * @return Generation status and full point count; failures must not be consumed. No allocation or retry is performed.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult
-  generate( typename FirstGeometry::Coordinates element1_coordinates,
-            typename SecondGeometry::Coordinates element2_coordinates,
+  generate( typename FirstGeometry::Coords element1_coords, typename SecondGeometry::Coords element2_coords,
             PairQuadratureView<parent_dimension, parent_dimension2> output ) const
   {
-    const FirstGeometry geometry1( element1_coordinates );
-    const SecondGeometry geometry2( element2_coordinates );
+    const FirstGeometry geometry1( element1_coords );
+    const SecondGeometry geometry2( element2_coords );
     const auto integration_surface_rule =
         integration_surface_rule_generator_.generate( mapping_.makeIntegrationSurface( geometry1, geometry2 ) );
     // Return fields explicitly so Enzyme can identify their integer types.
@@ -185,16 +181,15 @@ class PairQuadratureRule {
 
   /**
    * @brief Generate and reverse-map one pair into local fixed-capacity storage.
-   * @param element1_coordinates Current first-element coordinates.
-   * @param element2_coordinates Current second-element coordinates.
+   * @param element1_coords Current first-element coordinates.
+   * @param element2_coords Current second-element coordinates.
    * @return Local paired quadrature with generation status; valid zero measure has zero points.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData
-  generate( typename FirstGeometry::Coordinates element1_coordinates,
-            typename SecondGeometry::Coordinates element2_coordinates ) const
+  generate( typename FirstGeometry::Coords element1_coords, typename SecondGeometry::Coords element2_coords ) const
   {
     QuadratureData output{};
-    output.result = generate( element1_coordinates, element2_coordinates, output.getOutputView() );
+    output.result = generate( element1_coords, element2_coords, output.getOutputView() );
     return output;
   }
 

@@ -22,7 +22,7 @@ namespace {
 using LinearEdgeBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
 // View each endpoint as one [node][physical component] row so the owning coordinates retain the basis layout.
 using LinearEdgePointView = MdSpan<const double, LinearEdgeBasis::spatial_dimension>;
-using LinearEdgeCoordinates = MdArray<double, LinearEdgeBasis::node_count, LinearEdgeBasis::spatial_dimension>;
+using LinearEdgeCoords = MdArray<double, LinearEdgeBasis::node_count, LinearEdgeBasis::spatial_dimension>;
 
 // Keep only inactive configuration in the Enzyme parameter block; coordinates arrive through the active x argument.
 template <typename QuadratureRule>
@@ -103,7 +103,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, PairQuadratureView<1, 
   double AI_1 = 0.0, AI_2 = 0.0;
 
   for ( int i = 0; i < quadrature.weights.size(); ++i ) {
-    const double xiA = quadrature.geometry1_coordinates( i, 0 );
+    const double xiA = quadrature.geometry1_coords( i, 0 );
     const double w = quadrature.weights[i];
 
     double basis_values[LinearEdgeBasis::node_count];
@@ -111,9 +111,9 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, PairQuadratureView<1, 
         MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &xiA, LinearEdgeBasis::parent_dimension },
         basis_values );
 
-    const auto x1 = LinearEdgeGeometry::position( { x, LinearEdgeCoordinates::size() }, xiA );
-    const auto x2 = LinearEdgeGeometry::position( { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() },
-                                                  quadrature.geometry2_coordinates( i, 0 ) );
+    const auto x1 = LinearEdgeGeometry::position( { x, LinearEdgeCoords::size() }, xiA );
+    const auto x2 = LinearEdgeGeometry::position( { x + LinearEdgeCoords::size(), LinearEdgeCoords::size() },
+                                                  quadrature.geometry2_coords( i, 0 ) );
     const double gn = ( x2[0] - x1[0] ) * nB[0] + ( x2[1] - x1[1] ) * nB[1];
     const double g = effective_gap( gn, eta, residual_gap );
 
@@ -150,7 +150,7 @@ static void kernel_out( const double* x, const void* integration_surface_rule_vo
   if ( integration_surface_rule->result.status != QuadratureStatus::Success )
     reportQuadratureFailure( integration_surface_rule->result.status );
   const auto quadrature = kp->quadrature_rule.mapIntegrationSurfaceRuleToElements(
-      { x, LinearEdgeCoordinates::size() }, { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() },
+      { x, LinearEdgeCoords::size() }, { x + LinearEdgeCoords::size(), LinearEdgeCoords::size() },
       integration_surface_rule->getView() );
   if ( quadrature.result.status != QuadratureStatus::Success ) reportQuadratureFailure( quadrature.result.status );
   double gt[2];
@@ -193,8 +193,8 @@ template <typename QuadratureRule, KernelOutput Output>
 static void kernel_out_enzyme( const double* x, const void* kp_void, double* out )
 {
   const KernelParams<QuadratureRule>* kp = static_cast<const KernelParams<QuadratureRule>*>( kp_void );
-  const auto quadrature = kp->quadrature_rule.generate(
-      { x, LinearEdgeCoordinates::size() }, { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() } );
+  const auto quadrature = kp->quadrature_rule.generate( { x, LinearEdgeCoords::size() },
+                                                        { x + LinearEdgeCoords::size(), LinearEdgeCoords::size() } );
 
   if ( quadrature.result.status != QuadratureStatus::Success ) reportQuadratureFailure( quadrature.result.status );
   double gt[2];
@@ -272,8 +272,8 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   double B0[2] = { x[4], x[5] };
   double B1[2] = { x[6], x[7] };
 
-  const auto generated = kp->quadrature_rule.generate(
-      { x, LinearEdgeCoordinates::size() }, { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() } );
+  const auto generated = kp->quadrature_rule.generate( { x, LinearEdgeCoords::size() },
+                                                       { x + LinearEdgeCoords::size(), LinearEdgeCoords::size() } );
   if ( generated.result.status != QuadratureStatus::Success ) reportQuadratureFailure( generated.result.status );
   const auto quadrature = generated.getView();
 
@@ -288,9 +288,9 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   double value = 0.0;
   for ( int i = 0; i < quadrature.weights.size(); ++i ) {
     const auto x1 =
-        LinearEdgeGeometry::position( { x, LinearEdgeCoordinates::size() }, quadrature.geometry1_coordinates( i, 0 ) );
-    const auto x2 = LinearEdgeGeometry::position( { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() },
-                                                  quadrature.geometry2_coordinates( i, 0 ) );
+        LinearEdgeGeometry::position( { x, LinearEdgeCoords::size() }, quadrature.geometry1_coords( i, 0 ) );
+    const auto x2 = LinearEdgeGeometry::position( { x + LinearEdgeCoords::size(), LinearEdgeCoords::size() },
+                                                  quadrature.geometry2_coords( i, 0 ) );
     value += qp_penalty_kernel_qp_energy( quadrature.weights[i], x1.data(), x2.data(), nB, eta, kp->residual_gap, kp->k,
                                           pair_has_active_qp );
   }
@@ -357,7 +357,7 @@ EnergyMortarCalculator<QuadratureRule>::generateIntegrationSurfaceRule( const In
                                                                         const MeshData::Viewer& mesh1,
                                                                         const MeshData::Viewer& mesh2 ) const
 {
-  LinearEdgeCoordinates coords1, coords2;
+  LinearEdgeCoords coords1, coords2;
   mesh1.getFaceCoords( pair.element_id1_, coords1.data() );
   mesh2.getFaceCoords( pair.element_id2_, coords2.data() );
   const auto integration_surface_rule =
@@ -384,13 +384,13 @@ double EnergyMortarCalculator<QuadratureRule>::compute_weighted_normal_gap( cons
   find_normal( A0, A1, nA );
   find_normal( B0, B1, nB );
 
-  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
+  const LinearEdgeCoords edge_coords{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
   double basis_values[LinearEdgeBasis::node_count];
   LinearEdgeBasis::Eval(
       MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &xiA, LinearEdgeBasis::parent_dimension },
       basis_values );
   double x1[2] = { 0.0 };
-  MapToPhysical<LinearEdgeBasis>( basis_values, edge_coordinates.view(), x1 );
+  MapToPhysical<LinearEdgeBasis>( basis_values, edge_coords.view(), x1 );
 
   const double gn = ( B0[0] - x1[0] ) * nB[0] + ( B0[1] - x1[1] ) * nB[1];
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
@@ -407,8 +407,8 @@ NodalContactData EnergyMortarCalculator<QuadratureRule>::compute_nodal_contact_d
   double x[8];
   mesh1.getFaceCoords( pair.element_id1_, x );
   mesh2.getFaceCoords( pair.element_id2_, x + 4 );
-  const auto quadrature = quadrature_rule_.generate(
-      { x, LinearEdgeCoordinates::size() }, { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() } );
+  const auto quadrature = quadrature_rule_.generate( { x, LinearEdgeCoords::size() },
+                                                     { x + LinearEdgeCoords::size(), LinearEdgeCoords::size() } );
   if ( quadrature.result.status != QuadratureStatus::Success ) reportQuadratureFailure( quadrature.result.status );
   NodalContactData result{};
   gtilde_kernel( x, quadrature.getView(), p_.residual_gap, result.g_tilde.data(), result.AI.data() );

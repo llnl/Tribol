@@ -33,17 +33,17 @@ class LinearEdgeGeometry {
   static constexpr int spatial_dimension = 2;  ///< Physical components per endpoint.
   using Point = axom::primal::Point<RealT, spatial_dimension>;    ///< Physical point on the edge.
   using Vector = axom::primal::Vector<RealT, spatial_dimension>;  ///< Directed displacement or normal.
-  using Coordinates =
+  using Coords =
       MdSpan<const RealT, vertex_count, spatial_dimension>;  ///< Input coordinates [vertex][spatial component].
 
   /**
    * @brief Copy the endpoint geometry and calculate the directed edge and squared length once.
-   * @param coordinates Current endpoints indexed by endpoint, then physical component.
+   * @param coords Current endpoints indexed by endpoint, then physical component.
    * @pre Coordinates are finite.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE explicit LinearEdgeGeometry( Coordinates coordinates )
-      : origin_( coordinates.data() ),
-        end_( coordinates.data() + spatial_dimension ),
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE explicit LinearEdgeGeometry( Coords coords )
+      : origin_( coords.data() ),
+        end_( coords.data() + spatial_dimension ),
         edge_( origin_, end_ ),
         length_squared_( edge_.dot( edge_ ) )
   {
@@ -101,13 +101,13 @@ class LinearEdgeGeometry {
 
   /**
    * @brief Evaluate a physical point directly from borrowed coordinates.
-   * @param coordinates Current edge endpoints.
+   * @param coords Current edge endpoints.
    * @param parent Normalized parent coordinate.
    * @return Interpolated or extrapolated point; no input views are retained.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static Point position( Coordinates coordinates, RealT parent )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static Point position( Coords coords, RealT parent )
   {
-    return LinearEdgeGeometry( coordinates ).position( parent );
+    return LinearEdgeGeometry( coords ).position( parent );
   }
 
  private:

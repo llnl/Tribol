@@ -58,7 +58,7 @@ struct EdgeQuadratureRuleGenerator {
     const RealT scale = 0.5 * ( bounds[1] - bounds[0] );
     const RealT center = 0.5 * ( bounds[1] + bounds[0] );
     for ( int q = 0; q < NumPoints; ++q ) {
-      result.coordinates( q, 0 ) = scale * gaussPoint( q ) + center;
+      result.coords( q, 0 ) = scale * gaussPoint( q ) + center;
       result.weights[q] = scale * gaussWeight( q );
     }
     result.result.required_point_count = NumPoints;
