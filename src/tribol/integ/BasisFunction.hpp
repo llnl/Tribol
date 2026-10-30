@@ -35,18 +35,18 @@ struct FaceElementTraits;
 namespace detail {
 
 /**
- * @brief Stores the parent dimension and adds the owning coordinate return path shared by face element traits
+ * @brief Stores the parametric dimension and adds the owning coordinate return path shared by face element traits
  *
  * @tparam Derived FaceElementTraits specialization that writes its element-specific parent coordinates
- * @tparam ParentDimension Number of coordinates in the element's parent space
+ * @tparam ParametricDimension Number of coordinates used to parameterize the element
  */
-template <typename Derived, int ParentDimension>
+template <typename Derived, int ParametricDimension>
 struct FaceElementTraitsBase {
   // Face element traits expose only compile-time data and static operations, so they do not create objects.
   FaceElementTraitsBase() = delete;
 
-  static constexpr int parent_dimension = ParentDimension;
-  using ParentCoords = MdArray<RealT, parent_dimension>;
+  static constexpr int parametric_dimension = ParametricDimension;
+  using ParentCoords = MdArray<RealT, parametric_dimension>;
 
   /**
    * @brief Return one node's parent coordinates in an owning fixed-size array
@@ -78,12 +78,12 @@ struct FaceElementTraits<EDGE, LINEAR_LAGRANGE>
    * @brief Get one node's coordinate in the normalized parent segment
    *
    * @param local_node Local node index in MeshData connectivity order
-   * @param parent_coords Output array with length parent_dimension
+   * @param parent_coords Output array with length parametric_dimension
    *
    * @pre local_node is in [0, node_count)
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void GetParentNodeCoords(
-      int local_node, MdSpan<RealT, parent_dimension> parent_coords )
+      int local_node, MdSpan<RealT, parametric_dimension> parent_coords )
   {
     parent_coords[0] = local_node == 0 ? -1.0 : 1.0;
   }
@@ -104,12 +104,12 @@ struct FaceElementTraits<EDGE, QUADRATIC_LAGRANGE>
    * The two vertices precede the midpoint to match MFEM H1 local-node ordering.
    *
    * @param local_node Local node index in MeshData connectivity order
-   * @param parent_coords Output array with length parent_dimension
+   * @param parent_coords Output array with length parametric_dimension
    *
    * @pre local_node is in [0, node_count)
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void GetParentNodeCoords(
-      int local_node, MdSpan<RealT, parent_dimension> parent_coords )
+      int local_node, MdSpan<RealT, parametric_dimension> parent_coords )
   {
     parent_coords[0] = local_node == 0 ? -1.0 : ( local_node == 1 ? 1.0 : 0.0 );
   }
@@ -128,12 +128,12 @@ struct FaceElementTraits<TRIANGLE, LINEAR_LAGRANGE>
    * @brief Get one vertex coordinate in the standard parent triangle
    *
    * @param local_node Local node index in MeshData connectivity order
-   * @param parent_coords Output array with length parent_dimension
+   * @param parent_coords Output array with length parametric_dimension
    *
    * @pre local_node is in [0, node_count)
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void GetParentNodeCoords(
-      int local_node, MdSpan<RealT, parent_dimension> parent_coords )
+      int local_node, MdSpan<RealT, parametric_dimension> parent_coords )
   {
     parent_coords[0] = local_node == 1 ? 1.0 : 0.0;
     parent_coords[1] = local_node == 2 ? 1.0 : 0.0;
@@ -153,12 +153,12 @@ struct FaceElementTraits<QUAD, LINEAR_LAGRANGE>
    * @brief Get one vertex coordinate in the normalized parent square
    *
    * @param local_node Local node index in MeshData connectivity order
-   * @param parent_coords Output array with length parent_dimension
+   * @param parent_coords Output array with length parametric_dimension
    *
    * @pre local_node is in [0, node_count)
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void GetParentNodeCoords(
-      int local_node, MdSpan<RealT, parent_dimension> parent_coords )
+      int local_node, MdSpan<RealT, parametric_dimension> parent_coords )
   {
     parent_coords[0] = local_node == 0 || local_node == 3 ? -1.0 : 1.0;
     parent_coords[1] = local_node < 2 ? -1.0 : 1.0;
@@ -181,16 +181,16 @@ struct FaceElementTraits<QUAD, QUADRATIC_LAGRANGE>
    * the local-node ordering used by MFEM H1 quadrilateral elements.
    *
    * @param local_node Local node index in MeshData connectivity order
-   * @param parent_coords Output array with length parent_dimension
+   * @param parent_coords Output array with length parametric_dimension
    *
    * @pre local_node is in [0, node_count)
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void GetParentNodeCoords(
-      int local_node, MdSpan<RealT, parent_dimension> parent_coords )
+      int local_node, MdSpan<RealT, parametric_dimension> parent_coords )
   {
-    constexpr RealT parent_node_coords[node_count][parent_dimension] = { { -1.0, -1.0 }, { 1.0, -1.0 }, { 1.0, 1.0 },
-                                                                         { -1.0, 1.0 },  { 0.0, -1.0 }, { 1.0, 0.0 },
-                                                                         { 0.0, 1.0 },   { -1.0, 0.0 }, { 0.0, 0.0 } };
+    constexpr RealT parent_node_coords[node_count][parametric_dimension] = {
+        { -1.0, -1.0 }, { 1.0, -1.0 }, { 1.0, 1.0 },  { -1.0, 1.0 }, { 0.0, -1.0 },
+        { 1.0, 0.0 },   { 0.0, 1.0 },  { -1.0, 0.0 }, { 0.0, 0.0 } };
     parent_coords[0] = parent_node_coords[local_node][0];
     parent_coords[1] = parent_node_coords[local_node][1];
   }
@@ -263,10 +263,10 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline void EvalQuadraticLagrange1DDeriv
  * @brief Evaluates the complete Lagrange basis for one supported contact face element
  *
  * Basis values and derivatives use the local-node ordering defined by FaceElementTraits. Parent derivatives are stored
- * node-major as parent_derivatives[node * parent_dimension + parent_component].
+ * node-major as parent_derivatives[node * parametric_dimension + parent_component].
  *
  * Supported specializations provide Eval(parent_coords, basis_values), where the output has node_count entries,
- * and EvalParentDerivatives(parent_coords, parent_derivatives), where the output has node_count * parent_dimension
+ * and EvalParentDerivatives(parent_coords, parent_derivatives), where the output has node_count * parametric_dimension
  * entries. Both methods use caller-provided arrays so contact kernels can evaluate bases without allocation.
  */
 template <InterfaceElementType Element, FaceOrderType Order>
@@ -274,14 +274,14 @@ struct BasisFunction;
 
 template <>
 struct BasisFunction<EDGE, LINEAR_LAGRANGE> : FaceElementTraits<EDGE, LINEAR_LAGRANGE> {
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void Eval( MdSpan<const RealT, parent_dimension> parent_coords,
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void Eval( MdSpan<const RealT, parametric_dimension> parent_coords,
                                                             MdSpan<RealT, node_count> basis_values )
   {
     detail::EvalLinearLagrange1D( parent_coords[0], basis_values );
   }
 
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void EvalParentDerivatives(
-      MdSpan<const RealT, parent_dimension>, MdSpan<RealT, node_count, parent_dimension> parent_derivatives )
+      MdSpan<const RealT, parametric_dimension>, MdSpan<RealT, node_count, parametric_dimension> parent_derivatives )
   {
     parent_derivatives( 0, 0 ) = -0.5;
     parent_derivatives( 1, 0 ) = 0.5;
@@ -290,15 +290,15 @@ struct BasisFunction<EDGE, LINEAR_LAGRANGE> : FaceElementTraits<EDGE, LINEAR_LAG
 
 template <>
 struct BasisFunction<EDGE, QUADRATIC_LAGRANGE> : FaceElementTraits<EDGE, QUADRATIC_LAGRANGE> {
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void Eval( MdSpan<const RealT, parent_dimension> parent_coords,
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void Eval( MdSpan<const RealT, parametric_dimension> parent_coords,
                                                             MdSpan<RealT, node_count> basis_values )
   {
     detail::EvalQuadraticLagrange1D( parent_coords[0], basis_values );
   }
 
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void EvalParentDerivatives(
-      MdSpan<const RealT, parent_dimension> parent_coords,
-      MdSpan<RealT, node_count, parent_dimension> parent_derivatives )
+      MdSpan<const RealT, parametric_dimension> parent_coords,
+      MdSpan<RealT, node_count, parametric_dimension> parent_derivatives )
   {
     parent_derivatives( 0, 0 ) = parent_coords[0] - 0.5;
     parent_derivatives( 1, 0 ) = parent_coords[0] + 0.5;
@@ -308,7 +308,7 @@ struct BasisFunction<EDGE, QUADRATIC_LAGRANGE> : FaceElementTraits<EDGE, QUADRAT
 
 template <>
 struct BasisFunction<TRIANGLE, LINEAR_LAGRANGE> : FaceElementTraits<TRIANGLE, LINEAR_LAGRANGE> {
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void Eval( MdSpan<const RealT, parent_dimension> parent_coords,
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void Eval( MdSpan<const RealT, parametric_dimension> parent_coords,
                                                             MdSpan<RealT, node_count> basis_values )
   {
     basis_values[0] = 1.0 - parent_coords[0] - parent_coords[1];
@@ -317,7 +317,7 @@ struct BasisFunction<TRIANGLE, LINEAR_LAGRANGE> : FaceElementTraits<TRIANGLE, LI
   }
 
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void EvalParentDerivatives(
-      MdSpan<const RealT, parent_dimension>, MdSpan<RealT, node_count, parent_dimension> parent_derivatives )
+      MdSpan<const RealT, parametric_dimension>, MdSpan<RealT, node_count, parametric_dimension> parent_derivatives )
   {
     parent_derivatives( 0, 0 ) = -1.0;
     parent_derivatives( 0, 1 ) = -1.0;
@@ -330,7 +330,7 @@ struct BasisFunction<TRIANGLE, LINEAR_LAGRANGE> : FaceElementTraits<TRIANGLE, LI
 
 template <>
 struct BasisFunction<QUAD, LINEAR_LAGRANGE> : FaceElementTraits<QUAD, LINEAR_LAGRANGE> {
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void Eval( MdSpan<const RealT, parent_dimension> parent_coords,
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void Eval( MdSpan<const RealT, parametric_dimension> parent_coords,
                                                             MdSpan<RealT, node_count> basis_values )
   {
     RealT x_values[2];
@@ -346,8 +346,8 @@ struct BasisFunction<QUAD, LINEAR_LAGRANGE> : FaceElementTraits<QUAD, LINEAR_LAG
   }
 
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void EvalParentDerivatives(
-      MdSpan<const RealT, parent_dimension> parent_coords,
-      MdSpan<RealT, node_count, parent_dimension> parent_derivatives )
+      MdSpan<const RealT, parametric_dimension> parent_coords,
+      MdSpan<RealT, node_count, parametric_dimension> parent_derivatives )
   {
     RealT x_values[2];
     RealT y_values[2];
@@ -370,7 +370,7 @@ struct BasisFunction<QUAD, LINEAR_LAGRANGE> : FaceElementTraits<QUAD, LINEAR_LAG
 
 template <>
 struct BasisFunction<QUAD, QUADRATIC_LAGRANGE> : FaceElementTraits<QUAD, QUADRATIC_LAGRANGE> {
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void Eval( MdSpan<const RealT, parent_dimension> parent_coords,
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void Eval( MdSpan<const RealT, parametric_dimension> parent_coords,
                                                             MdSpan<RealT, node_count> basis_values )
   {
     RealT x_values[3];
@@ -392,8 +392,8 @@ struct BasisFunction<QUAD, QUADRATIC_LAGRANGE> : FaceElementTraits<QUAD, QUADRAT
   }
 
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void EvalParentDerivatives(
-      MdSpan<const RealT, parent_dimension> parent_coords,
-      MdSpan<RealT, node_count, parent_dimension> parent_derivatives )
+      MdSpan<const RealT, parametric_dimension> parent_coords,
+      MdSpan<RealT, node_count, parametric_dimension> parent_derivatives )
   {
     RealT x_values[3];
     RealT y_values[3];
@@ -471,12 +471,12 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline void MapToPhysical(
  */
 template <typename Basis>
 TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline void ComputeMappingJacobian(
-    MdSpan<const RealT, Basis::node_count, Basis::parent_dimension> parent_derivatives,
+    MdSpan<const RealT, Basis::node_count, Basis::parametric_dimension> parent_derivatives,
     MdSpan<const RealT, Basis::node_count, Basis::spatial_dimension> coords,
-    MdSpan<RealT, Basis::spatial_dimension, Basis::parent_dimension> jacobian )
+    MdSpan<RealT, Basis::spatial_dimension, Basis::parametric_dimension> jacobian )
 {
   for ( int physical_component = 0; physical_component < Basis::spatial_dimension; ++physical_component ) {
-    for ( int parent_component = 0; parent_component < Basis::parent_dimension; ++parent_component ) {
+    for ( int parent_component = 0; parent_component < Basis::parametric_dimension; ++parent_component ) {
       RealT derivative = 0.0;
       for ( int node = 0; node < Basis::node_count; ++node ) {
         derivative += coords( node, physical_component ) * parent_derivatives( node, parent_component );
@@ -498,11 +498,11 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline void ComputeMappingJacobian(
  */
 template <typename Basis>
 TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline void ComputeMappingJacobian(
-    MdSpan<const RealT, Basis::parent_dimension> parent_coords,
+    MdSpan<const RealT, Basis::parametric_dimension> parent_coords,
     MdSpan<const RealT, Basis::node_count, Basis::spatial_dimension> coords,
-    MdSpan<RealT, Basis::spatial_dimension, Basis::parent_dimension> jacobian )
+    MdSpan<RealT, Basis::spatial_dimension, Basis::parametric_dimension> jacobian )
 {
-  MdArray<RealT, Basis::node_count, Basis::parent_dimension> parent_derivatives;
+  MdArray<RealT, Basis::node_count, Basis::parametric_dimension> parent_derivatives;
   Basis::EvalParentDerivatives( parent_coords, parent_derivatives.view() );
   ComputeMappingJacobian<Basis>( parent_derivatives.view(), coords, jacobian );
 }
@@ -518,9 +518,9 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline void ComputeMappingJacobian(
  */
 template <typename Basis>
 TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline RealT ComputeJacobianWeight(
-    MdSpan<const RealT, Basis::spatial_dimension, Basis::parent_dimension> jacobian )
+    MdSpan<const RealT, Basis::spatial_dimension, Basis::parametric_dimension> jacobian )
 {
-  if constexpr ( Basis::parent_dimension == 1 ) {
+  if constexpr ( Basis::parametric_dimension == 1 ) {
     RealT metric = 0.0;
     for ( int physical_component = 0; physical_component < Basis::spatial_dimension; ++physical_component ) {
       const RealT derivative = jacobian( physical_component, 0 );
@@ -554,10 +554,10 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline RealT ComputeJacobianWeight(
  */
 template <typename Basis>
 TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline RealT ComputeJacobianWeight(
-    MdSpan<const RealT, Basis::parent_dimension> parent_coords,
+    MdSpan<const RealT, Basis::parametric_dimension> parent_coords,
     MdSpan<const RealT, Basis::node_count, Basis::spatial_dimension> coords )
 {
-  MdArray<RealT, Basis::spatial_dimension, Basis::parent_dimension> jacobian;
+  MdArray<RealT, Basis::spatial_dimension, Basis::parametric_dimension> jacobian;
   ComputeMappingJacobian<Basis>( parent_coords, coords, jacobian.view() );
   return ComputeJacobianWeight<Basis>( jacobian.view() );
 }
@@ -576,7 +576,7 @@ template <typename Basis>
 TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline RealT ComputeJacobianWeight(
     RealT parent_coordinate, MdSpan<const RealT, Basis::node_count, Basis::spatial_dimension> coords )
 {
-  static_assert( Basis::parent_dimension == 1,
+  static_assert( Basis::parametric_dimension == 1,
                  "A scalar parent coordinate requires a one-dimensional parent element." );
   typename Basis::ParentCoords parent_coords;
   parent_coords[0] = parent_coordinate;
@@ -598,8 +598,8 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline RealT ComputeJacobianWeight(
  */
 template <typename Basis>
 TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline bool ComputePhysicalDerivatives(
-    MdSpan<const RealT, Basis::spatial_dimension, Basis::parent_dimension> jacobian,
-    MdSpan<const RealT, Basis::node_count, Basis::parent_dimension> parent_derivatives,
+    MdSpan<const RealT, Basis::spatial_dimension, Basis::parametric_dimension> jacobian,
+    MdSpan<const RealT, Basis::node_count, Basis::parametric_dimension> parent_derivatives,
     MdSpan<RealT, Basis::node_count, Basis::spatial_dimension> physical_derivatives )
 {
   for ( int node = 0; node < Basis::node_count; ++node ) {
@@ -609,7 +609,7 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline bool ComputePhysicalDerivatives(
   }
 
   RealT inverse_metric[4] = { 0.0, 0.0, 0.0, 0.0 };
-  if constexpr ( Basis::parent_dimension == 1 ) {
+  if constexpr ( Basis::parametric_dimension == 1 ) {
     RealT metric = 0.0;
     for ( int physical_component = 0; physical_component < Basis::spatial_dimension; ++physical_component ) {
       metric += jacobian( physical_component, 0 ) * jacobian( physical_component, 0 );
@@ -641,15 +641,15 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline bool ComputePhysicalDerivatives(
 
   for ( int node = 0; node < Basis::node_count; ++node ) {
     RealT metric_transformed_derivative[2] = { 0.0, 0.0 };
-    for ( int parent_component = 0; parent_component < Basis::parent_dimension; ++parent_component ) {
-      for ( int input_component = 0; input_component < Basis::parent_dimension; ++input_component ) {
+    for ( int parent_component = 0; parent_component < Basis::parametric_dimension; ++parent_component ) {
+      for ( int input_component = 0; input_component < Basis::parametric_dimension; ++input_component ) {
         metric_transformed_derivative[parent_component] +=
-            inverse_metric[Basis::parent_dimension * parent_component + input_component] *
+            inverse_metric[Basis::parametric_dimension * parent_component + input_component] *
             parent_derivatives( node, input_component );
       }
     }
     for ( int physical_component = 0; physical_component < Basis::spatial_dimension; ++physical_component ) {
-      for ( int parent_component = 0; parent_component < Basis::parent_dimension; ++parent_component ) {
+      for ( int parent_component = 0; parent_component < Basis::parametric_dimension; ++parent_component ) {
         physical_derivatives( node, physical_component ) +=
             jacobian( physical_component, parent_component ) * metric_transformed_derivative[parent_component];
       }

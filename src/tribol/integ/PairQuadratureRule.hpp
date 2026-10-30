@@ -29,9 +29,9 @@ concept ElementPairMapping =
     requires( const Mapping& mapping, typename Mapping::FirstGeometry::Coords element1_coords,
               typename Mapping::SecondGeometry::Coords element2_coords,
               const typename Mapping::FirstGeometry& geometry1, const typename Mapping::SecondGeometry& geometry2 ) {
-      typename std::integral_constant<int, Mapping::FirstGeometry::parent_dimension>;
-      typename std::integral_constant<int, Mapping::SecondGeometry::parent_dimension>;
-      requires( Mapping::FirstGeometry::parent_dimension > 0 && Mapping::SecondGeometry::parent_dimension > 0 );
+      typename std::integral_constant<int, Mapping::FirstGeometry::parametric_dimension>;
+      typename std::integral_constant<int, Mapping::SecondGeometry::parametric_dimension>;
+      requires( Mapping::FirstGeometry::parametric_dimension > 0 && Mapping::SecondGeometry::parametric_dimension > 0 );
       { typename Mapping::FirstGeometry( element1_coords ) } -> std::same_as<typename Mapping::FirstGeometry>;
       { typename Mapping::SecondGeometry( element2_coords ) } -> std::same_as<typename Mapping::SecondGeometry>;
       mapping.makeIntegrationSurface( geometry1, geometry2 );
@@ -51,22 +51,25 @@ concept IntegrationSurfaceRuleGeneratorFor =
     ElementPairMapping<Mapping> &&
     requires {
       typename Generator::IntegrationSurfaceRule;
-      typename std::integral_constant<int, Generator::parent_dimension>;
+      typename std::integral_constant<int, Generator::coordinate_dimension>;
       typename std::integral_constant<int, Generator::max_points>;
       typename std::integral_constant<int, Generator::polynomial_order>;
-      requires( Generator::parent_dimension == 1 || Generator::parent_dimension == 2 );
+      requires( Generator::coordinate_dimension == 1 || Generator::coordinate_dimension == 2 );
       requires( Generator::max_points > 0 );
     } &&
-    requires( const Generator& generator, const Mapping& mapping, const typename Mapping::FirstGeometry& geometry1,
-              const typename Mapping::SecondGeometry& geometry2,
-              const typename Generator::IntegrationSurfaceRule& integration_surface_rule,
-              IntegrationSurfaceRuleView<Generator::parent_dimension> integration_surface_rule_view,
-              PairQuadratureView<Mapping::FirstGeometry::parent_dimension, Mapping::SecondGeometry::parent_dimension>
-                  output ) {
+    requires(
+        const Generator& generator, const Mapping& mapping, const typename Mapping::FirstGeometry& geometry1,
+        const typename Mapping::SecondGeometry& geometry2,
+        const typename Generator::IntegrationSurfaceRule& integration_surface_rule,
+        IntegrationSurfaceRuleView<Generator::coordinate_dimension> integration_surface_rule_view,
+        PairQuadratureView<Mapping::FirstGeometry::parametric_dimension, Mapping::SecondGeometry::parametric_dimension>
+            output ) {
       {
         generator.generate( mapping.makeIntegrationSurface( geometry1, geometry2 ) )
       } -> std::same_as<typename Generator::IntegrationSurfaceRule>;
-      { integration_surface_rule.getView() } -> std::same_as<IntegrationSurfaceRuleView<Generator::parent_dimension>>;
+      {
+        integration_surface_rule.getView()
+      } -> std::same_as<IntegrationSurfaceRuleView<Generator::coordinate_dimension>>;
       QuadratureResult{ integration_surface_rule.result.status, integration_surface_rule.result.required_point_count };
       {
         mapping.mapToElements( geometry1, geometry2, integration_surface_rule_view, output )
@@ -114,7 +117,7 @@ class PairQuadratureRule {
   using IntegrationSurfaceRule = typename IntegrationSurfaceRuleGenerator::IntegrationSurfaceRule;
   /** @brief Local paired parametric coordinates and physical weights. */
   using QuadratureData =
-      PairQuadratureData<FirstGeometry::parent_dimension, SecondGeometry::parent_dimension, max_points>;
+      PairQuadratureData<FirstGeometry::parametric_dimension, SecondGeometry::parametric_dimension, max_points>;
 
   /**
    * @brief Construct the integration surface and generate quadrature points and weights in its coordinates.
@@ -145,7 +148,7 @@ class PairQuadratureRule {
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData mapIntegrationSurfaceRuleToElements(
       typename FirstGeometry::Coords element1_coords, typename SecondGeometry::Coords element2_coords,
-      IntegrationSurfaceRuleView<IntegrationSurfaceRuleGenerator::parent_dimension> integration_surface_rule ) const
+      IntegrationSurfaceRuleView<IntegrationSurfaceRuleGenerator::coordinate_dimension> integration_surface_rule ) const
   {
     QuadratureData output{};
     output.result = mapping_.mapToElements( FirstGeometry( element1_coords ), SecondGeometry( element2_coords ),
@@ -162,7 +165,7 @@ class PairQuadratureRule {
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult
   generate( typename FirstGeometry::Coords element1_coords, typename SecondGeometry::Coords element2_coords,
-            PairQuadratureView<FirstGeometry::parent_dimension, SecondGeometry::parent_dimension> output ) const
+            PairQuadratureView<FirstGeometry::parametric_dimension, SecondGeometry::parametric_dimension> output ) const
   {
     const FirstGeometry geometry1( element1_coords );
     const SecondGeometry geometry2( element2_coords );

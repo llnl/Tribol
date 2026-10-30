@@ -28,9 +28,9 @@ namespace tribol {
  */
 class LinearEdgeGeometry {
  public:
-  static constexpr int vertex_count = 2;       ///< Number of vertices defining the straight edge.
-  static constexpr int parent_dimension = 1;   ///< Components in normalized [-1, 1] parent coordinates.
-  static constexpr int spatial_dimension = 2;  ///< Physical components per endpoint.
+  static constexpr int vertex_count = 2;                          ///< Number of vertices defining the straight edge.
+  static constexpr int parametric_dimension = 1;                  ///< Number of parametric coordinate components.
+  static constexpr int spatial_dimension = 2;                     ///< Physical components per endpoint.
   using Point = axom::primal::Point<RealT, spatial_dimension>;    ///< Physical point on the edge.
   using Vector = axom::primal::Vector<RealT, spatial_dimension>;  ///< Vector in physical space.
   using Coords =

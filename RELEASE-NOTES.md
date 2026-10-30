@@ -74,6 +74,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   The calculator evaluates fields at the returned parametric coordinates on both elements.
   C++20 concepts check the mapping and generator interfaces, including whether the generator accepts the integration
   surface and the mapping accepts the generated rule's view.
+  Rule generators expose `coordinate_dimension`, the number of coordinate components per integration-surface point.
+  `LinearEdgeGeometry`, `FaceElementTraits`, and `BasisFunction` use `parametric_dimension` in place of `parent_dimension`.
   Consumers access geometry properties through the rule's `FirstGeometry` and `SecondGeometry` types. Energy Mortar
   checks both geometries' parametric dimensions, vertex counts, and spatial dimensions.
   Coordinate fields use `coords`, `geometry1_coords`, and `geometry2_coords`; geometry input views use the `Coords`

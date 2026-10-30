@@ -233,7 +233,7 @@ std::pair<double, double> EnergyMortarCalculator<QuadratureRule>::eval_gtilde_fi
 
     double basis_values[LinearEdgeBasis::node_count];
     LinearEdgeBasis::Eval(
-        MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &xiA, LinearEdgeBasis::parent_dimension },
+        MdSpan<const double, LinearEdgeBasis::parametric_dimension>{ &xiA, LinearEdgeBasis::parametric_dimension },
         basis_values );
 
     const double gn = compute_weighted_normal_gap( pair, mesh1, mesh2, xiA );
