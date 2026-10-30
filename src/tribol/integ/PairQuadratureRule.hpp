@@ -33,7 +33,7 @@ class PairQuadratureRule {
   static constexpr int parent_dimension = FirstGeometry::parent_dimension;  ///< First geometry parent components.
   static constexpr int parent_dimension2 = SecondGeometry::parent_dimension;  ///< Second geometry parent components.
   static constexpr int spatial_dimension = FirstGeometry::spatial_dimension;  ///< Physical components.
-  static constexpr int endpoint_count = FirstGeometry::endpoint_count;        ///< First geometry endpoints per element.
+  static constexpr int vertex_count = FirstGeometry::vertex_count;  ///< Number of vertices in the first geometry.
   static constexpr int points_per_base_rule = BaseQuadratureRule::points_per_base_rule;  ///< Local point capacity.
   static constexpr int polynomial_order = BaseQuadratureRule::polynomial_order;          ///< Exact reference degree.
 

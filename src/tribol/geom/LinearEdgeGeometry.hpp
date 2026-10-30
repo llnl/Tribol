@@ -28,13 +28,13 @@ namespace tribol {
  */
 class LinearEdgeGeometry {
  public:
-  static constexpr int endpoint_count = 2;     ///< Endpoints defining the straight edge.
+  static constexpr int vertex_count = 2;       ///< Number of vertices defining the straight edge.
   static constexpr int parent_dimension = 1;   ///< Components in normalized [-1, 1] parent coordinates.
   static constexpr int spatial_dimension = 2;  ///< Physical components per endpoint.
   using Point = axom::primal::Point<RealT, spatial_dimension>;    ///< Physical point on the edge.
   using Vector = axom::primal::Vector<RealT, spatial_dimension>;  ///< Directed displacement or normal.
   using Coordinates =
-      MdSpan<const RealT, endpoint_count, spatial_dimension>;  ///< Borrowed node-major input coordinates.
+      MdSpan<const RealT, vertex_count, spatial_dimension>;  ///< Input coordinates [vertex][spatial component].
 
   /**
    * @brief Copy the endpoint geometry and calculate the directed edge and squared length once.

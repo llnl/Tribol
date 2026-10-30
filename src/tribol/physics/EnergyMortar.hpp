@@ -86,7 +86,7 @@ struct FiniteDiffResult {
 /// storage. Failed quadrature data is never consumed; valid zero-point rules retain their zero contribution.
 template <typename QuadratureRule>
 class EnergyMortarCalculator {
-  static_assert( QuadratureRule::parent_dimension == 1 && QuadratureRule::endpoint_count == 2 &&
+  static_assert( QuadratureRule::parent_dimension == 1 && QuadratureRule::vertex_count == 2 &&
                      QuadratureRule::spatial_dimension == 2,
                  "Energy Mortar currently supports linear-edge rules." );
 
