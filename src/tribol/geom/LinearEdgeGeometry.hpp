@@ -32,7 +32,7 @@ class LinearEdgeGeometry {
   static constexpr int parent_dimension = 1;   ///< Components in normalized [-1, 1] parent coordinates.
   static constexpr int spatial_dimension = 2;  ///< Physical components per endpoint.
   using Point = axom::primal::Point<RealT, spatial_dimension>;    ///< Physical point on the edge.
-  using Vector = axom::primal::Vector<RealT, spatial_dimension>;  ///< Directed displacement or normal.
+  using Vector = axom::primal::Vector<RealT, spatial_dimension>;  ///< Vector in physical space.
   using Coords =
       MdSpan<const RealT, vertex_count, spatial_dimension>;  ///< Input coordinates [vertex][spatial component].
 
@@ -125,7 +125,7 @@ class LinearEdgeGeometry {
  private:
   Point origin_;          ///< Owned first endpoint of the current edge.
   Point end_;             ///< Owned second endpoint, preserving interpolation at the input coordinates.
-  Vector edge_;           ///< Owned displacement from the first endpoint to the second.
+  Vector edge_;           ///< Unnormalized edge vector from the first vertex to the second.
   RealT length_squared_;  ///< Cached squared physical edge length.
 };
 
