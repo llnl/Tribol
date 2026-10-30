@@ -2031,6 +2031,11 @@ class MfemJacobianTransfer {
 class MfemJacobianData {
  public:
   /**
+   * @brief Construct displacement-only Jacobian transfer without pressure or gap fields.
+   * @param parent_data Borrowed displacement mesh and transfer data; must outlive this object.
+   */
+  explicit MfemJacobianData( const MfemMeshData& parent_data );
+  /**
    * @brief Construct a new MfemJacobianData object
    *
    * @param parent_data MFEM data associated with displacement and velocity
@@ -2052,7 +2057,7 @@ class MfemJacobianData {
    *
    * @note @p row_final_fes and @p col_final_fes must be one of:
    * - parent FE space (parent_data_.GetParentCoords().ParFESpace())
-   * - multiplier submesh FE space (submesh_data_.GetSubmeshFESpace())
+   * - multiplier submesh FE space, when constructed with pressure/gap data
    */
   shared::ParSparseMat GetMfemJacobian( const mfem::ParFiniteElementSpace* row_final_fes,
                                         const mfem::ParFiniteElementSpace* col_final_fes,
@@ -2068,7 +2073,7 @@ class MfemJacobianData {
   const MfemJacobianPath& ParentPath() const;
 
   /**
-   * @brief Access the transfer pathway for submesh-final Jacobians
+   * @brief Access the transfer pathway for submesh-final Jacobians (requires pressure/gap data)
    *
    * This maps from the multiplier submesh true dofs into the selected dual surface DOF space (LOR if active, otherwise
    * submesh).
@@ -2086,10 +2091,10 @@ class MfemJacobianData {
      * @brief Construct a new UpdateData object
      *
      * @param parent_data MFEM data associated with displacement and velocity
-     * @param submesh_data MFEM data associated with pressure and gap
+     * @param submesh_data Optional borrowed pressure/gap data; null builds only the displacement path.
      * @param submesh2parent_vdof_list Global parent vdof for each local submesh vdof
      */
-    UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data,
+    UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData* submesh_data,
                 const mfem::Array<HYPRE_BigInt>& submesh2parent_vdof_list );
 
     /**
@@ -2123,9 +2128,9 @@ class MfemJacobianData {
   const MfemMeshData& parent_data_;
 
   /**
-   * @brief MFEM and transfer data associated with pressure and gap
+   * @brief Optional borrowed pressure/gap transfer data; null for displacement-only formulations.
    */
-  const MfemSubmeshData& submesh_data_;
+  const MfemSubmeshData* submesh_data_{ nullptr };
 
   /**
    * @brief List giving global parent vdof given the submesh vdof

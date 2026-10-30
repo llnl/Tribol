@@ -22,7 +22,8 @@
 namespace tribol {
 
 /**
- * @brief Bounds on a one-dimensional integration surface in normalized parent coordinates.
+ * @brief Bounds in the coordinates of a one-dimensional integration surface; these may be parent coordinates or
+ * physical tangent distances.
  */
 struct EdgeQuadratureInterval {
   MdArray<RealT, 2> bounds{ -1.0, 1.0 };  ///< Lower and upper bounds; default to the whole reference edge.

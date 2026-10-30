@@ -8,6 +8,14 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added an opt-in linear 2D `CommonPlaneFormulation` for host MFEM frictionless constant-penalty contact. Enable it
+  with `setMfemUseCommonPlaneFormulation()` after setting positive mesh penalties. Gaps and activation are evaluated at
+  quadrature points; Enzyme differentiates the direct residual, including geometry-dependent overlap and normals.
+  Use `getMfemContactForce()` and `getMfemDfDx()` for parent true-DOF residuals and Jacobians. The residual's negative
+  is the physical force returned by legacy Common Plane. Nodal gaps, energy, timestep calculations, quadratic geometry,
+  LOR subdivision, and device assembly are not supported by this formulation.
+- Added parent-only MFEM Jacobian transfer without pressure/gap fields, and common-line quadrature with physical line
+  weights. Existing Common Plane callers retain their implementation unless they explicitly enable the formulation.
 - Added `ProjectedEdgeSearch` to reject self-pairs, optionally reject shared-node pairs, and require opposing edge
   normals. Projected overlap is determined during quadrature generation rather than refined search; zero-width
   integration intervals produce no active penalty quadrature points.

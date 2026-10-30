@@ -29,6 +29,7 @@ set(tribol_headers
     geom/LinearEdgeGeometry.hpp
     geom/NodalNormal.hpp
     geom/SmoothedProjectedEdgeMapping.hpp
+     geom/CommonPlaneEdgeMapping.hpp
 
     integ/BasisFunction.hpp
     integ/EdgeQuadratureRule.hpp
@@ -55,6 +56,7 @@ set(tribol_headers
     physics/Mortar.hpp
     physics/EnergyMortar.hpp
     physics/EnergyMortarAdapter.hpp
+     physics/CommonPlaneFormulation.hpp
     physics/Physics.hpp
 
     search/CoarseSearch.hpp
@@ -99,6 +101,7 @@ set(tribol_sources
     physics/Mortar.cpp
     physics/EnergyMortar.cpp
     physics/EnergyMortarAdapter.cpp
+     physics/CommonPlaneFormulation.cpp
     physics/Physics.cpp
      
     search/CoarseSearchFactory.cpp

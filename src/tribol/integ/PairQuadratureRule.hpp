@@ -95,8 +95,20 @@ class PairQuadratureRule {
   generate( typename FirstGeometry::Coordinates coordinates1, typename SecondGeometry::Coordinates coordinates2,
             PairQuadratureView<parent_dimension, parent_dimension2> output ) const
   {
-    const FirstGeometry geometry1( coordinates1 );
-    const SecondGeometry geometry2( coordinates2 );
+    return generate( FirstGeometry( coordinates1 ), SecondGeometry( coordinates2 ), output );
+  }
+
+  /**
+   * @brief Generate into caller storage using geometry prepared by the pair calculation.
+   * @param geometry1 First current element geometry.
+   * @param geometry2 Second current element geometry.
+   * @param[out] output Paired parent coordinates and physical weights.
+   * @return Generation status and full count; failed output must not be consumed.
+   */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult
+  generate( const FirstGeometry& geometry1, const SecondGeometry& geometry2,
+            PairQuadratureView<parent_dimension, parent_dimension2> output ) const
+  {
     const auto reference = base_rule_.generate( mapping_.makeIntegrationSurface( geometry1, geometry2 ) );
     // Return fields explicitly so Enzyme can identify their integer types.
     if ( reference.result.status != QuadratureStatus::Success ) {
@@ -116,6 +128,20 @@ class PairQuadratureRule {
   {
     QuadratureData output{};
     output.result = generate( coordinates1, coordinates2, output.getOutputView() );
+    return output;
+  }
+
+  /**
+   * @brief Generate into local storage using already prepared element geometry.
+   * @param geometry1 First current element geometry.
+   * @param geometry2 Second current element geometry.
+   * @return Local paired quadrature; failed output must not be consumed.
+   */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData generate( const FirstGeometry& geometry1,
+                                                                   const SecondGeometry& geometry2 ) const
+  {
+    QuadratureData output{};
+    output.result = generate( geometry1, geometry2, output.getOutputView() );
     return output;
   }
 

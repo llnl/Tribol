@@ -1034,6 +1034,7 @@ void CouplingScheme::performBinning()
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
   if ( m_formulation ) {
+    if ( m_parameters.use_common_plane_formulation ) detail::validateCommonPlaneFormulation( *this );
     // The formulation performs the search and gap calculations needed to compute forces from the current mesh data.
     m_formulation->updateNodalForces( getMesh1().getView(), getMesh2().getView() );
     if ( m_formulation->hasTimeStepCalculation() ) {
@@ -1149,19 +1150,18 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 //------------------------------------------------------------------------------
 void CouplingScheme::updateContactFormulation()
 {
-  if ( m_contactMethod == ENERGY_MORTAR ) {
+  if ( m_contactMethod == ENERGY_MORTAR ||
+       ( m_contactMethod == COMMON_PLANE && m_parameters.use_common_plane_formulation ) ) {
     // Formulation construction captures search configuration, so valid current meshes are required before invoking
     // the factory. Setters that change search configuration update its derived values before rebuilding here.
     // Status 2 selects a usable but nonoptimal execution mode, so only status 1 prevents formulation construction.
     if ( !setMeshPointers() || checkExecutionModeData() == 1 ) {
-      SLIC_ERROR_ROOT( "ENERGY_MORTAR formulation configuration requires valid registered meshes." );
+      SLIC_ERROR_ROOT( "Formulation configuration requires valid registered meshes." );
       return;
     }
     this->setContactFormulation( createContactFormulation( this ) );
   } else {
-    SLIC_WARNING_ROOT(
-        "tribol::CouplingScheme::updateContactFormulation(): rebuilding is only supported for ENERGY_MORTAR at this "
-        "time." );
+    SLIC_WARNING_ROOT( "Rebuilding requires ENERGY_MORTAR or an enabled CommonPlaneFormulation." );
   }
 }
 

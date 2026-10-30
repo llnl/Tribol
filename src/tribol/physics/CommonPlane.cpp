@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "CommonPlane.hpp"
+#include <stdexcept>
 
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/Atomics.hpp"
@@ -16,6 +17,98 @@
 #include "tribol/utils/Math.hpp"
 
 namespace tribol {
+
+#ifdef TRIBOL_USE_ENZYME
+namespace {
+/** @brief Inactive configuration for differentiating a common-plane residual. @tparam BaseRule Reference rule. */
+template <typename BaseRule>
+struct CommonPlaneKernelParameters {
+  CommonPlaneQuadratureRule<BaseRule> quadrature_rule;  ///< Owned generator configuration.
+  RealT penalty;                                        ///< Effective stiffness.
+  RealT residual_gap;                                   ///< Constraint offset.
+};
+
+/**
+ * @brief Report quadrature failure without differentiating exception handling.
+ * @param status Failed generation status.
+ * @throws std::length_error Output capacity is insufficient.
+ * @throws std::invalid_argument Geometry is invalid.
+ */
+[[noreturn, gnu::noinline]] MFEM_ENZYME_INACTIVE void reportCommonPlaneQuadratureFailure( QuadratureStatus status )
+{
+  if ( status == QuadratureStatus::InsufficientCapacity )
+    throw std::length_error( "Insufficient common-plane quadrature storage." );
+  throw std::invalid_argument( "Invalid common-plane pair geometry." );
+}
+
+/**
+ * @brief Expose the residual array to Enzyme with configuration held constant.
+ * @tparam BaseRule Reference Gauss rule.
+ * @param coordinates Active node-major coordinates of both elements.
+ * @param parameters Inactive generator and stiffness settings.
+ * @param[out] residual Initialized pair residual entries.
+ */
+template <typename BaseRule>
+void commonPlaneResidualKernel( const RealT* coordinates, const CommonPlaneKernelParameters<BaseRule>* parameters,
+                                RealT* residual )
+{
+  constexpr int edge_size = LinearEdgeGeometry::endpoint_count * LinearEdgeGeometry::spatial_dimension;
+  const auto result = computeCommonPlaneResidual<BaseRule>(
+      { coordinates, edge_size }, { coordinates + edge_size, edge_size }, parameters->quadrature_rule,
+      parameters->penalty, parameters->residual_gap );
+  if ( result.quadrature_result.status != QuadratureStatus::Success )
+    reportCommonPlaneQuadratureFailure( result.quadrature_result.status );
+  for ( int i = 0; i < CommonPlaneResidualData::coordinate_count; ++i ) residual[i] = result.residual[i];
+}
+}  // namespace
+
+template <typename BaseRule>
+CommonPlanePairData computeCommonPlanePair( LinearEdgeGeometry::Coordinates coordinates1,
+                                            LinearEdgeGeometry::Coordinates coordinates2,
+                                            const CommonPlaneQuadratureRule<BaseRule>& quadrature_rule, RealT penalty,
+                                            RealT residual_gap )
+{
+  if ( !std::isfinite( penalty ) || penalty <= 0.0 || !std::isfinite( residual_gap ) || residual_gap < 0.0 ) {
+    throw std::invalid_argument( "Common-plane penalty must be positive and residual gap nonnegative and finite." );
+  }
+  const auto primal =
+      computeCommonPlaneResidual<BaseRule>( coordinates1, coordinates2, quadrature_rule, penalty, residual_gap );
+  if ( primal.quadrature_result.status != QuadratureStatus::Success )
+    reportCommonPlaneQuadratureFailure( primal.quadrature_result.status );
+  CommonPlanePairData result{};
+  result.residual = primal.residual;
+  result.quadrature_result = primal.quadrature_result;
+  result.has_active_points = primal.has_active_points;
+  if ( !primal.has_active_points ) return result;
+  constexpr int count = CommonPlaneResidualData::coordinate_count;
+  constexpr int edge_size = count / CommonPlaneResidualData::pair_size;
+  MdArray<RealT, count> coordinates{};
+  for ( int i = 0; i < edge_size; ++i ) {
+    coordinates[i] = coordinates1[i];
+    coordinates[edge_size + i] = coordinates2[i];
+  }
+  const CommonPlaneKernelParameters<BaseRule> parameters{ quadrature_rule, penalty, residual_gap };
+  for ( int column = 0; column < count; ++column ) {
+    MdArray<RealT, count> seed{}, residual{}, derivative{};
+    seed[column] = 1.0;
+    __enzyme_fwddiff<void>( (void*)commonPlaneResidualKernel<BaseRule>, TRIBOL_ENZYME_DUP, coordinates.data(),
+                            seed.data(), TRIBOL_ENZYME_CONST, (const void*)&parameters, TRIBOL_ENZYME_DUP,
+                            residual.data(), derivative.data() );
+    for ( int row = 0; row < count; ++row ) result.jacobian( row, column ) = derivative[row];
+  }
+  return result;
+}
+
+template CommonPlanePairData computeCommonPlanePair<EdgeQuadratureRule<1>>(
+    LinearEdgeGeometry::Coordinates, LinearEdgeGeometry::Coordinates,
+    const CommonPlaneQuadratureRule<EdgeQuadratureRule<1>>&, RealT, RealT );
+template CommonPlanePairData computeCommonPlanePair<EdgeQuadratureRule<2>>(
+    LinearEdgeGeometry::Coordinates, LinearEdgeGeometry::Coordinates,
+    const CommonPlaneQuadratureRule<EdgeQuadratureRule<2>>&, RealT, RealT );
+template CommonPlanePairData computeCommonPlanePair<EdgeQuadratureRule<3>>(
+    LinearEdgeGeometry::Coordinates, LinearEdgeGeometry::Coordinates,
+    const CommonPlaneQuadratureRule<EdgeQuadratureRule<3>>&, RealT, RealT );
+#endif
 
 TRIBOL_HOST_DEVICE RealT ComputeGapRatePressure( CommonPlanePair& plane, const MeshData::Viewer& m1,
                                                  const MeshData::Viewer& m2, RealT element_penalty,

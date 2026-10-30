@@ -59,6 +59,20 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
                                  ExecutionMode exec_mode = ExecutionMode::Sequential );
 
 /**
+ * @brief Opt in to a direct common-plane residual and Enzyme Jacobian, or restore legacy Common Plane.
+ * @param cs_id MFEM COMMON_PLANE coupling scheme with positive constant penalties already configured.
+ * @param enabled True selects the formulation; false restores the legacy response path.
+ * @throws std::invalid_argument Unsupported method, geometry, penalty, or execution settings; selection is unchanged.
+ * @throws std::runtime_error Enzyme support is unavailable.
+ *
+ * Supports linear 2D MFEM frictionless penalty contact without LOR subdivision on host. Use getMfemContactForce()
+ * and getMfemDfDx() after update(), rather than getMfemResponse(). The returned vector is a contact residual; its
+ * negative is the physical force returned by legacy Common Plane. Nodal gaps, energy, and timestep output are
+ * unsupported.
+ */
+void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled );
+
+/**
  * @brief Sets factor of refinement in low-order refined (LOR) representation of
  * the contact mesh
  *
@@ -240,9 +254,10 @@ void registerMfemReferenceCoords( IndexT cs_id, const mfem::ParGridFunction& ref
 void getMfemResponse( IndexT cs_id, mfem::Vector& r );
 
 /**
- * @brief Returns the true-dof contact force vector
+ * @brief Return the assembled contact residual on parent true DOFs
  *
- * @note This returns a true-dof vector (i.e. values on shared DOFs are already consistent across ranks).
+ * @note Values on shared DOFs are already consistent across ranks. For CommonPlaneFormulation, the negative of
+ * this residual is the physical force returned by the legacy getMfemResponse() path.
  *
  * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
  * @pre Redecomp mesh must be created and up to date by calling updateMfemParallelDecomposition()
@@ -323,7 +338,8 @@ void getMfemGap( IndexT cs_id, mfem::Vector& g );
 /**
  * @brief Returns the true-dof contact gap vector
  *
- * @note This returns a true-dof vector (i.e. values on shared DOFs are already consistent across ranks).
+ * @note Values on shared DOFs are already consistent across ranks. For CommonPlaneFormulation, the negative of
+ * this residual is the physical force returned by the legacy getMfemResponse() path.
  *
  * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
  * @pre Redecomp mesh must be created and up to date by calling updateMfemParallelDecomposition()

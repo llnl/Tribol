@@ -506,8 +506,9 @@ struct Parameters {
   bool auto_contact_check = false;  ///! True if auto-contact checks should be enabled
 
   EnforcementLocation enforcement_location =
-      EnforcementLocation::QuadraturePoint;  ///! Defaults to quadrature-point enforcement
-  int quadrature_order = 5;  ///! Requested reference polynomial degree; ENERGY_MORTAR defaults to three points
+      EnforcementLocation::QuadraturePoint;   ///! Defaults to quadrature-point enforcement
+  bool use_common_plane_formulation = false;  ///< Opt in to host MFEM common-plane residual/Jacobian assembly.
+  int quadrature_order = 5;  ///! Requested reference polynomial degree; formulations default to three points
   RealT residual_gap = 0.0;  ///! Nonnegative gap constraint; positive values enforce separation
 };
 
