@@ -142,14 +142,16 @@ enum class KernelOutput
 
 // Wrap the fixed-quadrature kernel as a scalar-valued function for Enzyme.
 template <typename QuadratureRule, KernelOutput Output>
-static void kernel_out( const double* x, const void* reference_void, const void* kp_void, double* out )
+static void kernel_out( const double* x, const void* integration_surface_rule_void, const void* kp_void, double* out )
 {
   const auto* kp = static_cast<const KernelParams<QuadratureRule>*>( kp_void );
-  const auto* reference = static_cast<const typename QuadratureRule::IntegrationSurfaceQuadrature*>( reference_void );
-  if ( reference->result.status != QuadratureStatus::Success ) reportQuadratureFailure( reference->result.status );
-  const auto quadrature = kp->quadrature_rule.mapIntegrationSurfaceQuadratureToElements(
+  const auto* integration_surface_rule =
+      static_cast<const typename QuadratureRule::IntegrationSurfaceRule*>( integration_surface_rule_void );
+  if ( integration_surface_rule->result.status != QuadratureStatus::Success )
+    reportQuadratureFailure( integration_surface_rule->result.status );
+  const auto quadrature = kp->quadrature_rule.mapIntegrationSurfaceRuleToElements(
       { x, LinearEdgeCoordinates::size() }, { x + LinearEdgeCoordinates::size(), LinearEdgeCoordinates::size() },
-      reference->getView() );
+      integration_surface_rule->getView() );
   if ( quadrature.result.status != QuadratureStatus::Success ) reportQuadratureFailure( quadrature.result.status );
   double gt[2];
   double A_out[2];
@@ -168,7 +170,7 @@ static void kernel_out( const double* x, const void* reference_void, const void*
 
 // Differentiate the selected fixed-quadrature scalar kernel with respect to the 8 endpoint coordinates.
 template <typename QuadratureRule, KernelOutput Output>
-void grad_kernel( const double* x, const typename QuadratureRule::IntegrationSurfaceQuadrature* reference,
+void grad_kernel( const double* x, const typename QuadratureRule::IntegrationSurfaceRule* integration_surface_rule,
                   const KernelParams<QuadratureRule>* kp, double* dout_du )
 {
   double dx[8] = { 0.0 };
@@ -177,7 +179,8 @@ void grad_kernel( const double* x, const typename QuadratureRule::IntegrationSur
 
   // Seed the scalar output with 1.0 so Enzyme accumulates dOutput/dx into dx.
   __enzyme_autodiff<void>( (void*)kernel_out<QuadratureRule, Output>, enzyme_dup, x, dx, enzyme_const,
-                           (const void*)reference, enzyme_const, (const void*)kp, enzyme_dup, &out, &dout );
+                           (const void*)integration_surface_rule, enzyme_const, (const void*)kp, enzyme_dup, &out,
+                           &dout );
 
   for ( int i = 0; i < 8; ++i ) dout_du[i] = dx[i];
 }
@@ -328,7 +331,7 @@ void d2_qp_penalty_kernel( const double* x, const KernelParams<QuadratureRule>* 
 
 // Compute the Hessian of the selected fixed-quadrature scalar kernel.
 template <typename QuadratureRule, KernelOutput Output>
-void d2_kernel_quad( const double* x, const typename QuadratureRule::IntegrationSurfaceQuadrature* reference,
+void d2_kernel_quad( const double* x, const typename QuadratureRule::IntegrationSurfaceRule* integration_surface_rule,
                      const KernelParams<QuadratureRule>* kp, double* H )
 {
   for ( int col = 0; col < 8; ++col ) {
@@ -339,7 +342,8 @@ void d2_kernel_quad( const double* x, const typename QuadratureRule::Integration
 
     // Differentiate the gradient in coordinate direction col to form one Hessian column
     __enzyme_fwddiff<void>( (void*)grad_kernel<QuadratureRule, Output>, enzyme_dup, x, dx, enzyme_const,
-                            (const void*)reference, enzyme_const, (const void*)kp, enzyme_dup, grad, dgrad );
+                            (const void*)integration_surface_rule, enzyme_const, (const void*)kp, enzyme_dup, grad,
+                            dgrad );
     for ( int row = 0; row < 8; ++row ) H[row * 8 + col] = dgrad[row];
   }
 }
@@ -348,17 +352,19 @@ void d2_kernel_quad( const double* x, const typename QuadratureRule::Integration
 
 // Integration-surface quadrature points and weights are held fixed when differentiating the element calculations.
 template <typename QuadratureRule>
-typename EnergyMortarCalculator<QuadratureRule>::IntegrationSurfaceQuadrature
-EnergyMortarCalculator<QuadratureRule>::constructIntegrationSurfaceQuadrature( const InterfacePair& pair,
-                                                                               const MeshData::Viewer& mesh1,
-                                                                               const MeshData::Viewer& mesh2 ) const
+typename EnergyMortarCalculator<QuadratureRule>::IntegrationSurfaceRule
+EnergyMortarCalculator<QuadratureRule>::generateIntegrationSurfaceRule( const InterfacePair& pair,
+                                                                        const MeshData::Viewer& mesh1,
+                                                                        const MeshData::Viewer& mesh2 ) const
 {
   LinearEdgeCoordinates coords1, coords2;
   mesh1.getFaceCoords( pair.element_id1_, coords1.data() );
   mesh2.getFaceCoords( pair.element_id2_, coords2.data() );
-  const auto reference = quadrature_rule_.generateIntegrationSurfaceQuadrature( coords1.view(), coords2.view() );
-  if ( reference.result.status != QuadratureStatus::Success ) reportQuadratureFailure( reference.result.status );
-  return reference;
+  const auto integration_surface_rule =
+      quadrature_rule_.generateIntegrationSurfaceRule( coords1.view(), coords2.view() );
+  if ( integration_surface_rule.result.status != QuadratureStatus::Success )
+    reportQuadratureFailure( integration_surface_rule.result.status );
+  return integration_surface_rule;
 }
 
 // Evaluate the weighted normal gap at local coordinate xiA on edge A.
@@ -446,9 +452,9 @@ void EnergyMortarCalculator<QuadratureRule>::grad_gtilde( const InterfacePair& p
   const KernelParams<QuadratureRule> kp{ quadrature_rule_, p_.k, p_.residual_gap };
   if ( !p_.enzyme_quadrature ) {
     // Hold the quadrature rule fixed while differentiating the gap kernel.
-    const auto reference = constructIntegrationSurfaceQuadrature( pair, mesh1, mesh2 );
-    grad_kernel<QuadratureRule, KernelOutput::GTILDE1>( x, &reference, &kp, dg1_du );
-    grad_kernel<QuadratureRule, KernelOutput::GTILDE2>( x, &reference, &kp, dg2_du );
+    const auto integration_surface_rule = generateIntegrationSurfaceRule( pair, mesh1, mesh2 );
+    grad_kernel<QuadratureRule, KernelOutput::GTILDE1>( x, &integration_surface_rule, &kp, dg1_du );
+    grad_kernel<QuadratureRule, KernelOutput::GTILDE2>( x, &integration_surface_rule, &kp, dg2_du );
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
@@ -482,9 +488,9 @@ void EnergyMortarCalculator<QuadratureRule>::grad_trib_area( const InterfacePair
   const KernelParams<QuadratureRule> kp{ quadrature_rule_, p_.k, p_.residual_gap };
   if ( !p_.enzyme_quadrature ) {
     // Hold the quadrature rule fixed while differentiating the area kernel.
-    const auto reference = constructIntegrationSurfaceQuadrature( pair, mesh1, mesh2 );
-    grad_kernel<QuadratureRule, KernelOutput::A1>( x, &reference, &kp, dA1_dx );
-    grad_kernel<QuadratureRule, KernelOutput::A2>( x, &reference, &kp, dA2_dx );
+    const auto integration_surface_rule = generateIntegrationSurfaceRule( pair, mesh1, mesh2 );
+    grad_kernel<QuadratureRule, KernelOutput::A1>( x, &integration_surface_rule, &kp, dA1_dx );
+    grad_kernel<QuadratureRule, KernelOutput::A2>( x, &integration_surface_rule, &kp, dA2_dx );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
     grad_kernel_enzyme<QuadratureRule, KernelOutput::A1>( x, &kp, dA1_dx );
@@ -515,9 +521,9 @@ void EnergyMortarCalculator<QuadratureRule>::d2_g2tilde( const InterfacePair& pa
   const KernelParams<QuadratureRule> kp{ quadrature_rule_, p_.k, p_.residual_gap };
   if ( !p_.enzyme_quadrature ) {
     // Hold the quadrature rule fixed while differentiating the gap gradients.
-    const auto reference = constructIntegrationSurfaceQuadrature( pair, mesh1, mesh2 );
-    d2_kernel_quad<QuadratureRule, KernelOutput::GTILDE1>( x, &reference, &kp, d2g1_d2u );
-    d2_kernel_quad<QuadratureRule, KernelOutput::GTILDE2>( x, &reference, &kp, d2g2_d2u );
+    const auto integration_surface_rule = generateIntegrationSurfaceRule( pair, mesh1, mesh2 );
+    d2_kernel_quad<QuadratureRule, KernelOutput::GTILDE1>( x, &integration_surface_rule, &kp, d2g1_d2u );
+    d2_kernel_quad<QuadratureRule, KernelOutput::GTILDE2>( x, &integration_surface_rule, &kp, d2g2_d2u );
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
@@ -555,9 +561,9 @@ void EnergyMortarCalculator<QuadratureRule>::compute_d2A_d2u( const InterfacePai
   const KernelParams<QuadratureRule> kp{ quadrature_rule_, p_.k, p_.residual_gap };
   if ( !p_.enzyme_quadrature ) {
     // Hold the quadrature rule fixed while differentiating the area gradients.
-    const auto reference = constructIntegrationSurfaceQuadrature( pair, mesh1, mesh2 );
-    d2_kernel_quad<QuadratureRule, KernelOutput::A1>( x, &reference, &kp, d2A1_d2u );
-    d2_kernel_quad<QuadratureRule, KernelOutput::A2>( x, &reference, &kp, d2A2_d2u );
+    const auto integration_surface_rule = generateIntegrationSurfaceRule( pair, mesh1, mesh2 );
+    d2_kernel_quad<QuadratureRule, KernelOutput::A1>( x, &integration_surface_rule, &kp, d2A1_d2u );
+    d2_kernel_quad<QuadratureRule, KernelOutput::A2>( x, &integration_surface_rule, &kp, d2A2_d2u );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
     d2_kernel<QuadratureRule, KernelOutput::A1>( x, &kp, d2A1_d2u );
@@ -606,9 +612,9 @@ QuadraturePointPenaltyData EnergyMortarCalculator<QuadratureRule>::compute_quadr
   return result;
 }
 
-template class EnergyMortarCalculator<PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<1>>>;
-template class EnergyMortarCalculator<PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<2>>>;
-template class EnergyMortarCalculator<PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<3>>>;
+template class EnergyMortarCalculator<PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>>;
+template class EnergyMortarCalculator<PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>>;
+template class EnergyMortarCalculator<PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>>;
 
 #endif  // TRIBOL_USE_ENZYME
 

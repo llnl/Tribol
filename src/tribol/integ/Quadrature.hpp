@@ -58,7 +58,7 @@ struct QuadratureResult {
  * @tparam CoordinateDimension Number of coordinate components stored for each integration-surface quadrature point.
  */
 template <int CoordinateDimension>
-struct IntegrationSurfaceQuadratureView {
+struct IntegrationSurfaceRuleView {
   static_assert( CoordinateDimension == 1 || CoordinateDimension == 2 );
   ArrayViewT<const RealT, 2> coordinates;  ///< Borrowed integration-surface coordinates [point][component].
   ArrayViewT<const RealT> weights;         ///< Borrowed weights in integration-surface coordinates.
@@ -78,8 +78,8 @@ struct IntegrationSurfaceQuadratureView {
    * @param coordinates Integration-surface coordinate array [point][CoordinateDimension].
    * @param weights Weights in the integration surface's coordinates, one per point.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceQuadratureView( ArrayViewT<const RealT, 2> coordinates,
-                                                                            ArrayViewT<const RealT> weights )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceRuleView( ArrayViewT<const RealT, 2> coordinates,
+                                                                      ArrayViewT<const RealT> weights )
       : coordinates( coordinates ), weights( weights )
   {
     assert( coordinates.shape()[0] == weights.size() && coordinates.shape()[1] == CoordinateDimension );
@@ -96,7 +96,7 @@ struct IntegrationSurfaceQuadratureView {
  * @tparam Capacity Number of points available in the fixed-size backing arrays.
  */
 template <int CoordinateDimension, IndexT Capacity>
-struct IntegrationSurfaceQuadratureData {
+struct IntegrationSurfaceRule {
   MdArray<RealT, Capacity, CoordinateDimension> coordinates{};  ///< Integration-surface coordinates [point][component].
   MdArray<RealT, Capacity> weights{};                           ///< Owned weights in integration-surface coordinates.
   QuadratureResult result{};                                    ///< Completion status and number of populated points.
@@ -108,7 +108,7 @@ struct IntegrationSurfaceQuadratureData {
    *
    * @return Read-only points and weights valid while this object remains alive.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceQuadratureView<CoordinateDimension> getView() const&
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceRuleView<CoordinateDimension> getView() const&
   {
     assert( result.status == QuadratureStatus::Success );
     assert( result.required_point_count >= 0 && result.required_point_count <= Capacity );
@@ -120,7 +120,7 @@ struct IntegrationSurfaceQuadratureData {
   /**
    * @brief Prevent borrowing integration-surface quadrature from a temporary owner.
    */
-  IntegrationSurfaceQuadratureView<CoordinateDimension> getView() const&& = delete;
+  IntegrationSurfaceRuleView<CoordinateDimension> getView() const&& = delete;
 };
 
 /**

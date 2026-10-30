@@ -70,8 +70,8 @@ FiniteDiffResult EnergyMortarCalculator<QuadratureRule>::validate_g_tilde( const
   auto viewer1 = mesh1.getView();
   auto viewer2 = mesh2.getView();
 
-  IntegrationSurfaceQuadrature qp0{};
-  if ( !p_.enzyme_quadrature ) qp0 = constructIntegrationSurfaceQuadrature( pair, viewer1, viewer2 );
+  IntegrationSurfaceRule qp0{};
+  if ( !p_.enzyme_quadrature ) qp0 = generateIntegrationSurfaceRule( pair, viewer1, viewer2 );
 
   auto [g1_base, g2_base] = eval_gtilde( pair, viewer1, viewer2 );
 
@@ -217,7 +217,7 @@ FiniteDiffResult EnergyMortarCalculator<QuadratureRule>::validate_g_tilde( const
 template <typename QuadratureRule>
 std::pair<double, double> EnergyMortarCalculator<QuadratureRule>::eval_gtilde_fixed_qp(
     const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-    const IntegrationSurfaceQuadrature& qp_fixed ) const
+    const IntegrationSurfaceRule& qp_fixed ) const
 {
   double A0[2], A1[2];
   endpoints( mesh1, pair.element_id1_, A0, A1 );
@@ -297,8 +297,8 @@ FiniteDiffResult EnergyMortarCalculator<QuadratureRule>::validate_hessian( const
     }
   }
 
-  IntegrationSurfaceQuadrature qp0{};
-  if ( !p_.enzyme_quadrature ) qp0 = constructIntegrationSurfaceQuadrature( pair, viewer1, viewer2 );
+  IntegrationSurfaceRule qp0{};
+  if ( !p_.enzyme_quadrature ) qp0 = generateIntegrationSurfaceRule( pair, viewer1, viewer2 );
 
   auto eval_from_offsets = [&]( const std::array<double, 8>& du ) -> std::pair<double, double> {
     auto x1 = x1_orig;
@@ -393,7 +393,7 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
   params.k = 3.0;
   params.enzyme_quadrature = true;
 
-  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<3>> quadrature_rule{};
+  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>> quadrature_rule{};
   EnergyMortarCalculator evaluator( params, quadrature_rule );
   const auto result =
       evaluator.compute_quadrature_point_penalty_data( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView() );
@@ -420,7 +420,7 @@ TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
   params.k = 3.0;
   params.enzyme_quadrature = true;
 
-  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<3>> quadrature_rule{};
+  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>> quadrature_rule{};
   EnergyMortarCalculator evaluator( params, quadrature_rule );
   const auto result =
       evaluator.compute_quadrature_point_penalty_data( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView() );
@@ -451,7 +451,7 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
 
   double gap_without_residual[2] = { 0.0, 0.0 };
   double tributary_area_without_residual[2] = { 0.0, 0.0 };
-  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<3>> quadrature_rule{};
+  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>> quadrature_rule{};
   EnergyMortarCalculator evaluator_without_residual( params, quadrature_rule );
   evaluator_without_residual.compute_gtilde_and_area( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView(),
                                                       gap_without_residual, tributary_area_without_residual );
@@ -488,7 +488,7 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
   params.k = 3.0;
   params.enzyme_quadrature = true;
 
-  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<3>> quadrature_rule{};
+  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>> quadrature_rule{};
   EnergyMortarCalculator evaluator_without_residual( params, quadrature_rule );
   const auto inactive = evaluator_without_residual.compute_quadrature_point_penalty_data(
       InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView() );
@@ -529,7 +529,7 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   params.enzyme_quadrature = true;
   params.residual_gap = GetParam();
 
-  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<3>> quadrature_rule{};
+  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>> quadrature_rule{};
   EnergyMortarCalculator evaluator( params, quadrature_rule );
   const InterfacePair pair{ 0, 0 };
   const auto analytical = evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() );
@@ -628,7 +628,7 @@ TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
   params_.enzyme_quadrature = true;  // use the non-Enzyme quadrature path
   params_.residual_gap = GetParam();
 
-  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<3>> quadrature_rule{};
+  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>> quadrature_rule{};
   EnergyMortarCalculator evaluator_( params_, quadrature_rule );
 
   // ── Run validation ───────────────────────────────────────────────────────
@@ -687,7 +687,7 @@ TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
   params_.enzyme_quadrature = true;
   params_.residual_gap = GetParam();
 
-  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<3>> quadrature_rule{};
+  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>> quadrature_rule{};
   EnergyMortarCalculator evaluator_( params_, quadrature_rule );
 
   // ── Run validation ───────────────────────────────────────────────────────
@@ -731,7 +731,7 @@ TEST( EnergyMortarCoordinates, disjoint_projected_intervals_have_zero_contributi
   MeshData mesh1( 0, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
   MeshData mesh2( 1, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
   const ContactParams params{ 1.0, true, 0.0 };
-  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<3>> quadrature_rule;
+  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>> quadrature_rule;
   const EnergyMortarCalculator evaluator( params, quadrature_rule );
   NodalContactData nodal{};
   evaluator.compute_gtilde_and_area( { 0, 0 }, mesh1.getView(), mesh2.getView(), nodal.g_tilde.data(),
@@ -755,7 +755,7 @@ TEST( EnergyMortarCoordinates, cooriented_pairs_have_zero_contribution_without_s
   const IndexT connectivity[] = { 0, 1 };
   MeshData mesh1( 0, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
   MeshData mesh2( 1, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
-  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<3>> quadrature_rule;
+  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>> quadrature_rule;
   // A positive residual gap must not turn an excluded pair into an active constraint.
   for ( const RealT residual_gap : { 0.0, 0.15 } ) {
     SCOPED_TRACE( residual_gap );
@@ -779,7 +779,7 @@ TEST( EnergyMortarCoordinates, cooriented_pairs_have_zero_contribution_without_s
 TEST( EnergyMortarCoordinates, rejects_degenerate_geometry_before_consuming_quadrature )
 {
   const auto check = []<int PointCount>() {
-    const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<PointCount>> quadrature_rule;
+    const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<PointCount>> quadrature_rule;
     constexpr int coordinate_count = QuadraturePointPenaltyData::num_force_dofs;
     constexpr int stiffness_count = QuadraturePointPenaltyData::num_stiffness_entries;
     // Test coincident endpoints and a nonzero edge below the mapping's accepted length.
@@ -834,7 +834,7 @@ TEST( EnergyMortarGap, calculates_normal_distance_for_short_valid_edges )
   RealT x2[] = { edge_length, 0.0 }, y2[] = { separation, separation };
   MeshData mesh1( 0, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
   MeshData mesh2( 1, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
-  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<3>> quadrature_rule{};
+  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>> quadrature_rule{};
   const EnergyMortarCalculator calculator( ContactParams{ 1.0, true, 0.0 }, quadrature_rule );
   NodalContactData response{};
   calculator.compute_gtilde_and_area( { 0, 0 }, mesh1.getView(), mesh2.getView(), response.g_tilde.data(),
@@ -849,7 +849,7 @@ TEST( EnergyMortarGap, calculates_normal_distance_for_short_valid_edges )
 template <int Count>
 void checkSelectedRuleDerivatives( bool varying )
 {
-  using QuadratureRule = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRule<Count>>;
+  using QuadratureRule = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<Count>>;
   using Calculator = EnergyMortarCalculator<QuadratureRule>;
   static_assert( !std::is_constructible_v<Calculator, const ContactParams&, QuadratureRule&&>,
                  "A calculator must not borrow a temporary quadrature-rule object." );
@@ -872,21 +872,25 @@ void checkSelectedRuleDerivatives( bool varying )
                                         LinearEdgePointView{ baseline.data() + 2, 2 } };
   const LinearEdgeCoordinates initial2{ LinearEdgePointView{ baseline.data() + 4, 2 },
                                         LinearEdgePointView{ baseline.data() + 6, 2 } };
-  const auto reference = quadrature_rule.generateIntegrationSurfaceQuadrature( initial1.view(), initial2.view() );
+  const auto integration_surface_rule =
+      quadrature_rule.generateIntegrationSurfaceRule( initial1.view(), initial2.view() );
   const auto evaluate = [&]() {
     std::array<double, 4> values{};
     if ( varying ) {
       calculator.compute_gtilde_and_area( { 0, 0 }, mesh1.getView(), mesh2.getView(), values.data(),
                                           values.data() + 2 );
     } else {
-      const auto gaps = calculator.eval_gtilde_fixed_qp( { 0, 0 }, mesh1.getView(), mesh2.getView(), reference );
+      const auto gaps =
+          calculator.eval_gtilde_fixed_qp( { 0, 0 }, mesh1.getView(), mesh2.getView(), integration_surface_rule );
       values[0] = gaps.first;
       values[1] = gaps.second;
       const double dx = x1[1] - x1[0], dy = y1[1] - y1[0];
       const double jacobian = 0.5 * std::sqrt( dx * dx + dy * dy );
       for ( int q = 0; q < Count; ++q ) {
-        values[2] += 0.5 * ( 1.0 - reference.coordinates( q, 0 ) ) * reference.weights[q] * jacobian;
-        values[3] += 0.5 * ( 1.0 + reference.coordinates( q, 0 ) ) * reference.weights[q] * jacobian;
+        values[2] += 0.5 * ( 1.0 - integration_surface_rule.coordinates( q, 0 ) ) *
+                     integration_surface_rule.weights[q] * jacobian;
+        values[3] += 0.5 * ( 1.0 + integration_surface_rule.coordinates( q, 0 ) ) *
+                     integration_surface_rule.weights[q] * jacobian;
       }
     }
     return values;

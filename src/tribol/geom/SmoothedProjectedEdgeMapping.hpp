@@ -73,31 +73,30 @@ struct SmoothedProjectedEdgeMapping {
    * current geometry contributes zero points even when the supplied integration-surface quadrature is nonempty.
    * @param edge1 Current non-mortar integration edge.
    * @param edge2 Current mortar projection edge.
-   * @param reference Quadrature points and weights expressed in edge1's parent coordinate.
+   * @param integration_surface_rule Quadrature points and weights expressed in edge1's parent coordinate.
    * @param [out] output Parent points on both elements and physical integration weights.
    * @return Success with the initialized count, InsufficientCapacity with the full count, or InvalidGeometry with zero
    * points. Invalid geometry and insufficient capacity leave output untouched. Valid zero measure returns zero points.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult mapToElements( const FirstGeometry& edge1,
-                                                                          const SecondGeometry& edge2,
-                                                                          IntegrationSurfaceQuadratureView<1> reference,
-                                                                          PairQuadratureView<1, 1> output ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult
+  mapToElements( const FirstGeometry& edge1, const SecondGeometry& edge2,
+                 IntegrationSurfaceRuleView<1> integration_surface_rule, PairQuadratureView<1, 1> output ) const
   {
     if ( edge1.squaredLength() < minimum_edge_length_squared_ ||
          edge2.squaredLength() < minimum_edge_length_squared_ ) {
       return { QuadratureStatus::InvalidGeometry, 0 };
     }
     if ( normalsAreCooriented( edge1, edge2 ) ) return { QuadratureStatus::Success, 0 };
-    const IndexT count = reference.numberOfPoints();
+    const IndexT count = integration_surface_rule.numberOfPoints();
     if ( output.capacity() < count ) return { QuadratureStatus::InsufficientCapacity, count };
     if ( count == 0 ) return { QuadratureStatus::Success, 0 };
     const RealT jacobian = edge1.jacobian();
     for ( IndexT q = 0; q < count; ++q ) {
-      const RealT parent1 = reference.coordinates( q, 0 );
+      const RealT parent1 = integration_surface_rule.coordinates( q, 0 );
       const auto physical = edge1.position( parent1 );
       output.geometry1_coordinates( q, 0 ) = parent1;
       output.geometry2_coordinates( q, 0 ) = edge2.parentCoordinate( physical );
-      output.weights[q] = reference.weights[q] * jacobian;
+      output.weights[q] = integration_surface_rule.weights[q] * jacobian;
     }
     return { QuadratureStatus::Success, count };
   }

@@ -18,15 +18,15 @@ namespace tribol {
  * @brief Generate paired parent points and physical weights locally, without retaining geometry or point data.
  *
  * Mapping defines element geometry types constructible from Coordinates views and the integration surface passed to
- * IntegrationSurfaceQuadratureRule. It owns forward surface construction and reverse point mapping, including the
+ * IntegrationSurfaceRuleGenerator. It owns forward surface construction and reverse point mapping, including the
  * physical measure. Each call constructs element geometry objects from the supplied coordinates and discards them
  * before returning. For linear edges, these objects copy the endpoints and cache the edge vector and squared length for
  * reuse by the mapping.
  * @tparam Mapping Integration-surface construction and mapping to both elements.
- * @tparam IntegrationSurfaceQuadratureRule Generates points and weights in the mapping's integration-surface
+ * @tparam IntegrationSurfaceRuleGenerator Generates points and weights in the mapping's integration-surface
  * coordinates.
  */
-template <typename Mapping, typename IntegrationSurfaceQuadratureRule>
+template <typename Mapping, typename IntegrationSurfaceRuleGenerator>
 class PairQuadratureRule {
  public:
   using FirstGeometry = typename Mapping::FirstGeometry;                      ///< Geometry type of the first element.
@@ -35,28 +35,28 @@ class PairQuadratureRule {
   static constexpr int parent_dimension2 = SecondGeometry::parent_dimension;  ///< Second geometry parent components.
   static constexpr int spatial_dimension = FirstGeometry::spatial_dimension;  ///< Physical components.
   static constexpr int vertex_count = FirstGeometry::vertex_count;  ///< Number of vertices in the first geometry.
-  static constexpr int points_per_base_rule =
-      IntegrationSurfaceQuadratureRule::points_per_base_rule;  ///< Local point capacity.
+  /// Maximum number of points in a successfully generated rule.
+  static constexpr int max_points = IntegrationSurfaceRuleGenerator::max_points;
   static constexpr int polynomial_order =
-      IntegrationSurfaceQuadratureRule::polynomial_order;  ///< Exact reference degree.
+      IntegrationSurfaceRuleGenerator::polynomial_order;  ///< Exact reference degree.
 
-  /** @brief Use default mapping and integration-surface quadrature configuration. */
+  /** @brief Use a default mapping and integration-surface rule generator. */
   TRIBOL_DEFAULT_HOST_DEVICE PairQuadratureRule() = default;
   /**
-   * @brief Copy mapping and integration-surface quadrature configuration.
+   * @brief Copy the mapping and integration-surface rule generator.
    * @param mapping Forward and reverse mapping configuration.
-   * @param integration_surface_rule Integration-surface quadrature configuration.
+   * @param integration_surface_rule_generator Generator copied into this pair rule.
    */
-  TRIBOL_HOST_DEVICE explicit PairQuadratureRule( Mapping mapping,
-                                                  IntegrationSurfaceQuadratureRule integration_surface_rule = {} )
-      : mapping_( mapping ), integration_surface_rule_( integration_surface_rule )
+  TRIBOL_HOST_DEVICE explicit PairQuadratureRule(
+      Mapping mapping, IntegrationSurfaceRuleGenerator integration_surface_rule_generator = {} )
+      : mapping_( mapping ), integration_surface_rule_generator_( integration_surface_rule_generator )
   {
   }
 
   /** @brief Quadrature points and weights expressed in the integration surface's coordinates. */
-  using IntegrationSurfaceQuadrature = typename IntegrationSurfaceQuadratureRule::IntegrationSurfaceQuadrature;
+  using IntegrationSurfaceRule = typename IntegrationSurfaceRuleGenerator::IntegrationSurfaceRule;
   /** @brief Local paired parent coordinates and physical weights. */
-  using QuadratureData = PairQuadratureData<parent_dimension, parent_dimension2, points_per_base_rule>;
+  using QuadratureData = PairQuadratureData<parent_dimension, parent_dimension2, max_points>;
 
   /**
    * @brief Construct the integration surface and generate quadrature points and weights in its coordinates.
@@ -66,36 +66,35 @@ class PairQuadratureRule {
    *
    * @param element1_coordinates Current first-element coordinates, with geometry defined by FirstGeometry.
    * @param element2_coordinates Current second-element coordinates, with geometry defined by SecondGeometry.
-   * @return Integration-surface quadrature with generation status; invalid geometry has zero points.
+   * @return Integration-surface rule with generation status; invalid geometry has zero points.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceQuadrature
-  generateIntegrationSurfaceQuadrature( typename FirstGeometry::Coordinates element1_coordinates,
-                                        typename SecondGeometry::Coordinates element2_coordinates ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceRule
+  generateIntegrationSurfaceRule( typename FirstGeometry::Coordinates element1_coordinates,
+                                  typename SecondGeometry::Coordinates element2_coordinates ) const
   {
-    return integration_surface_rule_.generate( mapping_.makeIntegrationSurface(
+    return integration_surface_rule_generator_.generate( mapping_.makeIntegrationSurface(
         FirstGeometry( element1_coordinates ), SecondGeometry( element2_coordinates ) ) );
   }
 
   /**
    * @brief Map integration-surface quadrature points to both elements using their current geometry.
    *
-   * The integration surface and its quadrature are not recalculated.
+   * The integration surface and its rule are not recalculated.
    * @param element1_coordinates Current first-element coordinates.
    * @param element2_coordinates Current second-element coordinates.
-   * @param integration_surface_quadrature Quadrature points and weights expressed in the integration surface's
+   * @param integration_surface_rule Quadrature points and weights expressed in the integration surface's
    * coordinates.
    * @return Local paired quadrature with generation status; invalid geometry has zero points.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData mapIntegrationSurfaceQuadratureToElements(
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData mapIntegrationSurfaceRuleToElements(
       typename FirstGeometry::Coordinates element1_coordinates,
       typename SecondGeometry::Coordinates element2_coordinates,
-      IntegrationSurfaceQuadratureView<IntegrationSurfaceQuadratureRule::parent_dimension>
-          integration_surface_quadrature ) const
+      IntegrationSurfaceRuleView<IntegrationSurfaceRuleGenerator::parent_dimension> integration_surface_rule ) const
   {
     QuadratureData output{};
     output.result =
         mapping_.mapToElements( FirstGeometry( element1_coordinates ), SecondGeometry( element2_coordinates ),
-                                integration_surface_quadrature, output.getOutputView() );
+                                integration_surface_rule, output.getOutputView() );
     return output;
   }
 
@@ -113,14 +112,13 @@ class PairQuadratureRule {
   {
     const FirstGeometry geometry1( element1_coordinates );
     const SecondGeometry geometry2( element2_coordinates );
-    const auto integration_surface_quadrature =
-        integration_surface_rule_.generate( mapping_.makeIntegrationSurface( geometry1, geometry2 ) );
+    const auto integration_surface_rule =
+        integration_surface_rule_generator_.generate( mapping_.makeIntegrationSurface( geometry1, geometry2 ) );
     // Return fields explicitly so Enzyme can identify their integer types.
-    if ( integration_surface_quadrature.result.status != QuadratureStatus::Success ) {
-      return { integration_surface_quadrature.result.status,
-               integration_surface_quadrature.result.required_point_count };
+    if ( integration_surface_rule.result.status != QuadratureStatus::Success ) {
+      return { integration_surface_rule.result.status, integration_surface_rule.result.required_point_count };
     }
-    return mapping_.mapToElements( geometry1, geometry2, integration_surface_quadrature.getView(), output );
+    return mapping_.mapToElements( geometry1, geometry2, integration_surface_rule.getView(), output );
   }
 
   /**
@@ -140,8 +138,8 @@ class PairQuadratureRule {
 
  private:
   Mapping mapping_{};  ///< Owned mapping configuration; no generated surfaces or coordinate views are retained.
-  IntegrationSurfaceQuadratureRule
-      integration_surface_rule_{};  ///< Owned integration-surface quadrature configuration.
+  IntegrationSurfaceRuleGenerator
+      integration_surface_rule_generator_{};  ///< Owned generator; no generated points or weights are retained.
 };
 
 }  // namespace tribol
