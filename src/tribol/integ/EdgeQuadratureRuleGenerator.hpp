@@ -6,6 +6,9 @@
 /**
  * @file
  * @brief Gauss-Legendre quadrature points and weights on a supplied interval.
+ *
+ * Maps the standard rule on [-1,1] onto the supplied interval, scaling both points and weights.
+ * The default interval is [-1,1].
  */
 
 #ifndef SRC_TRIBOL_INTEG_EDGEQUADRATURERULEGENERATOR_HPP_
