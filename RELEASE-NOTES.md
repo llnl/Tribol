@@ -81,7 +81,9 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Coordinate fields use `coords`, `geometry1_coords`, and `geometry2_coords`; geometry input views use the `Coords`
   alias.
   The basis coordinate-array alias is renamed from `ParentCoordinates` to `ParentCoords`, and
-  `GetParentNodeCoordinates()` is renamed to `GetParentNodeCoords()`.
+  `GetParentNodeCoordinates()` is renamed to `getParentNodeCoords()`.
+  Methods and functions in `BasisFunction.hpp` use lower camelCase, including `eval()`, `evalParentDerivatives()`,
+  `getFaceNodeCount()`, `mapToPhysical()`, and the interpolation, Jacobian, and derivative utilities.
   Coordinates and weights use `RealT`. Mapping types identify their element geometries; the implemented mapping supports
   straight two-dimensional edges. Co-oriented edge pairs produce valid zero-point rules before point generation,
   including when mapping existing integration-surface quadrature points; they cannot contribute tributary area or

@@ -107,7 +107,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, PairQuadratureView<1, 
     const double w = quadrature.weights[i];
 
     double basis_values[LinearEdgeBasis::node_count];
-    LinearEdgeBasis::Eval(
+    LinearEdgeBasis::eval(
         MdSpan<const double, LinearEdgeBasis::parametric_dimension>{ &xiA, LinearEdgeBasis::parametric_dimension },
         basis_values );
 
@@ -386,11 +386,11 @@ double EnergyMortarCalculator<QuadratureRule>::compute_weighted_normal_gap( cons
 
   const LinearEdgeCoords edge_coords{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
   double basis_values[LinearEdgeBasis::node_count];
-  LinearEdgeBasis::Eval(
+  LinearEdgeBasis::eval(
       MdSpan<const double, LinearEdgeBasis::parametric_dimension>{ &xiA, LinearEdgeBasis::parametric_dimension },
       basis_values );
   double x1[2] = { 0.0 };
-  MapToPhysical<LinearEdgeBasis>( basis_values, edge_coords.view(), x1 );
+  mapToPhysical<LinearEdgeBasis>( basis_values, edge_coords.view(), x1 );
 
   const double gn = ( B0[0] - x1[0] ) * nB[0] + ( B0[1] - x1[1] ) * nB[1];
   double dot = nB[0] * nA[0] + nB[1] * nA[1];

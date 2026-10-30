@@ -41,9 +41,9 @@ template <typename Basis>
 void ExpectNodalInterpolation()
 {
   for ( int evaluation_node = 0; evaluation_node < Basis::node_count; ++evaluation_node ) {
-    const auto parent_coordinates = Basis::GetParentNodeCoords( evaluation_node );
+    const auto parent_coordinates = Basis::getParentNodeCoords( evaluation_node );
     std::array<tribol::RealT, Basis::node_count> basis_values{};
-    Basis::Eval( parent_coordinates.view(), basis_values );
+    Basis::eval( parent_coordinates.view(), basis_values );
 
     for ( int basis_node = 0; basis_node < Basis::node_count; ++basis_node ) {
       EXPECT_NEAR( basis_values[basis_node], basis_node == evaluation_node ? 1.0 : 0.0, comparison_tolerance );
@@ -56,8 +56,8 @@ void ExpectPartitionOfUnity( const std::array<tribol::RealT, Basis::parametric_d
 {
   std::array<tribol::RealT, Basis::node_count> basis_values{};
   std::array<tribol::RealT, Basis::node_count * Basis::parametric_dimension> parent_derivatives{};
-  Basis::Eval( parent_coordinates, basis_values );
-  Basis::EvalParentDerivatives( parent_coordinates, parent_derivatives );
+  Basis::eval( parent_coordinates, basis_values );
+  Basis::evalParentDerivatives( parent_coordinates, parent_derivatives );
 
   tribol::RealT basis_sum{};
   for ( auto value : basis_values ) {
@@ -79,7 +79,7 @@ void ExpectParentDerivativesMatchFiniteDifferences(
     const std::array<tribol::RealT, Basis::parametric_dimension>& parent_coordinates )
 {
   std::array<tribol::RealT, Basis::node_count * Basis::parametric_dimension> parent_derivatives{};
-  Basis::EvalParentDerivatives( parent_coordinates, parent_derivatives );
+  Basis::evalParentDerivatives( parent_coordinates, parent_derivatives );
 
   for ( int parent_component = 0; parent_component < Basis::parametric_dimension; ++parent_component ) {
     auto lower_coordinates = parent_coordinates;
@@ -89,8 +89,8 @@ void ExpectParentDerivativesMatchFiniteDifferences(
 
     std::array<tribol::RealT, Basis::node_count> lower_values{};
     std::array<tribol::RealT, Basis::node_count> upper_values{};
-    Basis::Eval( lower_coordinates, lower_values );
-    Basis::Eval( upper_coordinates, upper_values );
+    Basis::eval( lower_coordinates, lower_values );
+    Basis::eval( upper_coordinates, upper_values );
     for ( int node = 0; node < Basis::node_count; ++node ) {
       const tribol::RealT finite_difference =
           ( upper_values[node] - lower_values[node] ) / ( 2.0 * finite_difference_step );
@@ -106,8 +106,8 @@ void ExpectBasisMatchesMfem( const std::array<tribol::RealT, Basis::parametric_d
 {
   std::array<tribol::RealT, Basis::node_count> basis_values{};
   std::array<tribol::RealT, Basis::node_count * Basis::parametric_dimension> parent_derivatives{};
-  Basis::Eval( parent_coordinates, basis_values );
-  Basis::EvalParentDerivatives( parent_coordinates, parent_derivatives );
+  Basis::eval( parent_coordinates, basis_values );
+  Basis::evalParentDerivatives( parent_coordinates, parent_derivatives );
 
   mfem::IntegrationPoint mfem_point;
   mfem_point.x = 0.5 * ( parent_coordinates[0] + 1.0 );
@@ -161,20 +161,20 @@ TEST( BasisFunction, face_element_traits_define_connectivity_order )
   // These parent coordinates make the local node index concrete and guard the MFEM-compatible connectivity ordering.
   constexpr std::array<tribol::RealT, LinearEdge::node_count> expected_linear_edge_nodes{ -1.0, 1.0 };
   for ( int node = 0; node < LinearEdge::node_count; ++node ) {
-    const auto parent_coordinates = LinearEdge::GetParentNodeCoords( node );
+    const auto parent_coordinates = LinearEdge::getParentNodeCoords( node );
     EXPECT_EQ( parent_coordinates[0], expected_linear_edge_nodes[node] );
   }
 
   constexpr std::array<tribol::RealT, QuadraticEdge::node_count> expected_edge_nodes{ -1.0, 1.0, 0.0 };
   for ( int node = 0; node < QuadraticEdge::node_count; ++node ) {
-    const auto parent_coordinates = QuadraticEdge::GetParentNodeCoords( node );
+    const auto parent_coordinates = QuadraticEdge::getParentNodeCoords( node );
     EXPECT_EQ( parent_coordinates[0], expected_edge_nodes[node] );
   }
 
   constexpr std::array<std::array<tribol::RealT, 2>, LinearTriangle::node_count> expected_triangle_nodes{
       { { 0.0, 0.0 }, { 1.0, 0.0 }, { 0.0, 1.0 } } };
   for ( int node = 0; node < LinearTriangle::node_count; ++node ) {
-    const auto parent_coordinates = LinearTriangle::GetParentNodeCoords( node );
+    const auto parent_coordinates = LinearTriangle::getParentNodeCoords( node );
     for ( int parent_component = 0; parent_component < LinearTriangle::parametric_dimension; ++parent_component ) {
       EXPECT_EQ( parent_coordinates[parent_component], expected_triangle_nodes[node][parent_component] );
     }
@@ -183,7 +183,7 @@ TEST( BasisFunction, face_element_traits_define_connectivity_order )
   constexpr std::array<std::array<tribol::RealT, 2>, LinearQuad::node_count> expected_linear_quad_nodes{
       { { -1.0, -1.0 }, { 1.0, -1.0 }, { 1.0, 1.0 }, { -1.0, 1.0 } } };
   for ( int node = 0; node < LinearQuad::node_count; ++node ) {
-    const auto parent_coordinates = LinearQuad::GetParentNodeCoords( node );
+    const auto parent_coordinates = LinearQuad::getParentNodeCoords( node );
     for ( int parent_component = 0; parent_component < LinearQuad::parametric_dimension; ++parent_component ) {
       EXPECT_EQ( parent_coordinates[parent_component], expected_linear_quad_nodes[node][parent_component] );
     }
@@ -199,7 +199,7 @@ TEST( BasisFunction, face_element_traits_define_connectivity_order )
                                                                                                        { -1.0, 0.0 },
                                                                                                        { 0.0, 0.0 } } };
   for ( int node = 0; node < QuadraticQuad::node_count; ++node ) {
-    const auto parent_coordinates = QuadraticQuad::GetParentNodeCoords( node );
+    const auto parent_coordinates = QuadraticQuad::getParentNodeCoords( node );
     for ( int parent_component = 0; parent_component < QuadraticQuad::parametric_dimension; ++parent_component ) {
       EXPECT_EQ( parent_coordinates[parent_component], expected_quad_nodes[node][parent_component] );
     }
@@ -207,17 +207,17 @@ TEST( BasisFunction, face_element_traits_define_connectivity_order )
 
   // The output overload remains available when a caller needs to reuse existing storage.
   tribol::RealT reused_parent_coordinates[LinearTriangle::parametric_dimension];
-  LinearTriangle::GetParentNodeCoords( 2, reused_parent_coordinates );
+  LinearTriangle::getParentNodeCoords( 2, reused_parent_coordinates );
   EXPECT_EQ( reused_parent_coordinates[0], 0.0 );
   EXPECT_EQ( reused_parent_coordinates[1], 1.0 );
 
   // MeshData uses the runtime dispatcher, so it must agree with the compile-time traits and reject unsupported pairs.
-  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::EDGE, tribol::LINEAR_LAGRANGE ), 2 );
-  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::EDGE, tribol::QUADRATIC_LAGRANGE ), 3 );
-  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::TRIANGLE, tribol::LINEAR_LAGRANGE ), 3 );
-  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::QUAD, tribol::LINEAR_LAGRANGE ), 4 );
-  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::QUAD, tribol::QUADRATIC_LAGRANGE ), 9 );
-  EXPECT_EQ( tribol::GetFaceNodeCount( tribol::TRIANGLE, tribol::QUADRATIC_LAGRANGE ), 0 );
+  EXPECT_EQ( tribol::getFaceNodeCount( tribol::EDGE, tribol::LINEAR_LAGRANGE ), 2 );
+  EXPECT_EQ( tribol::getFaceNodeCount( tribol::EDGE, tribol::QUADRATIC_LAGRANGE ), 3 );
+  EXPECT_EQ( tribol::getFaceNodeCount( tribol::TRIANGLE, tribol::LINEAR_LAGRANGE ), 3 );
+  EXPECT_EQ( tribol::getFaceNodeCount( tribol::QUAD, tribol::LINEAR_LAGRANGE ), 4 );
+  EXPECT_EQ( tribol::getFaceNodeCount( tribol::QUAD, tribol::QUADRATIC_LAGRANGE ), 9 );
+  EXPECT_EQ( tribol::getFaceNodeCount( tribol::TRIANGLE, tribol::QUADRATIC_LAGRANGE ), 0 );
 }
 
 TEST( BasisFunction, interpolates_nodes_and_partitions_unity )
@@ -251,13 +251,13 @@ TEST( BasisFunction, reproduces_quadratic_polynomials )
   constexpr tribol::RealT edge_parent_coordinate = 0.37;
   std::array<tribol::RealT, QuadraticEdge::node_count> edge_values{};
   std::array<tribol::RealT, QuadraticEdge::node_count> edge_derivatives{};
-  QuadraticEdge::Eval( edge_parent_coordinate, edge_values );
-  QuadraticEdge::EvalParentDerivatives( edge_parent_coordinate, edge_derivatives );
+  QuadraticEdge::eval( edge_parent_coordinate, edge_values );
+  QuadraticEdge::evalParentDerivatives( edge_parent_coordinate, edge_derivatives );
 
   tribol::RealT interpolated_edge_value{};
   tribol::RealT interpolated_edge_derivative{};
   for ( int node = 0; node < QuadraticEdge::node_count; ++node ) {
-    const auto node_coordinates = QuadraticEdge::GetParentNodeCoords( node );
+    const auto node_coordinates = QuadraticEdge::getParentNodeCoords( node );
     const tribol::RealT node_coordinate = node_coordinates[0];
     const tribol::RealT nodal_value = 2.0 + 3.0 * node_coordinate + 4.0 * node_coordinate * node_coordinate;
     interpolated_edge_value += edge_values[node] * nodal_value;
@@ -272,8 +272,8 @@ TEST( BasisFunction, reproduces_quadratic_polynomials )
   constexpr std::array<tribol::RealT, QuadraticQuad::parametric_dimension> quad_parent_coordinates{ 0.17, -0.29 };
   std::array<tribol::RealT, QuadraticQuad::node_count> quad_values{};
   std::array<tribol::RealT, QuadraticQuad::node_count * QuadraticQuad::parametric_dimension> quad_derivatives{};
-  QuadraticQuad::Eval( quad_parent_coordinates, quad_values );
-  QuadraticQuad::EvalParentDerivatives( quad_parent_coordinates, quad_derivatives );
+  QuadraticQuad::eval( quad_parent_coordinates, quad_values );
+  QuadraticQuad::evalParentDerivatives( quad_parent_coordinates, quad_derivatives );
 
   // The mixed terms exercise the full tensor-product space rather than only independent one-dimensional quadratics.
   auto polynomial = []( tribol::RealT x, tribol::RealT y ) {
@@ -284,7 +284,7 @@ TEST( BasisFunction, reproduces_quadratic_polynomials )
   tribol::RealT interpolated_quad_dx{};
   tribol::RealT interpolated_quad_dy{};
   for ( int node = 0; node < QuadraticQuad::node_count; ++node ) {
-    const auto node_coordinates = QuadraticQuad::GetParentNodeCoords( node );
+    const auto node_coordinates = QuadraticQuad::getParentNodeCoords( node );
     const tribol::RealT nodal_value = polynomial( node_coordinates[0], node_coordinates[1] );
     interpolated_quad_value += quad_values[node] * nodal_value;
     interpolated_quad_dx += quad_derivatives[QuadraticQuad::parametric_dimension * node] * nodal_value;
@@ -324,7 +324,7 @@ TEST( BasisFunction, interpolates_nodal_values_through_connectivity )
   std::array<tribol::RealT, global_node_count> first_component{};
   std::array<tribol::RealT, global_node_count> second_component{};
   for ( int local_node = 0; local_node < Basis::node_count; ++local_node ) {
-    const auto node_coordinates = Basis::GetParentNodeCoords( local_node );
+    const auto node_coordinates = Basis::getParentNodeCoords( local_node );
     const tribol::RealT node_coordinate = node_coordinates[0];
     const tribol::IndexT global_node = connectivity[local_node];
     first_component[global_node] = 2.0 + 3.0 * node_coordinate + 4.0 * node_coordinate * node_coordinate;
@@ -335,9 +335,9 @@ TEST( BasisFunction, interpolates_nodal_values_through_connectivity )
 
   constexpr tribol::RealT parent_coordinate = 0.25;
   tribol::MdArray<tribol::RealT, Basis::node_count> basis_values;
-  Basis::Eval( parent_coordinate, basis_values.view() );
+  Basis::eval( parent_coordinate, basis_values.view() );
   tribol::MdArray<tribol::RealT, field_component_count> interpolated_values;
-  tribol::InterpolateNodalValues<Basis, field_component_count>( basis_values.view(), nodal_values,
+  tribol::interpolateNodalValues<Basis, field_component_count>( basis_values.view(), nodal_values,
                                                                 interpolated_values.view() );
 
   EXPECT_NEAR( interpolated_values[0], 2.0 + 3.0 * parent_coordinate + 4.0 * parent_coordinate * parent_coordinate,
@@ -358,25 +358,25 @@ TEST( BasisFunction, maps_affine_linear_elements )
   std::array<tribol::RealT, EdgeBasis::node_count * EdgeBasis::parametric_dimension> edge_parent_derivatives{};
   std::array<tribol::RealT, EdgeBasis::spatial_dimension> edge_point{};
   std::array<tribol::RealT, EdgeBasis::spatial_dimension * EdgeBasis::parametric_dimension> edge_jacobian{};
-  EdgeBasis::Eval( edge_parent_coordinate, edge_values );
-  EdgeBasis::EvalParentDerivatives( edge_parent_coordinate, edge_parent_derivatives );
-  tribol::MapToPhysical<EdgeBasis>( edge_values, edge_coordinates, edge_point );
-  tribol::ComputeMappingJacobian<EdgeBasis>( edge_parent_derivatives, edge_coordinates, edge_jacobian );
+  EdgeBasis::eval( edge_parent_coordinate, edge_values );
+  EdgeBasis::evalParentDerivatives( edge_parent_coordinate, edge_parent_derivatives );
+  tribol::mapToPhysical<EdgeBasis>( edge_values, edge_coordinates, edge_point );
+  tribol::computeMappingJacobian<EdgeBasis>( edge_parent_derivatives, edge_coordinates, edge_jacobian );
 
   EXPECT_NEAR( edge_point[0], 3.5, comparison_tolerance );
   EXPECT_NEAR( edge_point[1], 3.25, comparison_tolerance );
   EXPECT_NEAR( edge_jacobian[0], 2.0, comparison_tolerance );
   EXPECT_NEAR( edge_jacobian[1], 1.0, comparison_tolerance );
   // The precomputed-Jacobian and coordinate convenience overloads must produce the same physical integration weight.
-  EXPECT_NEAR( tribol::ComputeJacobianWeight<EdgeBasis>( edge_jacobian ), std::sqrt( 5.0 ), comparison_tolerance );
-  EXPECT_NEAR( tribol::ComputeJacobianWeight<EdgeBasis>( edge_parent_coordinate, edge_coordinates ), std::sqrt( 5.0 ),
+  EXPECT_NEAR( tribol::computeJacobianWeight<EdgeBasis>( edge_jacobian ), std::sqrt( 5.0 ), comparison_tolerance );
+  EXPECT_NEAR( tribol::computeJacobianWeight<EdgeBasis>( edge_parent_coordinate, edge_coordinates ), std::sqrt( 5.0 ),
                comparison_tolerance );
 
   using QuadBasis = tribol::BasisFunction<tribol::QUAD, tribol::LINEAR_LAGRANGE>;
   constexpr std::array<tribol::RealT, QuadBasis::parametric_dimension> quad_parent_coordinates{ 0.2, -0.4 };
   std::array<tribol::RealT, QuadBasis::node_count * QuadBasis::spatial_dimension> quad_coordinates{};
   for ( int node = 0; node < QuadBasis::node_count; ++node ) {
-    const auto node_coordinates = QuadBasis::GetParentNodeCoords( node );
+    const auto node_coordinates = QuadBasis::getParentNodeCoords( node );
     quad_coordinates[QuadBasis::spatial_dimension * node] = 1.0 + 2.0 * node_coordinates[0];
     quad_coordinates[QuadBasis::spatial_dimension * node + 1] = -2.0 + 3.0 * node_coordinates[1];
     quad_coordinates[QuadBasis::spatial_dimension * node + 2] = 4.0 + 0.5 * node_coordinates[0] - node_coordinates[1];
@@ -385,10 +385,10 @@ TEST( BasisFunction, maps_affine_linear_elements )
   std::array<tribol::RealT, QuadBasis::node_count * QuadBasis::parametric_dimension> quad_parent_derivatives{};
   std::array<tribol::RealT, QuadBasis::spatial_dimension> quad_point{};
   std::array<tribol::RealT, QuadBasis::spatial_dimension * QuadBasis::parametric_dimension> quad_jacobian{};
-  QuadBasis::Eval( quad_parent_coordinates, quad_values );
-  QuadBasis::EvalParentDerivatives( quad_parent_coordinates, quad_parent_derivatives );
-  tribol::MapToPhysical<QuadBasis>( quad_values, quad_coordinates, quad_point );
-  tribol::ComputeMappingJacobian<QuadBasis>( quad_parent_derivatives, quad_coordinates, quad_jacobian );
+  QuadBasis::eval( quad_parent_coordinates, quad_values );
+  QuadBasis::evalParentDerivatives( quad_parent_coordinates, quad_parent_derivatives );
+  tribol::mapToPhysical<QuadBasis>( quad_values, quad_coordinates, quad_point );
+  tribol::computeMappingJacobian<QuadBasis>( quad_parent_derivatives, quad_coordinates, quad_jacobian );
 
   constexpr std::array<tribol::RealT, QuadBasis::spatial_dimension> expected_quad_point{ 1.4, -3.2, 4.5 };
   constexpr std::array<tribol::RealT, QuadBasis::spatial_dimension * QuadBasis::parametric_dimension>
@@ -400,8 +400,8 @@ TEST( BasisFunction, maps_affine_linear_elements )
     EXPECT_NEAR( quad_jacobian[entry], expected_quad_jacobian[entry], comparison_tolerance );
   }
   // The surface weight includes the out-of-plane slope, so this check exercises sqrt(det(J^T J)), not only x-y area.
-  EXPECT_NEAR( tribol::ComputeJacobianWeight<QuadBasis>( quad_jacobian ), 6.5, comparison_tolerance );
-  EXPECT_NEAR( tribol::ComputeJacobianWeight<QuadBasis>( quad_parent_coordinates, quad_coordinates ), 6.5,
+  EXPECT_NEAR( tribol::computeJacobianWeight<QuadBasis>( quad_jacobian ), 6.5, comparison_tolerance );
+  EXPECT_NEAR( tribol::computeJacobianWeight<QuadBasis>( quad_parent_coordinates, quad_coordinates ), 6.5,
                comparison_tolerance );
 }
 
@@ -419,19 +419,19 @@ TEST( BasisFunction, maps_curved_quadratic_edge )
   std::array<tribol::RealT, Basis::spatial_dimension * Basis::parametric_dimension> jacobian{};
   std::array<tribol::RealT, Basis::node_count * Basis::spatial_dimension> physical_derivatives{};
 
-  Basis::Eval( parent_coordinate, values );
-  Basis::EvalParentDerivatives( parent_coordinate, parent_derivatives );
-  tribol::MapToPhysical<Basis>( values, coordinates, physical_point );
-  tribol::ComputeMappingJacobian<Basis>( parent_derivatives, coordinates, jacobian );
+  Basis::eval( parent_coordinate, values );
+  Basis::evalParentDerivatives( parent_coordinate, parent_derivatives );
+  tribol::mapToPhysical<Basis>( values, coordinates, physical_point );
+  tribol::computeMappingJacobian<Basis>( parent_derivatives, coordinates, jacobian );
 
   EXPECT_NEAR( physical_point[0], 1.0 + parent_coordinate, comparison_tolerance );
   EXPECT_NEAR( physical_point[1], 1.0 - parent_coordinate * parent_coordinate, comparison_tolerance );
   EXPECT_NEAR( jacobian[0], 1.0, comparison_tolerance );
   EXPECT_NEAR( jacobian[1], -2.0 * parent_coordinate, comparison_tolerance );
-  EXPECT_NEAR( tribol::ComputeJacobianWeight<Basis>( jacobian ), std::sqrt( 1.25 ), comparison_tolerance );
-  EXPECT_NEAR( tribol::ComputeJacobianWeight<Basis>( parent_coordinate, coordinates ), std::sqrt( 1.25 ),
+  EXPECT_NEAR( tribol::computeJacobianWeight<Basis>( jacobian ), std::sqrt( 1.25 ), comparison_tolerance );
+  EXPECT_NEAR( tribol::computeJacobianWeight<Basis>( parent_coordinate, coordinates ), std::sqrt( 1.25 ),
                comparison_tolerance );
-  ASSERT_TRUE( tribol::ComputePhysicalDerivatives<Basis>( jacobian, parent_derivatives, physical_derivatives ) );
+  ASSERT_TRUE( tribol::computePhysicalDerivatives<Basis>( jacobian, parent_derivatives, physical_derivatives ) );
 
   // Physical derivatives are tangential ambient gradients, so multiplying by J must recover each parent derivative.
   for ( int node = 0; node < Basis::node_count; ++node ) {
@@ -452,7 +452,7 @@ TEST( BasisFunction, maps_curved_quadratic_quad )
   constexpr std::array<tribol::RealT, Basis::parametric_dimension> parent_coordinates{ 0.2, -0.3 };
   std::array<tribol::RealT, Basis::node_count * Basis::spatial_dimension> coordinates{};
   for ( int node = 0; node < Basis::node_count; ++node ) {
-    const auto node_coordinates = Basis::GetParentNodeCoords( node );
+    const auto node_coordinates = Basis::getParentNodeCoords( node );
     coordinates[Basis::spatial_dimension * node] = 1.0 + node_coordinates[0];
     coordinates[Basis::spatial_dimension * node + 1] = 2.0 + node_coordinates[1];
     coordinates[Basis::spatial_dimension * node + 2] = 0.25 * ( 1.0 - node_coordinates[0] * node_coordinates[0] ) *
@@ -464,10 +464,10 @@ TEST( BasisFunction, maps_curved_quadratic_quad )
   std::array<tribol::RealT, Basis::spatial_dimension> physical_point{};
   std::array<tribol::RealT, Basis::spatial_dimension * Basis::parametric_dimension> jacobian{};
   std::array<tribol::RealT, Basis::node_count * Basis::spatial_dimension> physical_derivatives{};
-  Basis::Eval( parent_coordinates, values );
-  Basis::EvalParentDerivatives( parent_coordinates, parent_derivatives );
-  tribol::MapToPhysical<Basis>( values, coordinates, physical_point );
-  tribol::ComputeMappingJacobian<Basis>( parent_derivatives, coordinates, jacobian );
+  Basis::eval( parent_coordinates, values );
+  Basis::evalParentDerivatives( parent_coordinates, parent_derivatives );
+  tribol::mapToPhysical<Basis>( values, coordinates, physical_point );
+  tribol::computeMappingJacobian<Basis>( parent_derivatives, coordinates, jacobian );
 
   EXPECT_NEAR( physical_point[0], 1.2, comparison_tolerance );
   EXPECT_NEAR( physical_point[1], 1.7, comparison_tolerance );
@@ -477,9 +477,9 @@ TEST( BasisFunction, maps_curved_quadratic_quad )
   for ( int entry = 0; entry < static_cast<int>( jacobian.size() ); ++entry ) {
     EXPECT_NEAR( jacobian[entry], expected_jacobian[entry], comparison_tolerance );
   }
-  EXPECT_NEAR( tribol::ComputeJacobianWeight<Basis>( jacobian ), std::sqrt( 1.0 + 0.091 * 0.091 + 0.144 * 0.144 ),
+  EXPECT_NEAR( tribol::computeJacobianWeight<Basis>( jacobian ), std::sqrt( 1.0 + 0.091 * 0.091 + 0.144 * 0.144 ),
                comparison_tolerance );
-  ASSERT_TRUE( tribol::ComputePhysicalDerivatives<Basis>( jacobian, parent_derivatives, physical_derivatives ) );
+  ASSERT_TRUE( tribol::computePhysicalDerivatives<Basis>( jacobian, parent_derivatives, physical_derivatives ) );
 
   // The chain-rule identity must hold for both parent directions after lifting derivatives into ambient space.
   for ( int node = 0; node < Basis::node_count; ++node ) {
@@ -506,10 +506,10 @@ TEST( BasisFunction, rejects_rank_deficient_mapping )
   std::array<tribol::RealT, EdgeBasis::node_count * EdgeBasis::parametric_dimension> edge_parent_derivatives{};
   std::array<tribol::RealT, EdgeBasis::spatial_dimension * EdgeBasis::parametric_dimension> edge_jacobian{};
   std::array<tribol::RealT, EdgeBasis::node_count * EdgeBasis::spatial_dimension> edge_physical_derivatives{};
-  EdgeBasis::EvalParentDerivatives( parent_coordinate, edge_parent_derivatives );
-  tribol::ComputeMappingJacobian<EdgeBasis>( edge_parent_derivatives, edge_coordinates, edge_jacobian );
+  EdgeBasis::evalParentDerivatives( parent_coordinate, edge_parent_derivatives );
+  tribol::computeMappingJacobian<EdgeBasis>( edge_parent_derivatives, edge_coordinates, edge_jacobian );
 
-  EXPECT_FALSE( tribol::ComputePhysicalDerivatives<EdgeBasis>( edge_jacobian, edge_parent_derivatives,
+  EXPECT_FALSE( tribol::computePhysicalDerivatives<EdgeBasis>( edge_jacobian, edge_parent_derivatives,
                                                                edge_physical_derivatives ) );
   for ( auto derivative : edge_physical_derivatives ) {
     EXPECT_EQ( derivative, 0.0 );
@@ -522,10 +522,10 @@ TEST( BasisFunction, rejects_rank_deficient_mapping )
   std::array<tribol::RealT, QuadBasis::node_count * QuadBasis::parametric_dimension> quad_parent_derivatives{};
   std::array<tribol::RealT, QuadBasis::spatial_dimension * QuadBasis::parametric_dimension> quad_jacobian{};
   std::array<tribol::RealT, QuadBasis::node_count * QuadBasis::spatial_dimension> quad_physical_derivatives{};
-  QuadBasis::EvalParentDerivatives( quad_parent_coordinates, quad_parent_derivatives );
-  tribol::ComputeMappingJacobian<QuadBasis>( quad_parent_derivatives, quad_coordinates, quad_jacobian );
+  QuadBasis::evalParentDerivatives( quad_parent_coordinates, quad_parent_derivatives );
+  tribol::computeMappingJacobian<QuadBasis>( quad_parent_derivatives, quad_coordinates, quad_jacobian );
 
-  EXPECT_FALSE( tribol::ComputePhysicalDerivatives<QuadBasis>( quad_jacobian, quad_parent_derivatives,
+  EXPECT_FALSE( tribol::computePhysicalDerivatives<QuadBasis>( quad_jacobian, quad_parent_derivatives,
                                                                quad_physical_derivatives ) );
   for ( auto derivative : quad_physical_derivatives ) {
     EXPECT_EQ( derivative, 0.0 );
@@ -564,8 +564,8 @@ TEST( BasisFunction, evaluates_on_device )
   constexpr tribol::ExecutionMode device_execution_mode = tribol::ExecutionMode::Hip;
 #endif
   tribol::forAllExec<false>( device_execution_mode, 1, [=] TRIBOL_HOST_DEVICE( tribol::IndexT ) {
-    const auto parent_coordinates = Basis::GetParentNodeCoords( 2 );
-    Basis::Eval( parent_coordinates.view(),
+    const auto parent_coordinates = Basis::getParentNodeCoords( 2 );
+    Basis::eval( parent_coordinates.view(),
                  tribol::MdSpan<tribol::RealT, Basis::node_count>{ values.data(), Basis::node_count } );
 
     tribol::MdArray<tribol::RealT, Basis::node_count, 1> nodal_values;
@@ -573,7 +573,7 @@ TEST( BasisFunction, evaluates_on_device )
       nodal_values( node, 0 ) = static_cast<tribol::RealT>( node + 1 );
     }
     tribol::MdArray<tribol::RealT, 1> interpolated_value;
-    tribol::InterpolateNodalValues<Basis, 1>(
+    tribol::interpolateNodalValues<Basis, 1>(
         tribol::MdSpan<const tribol::RealT, Basis::node_count>{ values.data(), Basis::node_count }, nodal_values.view(),
         interpolated_value.view() );
     values[Basis::node_count] = interpolated_value[0];

@@ -223,7 +223,7 @@ std::pair<double, double> EnergyMortarCalculator<QuadratureRule>::eval_gtilde_fi
   endpoints( mesh1, pair.element_id1_, A0, A1 );
 
   const LinearEdgeCoords edge_coords{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
-  const double J = ComputeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coords.view() );
+  const double J = computeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coords.view() );
 
   double gt1 = 0.0, gt2 = 0.0;
 
@@ -232,7 +232,7 @@ std::pair<double, double> EnergyMortarCalculator<QuadratureRule>::eval_gtilde_fi
     const double w = qp_fixed.weights[i];
 
     double basis_values[LinearEdgeBasis::node_count];
-    LinearEdgeBasis::Eval(
+    LinearEdgeBasis::eval(
         MdSpan<const double, LinearEdgeBasis::parametric_dimension>{ &xiA, LinearEdgeBasis::parametric_dimension },
         basis_values );
 
