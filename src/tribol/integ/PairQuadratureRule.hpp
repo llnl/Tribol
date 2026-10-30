@@ -10,9 +10,70 @@
 #ifndef SRC_TRIBOL_INTEG_PAIRQUADRATURERULE_HPP_
 #define SRC_TRIBOL_INTEG_PAIRQUADRATURERULE_HPP_
 
+#include <concepts>
+#include <type_traits>
+
 #include "tribol/integ/Quadrature.hpp"
 
 namespace tribol {
+
+/**
+ * @brief Requires element geometry types and integration-surface construction for a pair of elements.
+ *
+ * Geometry types must be constructible from their coordinate views. Dimensions and vertex counts must be compile-time
+ * constants. Geometry validity remains a runtime responsibility.
+ * @tparam Mapping Type supplying the element geometries and constructing the integration surface.
+ */
+template <typename Mapping>
+concept ElementPairMapping =
+    requires( const Mapping& mapping, typename Mapping::FirstGeometry::Coordinates element1_coordinates,
+              typename Mapping::SecondGeometry::Coordinates element2_coordinates,
+              const typename Mapping::FirstGeometry& geometry1, const typename Mapping::SecondGeometry& geometry2 ) {
+      typename std::integral_constant<int, Mapping::FirstGeometry::parent_dimension>;
+      typename std::integral_constant<int, Mapping::SecondGeometry::parent_dimension>;
+      typename std::integral_constant<int, Mapping::FirstGeometry::spatial_dimension>;
+      typename std::integral_constant<int, Mapping::FirstGeometry::vertex_count>;
+      requires( Mapping::FirstGeometry::parent_dimension > 0 && Mapping::SecondGeometry::parent_dimension > 0 );
+      { typename Mapping::FirstGeometry( element1_coordinates ) } -> std::same_as<typename Mapping::FirstGeometry>;
+      { typename Mapping::SecondGeometry( element2_coordinates ) } -> std::same_as<typename Mapping::SecondGeometry>;
+      mapping.makeIntegrationSurface( geometry1, geometry2 );
+    };
+
+/**
+ * @brief Requires a generator and mapping that can exchange integration-surface rules and paired element coordinates.
+ *
+ * The generator accepts the mapping's integration surface. The mapping accepts the generated rule's read-only view
+ * and writes paired element coordinates and physical weights. These requirements check types and expressions;
+ * coordinate conventions, weight scaling, and host/device execution must be verified separately.
+ * @tparam Generator Type generating integration-surface points, weights, and generation status.
+ * @tparam Mapping Type constructing the integration surface and mapping its quadrature points to both elements.
+ */
+template <typename Generator, typename Mapping>
+concept IntegrationSurfaceRuleGeneratorFor =
+    ElementPairMapping<Mapping> &&
+    requires {
+      typename Generator::IntegrationSurfaceRule;
+      typename std::integral_constant<int, Generator::parent_dimension>;
+      typename std::integral_constant<int, Generator::max_points>;
+      typename std::integral_constant<int, Generator::polynomial_order>;
+      requires( Generator::parent_dimension == 1 || Generator::parent_dimension == 2 );
+      requires( Generator::max_points > 0 );
+    } &&
+    requires( const Generator& generator, const Mapping& mapping, const typename Mapping::FirstGeometry& geometry1,
+              const typename Mapping::SecondGeometry& geometry2,
+              const typename Generator::IntegrationSurfaceRule& integration_surface_rule,
+              IntegrationSurfaceRuleView<Generator::parent_dimension> integration_surface_rule_view,
+              PairQuadratureView<Mapping::FirstGeometry::parent_dimension, Mapping::SecondGeometry::parent_dimension>
+                  output ) {
+      {
+        generator.generate( mapping.makeIntegrationSurface( geometry1, geometry2 ) )
+      } -> std::same_as<typename Generator::IntegrationSurfaceRule>;
+      { integration_surface_rule.getView() } -> std::same_as<IntegrationSurfaceRuleView<Generator::parent_dimension>>;
+      QuadratureResult{ integration_surface_rule.result.status, integration_surface_rule.result.required_point_count };
+      {
+        mapping.mapToElements( geometry1, geometry2, integration_surface_rule_view, output )
+      } -> std::same_as<QuadratureResult>;
+    };
 
 /**
  * @brief Generate paired parent points and physical weights locally, without retaining geometry or point data.
@@ -26,7 +87,8 @@ namespace tribol {
  * @tparam IntegrationSurfaceRuleGenerator Generates points and weights in the mapping's integration-surface
  * coordinates.
  */
-template <typename Mapping, typename IntegrationSurfaceRuleGenerator>
+template <ElementPairMapping Mapping, typename IntegrationSurfaceRuleGenerator>
+  requires IntegrationSurfaceRuleGeneratorFor<IntegrationSurfaceRuleGenerator, Mapping>
 class PairQuadratureRule {
  public:
   using FirstGeometry = typename Mapping::FirstGeometry;                      ///< Geometry type of the first element.

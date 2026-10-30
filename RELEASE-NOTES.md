@@ -72,6 +72,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   expressed in the supplied interval's coordinates. `IntegrationSurfaceRuleView` provides read-only access to those
   arrays.
   The calculator evaluates fields at the returned parametric coordinates on both elements.
+  C++20 concepts check the mapping and generator interfaces, including whether the generator accepts the integration
+  surface and the mapping accepts the generated rule's view.
   Coordinates and weights use `RealT`. Mapping types identify their element geometries; the implemented mapping supports
   straight two-dimensional edges. Co-oriented edge pairs produce valid zero-point rules before point generation,
   including when mapping existing integration-surface quadrature points; they cannot contribute tributary area or

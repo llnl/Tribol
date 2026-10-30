@@ -7,8 +7,8 @@
  * @file
  * @brief Tests base and paired edge quadrature on every enabled backend: polynomial accuracy, interval selection,
  * bounded writes, invalid geometry, owned edge geometry, and frozen integration-surface quadrature points mapped to
- * changed geometry. Pair generation preserves integration-surface generator failures. Factory tests check order
- * selection.
+ * changed geometry. Pair generation preserves integration-surface generator failures. Compile-time checks accept
+ * compatible mappings and generators and reject mismatched interfaces. Factory tests check order selection.
  */
 
 #include <cmath>
@@ -763,6 +763,71 @@ struct UndersizedEdgeQuadratureRuleGenerator : EdgeQuadratureRuleGenerator<1> {
     return output;
   }
 };
+
+/** @brief Test-only generator accepting an integer instead of the mapping's integration surface. */
+struct IncompatibleSurfaceRuleGenerator : EdgeQuadratureRuleGenerator<1> {
+  /**
+   * @brief Declare generation for an incompatible integration-surface type.
+   * @param surface Integer that cannot accept an EdgeQuadratureInterval.
+   * @return Declared integration-surface rule type.
+   */
+  IntegrationSurfaceRule generate( int surface ) const;
+};
+
+/** @brief Test-only generator returning status without the points and weights declared by its rule type. */
+struct IncompatibleResultRuleGenerator : EdgeQuadratureRuleGenerator<1> {
+  /**
+   * @brief Declare generation with an incompatible return type.
+   * @param surface Integration interval accepted by the generator.
+   * @return Declared status-only result type.
+   */
+  QuadratureResult generate( EdgeQuadratureInterval surface ) const;
+};
+
+/** @brief Test-only mapping accepting two integration coordinates per point instead of the generator's one. */
+struct IncompatibleRuleMapping : SmoothedProjectedEdgeMapping {
+  /**
+   * @brief Declare element mapping for an incompatible integration-surface rule view.
+   * @param geometry1 First element geometry.
+   * @param geometry2 Second element geometry.
+   * @param rule Integration-surface view requiring two coordinate components per point.
+   * @param output Paired element coordinates and weights.
+   * @return Declared generation result type.
+   */
+  QuadratureResult mapToElements( const FirstGeometry& geometry1, const SecondGeometry& geometry2,
+                                  IntegrationSurfaceRuleView<2> rule, PairQuadratureView<1, 1> output ) const;
+};
+
+/** @brief Test-only generator declaring zero points of storage, which cannot back the fixed-size output arrays. */
+struct ZeroPointRuleGenerator : EdgeQuadratureRuleGenerator<1> {
+  static constexpr int max_points = 0;  ///< Invalid maximum for fixed-size quadrature storage.
+};
+
+/**
+ * @brief Check whether PairQuadratureRule accepts the supplied template arguments.
+ * @tparam Mapping Candidate element-pair mapping.
+ * @tparam Generator Candidate integration-surface rule generator.
+ */
+template <typename Mapping, typename Generator>
+concept CanFormPairQuadratureRule = requires { typename PairQuadratureRule<Mapping, Generator>; };
+
+// Both the projected-edge mapping and the mapping using physical x coordinates satisfy the geometry requirements.
+static_assert( ElementPairMapping<SmoothedProjectedEdgeMapping> );
+static_assert( ElementPairMapping<ParallelEdgeMapping> );
+// A type without element geometry or integration-surface construction must fail the mapping requirement.
+static_assert( !ElementPairMapping<int> );
+static_assert( !CanFormPairQuadratureRule<int, EdgeQuadratureRuleGenerator<1>> );
+// Accept existing generators, including one whose generation deliberately reports insufficient capacity.
+static_assert( CanFormPairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>> );
+static_assert( CanFormPairQuadratureRule<ParallelEdgeMapping, EdgeQuadratureRuleGenerator<3>> );
+static_assert( CanFormPairQuadratureRule<SmoothedProjectedEdgeMapping, UndersizedEdgeQuadratureRuleGenerator> );
+// Reject a generator with the wrong surface input and a mapping with the wrong rule-view dimension.
+static_assert( !CanFormPairQuadratureRule<SmoothedProjectedEdgeMapping, IncompatibleSurfaceRuleGenerator> );
+static_assert( !CanFormPairQuadratureRule<IncompatibleRuleMapping, EdgeQuadratureRuleGenerator<1>> );
+// A generator must return its declared rule type so the caller can read both generation status and quadrature data.
+static_assert( !CanFormPairQuadratureRule<SmoothedProjectedEdgeMapping, IncompatibleResultRuleGenerator> );
+// Reject unusable output extents before instantiating fixed-size quadrature arrays.
+static_assert( !CanFormPairQuadratureRule<SmoothedProjectedEdgeMapping, ZeroPointRuleGenerator> );
 
 // PairQuadratureRule must pass through a failure from the integration-surface rule generator, including the required
 // count, without mapping incomplete points or writing the caller's output storage.
