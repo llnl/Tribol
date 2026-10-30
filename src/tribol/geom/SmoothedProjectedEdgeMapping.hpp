@@ -147,12 +147,13 @@ struct SmoothedProjectedEdgeMapping {
   }
 
   /**
-   * @brief Calculate the edge1 parent coordinate of a edge2 point projected along its normal.
+   * @brief Project an edge2 point along edge2's normal onto edge1's line and return the edge1 parametric coordinate.
    * @param edge1 Non-mortar integration edge.
    * @param point Physical point on edge2.
    * @param normal Projection direction from edge2 to the edge1 line.
    * @param determinant Cross product of the edge1 direction and projection normal, shared by both endpoints.
-   * @return Parent coordinate of the intersection; nearly parallel lines use the point's orthogonal parent coordinate.
+   * @return Parametric coordinate on edge1, possibly outside [-1,1]. Nearly parallel lines use the point's orthogonal
+   * projection onto edge1.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static RealT projectedParentCoordinate( const FirstGeometry& edge1,
                                                                                   const Point& point,
