@@ -51,8 +51,8 @@ struct EdgeQuadratureRuleGenerator {
   /**
    * @brief Map the standard Gauss-Legendre rule on [-1,1] onto the supplied interval.
    *
-   * @param bounds Lower and upper integration-interval coordinates.
-   * @return NumPoints points for increasing bounds; Success with zero points for collapsed or reversed bounds.
+   * @param bounds Lower and upper integration-interval coordinates, stored at indices 0 and 1.
+   * @return Success with NumPoints points if bounds[1] > bounds[0]; otherwise Success with zero points.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static IntegrationSurfaceRule generate( MdSpan<const RealT, 2> bounds )
   {
