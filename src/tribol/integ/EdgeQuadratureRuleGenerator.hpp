@@ -41,9 +41,9 @@ struct EdgeQuadratureRuleGenerator {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceRule generate( EdgeQuadratureInterval interval = {} ) const
   {
     if ( !interval.valid ) {
-      IntegrationSurfaceRule result{};
-      result.result.status = QuadratureStatus::InvalidGeometry;
-      return result;
+      IntegrationSurfaceRule rule{};
+      rule.result.status = QuadratureStatus::InvalidGeometry;
+      return rule;
     }
     return generate( interval.bounds.view() );
   }
@@ -56,16 +56,16 @@ struct EdgeQuadratureRuleGenerator {
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static IntegrationSurfaceRule generate( MdSpan<const RealT, 2> bounds )
   {
-    IntegrationSurfaceRule result{};
-    if ( bounds[1] <= bounds[0] ) return result;
+    IntegrationSurfaceRule rule{};
+    if ( bounds[1] <= bounds[0] ) return rule;
     const RealT scale = 0.5 * ( bounds[1] - bounds[0] );
     const RealT center = 0.5 * ( bounds[1] + bounds[0] );
     for ( int q = 0; q < NumPoints; ++q ) {
-      result.coords( q, 0 ) = scale * gaussPoint( q ) + center;
-      result.weights[q] = scale * gaussWeight( q );
+      rule.coords( q, 0 ) = scale * gaussPoint( q ) + center;
+      rule.weights[q] = scale * gaussWeight( q );
     }
-    result.result.required_point_count = NumPoints;
-    return result;
+    rule.result.required_point_count = NumPoints;
+    return rule;
   }
 
  private:
