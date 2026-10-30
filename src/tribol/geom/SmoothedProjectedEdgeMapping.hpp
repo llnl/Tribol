@@ -33,7 +33,7 @@ struct SmoothedProjectedEdgeMapping {
   using FirstGeometry = LinearEdgeGeometry;   ///< Non-mortar integration edge type required by PairQuadratureRule.
   using SecondGeometry = LinearEdgeGeometry;  ///< Mortar projection edge type required by PairQuadratureRule.
   using Point = LinearEdgeGeometry::Point;    ///< Physical point used for forward and reverse projection.
-  using Vector = LinearEdgeGeometry::Vector;  ///< Directed edge, normal, or point displacement.
+  using Vector = LinearEdgeGeometry::Vector;  ///< Vector in physical space.
   /** @brief Native integration surface, expressed in edge1 parent coordinates. */
   using IntegrationSurface = EdgeQuadratureInterval;
   RealT smoothing_fraction{ 0.1 };  ///< Smoothing length as a fraction of the first edge's length.
