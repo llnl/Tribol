@@ -74,7 +74,7 @@ struct SmoothedProjectedEdgeMapping {
    * @param edge1 Current non-mortar integration edge.
    * @param edge2 Current mortar projection edge.
    * @param integration_surface_rule Quadrature points and weights expressed in edge1's parent coordinate.
-   * @param [out] output Parent points on both elements and physical integration weights.
+   * @param [out] output Parametric coordinates on both edges and physical integration weights.
    * @return Success with the initialized count, InsufficientCapacity with the full count, or InvalidGeometry with zero
    * points. Invalid geometry and insufficient capacity leave output untouched. Valid zero measure returns zero points.
    */
