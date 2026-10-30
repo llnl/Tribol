@@ -49,7 +49,7 @@ struct EdgeQuadratureRuleGenerator {
   }
 
   /**
-   * @brief Map the fixed Gauss rule onto supplied parent bounds.
+   * @brief Map the standard Gauss-Legendre rule on [-1,1] onto the supplied interval.
    *
    * @param bounds Lower and upper integration-interval coordinates.
    * @return NumPoints points for increasing bounds; Success with zero points for collapsed or reversed bounds.
