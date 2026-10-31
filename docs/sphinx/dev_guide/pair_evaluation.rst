@@ -79,16 +79,15 @@ Contact implementations
 
 ``EnergyMortarEnergy`` defines quadrature-point penalty energy, while ``CommonPlaneForce`` defines the direct Common
 Plane residual. Their portable ``evaluate()`` methods return primal values, activation, and quadrature status. Their
-host ``energy()`` or ``residual()`` methods implement the definition interfaces above. Energy Mortar's adapter and
-the Common Plane pair calculation check primal status and activation, then pass the already calculated value to the
-corresponding derivative evaluator.
+host ``energy()`` or ``residual()`` methods implement the definition interfaces above. The shared pair formulation
+checks primal status and activation, then passes the already calculated value to the method's derivative evaluator.
 At zero gap, the compressive branch remains active so its tangent is calculated even though pressure is zero.
 
-Quadrature-point Energy Mortar constructs one ``EnergyMortarEnergy`` definition per force request. Inside the pair
-loop, it checks the primal quadrature status and skips inactive pairs before requesting derivatives. The evaluator
-reuses the calculated energy, and the adapter passes views of its ``residual`` and ``jacobian`` arrays directly to
-``MfemPairAssembler::addPair()``. ``EnergyMortarCalculator`` supplies only nodal integrals and derivatives; it has no
-quadrature-point penalty result or evaluation wrappers.
+``PairContactFormulation`` prepares one energy or force definition per request using current penalty data. Inside the
+pair loop it gathers coordinates, checks quadrature status, and skips inactive pairs before requesting derivatives.
+The evaluator reuses the calculated primal value, and the formulation passes views of its ``residual`` and
+``jacobian`` arrays directly to ``MfemPairAssembler::addPair()``. ``EnergyMortarCalculator`` supplies only nodal
+integrals and derivatives; it has no quadrature-point penalty result or evaluation wrappers.
 
 These evaluators differentiate independent pair functions with respect to coordinates. Nodal Energy Mortar continues
 to assemble its gap and area integrals and apply its existing nodal chain rule, including coupling between pairs that
@@ -130,3 +129,40 @@ individual scalar integrals with a unit output seed; Hessians use forward differ
 quadrature is generated inside the differentiated calculation, while frozen quadrature still differentiates current
 projections, normals, and physical weights. Invalid geometry throws before quadrature data or normals are consumed;
 valid zero-point rules return zero integrals and derivatives.
+
+Pair formulation transfer data
+--------------------------------
+
+Pair formulations borrow only ``MfemMeshData`` and ``MfemJacobianData``. Quadrature-point Energy Mortar registration
+creates a parent-only Jacobian transfer and allocates no pressure/gap finite-element fields. Selecting nodal
+Energy Mortar creates those fields and its dual Jacobian transfer; selecting quadrature points releases them.
+When a decomposition already exists, newly selected transfers are initialized immediately, so a force request can
+follow ``setEnforcementLocation()`` without another decomposition update. Cached outputs are cleared on rebuilding;
+callers must not retain views into pressure/gap fields across an enforcement-location change.
+
+``EnergyMortarAdapter`` is nodal-only and no longer takes an enforcement-location template argument or uses a CRTP
+base class. Independent pair calculations share assembly through ``PairContactFormulation``; nodal gap/area assembly
+and coupling between pairs that share nodes remain in ``EnergyMortarAdapter``.
+
+Selecting a penalty stiffness combination
+------------------------------------------
+
+``AveragePenaltyStiffness`` computes ``0.5 * (k1 + k2)``; ``SeriesPenaltyStiffness`` computes
+``k1 * k2 / (k1 + k2)``. Both are allocation-free callable objects usable in host and device calculations without MFEM
+or Enzyme. Callers supply the stiffnesses and remain responsible for input validation and mesh penalty scales.
+
+The second template argument selects the combination independently of the pair energy or force definition:
+
+.. code-block:: cpp
+
+   using AveragedCommonPlane = tribol::CommonPlanePairMethod<BaseRule, tribol::AveragePenaltyStiffness>;
+   using SeriesEnergyMortar = tribol::EnergyMortarPairMethod<PairRule, tribol::SeriesPenaltyStiffness>;
+
+Each method owns its combination object and accepts it as an optional final constructor argument. Default factory
+selection remains springs in series for Common Plane and averaging for Energy Mortar. Common Plane applies the mesh
+penalty scales before combining; Energy Mortar combines its registered constant penalties. The chosen scalar stiffness
+is held fixed during coordinate differentiation. The nodal Energy Mortar factory also uses the shared average
+calculation, and the legacy Common Plane stiffness function delegates to the shared series calculation.
+
+The library explicitly instantiates both built-in combinations for both pair methods and all three supported Gauss
+point counts. Additional combination types require matching method and formulation instantiations.

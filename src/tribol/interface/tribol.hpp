@@ -138,6 +138,10 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
  * \param [in] location contact enforcement location
  *
  * \note Quadrature-point computation is only supported with penalty enforcement.
+ *
+ * ENERGY_MORTAR creates pressure/gap fields only for nodal enforcement. Switching locations releases the previous
+ * formulation and its cached outputs and initializes the selected transfer data on any existing decomposition.
+ * Views into the previous pressure/gap fields must not be retained across this call.
  */
 void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
 

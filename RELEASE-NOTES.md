@@ -8,13 +8,16 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added portable `AveragePenaltyStiffness` and `SeriesPenaltyStiffness` callable types. Both pair methods accept either
+  as their second template argument and own the selected combination object. Default factory choices, mesh scaling,
+  and contact calculations are unchanged.
 - Added `EnergyPairEvaluator` and `ForcePairEvaluator` for local energy gradients/Hessians and residual Jacobians.
   Defaults use Enzyme on the host; methods can specialize either evaluator to provide other derivatives. Both accept
   a previously calculated primal value and return owning arrays in pair DOF order for shared MFEM assembly.
 - Added independent `EnergyMortarEnergy` and `CommonPlaneForce` definitions. Quadrature-point Energy Mortar and
   Common Plane use the shared derivative evaluators, with current geometry and quadrature differentiated inside
   each definition. Primal definitions remain callable without Enzyme, including in device kernels.
-- Added an opt-in linear 2D `CommonPlaneFormulation` for host MFEM frictionless constant-penalty contact. Enable it
+- Added an opt-in linear 2D Common Plane formulation for host MFEM frictionless constant-penalty contact. Enable it
   with `setMfemUseCommonPlaneFormulation()` after setting positive mesh penalties. Gaps and activation are evaluated at
   quadrature points; Enzyme differentiates the direct residual, including geometry-dependent overlap and normals.
   Use `getMfemContactForce()` and `getMfemDfDx()` for parent true-DOF residuals and Jacobians. The residual's negative
@@ -74,6 +77,14 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Common Plane and quadrature-point Energy Mortar use `PairContactFormulation<PairMethod>` for search, coordinate
+  gathering, and parent MFEM residual/Jacobian assembly. Their force/energy definitions, penalty combinations, and
+  derivative evaluators remain method-specific. Energy remains absent for Common Plane.
+- `EnergyMortarAdapter<QuadratureRule>` is nodal-only, replacing its enforcement-location CRTP classes. Pair-based
+  Energy Mortar no longer constructs an `EnergyMortarCalculator` or MFEM pressure/gap fields. Switching locations
+  rebuilds the required parent-only or dual transfers, initializes them on an existing decomposition, and clears
+  cached outputs. Views into pressure/gap fields must not survive a location change.
+- MFEM mesh re-registration refreshes coupling-scheme pointers before direct formulation calls.
 - Quadrature-point Energy Mortar uses `EnergyMortarEnergy` and `EnergyPairEvaluator` directly, passing residual and
   Jacobian array views to MFEM assembly without copying them into another result type. Removed
   `QuadraturePointPenaltyData`, `compute_quadrature_point_penalty_data()`, and

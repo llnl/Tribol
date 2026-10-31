@@ -3,7 +3,7 @@
 Common Plane through ContactFormulation
 =======================================
 
-The opt-in ``CommonPlaneFormulation`` evaluates frictionless penalty contact between straight two-dimensional edges.
+The opt-in Common Plane formulation evaluates frictionless penalty contact between straight two-dimensional edges.
 It requires MFEM, Redecomp, and Enzyme, linear coordinate elements, constant positive mesh penalties, quadrature-point
 enforcement, and host execution. It does not support LOR subdivision, rate penalties, tied contact, or device assembly.
 
@@ -55,3 +55,9 @@ fields; its other fields are absent. The coupling scheme stores the latest retur
 retrieval functions. Displacement Jacobian transfer uses no pressure or gap finite-element field. Empty overlap and
 nonopposing normals produce successful zero-point rules; invalid geometry and insufficient capacity are failures
 whose output is discarded and reported before residual evaluation.
+
+Common Plane and quadrature-point Energy Mortar share ``PairContactFormulation<PairMethod>`` for search, coordinate
+collection, and MFEM assembly. ``CommonPlanePairMethod`` defaults to ``SeriesPenaltyStiffness`` and selects
+``ForcePairEvaluator``. ``EnergyMortarPairMethod`` defaults to ``AveragePenaltyStiffness`` and selects
+``EnergyPairEvaluator``. Either method accepts the other stiffness combination as its second template argument. Both use displacement-only Jacobian transfer without pressure/gap fields. Nodal
+Energy Mortar remains in ``EnergyMortarAdapter<QuadratureRule>`` with its pressure/gap fields and nodal chain rule.

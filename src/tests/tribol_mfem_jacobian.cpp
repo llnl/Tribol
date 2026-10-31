@@ -1067,8 +1067,10 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
 
   auto* cs = tribol::CouplingSchemeManager::getInstance().findData( cs_id );
   ASSERT_NE( cs, nullptr );
-  EXPECT_TRUE( cs->getMesh1().getNodalFields().m_is_node_gap_set );
-  EXPECT_TRUE( cs->getMesh1().getNodalFields().m_is_node_pressure_set );
+  // Quadrature-point Energy Mortar assembles the displacement Jacobian without pressure or nodal-gap fields.
+  EXPECT_FALSE( cs->hasMfemSubmeshData() );
+  EXPECT_FALSE( cs->getMesh1().getNodalFields().m_is_node_gap_set );
+  EXPECT_FALSE( cs->getMesh1().getNodalFields().m_is_node_pressure_set );
   EXPECT_FALSE( cs->getMesh2().getNodalFields().m_is_node_gap_set );
   EXPECT_FALSE( cs->getMesh2().getNodalFields().m_is_node_pressure_set );
 

@@ -1060,6 +1060,10 @@ class MfemMeshData {
    */
   const mfem::ParMesh* GetLORMesh() const { return lor_mesh_.get(); }
 
+  /// Whether a decomposition exists and newly created transfer data can be initialized immediately.
+  /// @return True after UpdateMfemMeshData() has created the current Redecomp mesh, including on empty ranks.
+  bool HasRedecompMesh() const { return update_data_ != nullptr; }
+
   /**
    * @brief Get the redecomp mesh containing redecomposed contact surfaces
    *

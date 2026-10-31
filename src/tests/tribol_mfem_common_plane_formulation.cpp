@@ -19,7 +19,10 @@
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/physics/CommonPlaneFormulation.hpp"
+#include "tribol/physics/PairContactFormulation.hpp"
+#include "tribol/integ/QuadratureRuleFactory.hpp"
+#include "tribol/search/CoarseSearchFactory.hpp"
+#include "tribol/search/ProjectedEdgeSearch.hpp"
 
 namespace {
 using namespace tribol;
@@ -113,6 +116,32 @@ TEST_P( MfemCommonPlaneTest, matches_nonmatching_constant_traction_patch )
   EXPECT_THROW( scheme().getContactFormulation()->computeNodalGaps( scheme().getMesh1().getView(),
                                                                     scheme().getMesh2().getView() ),
                 std::logic_error );
+}
+
+// The same force definition must accept arithmetic averaging instead of springs in series, for each Gauss count.
+TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
+{
+  enable();
+  evaluate();
+  const auto baseline = getMfemContactForce( 0 );
+  auto alternate =
+      createWithQuadratureRule( GetParam(), [&]<typename BaseRule>() -> std::unique_ptr<ContactFormulation> {
+        using Method = CommonPlanePairMethod<BaseRule, AveragePenaltyStiffness>;
+        auto coarse =
+            createCoarseSearch( scheme().spatialDimension(), scheme().getBinningMethod(), scheme().getExecutionMode(),
+                                scheme().getEffectiveBinningProximityScale(), 0.0 );
+        auto refined = std::make_unique<ProjectedEdgeSearch>( scheme().getExecutionMode(), false );
+        return std::make_unique<PairContactFormulation<Method>>( *scheme().getMfemMeshData(),
+                                                                 *scheme().getMfemJacobianData(), std::move( coarse ),
+                                                                 std::move( refined ), Method{ 0.0 } );
+      } );
+  auto result = alternate->computeNodalForces( scheme().getMesh1().getView(), scheme().getMesh2().getView() );
+  ASSERT_NE( result.force, nullptr );
+  EXPECT_FALSE( result.energy.has_value() );
+  // The configured stiffnesses 2 and 6 have arithmetic mean 4 and series stiffness 1.5.
+  constexpr RealT stiffness_ratio = 4.0 / 1.5;
+  result.force->Add( -stiffness_ratio, baseline );
+  EXPECT_LT( norm( *result.force ), 1.0e-11 );
 }
 
 // Each direct call returns its own force and matrix, without changing earlier results or the coupling-scheme cache.
@@ -265,11 +294,17 @@ TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
     setQuadratureOrder( 0, order );
     auto* formulation = scheme().getContactFormulation();
     if ( order <= 1 )
-      EXPECT_NE( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<1>>*>( formulation ), nullptr );
+      EXPECT_NE(
+          dynamic_cast<PairContactFormulation<CommonPlanePairMethod<EdgeQuadratureRuleGenerator<1>>>*>( formulation ),
+          nullptr );
     else if ( order <= 3 )
-      EXPECT_NE( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<2>>*>( formulation ), nullptr );
+      EXPECT_NE(
+          dynamic_cast<PairContactFormulation<CommonPlanePairMethod<EdgeQuadratureRuleGenerator<2>>>*>( formulation ),
+          nullptr );
     else
-      EXPECT_NE( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<3>>*>( formulation ), nullptr );
+      EXPECT_NE(
+          dynamic_cast<PairContactFormulation<CommonPlanePairMethod<EdgeQuadratureRuleGenerator<3>>>*>( formulation ),
+          nullptr );
   }
   EXPECT_THROW( setQuadratureOrder( 0, 6 ), std::invalid_argument );
   EXPECT_EQ( scheme().getParameters().quadrature_order, 5 );

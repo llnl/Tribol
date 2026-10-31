@@ -7,6 +7,7 @@
 #define SRC_TRIBOL_PHYSICS_COMMONPLANE_HPP_
 
 #include "Physics.hpp"
+#include "tribol/physics/PenaltyStiffness.hpp"
 #include "tribol/geom/CommonPlaneEdgeMapping.hpp"
 #include "tribol/integ/PairQuadratureRule.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
@@ -188,7 +189,7 @@ TRIBOL_HOST_DEVICE inline RealT ComputePenaltyStiffnessPerArea( const RealT K1_o
   // commensurate with the previous calculations using only the
   // constant registered penalty scale.
 
-  return K1_over_t1 * K2_over_t2 / ( K1_over_t1 + K2_over_t2 );
+  return SeriesPenaltyStiffness{}( K1_over_t1, K2_over_t2 );
 
 }  // end ComputePenaltyStiffnessPerArea
 

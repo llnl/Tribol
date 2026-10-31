@@ -16,7 +16,7 @@
 #include <utility>
 #include <cmath>
 #include <stdexcept>
-#include "tribol/physics/CommonPlaneFormulation.hpp"
+#include "tribol/physics/PairContactFormulation.hpp"
 
 namespace tribol {
 
@@ -66,15 +66,14 @@ void validateCommonPlaneFormulation( CouplingScheme& cs )
        !options.constraint_type_set || options.constraint_type != KINEMATIC ||
        ( options.rate_calc_set && options.rate_calculation != NO_RATE_PENALTY ) ) {
     throw std::invalid_argument(
-        "CommonPlaneFormulation requires host MFEM frictionless common-plane constant-penalty quadrature-point "
+        "Common Plane requires host MFEM frictionless common-plane constant-penalty quadrature-point "
         "contact." );
   }
   const auto& data = *cs.getMfemMeshData();
   if ( data.GetParentCoords().ParFESpace()->GetParMesh()->SpaceDimension() != 2 ||
        data.GetParentCoords().ParFESpace()->FEColl()->GetOrder() != 1 ||
        data.GetParentCoords().ParFESpace()->GetVDim() != 2 || data.GetLORMesh() != nullptr ) {
-    throw std::invalid_argument(
-        "CommonPlaneFormulation supports only linear 2D coordinates without LOR subdivision." );
+    throw std::invalid_argument( "Common Plane supports only linear 2D coordinates without LOR subdivision." );
   }
   const auto* penalty1 = data.GetMesh1KinematicConstantPenalty();
   const auto* penalty2 = data.GetMesh2KinematicConstantPenalty();
@@ -82,12 +81,12 @@ void validateCommonPlaneFormulation( CouplingScheme& cs )
        *penalty2 <= 0.0 || !std::isfinite( cs.getParameters().residual_gap ) || cs.getParameters().residual_gap < 0.0 ||
        cs.getParameters().quadrature_order < 0 || cs.getParameters().quadrature_order > 5 ) {
     throw std::invalid_argument(
-        "CommonPlaneFormulation requires positive finite mesh penalties, a nonnegative finite residual gap, and "
+        "Common Plane requires positive finite mesh penalties, a nonnegative finite residual gap, and "
         "quadrature order 0-5." );
   }
 #else
   (void)cs;
-  throw std::runtime_error( "CommonPlaneFormulation requires Enzyme and Redecomp." );
+  throw std::runtime_error( "Common Plane requires Enzyme and Redecomp." );
 #endif
 }
 }  // namespace detail
@@ -108,34 +107,16 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
         auto coarse = createCoarseSearch( cs->spatialDimension(), cs->getBinningMethod(), cs->getExecutionMode(),
                                           cs->getEffectiveBinningProximityScale(), cs->getParameters().residual_gap );
         auto refined = std::make_unique<ProjectedEdgeSearch>( cs->getExecutionMode(), cs->getContactCase() == AUTO );
-        return std::make_unique<CommonPlaneFormulation<BaseRule>>( *cs->getMfemMeshData(), *cs->getMfemJacobianData(),
-                                                                   std::move( coarse ), std::move( refined ),
-                                                                   cs->getParameters().residual_gap );
+        return std::make_unique<PairContactFormulation<CommonPlanePairMethod<BaseRule>>>(
+            *cs->getMfemMeshData(), *cs->getMfemJacobianData(), std::move( coarse ), std::move( refined ),
+            CommonPlanePairMethod<BaseRule>{ cs->getParameters().residual_gap } );
       } );
 }
 
-template <template <typename> class EnforcementLocation, typename QuadratureRule>
-std::unique_ptr<ContactFormulation> createEnergyMortarAdapter( CouplingScheme* cs, QuadratureRule quadrature_rule )
+template <typename QuadratureRule>
+std::unique_ptr<ContactFormulation> createEnergyMortarForRule( CouplingScheme* cs, QuadratureRule quadrature_rule )
 {
-  RealT k = 1000.0;
-  const bool enzyme_quadrature = true;
-
-  // ENERGY_MORTAR supports a penalty-style mode driven by the kinematic penalty parameters, even if the coupling
-  // scheme is registered with LM enforcement (which is often done to enable submesh/pressure infrastructure).
-  const auto& penalty_opts = cs->getEnforcementOptions().penalty_options;
-  bool use_penalty = penalty_opts.kinematic_calc_set;
-
-  if ( cs->hasMfemData() ) {
-    // Attempt to get penalty from MfemMeshData if available
-    auto* k1_ptr = cs->getMfemMeshData()->GetMesh1KinematicConstantPenalty();
-    auto* k2_ptr = cs->getMfemMeshData()->GetMesh2KinematicConstantPenalty();
-    if ( k1_ptr && k2_ptr ) {
-      k = 0.5 * ( *k1_ptr + *k2_ptr );
-    }
-  }
-
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(), "ENERGY_MORTAR requires MFEM mesh data." );
-  SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "ENERGY_MORTAR requires MFEM submesh data." );
   SLIC_ERROR_ROOT_IF( !cs->hasMfemJacobianData(), "ENERGY_MORTAR requires MFEM Jacobian data." );
 
   const auto residual_gap = cs->getParameters().residual_gap;
@@ -145,29 +126,35 @@ std::unique_ptr<ContactFormulation> createEnergyMortarAdapter( CouplingScheme* c
   auto coarse_search = createCoarseSearch( cs->spatialDimension(), binning_method, execution_mode,
                                            binning_proximity_scale, residual_gap );
   auto refined_search = std::make_unique<ProjectedEdgeSearch>( execution_mode, cs->getContactCase() == AUTO );
-  return std::make_unique<EnergyMortarAdapter<EnforcementLocation, QuadratureRule>>(
+  if ( cs->getParameters().enforcement_location == EnforcementLocation::QuadraturePoint ) {
+    using Method = EnergyMortarPairMethod<QuadratureRule>;
+    return std::make_unique<PairContactFormulation<Method>>(
+        *cs->getMfemMeshData(), *cs->getMfemJacobianData(), std::move( coarse_search ), std::move( refined_search ),
+        Method{ std::move( quadrature_rule ), residual_gap,
+                cs->getEnforcementOptions().penalty_options.kinematic_calc_set } );
+  }
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "Nodal Energy Mortar requires pressure/gap data." );
+  RealT k = 1000.0;
+  const auto* k1 = cs->getMfemMeshData()->GetMesh1KinematicConstantPenalty();
+  const auto* k2 = cs->getMfemMeshData()->GetMesh2KinematicConstantPenalty();
+  if ( k1 && k2 ) k = AveragePenaltyStiffness{}( *k1, *k2 );
+  const bool enzyme_quadrature = true;
+  // Nodal penalty enforcement is selected by the kinematic penalty options; otherwise use the multiplier field.
+  const bool use_penalty = cs->getEnforcementOptions().penalty_options.kinematic_calc_set;
+  return std::make_unique<EnergyMortarAdapter<QuadratureRule>>(
       *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( coarse_search ),
       std::move( refined_search ), k, std::move( quadrature_rule ), enzyme_quadrature, use_penalty, residual_gap );
 }
 
-template <template <typename> class EnforcementLocation>
-std::unique_ptr<ContactFormulation> createEnergyMortarForLocation( CouplingScheme* cs )
+std::unique_ptr<ContactFormulation> createEnergyMortar( CouplingScheme* cs )
 {
   const SmoothedProjectedEdgeMapping mapping{};
   return createWithQuadratureRule( cs->getParameters().quadrature_order, mapping,
                                    [&]( auto quadrature_rule ) -> std::unique_ptr<ContactFormulation> {
-                                     return createEnergyMortarAdapter<EnforcementLocation>(
-                                         cs, std::move( quadrature_rule ) );
+                                     return createEnergyMortarForRule( cs, std::move( quadrature_rule ) );
                                    } );
 }
 
-std::unique_ptr<ContactFormulation> createEnergyMortar( CouplingScheme* cs )
-{
-  if ( cs->getParameters().enforcement_location == EnforcementLocation::QuadraturePoint ) {
-    return createEnergyMortarForLocation<QuadraturePoint>( cs );
-  }
-  return createEnergyMortarForLocation<Nodal>( cs );
-}
 }  // namespace
 #endif
 

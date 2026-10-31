@@ -24,6 +24,7 @@ set( tribol_tests
      tribol_hex_mesh.cpp
      tribol_pair_quadrature.cpp
      tribol_pair_evaluation.cpp
+     tribol_penalty_stiffness.cpp
      tribol_common_plane_formulation.cpp
      tribol_refined_search.cpp
      tribol_interface_pair_checks.cpp
@@ -262,8 +263,13 @@ if( TRIBOL_USE_ENZYME )
   endforeach()
 
   if (TRIBOL_USE_MPI)
-    blt_add_test(NAME tribol_mfem_common_plane_formulation_2rank
-                 COMMAND tribol_mfem_common_plane_formulation_test NUM_MPI_TASKS 2)
+    blt_add_test( NAME tribol_energy_mortar_quadrature_settings_2rank
+                  COMMAND tribol_energy_mortar_quadrature_settings_test
+                  NUM_MPI_TASKS 2 )
+
+    blt_add_test( NAME tribol_mfem_common_plane_formulation_2rank
+                  COMMAND tribol_mfem_common_plane_formulation_test
+                  NUM_MPI_TASKS 2 )
   endif()
 
 endif()

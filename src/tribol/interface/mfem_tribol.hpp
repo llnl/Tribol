@@ -49,6 +49,9 @@ namespace tribol {
  * @param [in] enforcement_method
  * @param [in] binning_method
  * @param [in] exec_mode Execution mode for the coupling scheme (Sequential by default)
+ *
+ * Quadrature-point ENERGY_MORTAR uses parent-only Jacobian transfer and creates no pressure/gap fields. Nodal
+ * enforcement creates those fields when selected; switching locations rebuilds the formulation and transfer data.
  */
 void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, const mfem::ParMesh& mesh,
                                  const mfem::ParGridFunction& current_coords, std::set<int> b_attributes_1,
@@ -256,7 +259,7 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r );
 /**
  * @brief Return the assembled contact residual on parent true DOFs
  *
- * @note Values on shared DOFs are already consistent across ranks. For CommonPlaneFormulation, the negative of
+ * @note Values on shared DOFs are already consistent across ranks. For the Common Plane formulation, the negative of
  * this residual is the physical force returned by the legacy getMfemResponse() path.
  *
  * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()

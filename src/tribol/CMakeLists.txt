@@ -57,9 +57,10 @@ set(tribol_headers
     physics/Mortar.hpp
     physics/EnergyMortar.hpp
     physics/EnergyMortarEnergy.hpp
+    physics/PenaltyStiffness.hpp
     physics/PairEvaluation.hpp
     physics/EnergyMortarAdapter.hpp
-     physics/CommonPlaneFormulation.hpp
+    physics/PairContactFormulation.hpp
     physics/Physics.hpp
 
     search/CoarseSearch.hpp
@@ -106,7 +107,7 @@ set(tribol_sources
     physics/Mortar.cpp
     physics/EnergyMortar.cpp
     physics/EnergyMortarAdapter.cpp
-     physics/CommonPlaneFormulation.cpp
+    physics/PairContactFormulation.cpp
     physics/Physics.cpp
      
     search/CoarseSearchFactory.cpp

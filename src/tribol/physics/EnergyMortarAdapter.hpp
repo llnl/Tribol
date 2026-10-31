@@ -24,27 +24,17 @@ namespace tribol {
 #ifdef TRIBOL_USE_ENZYME
 
 /**
- * @brief ContactFormulation adapter for the ENERGY_MORTAR method
+ * @brief Assemble nodal Energy Mortar integrals, penalty or LM forces, and their derivatives through MFEM.
  *
- * This class wraps the ENERGY_MORTAR implementation and exposes a ContactFormulation interface compatible with
- * MFEM/redecomp workflows.
- *
- * In penalty mode, the dual field is interpreted as pressure `p = k * (g_tilde / A)`. In Lagrange multiplier (LM) mode,
- * the dual field is interpreted as the multiplier vector `lambda` and the formulation computes `f = G^T * lambda` where
- * `G = d(g_tilde)/dx`.
+ * Penalty pressure is k * (g_tilde / A). LM enforcement uses the caller's multiplier field and the weighted gap.
+ * Geometry, pairs, and calculated fields are local to each request.
+ * @tparam QuadratureRule Element-pair quadrature generator for the nodal integrals.
  */
-
-template <template <typename> class EnforcementLocation, typename QuadratureRule>
-class EnergyMortarAdapter;
-
-/**
- * @brief ENERGY_MORTAR location policy that assembles constraints at submesh nodes
- *
- * @tparam Adapter EnergyMortarAdapter specialization using this location
- */
-template <typename Adapter>
-class Nodal : public ContactFormulation {
+template <typename QuadratureRule>
+class EnergyMortarAdapter : public ContactFormulation {
  public:
+  using Calculator = EnergyMortarCalculator<QuadratureRule>;  ///< Coordinate-based local evaluator.
+
   /**
    * @brief Calculate nodal gaps and their coordinate derivative.
    * @param mesh1 Current non-mortar mesh.
@@ -60,6 +50,35 @@ class Nodal : public ContactFormulation {
    * @return Owned nodal outputs; df_dp is present only for LM enforcement. No timestep is calculated.
    */
   ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override;
+
+  /**
+   * @brief Construct a new EnergyMortarAdapter
+   *
+   * @param mesh_data MFEM mesh data for the parent/primary variables
+   * @param submesh_data MFEM submesh data for the dual variables (pressure/gap/LM)
+   * @param jac_data MFEM Jacobian transfer data
+   * @param coarse_search Coarse search whose ownership is transferred to this formulation; must be non-null
+   * @param refined_search Refined search whose ownership is transferred to this formulation; must be non-null
+   * @param k Penalty stiffness
+   * @param quadrature_rule Quadrature generator owned by this adapter
+   * @param enzyme_quadrature If true, differentiate the reference-rule construction with respect to geometry
+   * @param use_penalty If true, interpret the dual field as pressure; otherwise interpret it as a Lagrange multiplier
+   * vector (LM mode)
+   * @param residual_gap Nonnegative gap offset subtracted from the kinematic gap. Positive values enforce separation
+   *        between the contact surfaces.
+   *
+   * @note Mesh 1 is the non-mortar integration side; mesh 2 is the mortar projection side. Mesh views, candidate
+   * pairs, and MFEM element maps all use this order.
+   */
+  EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
+                       std::unique_ptr<CoarseSearch> coarse_search, std::unique_ptr<RefinedSearch> refined_search,
+                       RealT k, QuadratureRule quadrature_rule, bool enzyme_quadrature, bool use_penalty = true,
+                       RealT residual_gap = 0.0 );
+
+  /**
+   * @brief Default destructor
+   */
+  virtual ~EnergyMortarAdapter() = default;
 
  private:
   /** @brief Intermediate nodal fields owned by one calculation. */
@@ -93,17 +112,15 @@ class Nodal : public ContactFormulation {
    * The weighted-gap Hessians are scaled by the redecomposed Lagrange multiplier field and assembled on the parent
    * displacement true-dofs.
    *
-   * @param adapter ENERGY_MORTAR configuration, transfer data, and derivative evaluator
    * @param mesh1 Current first mesh in Tribol coupling-scheme order
    * @param mesh2 Current second mesh in Tribol coupling-scheme order
    * @param pairs Geometry-approved pairs for the current calculation.
    * @param redecomp_lambda Lagrange multiplier field on the redecomposed contact mesh
    * @return Assembled parent displacement true-dof matrix
    */
-  static shared::ParSparseMat computeDfDxSecondDerivativesLM( const Adapter* adapter, MeshData::Viewer mesh1,
-                                                              MeshData::Viewer mesh2,
-                                                              ArrayViewT<const InterfacePair> pairs,
-                                                              const mfem::GridFunction& redecomp_lambda );
+  shared::ParSparseMat computeDfDxSecondDerivativesLM( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                                       ArrayViewT<const InterfacePair> pairs,
+                                                       const mfem::GridFunction& redecomp_lambda ) const;
 
   /**
    * @brief Assemble the penalty force Jacobian terms involving second derivatives of gap and area
@@ -111,7 +128,6 @@ class Nodal : public ContactFormulation {
    * The weighted-gap and tributary-area Hessians are scaled by the redecomposed pressure, weighted gap, and area fields
    * and assembled on the parent displacement true-dofs.
    *
-   * @param adapter ENERGY_MORTAR configuration, transfer data, and derivative evaluator
    * @param mesh1 Current first mesh in Tribol coupling-scheme order
    * @param mesh2 Current second mesh in Tribol coupling-scheme order
    * @param pairs Geometry-approved pairs for the current calculation.
@@ -120,69 +136,12 @@ class Nodal : public ContactFormulation {
    * @param redecomp_A Tributary-area field on the redecomposed contact mesh
    * @return Assembled parent displacement true-dof matrix
    */
-  static shared::ParSparseMat computeDfDxSecondDerivativesPenalty( const Adapter* adapter, MeshData::Viewer mesh1,
-                                                                   MeshData::Viewer mesh2,
-                                                                   ArrayViewT<const InterfacePair> pairs,
-                                                                   const mfem::GridFunction& redecomp_pressure,
-                                                                   const mfem::GridFunction& redecomp_g_tilde,
-                                                                   const mfem::GridFunction& redecomp_A );
-};
+  shared::ParSparseMat computeDfDxSecondDerivativesPenalty( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                                            ArrayViewT<const InterfacePair> pairs,
+                                                            const mfem::GridFunction& redecomp_pressure,
+                                                            const mfem::GridFunction& redecomp_g_tilde,
+                                                            const mfem::GridFunction& redecomp_A ) const;
 
-/**
- * @brief ENERGY_MORTAR location policy that evaluates penalty response independently at quadrature points
- *
- * @tparam Adapter EnergyMortarAdapter specialization using this location
- */
-template <typename Adapter>
-class QuadraturePoint : public ContactFormulation {
- public:
-  /**
-   * @brief Calculate penalty force, energy, and stiffness at quadrature points.
-   * @param mesh1 Current non-mortar mesh.
-   * @param mesh2 Current mortar mesh.
-   * @return Owned force, energy, and df_dx; no nodal gap, pressure, or timestep output.
-   */
-  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override;
-};
-
-template <template <typename> class EnforcementLocation, typename QuadratureRule>
-class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<EnforcementLocation, QuadratureRule>> {
- public:
-  using Calculator = EnergyMortarCalculator<QuadratureRule>;  ///< Coordinate-based local evaluator.
-
-  /**
-   * @brief Construct a new EnergyMortarAdapter
-   *
-   * @param mesh_data MFEM mesh data for the parent/primary variables
-   * @param submesh_data MFEM submesh data for the dual variables (pressure/gap/LM)
-   * @param jac_data MFEM Jacobian transfer data
-   * @param coarse_search Coarse search whose ownership is transferred to this formulation; must be non-null
-   * @param refined_search Refined search whose ownership is transferred to this formulation; must be non-null
-   * @param k Penalty stiffness
-   * @param quadrature_rule Quadrature generator owned by this adapter
-   * @param enzyme_quadrature If true, differentiate the reference-rule construction with respect to geometry
-   * @param use_penalty If true, interpret the dual field as pressure; otherwise interpret it as a Lagrange multiplier
-   * vector (LM mode)
-   * @param residual_gap Nonnegative gap offset subtracted from the kinematic gap. Positive values enforce separation
-   *        between the contact surfaces.
-   *
-   * @note Mesh 1 is the non-mortar integration side; mesh 2 is the mortar projection side. Mesh views, candidate
-   * pairs, and MFEM element maps all use this order.
-   */
-  EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
-                       std::unique_ptr<CoarseSearch> coarse_search, std::unique_ptr<RefinedSearch> refined_search,
-                       RealT k, QuadratureRule quadrature_rule, bool enzyme_quadrature, bool use_penalty = true,
-                       RealT residual_gap = 0.0 );
-
-  /**
-   * @brief Default destructor
-   */
-  virtual ~EnergyMortarAdapter() = default;
-
-  /** @brief Allow the selected enforcement location to read method configuration and transfer data. */
-  friend EnforcementLocation<EnergyMortarAdapter>;
-
- private:
   /**
    * @brief Gather coordinates once for all calculations on the current element pair.
    * @param pair Element IDs in the supplied meshes.

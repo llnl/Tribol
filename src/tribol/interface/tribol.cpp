@@ -182,7 +182,15 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location )
                                << "prior to calling this routine." );
 
   if ( cs->getParameters().use_common_plane_formulation && location != EnforcementLocation::QuadraturePoint ) {
-    throw std::invalid_argument( "CommonPlaneFormulation requires quadrature-point enforcement." );
+    throw std::invalid_argument( "Common Plane requires quadrature-point enforcement." );
+  }
+  if ( location != EnforcementLocation::Nodal && location != EnforcementLocation::QuadraturePoint ) {
+    throw std::invalid_argument( "Unsupported enforcement location." );
+  }
+  if ( cs->getContactMethod() == ENERGY_MORTAR && location == EnforcementLocation::QuadraturePoint &&
+       cs->getEnforcementMethod() == LAGRANGE_MULTIPLIER &&
+       !cs->getEnforcementOptions().penalty_options.kinematic_calc_set ) {
+    throw std::invalid_argument( "Quadrature-point Energy Mortar requires penalty enforcement." );
   }
   cs->getParameters().enforcement_location = location;
 
