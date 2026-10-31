@@ -86,3 +86,23 @@ At zero gap, the compressive branch remains active so its tangent is calculated 
 These evaluators differentiate independent pair functions with respect to coordinates. Nodal Energy Mortar continues
 to assemble its gap and area integrals and apply its existing nodal chain rule, including coupling between pairs that
 share a node.
+
+Coordinate-based Energy Mortar calculations
+-------------------------------------------
+
+``EnergyMortarCalculator`` accepts a ``CoordinateView`` into an owning ``Coordinates`` array. The array contains the
+first element followed by the second, with each node's spatial components adjacent. Coordinate counts come from the
+calculator's geometry traits. Mesh access belongs to the adapter, which gathers once in each pair loop and reuses the
+same array for values and derivatives:
+
+.. code-block:: cpp
+
+   Calculator::Coordinates coordinates;
+   mesh1.getFaceCoords(pair.element_id1_, coordinates.data());
+   mesh2.getFaceCoords(pair.element_id2_, coordinates.data() + Calculator::element_dof_count);
+   const auto result = calculator.compute_quadrature_point_penalty_data(coordinates.view());
+
+Nodal gap, area, gradient, and Hessian methods use the same coordinate view. The calculator retains no views and
+performs no mesh lookup. Finite-difference checks perturb local copies of this array. Frozen quadrature continues to
+hold integration-surface coordinates and reference weights fixed while current normals and physical Jacobian weights
+change with the coordinates.

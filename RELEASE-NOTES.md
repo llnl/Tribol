@@ -74,6 +74,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- `EnergyMortarCalculator` calculations now accept `CoordinateView` instead of an interface pair and two mesh views.
+  Direct callers gather `Coordinates` in element/node/component order. Energy Mortar adapters gather once per pair
+  loop and reuse the array for gap, area, and derivative requests. Finite-difference checks perturb local coordinates
+  without replacing mesh storage; their result reports pair DOF entries without mesh-node IDs.
 - Common Plane and quadrature-point Energy Mortar share host MFEM assembly of pair residuals and Jacobians through
   `MfemPairAssembler`. Local numerical array views use element/node/component DOF order and residual-row,
   coordinate-column Jacobians. The assembler handles MFEM ordering and parent transfers independently of physics

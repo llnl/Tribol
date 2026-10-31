@@ -41,6 +41,18 @@ EnergyMortarAdapter<EnforcementLocation, QuadratureRule>::EnergyMortarAdapter(
 }
 
 template <template <typename> class EnforcementLocation, typename QuadratureRule>
+typename EnergyMortarAdapter<EnforcementLocation, QuadratureRule>::Calculator::Coordinates
+EnergyMortarAdapter<EnforcementLocation, QuadratureRule>::getPairCoordinates( const InterfacePair& pair,
+                                                                              MeshData::Viewer mesh1,
+                                                                              MeshData::Viewer mesh2 )
+{
+  typename Calculator::Coordinates coordinates;
+  mesh1.getFaceCoords( pair.element_id1_, coordinates.data() );
+  mesh2.getFaceCoords( pair.element_id2_, coordinates.data() + Calculator::element_dof_count );
+  return coordinates;
+}
+
+template <template <typename> class EnforcementLocation, typename QuadratureRule>
 ArrayT<InterfacePair> EnergyMortarAdapter<EnforcementLocation, QuadratureRule>::findCandidatePairs(
     MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
 {
@@ -92,13 +104,14 @@ typename Nodal<Adapter>::NodalData Nodal<Adapter>::computeNodalData( MeshData::V
 
   // Compute local contributions
   for ( const auto& pair : data.pairs ) {
+    const auto coordinates = adapter->getPairCoordinates( pair, mesh1, mesh2 );
     const auto elem1 = static_cast<int>( pair.element_id1_ );
     const auto elem2 = static_cast<int>( pair.element_id2_ );
 
     RealT g_tilde_elem[2];
     RealT A_elem[2];
 
-    adapter->evaluator_->compute_gtilde_and_area( pair, mesh1, mesh2, g_tilde_elem, A_elem );
+    adapter->evaluator_->compute_gtilde_and_area( coordinates.view(), g_tilde_elem, A_elem );
 
     if ( A_elem[0] <= 0.0 && A_elem[1] <= 0.0 ) {
       continue;
@@ -117,7 +130,7 @@ typename Nodal<Adapter>::NodalData Nodal<Adapter>::computeNodalData( MeshData::V
     RealT dg_dx_node1[8];
     RealT dg_dx_node2[8];
     // TODO: make grad_gtilde return directly in dg_tilde_dx_blocks format
-    adapter->evaluator_->grad_gtilde( pair, mesh1, mesh2, dg_dx_node1, dg_dx_node2 );
+    adapter->evaluator_->grad_gtilde( coordinates.view(), dg_dx_node1, dg_dx_node2 );
     RealT dg_tilde_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
       dg_tilde_dx_blocks[0][i * 2] = dg_dx_node1[node_idx[i]];
@@ -131,7 +144,7 @@ typename Nodal<Adapter>::NodalData Nodal<Adapter>::computeNodalData( MeshData::V
     RealT dA_dx_node1[8];
     RealT dA_dx_node2[8];
     // TODO: make grad_trib_area return directly in dA_dx_blocks format
-    adapter->evaluator_->grad_trib_area( pair, mesh1, mesh2, dA_dx_node1, dA_dx_node2 );
+    adapter->evaluator_->grad_trib_area( coordinates.view(), dA_dx_node1, dA_dx_node2 );
     RealT dA_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
       dA_dx_blocks[0][i * 2] = dA_dx_node1[node_idx[i]];
@@ -348,6 +361,7 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( const Adapt
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
   for ( auto& pair : pairs ) {
+    const auto coordinates = adapter->getPairCoordinates( pair, mesh1, mesh2 );
     const auto elem1 = static_cast<int>( pair.element_id1_ );
     const auto node11 = mesh1.getConnectivity()( elem1, 0 );
     const auto node12 = mesh1.getConnectivity()( elem1, 1 );
@@ -358,7 +372,7 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( const Adapt
 
     RealT d2g_dx2_node1[64];
     RealT d2g_dx2_node2[64];
-    adapter->evaluator_->d2_g2tilde( pair, mesh1, mesh2, d2g_dx2_node1, d2g_dx2_node2 );
+    adapter->evaluator_->d2_g2tilde( coordinates.view(), d2g_dx2_node1, d2g_dx2_node2 );
 
     RealT df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
@@ -418,6 +432,7 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty(
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
   for ( auto& pair : pairs ) {
+    const auto coordinates = adapter->getPairCoordinates( pair, mesh1, mesh2 );
     const auto elem1 = static_cast<int>( pair.element_id1_ );
     const auto node11 = mesh1.getConnectivity()( elem1, 0 );
     const auto node12 = mesh1.getConnectivity()( elem1, 1 );
@@ -435,11 +450,11 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty(
 
     RealT d2g_dx2_node1[64];
     RealT d2g_dx2_node2[64];
-    adapter->evaluator_->d2_g2tilde( pair, mesh1, mesh2, d2g_dx2_node1, d2g_dx2_node2 );
+    adapter->evaluator_->d2_g2tilde( coordinates.view(), d2g_dx2_node1, d2g_dx2_node2 );
 
     RealT d2A_dx2_node1[64];
     RealT d2A_dx2_node2[64];
-    adapter->evaluator_->compute_d2A_d2u( pair, mesh1, mesh2, d2A_dx2_node1, d2A_dx2_node2 );
+    adapter->evaluator_->compute_d2A_d2u( coordinates.view(), d2A_dx2_node1, d2A_dx2_node2 );
 
     RealT df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
@@ -485,7 +500,8 @@ ContactFormulationResult QuadraturePoint<Adapter>::computeNodalForces( MeshData:
   constexpr IndexT pair_dofs = QuadraturePointPenaltyData::num_force_dofs;
 
   for ( const auto& pair : pairs ) {
-    const auto qp_data = adapter->evaluator_->compute_quadrature_point_penalty_data( pair, mesh1, mesh2 );
+    const auto coordinates = adapter->getPairCoordinates( pair, mesh1, mesh2 );
+    const auto qp_data = adapter->evaluator_->compute_quadrature_point_penalty_data( coordinates.view() );
 
     if ( !qp_data.has_active_qp ) {
       continue;

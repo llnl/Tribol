@@ -148,6 +148,8 @@ class QuadraturePoint : public ContactFormulation {
 template <template <typename> class EnforcementLocation, typename QuadratureRule>
 class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<EnforcementLocation, QuadratureRule>> {
  public:
+  using Calculator = EnergyMortarCalculator<QuadratureRule>;  ///< Coordinate-based local evaluator.
+
   /**
    * @brief Construct a new EnergyMortarAdapter
    *
@@ -181,6 +183,16 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   friend EnforcementLocation<EnergyMortarAdapter>;
 
  private:
+  /**
+   * @brief Gather coordinates once for all calculations on the current element pair.
+   * @param pair Element IDs in the supplied meshes.
+   * @param mesh1 Current non-mortar mesh.
+   * @param mesh2 Current mortar mesh.
+   * @return Owning coordinates ordered by element, node, and spatial component.
+   */
+  static typename Calculator::Coordinates getPairCoordinates( const InterfacePair& pair, MeshData::Viewer mesh1,
+                                                              MeshData::Viewer mesh2 );
+
   /**
    * @brief Find geometry-approved pairs for the current meshes
    *

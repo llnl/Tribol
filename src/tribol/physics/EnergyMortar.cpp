@@ -24,7 +24,6 @@ namespace {
 
 using LinearEdgeBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
 // View each endpoint as one [node][physical component] row so the owning coordinates retain the basis layout.
-using LinearEdgePointView = MdSpan<const RealT, LinearEdgeBasis::spatial_dimension>;
 using LinearEdgeCoords = MdArray<RealT, LinearEdgeBasis::node_count, LinearEdgeBasis::spatial_dimension>;
 
 // Keep only inactive configuration in the Enzyme parameter block; coordinates arrive through the active x argument.
@@ -50,18 +49,6 @@ TRIBOL_ENZYME_INLINE void find_normal( const RealT* coord1, const RealT* coord2,
   dy /= len;
   normal[0] = dy;
   normal[1] = -dx;
-}
-
-// returns P0 and P1 which are the edge vertex coordinates associated with the edge with elem_id.
-// coordinates it returns
-TRIBOL_ENZYME_INLINE void endpoints( const MeshData::Viewer& mesh, int elem_id, RealT P0[2], RealT P1[2] )
-{
-  RealT P0_P1[4];
-  mesh.getFaceCoords( elem_id, P0_P1 );
-  P0[0] = P0_P1[0];
-  P0[1] = P0_P1[1];
-  P1[0] = P0_P1[2];
-  P1[1] = P0_P1[3];
 }
 
 // Integrate the nodal smoothed gap and tributary area contributions over edge A.
@@ -256,227 +243,141 @@ void d2_kernel_quad( const RealT* x, const typename QuadratureRule::IntegrationS
 
 }  // namespace
 
-// Integration-surface quadrature points and weights are held fixed when differentiating the element calculations.
+// Integration-surface points and reference weights are fixed under frozen-quadrature differentiation.
 template <typename QuadratureRule>
 typename EnergyMortarCalculator<QuadratureRule>::IntegrationSurfaceRule
-EnergyMortarCalculator<QuadratureRule>::generateIntegrationSurfaceRule( const InterfacePair& pair,
-                                                                        const MeshData::Viewer& mesh1,
-                                                                        const MeshData::Viewer& mesh2 ) const
+EnergyMortarCalculator<QuadratureRule>::generateIntegrationSurfaceRule( CoordinateView coordinates ) const
 {
-  LinearEdgeCoords coords1, coords2;
-  mesh1.getFaceCoords( pair.element_id1_, coords1.data() );
-  mesh2.getFaceCoords( pair.element_id2_, coords2.data() );
-  const auto integration_surface_rule =
-      quadrature_rule_.generateIntegrationSurfaceRule( coords1.view(), coords2.view() );
+  const auto integration_surface_rule = quadrature_rule_.generateIntegrationSurfaceRule(
+      { coordinates.data(), element_dof_count }, { coordinates.data() + element_dof_count, element_dof_count } );
   if ( integration_surface_rule.result.status != QuadratureStatus::Success )
     reportQuadratureFailure( integration_surface_rule.result.status );
   return integration_surface_rule;
 }
 
-// Evaluate the weighted normal gap at local coordinate xiA on edge A.
+// Evaluate the weighted normal gap at local coordinate xiA on the first edge.
 template <typename QuadratureRule>
-RealT EnergyMortarCalculator<QuadratureRule>::compute_weighted_normal_gap( const InterfacePair& pair,
-                                                                           const MeshData::Viewer& mesh1,
-                                                                           const MeshData::Viewer& mesh2,
-                                                                           RealT xiA ) const
+RealT EnergyMortarCalculator<QuadratureRule>::compute_weighted_normal_gap( CoordinateView coordinates, RealT xiA ) const
 {
-  RealT A0[2], A1[2], B0[2], B1[2];
-
-  endpoints( mesh1, pair.element_id1_, A0, A1 );
-  endpoints( mesh2, pair.element_id2_, B0, B1 );
-
-  RealT nA[2] = { 0.0 };
-  RealT nB[2] = { 0.0 };
+  constexpr int dimension = LinearEdgeGeometry::spatial_dimension;
+  const auto* A0 = coordinates.data();
+  const auto* A1 = coordinates.data() + dimension;
+  const auto* B0 = coordinates.data() + element_dof_count;
+  const auto* B1 = B0 + dimension;
+  RealT nA[dimension] = { 0.0 };
+  RealT nB[dimension] = { 0.0 };
   find_normal( A0, A1, nA );
   find_normal( B0, B1, nB );
-
-  const LinearEdgeCoords edge_coords{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
+  const LinearEdgeGeometry::Coords edge_coords{ coordinates.data(), element_dof_count };
   RealT basis_values[LinearEdgeBasis::node_count];
   LinearEdgeBasis::eval(
       MdSpan<const RealT, LinearEdgeBasis::parametric_dimension>{ &xiA, LinearEdgeBasis::parametric_dimension },
       basis_values );
-  RealT x1[2] = { 0.0 };
-  mapToPhysical<LinearEdgeBasis>( basis_values, edge_coords.view(), x1 );
-
+  RealT x1[dimension] = { 0.0 };
+  mapToPhysical<LinearEdgeBasis>( basis_values, edge_coords, x1 );
   const RealT gn = ( B0[0] - x1[0] ) * nB[0] + ( B0[1] - x1[1] ) * nB[1];
-  RealT dot = nB[0] * nA[0] + nB[1] * nA[1];
-  RealT eta = ( dot < 0 ) ? dot : 0.0;
-
+  const RealT dot = nB[0] * nA[0] + nB[1] * nA[1];
+  const RealT eta = dot < 0.0 ? dot : 0.0;
   return effective_gap( gn, eta, p_.residual_gap );
 }
 
-// Assemble nodal gap and tributary area data for the current interface pair.
 template <typename QuadratureRule>
-NodalContactData EnergyMortarCalculator<QuadratureRule>::compute_nodal_contact_data(
-    const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) const
+NodalContactData EnergyMortarCalculator<QuadratureRule>::compute_nodal_contact_data( CoordinateView coordinates ) const
 {
-  RealT x[8];
-  mesh1.getFaceCoords( pair.element_id1_, x );
-  mesh2.getFaceCoords( pair.element_id2_, x + 4 );
-  const auto quadrature = quadrature_rule_.generate( { x, LinearEdgeCoords::size() },
-                                                     { x + LinearEdgeCoords::size(), LinearEdgeCoords::size() } );
+  const auto quadrature = quadrature_rule_.generate( { coordinates.data(), element_dof_count },
+                                                     { coordinates.data() + element_dof_count, element_dof_count } );
   if ( quadrature.result.status != QuadratureStatus::Success ) reportQuadratureFailure( quadrature.result.status );
   NodalContactData result{};
-  gtilde_kernel( x, quadrature.getView(), p_.residual_gap, result.g_tilde.data(), result.AI.data() );
+  gtilde_kernel( coordinates.data(), quadrature.getView(), p_.residual_gap, result.g_tilde.data(), result.AI.data() );
   return result;
 }
 
-// Return the nodal smoothed gaps and tributary areas for the interface pair.
 template <typename QuadratureRule>
-void EnergyMortarCalculator<QuadratureRule>::compute_gtilde_and_area( const InterfacePair& pair,
-                                                                      const MeshData::Viewer& mesh1,
-                                                                      const MeshData::Viewer& mesh2, RealT gtilde[2],
+void EnergyMortarCalculator<QuadratureRule>::compute_gtilde_and_area( CoordinateView coordinates, RealT gtilde[2],
                                                                       RealT area[2] ) const
 {
-  auto ncd = compute_nodal_contact_data( pair, mesh1, mesh2 );
+  const auto ncd = compute_nodal_contact_data( coordinates );
   gtilde[0] = ncd.g_tilde[0];
   gtilde[1] = ncd.g_tilde[1];
   area[0] = ncd.AI[0];
   area[1] = ncd.AI[1];
 }
 
-// Compute derivatives of the two nodal smoothed gaps with respect to the endpoint coordinates.
 template <typename QuadratureRule>
-void EnergyMortarCalculator<QuadratureRule>::grad_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                          const MeshData::Viewer& mesh2, RealT dgt1_dx[8],
+void EnergyMortarCalculator<QuadratureRule>::grad_gtilde( CoordinateView coordinates, RealT dgt1_dx[8],
                                                           RealT dgt2_dx[8] ) const
 {
-  RealT A0[2], A1[2], B0[2], B1[2];
-
-  endpoints( mesh1, pair.element_id1_, A0, A1 );
-  endpoints( mesh2, pair.element_id2_, B0, B1 );
-
-  RealT x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-
-  RealT nB[2], nA[2];
-  find_normal( B0, B1, nB );
-  find_normal( A0, A1, nA );
-
-  RealT dg1_du[8] = { 0.0 };
-  RealT dg2_du[8] = { 0.0 };
-
+  RealT dg1_du[dof_count] = { 0.0 };
+  RealT dg2_du[dof_count] = { 0.0 };
   const KernelParams<QuadratureRule> kp{ quadrature_rule_, p_.k, p_.residual_gap };
   if ( !p_.enzyme_quadrature ) {
-    // Hold the quadrature rule fixed while differentiating the gap kernel.
-    const auto integration_surface_rule = generateIntegrationSurfaceRule( pair, mesh1, mesh2 );
-    grad_kernel<QuadratureRule, KernelOutput::GTILDE1>( x, &integration_surface_rule, &kp, dg1_du );
-    grad_kernel<QuadratureRule, KernelOutput::GTILDE2>( x, &integration_surface_rule, &kp, dg2_du );
-
+    // Freeze integration-surface coordinates and weights, while differentiating the current geometry.
+    const auto integration_surface_rule = generateIntegrationSurfaceRule( coordinates );
+    grad_kernel<QuadratureRule, KernelOutput::GTILDE1>( coordinates.data(), &integration_surface_rule, &kp, dg1_du );
+    grad_kernel<QuadratureRule, KernelOutput::GTILDE2>( coordinates.data(), &integration_surface_rule, &kp, dg2_du );
   } else {
-    // Differentiate through the geometry-dependent quadrature construction.
-    grad_kernel_enzyme<QuadratureRule, KernelOutput::GTILDE1>( x, &kp, dg1_du );
-    grad_kernel_enzyme<QuadratureRule, KernelOutput::GTILDE2>( x, &kp, dg2_du );
+    grad_kernel_enzyme<QuadratureRule, KernelOutput::GTILDE1>( coordinates.data(), &kp, dg1_du );
+    grad_kernel_enzyme<QuadratureRule, KernelOutput::GTILDE2>( coordinates.data(), &kp, dg2_du );
   }
-
-  for ( int i = 0; i < 8; ++i ) {
+  for ( IndexT i = 0; i < dof_count; ++i ) {
     dgt1_dx[i] = dg1_du[i];
     dgt2_dx[i] = dg2_du[i];
   }
 }
 
-// Compute derivatives of the two nodal tributary areas with respect to the endpoint coordinates
 template <typename QuadratureRule>
-void EnergyMortarCalculator<QuadratureRule>::grad_trib_area( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                             const MeshData::Viewer& mesh2, RealT dA1_dx[8],
+void EnergyMortarCalculator<QuadratureRule>::grad_trib_area( CoordinateView coordinates, RealT dA1_dx[8],
                                                              RealT dA2_dx[8] ) const
 {
-  RealT A0[2], A1[2], B0[2], B1[2];
-
-  endpoints( mesh1, pair.element_id1_, A0, A1 );
-  endpoints( mesh2, pair.element_id2_, B0, B1 );
-
-  RealT x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-
-  RealT nB[2], nA[2];
-  find_normal( B0, B1, nB );
-  find_normal( A0, A1, nA );
-
   const KernelParams<QuadratureRule> kp{ quadrature_rule_, p_.k, p_.residual_gap };
   if ( !p_.enzyme_quadrature ) {
-    // Hold the quadrature rule fixed while differentiating the area kernel.
-    const auto integration_surface_rule = generateIntegrationSurfaceRule( pair, mesh1, mesh2 );
-    grad_kernel<QuadratureRule, KernelOutput::A1>( x, &integration_surface_rule, &kp, dA1_dx );
-    grad_kernel<QuadratureRule, KernelOutput::A2>( x, &integration_surface_rule, &kp, dA2_dx );
+    const auto integration_surface_rule = generateIntegrationSurfaceRule( coordinates );
+    grad_kernel<QuadratureRule, KernelOutput::A1>( coordinates.data(), &integration_surface_rule, &kp, dA1_dx );
+    grad_kernel<QuadratureRule, KernelOutput::A2>( coordinates.data(), &integration_surface_rule, &kp, dA2_dx );
   } else {
-    // Differentiate through the geometry-dependent quadrature construction.
-    grad_kernel_enzyme<QuadratureRule, KernelOutput::A1>( x, &kp, dA1_dx );
-    grad_kernel_enzyme<QuadratureRule, KernelOutput::A2>( x, &kp, dA2_dx );
+    grad_kernel_enzyme<QuadratureRule, KernelOutput::A1>( coordinates.data(), &kp, dA1_dx );
+    grad_kernel_enzyme<QuadratureRule, KernelOutput::A2>( coordinates.data(), &kp, dA2_dx );
   }
 }
 
-// Compute the Hessians of the two nodal smoothed gaps with respect to the endpoint coordinates.
 template <typename QuadratureRule>
-void EnergyMortarCalculator<QuadratureRule>::d2_g2tilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                         const MeshData::Viewer& mesh2, RealT H1[64],
-                                                         RealT H2[64] ) const
+void EnergyMortarCalculator<QuadratureRule>::d2_g2tilde( CoordinateView coordinates, RealT H1[64], RealT H2[64] ) const
 {
-  RealT A0[2], A1[2], B0[2], B1[2];
-
-  endpoints( mesh1, pair.element_id1_, A0, A1 );
-  endpoints( mesh2, pair.element_id2_, B0, B1 );
-
-  RealT x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-
-  RealT nB[2], nA[2];
-  find_normal( B0, B1, nB );
-  find_normal( A0, A1, nA );
-
-  RealT d2g1_d2u[64] = { 0.0 };
-  RealT d2g2_d2u[64] = { 0.0 };
-
+  RealT d2g1_d2u[dof_count * dof_count] = { 0.0 };
+  RealT d2g2_d2u[dof_count * dof_count] = { 0.0 };
   const KernelParams<QuadratureRule> kp{ quadrature_rule_, p_.k, p_.residual_gap };
   if ( !p_.enzyme_quadrature ) {
-    // Hold the quadrature rule fixed while differentiating the gap gradients.
-    const auto integration_surface_rule = generateIntegrationSurfaceRule( pair, mesh1, mesh2 );
-    d2_kernel_quad<QuadratureRule, KernelOutput::GTILDE1>( x, &integration_surface_rule, &kp, d2g1_d2u );
-    d2_kernel_quad<QuadratureRule, KernelOutput::GTILDE2>( x, &integration_surface_rule, &kp, d2g2_d2u );
-
+    const auto integration_surface_rule = generateIntegrationSurfaceRule( coordinates );
+    d2_kernel_quad<QuadratureRule, KernelOutput::GTILDE1>( coordinates.data(), &integration_surface_rule, &kp,
+                                                           d2g1_d2u );
+    d2_kernel_quad<QuadratureRule, KernelOutput::GTILDE2>( coordinates.data(), &integration_surface_rule, &kp,
+                                                           d2g2_d2u );
   } else {
-    // Differentiate through the geometry-dependent quadrature construction.
-    d2_kernel<QuadratureRule, KernelOutput::GTILDE1>( x, &kp, d2g1_d2u );
-    d2_kernel<QuadratureRule, KernelOutput::GTILDE2>( x, &kp, d2g2_d2u );
+    d2_kernel<QuadratureRule, KernelOutput::GTILDE1>( coordinates.data(), &kp, d2g1_d2u );
+    d2_kernel<QuadratureRule, KernelOutput::GTILDE2>( coordinates.data(), &kp, d2g2_d2u );
   }
-
-  for ( int i = 0; i < 64; ++i ) {
+  for ( IndexT i = 0; i < dof_count * dof_count; ++i ) {
     H1[i] = d2g1_d2u[i];
     H2[i] = d2g2_d2u[i];
   }
 }
 
-// Compute the Hessians of the two nodal tributary areas with respect to the endpoint coordinates.
 template <typename QuadratureRule>
-void EnergyMortarCalculator<QuadratureRule>::compute_d2A_d2u( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                              const MeshData::Viewer& mesh2, RealT d2A1[64],
+void EnergyMortarCalculator<QuadratureRule>::compute_d2A_d2u( CoordinateView coordinates, RealT d2A1[64],
                                                               RealT d2A2[64] ) const
 {
-  RealT A0[2], A1[2], B0[2], B1[2];
-
-  endpoints( mesh1, pair.element_id1_, A0, A1 );
-  endpoints( mesh2, pair.element_id2_, B0, B1 );
-
-  RealT x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-
-  RealT nB[2], nA[2];
-
-  find_normal( B0, B1, nB );
-  find_normal( A0, A1, nA );
-
-  RealT d2A1_d2u[64] = { 0.0 };
-  RealT d2A2_d2u[64] = { 0.0 };
-
+  RealT d2A1_d2u[dof_count * dof_count] = { 0.0 };
+  RealT d2A2_d2u[dof_count * dof_count] = { 0.0 };
   const KernelParams<QuadratureRule> kp{ quadrature_rule_, p_.k, p_.residual_gap };
   if ( !p_.enzyme_quadrature ) {
-    // Hold the quadrature rule fixed while differentiating the area gradients.
-    const auto integration_surface_rule = generateIntegrationSurfaceRule( pair, mesh1, mesh2 );
-    d2_kernel_quad<QuadratureRule, KernelOutput::A1>( x, &integration_surface_rule, &kp, d2A1_d2u );
-    d2_kernel_quad<QuadratureRule, KernelOutput::A2>( x, &integration_surface_rule, &kp, d2A2_d2u );
+    const auto integration_surface_rule = generateIntegrationSurfaceRule( coordinates );
+    d2_kernel_quad<QuadratureRule, KernelOutput::A1>( coordinates.data(), &integration_surface_rule, &kp, d2A1_d2u );
+    d2_kernel_quad<QuadratureRule, KernelOutput::A2>( coordinates.data(), &integration_surface_rule, &kp, d2A2_d2u );
   } else {
-    // Differentiate through the geometry-dependent quadrature construction.
-    d2_kernel<QuadratureRule, KernelOutput::A1>( x, &kp, d2A1_d2u );
-    d2_kernel<QuadratureRule, KernelOutput::A2>( x, &kp, d2A2_d2u );
+    d2_kernel<QuadratureRule, KernelOutput::A1>( coordinates.data(), &kp, d2A1_d2u );
+    d2_kernel<QuadratureRule, KernelOutput::A2>( coordinates.data(), &kp, d2A2_d2u );
   }
-
-  for ( int i = 0; i < 64; ++i ) {
+  for ( IndexT i = 0; i < dof_count * dof_count; ++i ) {
     d2A1[i] = d2A1_d2u[i];
     d2A2[i] = d2A2_d2u[i];
   }
@@ -484,43 +385,28 @@ void EnergyMortarCalculator<QuadratureRule>::compute_d2A_d2u( const InterfacePai
 
 template <typename QuadratureRule>
 RealT EnergyMortarCalculator<QuadratureRule>::compute_quadrature_point_penalty_energy(
-    const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) const
+    CoordinateView coordinates ) const
 {
-  RealT A0[2], A1[2], B0[2], B1[2];
-
-  endpoints( mesh1, pair.element_id1_, A0, A1 );
-  endpoints( mesh2, pair.element_id2_, B0, B1 );
-
-  const MdArray<RealT, EnergyMortarEnergy<QuadratureRule>::dof_count> coordinates{ A0[0], A0[1], A1[0], A1[1],
-                                                                                   B0[0], B0[1], B1[0], B1[1] };
   const EnergyMortarEnergy<QuadratureRule> definition{ quadrature_rule_, p_.k, p_.residual_gap };
-  return definition.energy( coordinates.view() );
+  return definition.energy( coordinates );
 }
 
 template <typename QuadratureRule>
 QuadraturePointPenaltyData EnergyMortarCalculator<QuadratureRule>::compute_quadrature_point_penalty_data(
-    const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) const
+    CoordinateView coordinates ) const
 {
-  RealT A0[2], A1[2], B0[2], B1[2];
-
-  endpoints( mesh1, pair.element_id1_, A0, A1 );
-  endpoints( mesh2, pair.element_id2_, B0, B1 );
-
-  const MdArray<RealT, EnergyMortarEnergy<QuadratureRule>::dof_count> coordinates{ A0[0], A0[1], A1[0], A1[1],
-                                                                                   B0[0], B0[1], B1[0], B1[1] };
   const EnergyMortarEnergy<QuadratureRule> definition{ quadrature_rule_, p_.k, p_.residual_gap };
-  const auto primal = definition.evaluate( coordinates.view() );
+  const auto primal = definition.evaluate( coordinates );
   if ( primal.quadrature_result.status != QuadratureStatus::Success )
     reportQuadratureFailure( primal.quadrature_result.status );
   QuadraturePointPenaltyData result{};
   result.energy = primal.energy;
   result.has_active_qp = primal.has_active_qp;
   if ( !primal.has_active_qp ) return result;
-  const auto derivatives = EnergyPairEvaluator<EnergyMortarEnergy<QuadratureRule>>::evaluate(
-      coordinates.view(), definition, primal.energy );
-  for ( IndexT i = 0; i < QuadraturePointPenaltyData::num_force_dofs; ++i ) result.force[i] = derivatives.residual[i];
-  for ( IndexT i = 0; i < QuadraturePointPenaltyData::num_stiffness_entries; ++i )
-    result.stiffness[i] = derivatives.jacobian[i];
+  const auto derivatives =
+      EnergyPairEvaluator<EnergyMortarEnergy<QuadratureRule>>::evaluate( coordinates, definition, primal.energy );
+  for ( IndexT i = 0; i < dof_count; ++i ) result.force[i] = derivatives.residual[i];
+  for ( IndexT i = 0; i < dof_count * dof_count; ++i ) result.stiffness[i] = derivatives.jacobian[i];
   return result;
 }
 
