@@ -228,11 +228,11 @@ TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
     setQuadratureOrder( 0, order );
     auto* formulation = scheme().getContactFormulation();
     if ( order <= 1 )
-      EXPECT_NE( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRule<1>>*>( formulation ), nullptr );
+      EXPECT_NE( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<1>>*>( formulation ), nullptr );
     else if ( order <= 3 )
-      EXPECT_NE( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRule<2>>*>( formulation ), nullptr );
+      EXPECT_NE( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<2>>*>( formulation ), nullptr );
     else
-      EXPECT_NE( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRule<3>>*>( formulation ), nullptr );
+      EXPECT_NE( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<3>>*>( formulation ), nullptr );
   }
   EXPECT_THROW( setQuadratureOrder( 0, 6 ), std::invalid_argument );
   EXPECT_EQ( scheme().getParameters().quadrature_order, 5 );

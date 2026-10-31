@@ -20,7 +20,7 @@
 namespace {
 using namespace tribol;
 constexpr RealT tolerance = 1.0e-12;  ///< Roundoff allowance for geometry and exact polynomial integrals.
-using Coordinates = MdArray<RealT, LinearEdgeGeometry::endpoint_count, LinearEdgeGeometry::spatial_dimension>;
+using Coordinates = MdArray<RealT, LinearEdgeGeometry::vertex_count, LinearEdgeGeometry::spatial_dimension>;
 
 /** @brief Execute local geometry and residual calculations using backend-accessible storage. */
 class CommonPlaneTest : public tribol::detail::ExecutionTest {
@@ -45,7 +45,7 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
       forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
         const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
         const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, test.separation }, MdArray<RealT, 2>{ 0.0, test.separation } };
-        const CommonPlaneQuadratureRule<EdgeQuadratureRule<Count>> rule;
+        const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<Count>> rule;
         output[0] = computeCommonPlaneResidual( edge1.view(), edge2.view(), rule,
                                                 ComputePenaltyStiffnessPerArea( 2.0, 6.0 ), test.residual_gap );
       } );
@@ -81,13 +81,13 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
       const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } };
       const Coordinates edge2{ MdArray<RealT, 2>{ 3.0, 0.2 }, MdArray<RealT, 2>{ 1.0, 0.2 } };
       const LinearEdgeGeometry geometry1( edge1.view() ), geometry2( edge2.view() );
-      const CommonPlaneQuadratureRule<EdgeQuadratureRule<Count>> rule;
+      const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<Count>> rule;
       const auto generated = rule.generate( geometry1, geometry2 );
       const auto points = generated.getView();
       for ( int q = 0; q < Count; ++q ) {
-        output( q, Parent1 ) = points.geometry1_parent_coordinates( q, 0 );
-        output( q, Parent2 ) = points.geometry2_parent_coordinates( q, 0 );
-        output( q, Weight ) = points.physical_weights[q];
+        output( q, Parent1 ) = points.geometry1_coords( q, 0 );
+        output( q, Parent2 ) = points.geometry2_coords( q, 0 );
+        output( q, Weight ) = points.weights[q];
         output( q, Point1X ) = geometry1.position( output( q, Parent1 ) )[0];
         output( q, Point2X ) = geometry2.position( output( q, Parent2 ) )[0];
       }
@@ -133,7 +133,7 @@ TEST_P( CommonPlaneTest, balances_rotated_pair_forces_and_moments )
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
     const Coordinates edge1{ MdArray<RealT, 2>{ 1.0, 2.0 }, MdArray<RealT, 2>{ 4.0, 6.0 } };
     const Coordinates edge2{ MdArray<RealT, 2>{ 3.8, 6.15 }, MdArray<RealT, 2>{ 0.8, 2.15 } };
-    const CommonPlaneQuadratureRule<EdgeQuadratureRule<3>> rule;
+    const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<3>> rule;
     const auto result = computeCommonPlaneResidual( edge1.view(), edge2.view(), rule, 2.0, 0.0 );
     for ( int i = 0; i < CommonPlaneResidualData::coordinate_count; ++i ) output[i] = result.residual[i];
   } );
@@ -177,7 +177,7 @@ TEST_P( CommonPlaneTest, reports_geometry_and_capacity_without_writing )
     const Coordinates disjoint{ MdArray<RealT, 2>{ 5.0, 0.1 }, MdArray<RealT, 2>{ 3.0, 0.1 } };
     const Coordinates cooriented{ MdArray<RealT, 2>{ 0.0, 0.1 }, MdArray<RealT, 2>{ 2.0, 0.1 } };
     const Coordinates perpendicular{ MdArray<RealT, 2>{ 1.0, -1.0 }, MdArray<RealT, 2>{ 1.0, 1.0 } };
-    const CommonPlaneQuadratureRule<EdgeQuadratureRule<3>> rule;
+    const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<3>> rule;
     output[InvalidFirst] = rule.generate( invalid.view(), edge2.view() ).result;
     output[InvalidSecond] = rule.generate( edge1.view(), invalid.view() ).result;
     output[Disjoint] = rule.generate( edge1.view(), disjoint.view() ).result;
@@ -212,12 +212,12 @@ TEST_P( CommonPlaneTest, activates_only_penetrating_quadrature_points )
     const Coordinates edge1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 } };
     const Coordinates edge2{ MdArray<RealT, 2>{ 0.8, 0.2 }, MdArray<RealT, 2>{ -0.8, -0.2 } };
     const LinearEdgeGeometry geometry1( edge1.view() ), geometry2( edge2.view() );
-    const CommonPlaneQuadratureRule<EdgeQuadratureRule<2>> rule;
+    const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<2>> rule;
     const auto quadrature = rule.generate( geometry1, geometry2 );
     const auto frame = CommonPlaneEdgeMapping::makeFrame( geometry1, geometry2 );
     for ( int q = 0; q < 2; ++q ) {
-      output[q] = LinearEdgeGeometry::Vector( geometry2.position( quadrature.geometry2_parent_coordinates( q, 0 ) ),
-                                              geometry1.position( quadrature.geometry1_parent_coordinates( q, 0 ) ) )
+      output[q] = LinearEdgeGeometry::Vector( geometry2.position( quadrature.geometry2_coords( q, 0 ) ),
+                                              geometry1.position( quadrature.geometry1_coords( q, 0 ) ) )
                       .dot( frame.normal );
     }
     const auto result = computeCommonPlaneResidual( edge1.view(), edge2.view(), rule, 1.0, 0.0 );
@@ -235,7 +235,7 @@ INSTANTIATE_TEST_SUITE_P( execution, CommonPlaneTest, tribol::detail::enabledExe
 template <int Count>
 void checkJacobian()
 {
-  const CommonPlaneQuadratureRule<EdgeQuadratureRule<Count>> rule;
+  const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<Count>> rule;
   constexpr int dofs = CommonPlaneResidualData::coordinate_count;
   constexpr RealT step =
       2.0e-7;  // Small enough to resolve derivatives without changing the active or overlap branches.

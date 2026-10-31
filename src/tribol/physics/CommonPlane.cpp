@@ -52,7 +52,7 @@ template <typename BaseRule>
 void commonPlaneResidualKernel( const RealT* coordinates, const CommonPlaneKernelParameters<BaseRule>* parameters,
                                 RealT* residual )
 {
-  constexpr int edge_size = LinearEdgeGeometry::endpoint_count * LinearEdgeGeometry::spatial_dimension;
+  constexpr int edge_size = LinearEdgeGeometry::vertex_count * LinearEdgeGeometry::spatial_dimension;
   const auto result = computeCommonPlaneResidual<BaseRule>(
       { coordinates, edge_size }, { coordinates + edge_size, edge_size }, parameters->quadrature_rule,
       parameters->penalty, parameters->residual_gap );
@@ -63,8 +63,8 @@ void commonPlaneResidualKernel( const RealT* coordinates, const CommonPlaneKerne
 }  // namespace
 
 template <typename BaseRule>
-CommonPlanePairData computeCommonPlanePair( LinearEdgeGeometry::Coordinates coordinates1,
-                                            LinearEdgeGeometry::Coordinates coordinates2,
+CommonPlanePairData computeCommonPlanePair( LinearEdgeGeometry::Coords coordinates1,
+                                            LinearEdgeGeometry::Coords coordinates2,
                                             const CommonPlaneQuadratureRule<BaseRule>& quadrature_rule, RealT penalty,
                                             RealT residual_gap )
 {
@@ -99,15 +99,15 @@ CommonPlanePairData computeCommonPlanePair( LinearEdgeGeometry::Coordinates coor
   return result;
 }
 
-template CommonPlanePairData computeCommonPlanePair<EdgeQuadratureRule<1>>(
-    LinearEdgeGeometry::Coordinates, LinearEdgeGeometry::Coordinates,
-    const CommonPlaneQuadratureRule<EdgeQuadratureRule<1>>&, RealT, RealT );
-template CommonPlanePairData computeCommonPlanePair<EdgeQuadratureRule<2>>(
-    LinearEdgeGeometry::Coordinates, LinearEdgeGeometry::Coordinates,
-    const CommonPlaneQuadratureRule<EdgeQuadratureRule<2>>&, RealT, RealT );
-template CommonPlanePairData computeCommonPlanePair<EdgeQuadratureRule<3>>(
-    LinearEdgeGeometry::Coordinates, LinearEdgeGeometry::Coordinates,
-    const CommonPlaneQuadratureRule<EdgeQuadratureRule<3>>&, RealT, RealT );
+template CommonPlanePairData computeCommonPlanePair<EdgeQuadratureRuleGenerator<1>>(
+    LinearEdgeGeometry::Coords, LinearEdgeGeometry::Coords,
+    const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<1>>&, RealT, RealT );
+template CommonPlanePairData computeCommonPlanePair<EdgeQuadratureRuleGenerator<2>>(
+    LinearEdgeGeometry::Coords, LinearEdgeGeometry::Coords,
+    const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<2>>&, RealT, RealT );
+template CommonPlanePairData computeCommonPlanePair<EdgeQuadratureRuleGenerator<3>>(
+    LinearEdgeGeometry::Coords, LinearEdgeGeometry::Coords,
+    const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<3>>&, RealT, RealT );
 #endif
 
 TRIBOL_HOST_DEVICE RealT ComputeGapRatePressure( CommonPlanePair& plane, const MeshData::Viewer& m1,

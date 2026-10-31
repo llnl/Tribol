@@ -274,7 +274,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   ContactParams params_;
 
   /**
-   * @brief Evaluator borrowing quadrature_rule_, which remains alive until after the evaluator is destroyed
+   * @brief Evaluator holding a reference to quadrature_rule_, which remains alive until after the evaluator is
+   * destroyed
    */
   std::unique_ptr<EnergyMortarCalculator<QuadratureRule>> evaluator_;
 

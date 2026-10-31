@@ -9,7 +9,7 @@
 #include "Physics.hpp"
 #include "tribol/geom/CommonPlaneEdgeMapping.hpp"
 #include "tribol/integ/PairQuadratureRule.hpp"
-#include "tribol/integ/EdgeQuadratureRule.hpp"
+#include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
 #include "tribol/integ/BasisFunction.hpp"
 
 namespace tribol {
@@ -21,7 +21,7 @@ using CommonPlaneQuadratureRule = PairQuadratureRule<CommonPlaneEdgeMapping, Bas
 /** @brief Residual and generation status for a pair of linear two-dimensional edges. */
 struct CommonPlaneResidualData {
   static constexpr int dimension = LinearEdgeGeometry::spatial_dimension;             ///< Physical components.
-  static constexpr int nodes_per_element = LinearEdgeGeometry::endpoint_count;        ///< Nodes on each edge.
+  static constexpr int nodes_per_element = LinearEdgeGeometry::vertex_count;          ///< Nodes on each edge.
   static constexpr int pair_size = 2;                                                 ///< Elements in a contact pair.
   static constexpr int coordinate_count = dimension * nodes_per_element * pair_size;  ///< Pair coordinate DOFs.
   MdArray<RealT, coordinate_count> residual{};  ///< Node-major contact residual, first element then second.
@@ -47,7 +47,7 @@ struct CommonPlanePairData : CommonPlaneResidualData {
  */
 template <typename BaseRule>
 TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE CommonPlaneResidualData computeCommonPlaneResidual(
-    LinearEdgeGeometry::Coordinates coordinates1, LinearEdgeGeometry::Coordinates coordinates2,
+    LinearEdgeGeometry::Coords coordinates1, LinearEdgeGeometry::Coords coordinates2,
     const CommonPlaneQuadratureRule<BaseRule>& quadrature_rule, RealT penalty, RealT residual_gap )
 {
   const LinearEdgeGeometry edge1( coordinates1 ), edge2( coordinates2 );
@@ -61,19 +61,19 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE CommonPlaneResidualData computeCommonPla
   const auto frame = CommonPlaneEdgeMapping::makeFrame( edge1, edge2 );
   using Basis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
   for ( IndexT q = 0; q < points.capacity(); ++q ) {
-    const RealT parent1 = points.geometry1_parent_coordinates( q, 0 );
-    const RealT parent2 = points.geometry2_parent_coordinates( q, 0 );
+    const RealT parent1 = points.geometry1_coords( q, 0 );
+    const RealT parent2 = points.geometry2_coords( q, 0 );
     const auto point1 = edge1.position( parent1 ), point2 = edge2.position( parent2 );
     const RealT gap = LinearEdgeGeometry::Vector( point2, point1 ).dot( frame.normal ) - residual_gap;
     if ( gap > 0.0 ) continue;
     result.has_active_points = true;
     const RealT pressure = penalty * gap;
     MdArray<RealT, Basis::node_count> basis1{}, basis2{};
-    Basis::Eval( MdSpan<const RealT, 1>{ &parent1, 1 }, basis1.view() );
-    Basis::Eval( MdSpan<const RealT, 1>{ &parent2, 1 }, basis2.view() );
+    Basis::eval( MdSpan<const RealT, 1>{ &parent1, 1 }, basis1.view() );
+    Basis::eval( MdSpan<const RealT, 1>{ &parent2, 1 }, basis2.view() );
     for ( int node = 0; node < Basis::node_count; ++node ) {
       for ( int component = 0; component < CommonPlaneResidualData::dimension; ++component ) {
-        const RealT traction = points.physical_weights[q] * pressure * frame.normal[component];
+        const RealT traction = points.weights[q] * pressure * frame.normal[component];
         result.residual[node * CommonPlaneResidualData::dimension + component] += basis1[node] * traction;
         result.residual[( node + Basis::node_count ) * CommonPlaneResidualData::dimension + component] -=
             basis2[node] * traction;
@@ -97,8 +97,8 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE CommonPlaneResidualData computeCommonPla
  * @throws std::length_error Quadrature storage is insufficient.
  */
 template <typename BaseRule>
-CommonPlanePairData computeCommonPlanePair( LinearEdgeGeometry::Coordinates coordinates1,
-                                            LinearEdgeGeometry::Coordinates coordinates2,
+CommonPlanePairData computeCommonPlanePair( LinearEdgeGeometry::Coords coordinates1,
+                                            LinearEdgeGeometry::Coords coordinates2,
                                             const CommonPlaneQuadratureRule<BaseRule>& quadrature_rule, RealT penalty,
                                             RealT residual_gap );
 #endif

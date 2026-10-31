@@ -86,7 +86,7 @@ void CommonPlaneFormulation<BaseQuadratureRule>::updateNodalForces( MeshData::Vi
   for ( const auto& pair : pairs ) {
     const auto elem1 = static_cast<int>( pair.element_id1_ );
     const auto elem2 = static_cast<int>( pair.element_id2_ );
-    MdArray<RealT, LinearEdgeGeometry::endpoint_count, LinearEdgeGeometry::spatial_dimension> coordinates1{},
+    MdArray<RealT, LinearEdgeGeometry::vertex_count, LinearEdgeGeometry::spatial_dimension> coordinates1{},
         coordinates2{};
     mesh1.getFaceCoords( pair.element_id1_, coordinates1.data() );
     mesh2.getFaceCoords( pair.element_id2_, coordinates2.data() );
@@ -143,8 +143,8 @@ void CommonPlaneFormulation<BaseQuadratureRule>::updateNodalForces( MeshData::Vi
   df_contribs.push_back( std::move( jacobian22 ) );
   jacobian_ = jacobian_data_.GetMfemJacobian( parent_fes, parent_fes, df_contribs );
 }
-template class CommonPlaneFormulation<EdgeQuadratureRule<1>>;
-template class CommonPlaneFormulation<EdgeQuadratureRule<2>>;
-template class CommonPlaneFormulation<EdgeQuadratureRule<3>>;
+template class CommonPlaneFormulation<EdgeQuadratureRuleGenerator<1>>;
+template class CommonPlaneFormulation<EdgeQuadratureRuleGenerator<2>>;
+template class CommonPlaneFormulation<EdgeQuadratureRuleGenerator<3>>;
 #endif
 }  // namespace tribol

@@ -508,7 +508,9 @@ struct Parameters {
   EnforcementLocation enforcement_location =
       EnforcementLocation::QuadraturePoint;   ///! Defaults to quadrature-point enforcement
   bool use_common_plane_formulation = false;  ///< Opt in to host MFEM common-plane residual/Jacobian assembly.
-  int quadrature_order = 5;  ///! Requested reference polynomial degree; formulations default to three points
+  ///! Requested polynomial degree to integrate exactly.
+  ///! The default (5) corresponds to a three-point Gauss-Legendre rule in 1D.
+  int quadrature_order = 5;
   RealT residual_gap = 0.0;  ///! Nonnegative gap constraint; positive values enforce separation
 };
 

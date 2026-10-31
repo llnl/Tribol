@@ -14,7 +14,7 @@
 #include <stdexcept>
 #include <utility>
 
-#include "tribol/integ/EdgeQuadratureRule.hpp"
+#include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
 #include "tribol/integ/PairQuadratureRule.hpp"
 
 namespace tribol {
@@ -75,7 +75,7 @@ namespace detail {
  *
  * @throws std::invalid_argument The order is negative or exceeds every supported rule.
  *
- * @tparam QuadratureRuleFamily Template accepting the number of points per base rule.
+ * @tparam QuadratureRuleFamily Template accepting the number of points per integration-surface rule.
  * @tparam FirstPointCount First supported positive point count.
  * @tparam LastPointCount Last supported point count, inclusive.
  * @tparam Create Templated callback accepting the selected rule type.
@@ -108,10 +108,11 @@ decltype( auto ) createWithQuadratureRuleRange( int order, Create&& create )
 template <typename Create>
 decltype( auto ) createWithQuadratureRule( int order, Create&& create )
 {
-  return detail::createWithQuadratureRuleRange<EdgeQuadratureRule, 1, 3>( order, std::forward<Create>( create ) );
+  return detail::createWithQuadratureRuleRange<EdgeQuadratureRuleGenerator, 1, 3>( order,
+                                                                                   std::forward<Create>( create ) );
 }
 /**
- * @brief Compose a supplied mapping with the edge base rule selected by polynomial order.
+ * @brief Compose a supplied mapping with the edge rule generator selected by polynomial order.
  * @throws std::invalid_argument The order is negative or greater than five.
  * @tparam Mapping Forward and reverse mapping retained by the pair rule.
  * @tparam Create Callable accepting the composed rule by value.
@@ -123,8 +124,8 @@ decltype( auto ) createWithQuadratureRule( int order, Create&& create )
 template <typename Mapping, typename Create>
 decltype( auto ) createWithQuadratureRule( int order, const Mapping& mapping, Create&& create )
 {
-  return createWithQuadratureRule( order, [&]<typename BaseQuadratureRule>() -> decltype( auto ) {
-    return std::forward<Create>( create )( PairQuadratureRule<Mapping, BaseQuadratureRule>{ mapping } );
+  return createWithQuadratureRule( order, [&]<typename IntegrationSurfaceRuleGenerator>() -> decltype( auto ) {
+    return std::forward<Create>( create )( PairQuadratureRule<Mapping, IntegrationSurfaceRuleGenerator>{ mapping } );
   } );
 }
 

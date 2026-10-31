@@ -11,7 +11,7 @@
 #define SRC_TRIBOL_GEOM_COMMONPLANEEDGEMAPPING_HPP_
 
 #include "tribol/geom/LinearEdgeGeometry.hpp"
-#include "tribol/integ/Quadrature.hpp"
+#include "tribol/integ/QuadratureCommon.hpp"
 
 namespace tribol {
 
@@ -88,7 +88,7 @@ struct CommonPlaneEdgeMapping {
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult mapToElements( const FirstGeometry& edge1,
                                                                           const SecondGeometry& edge2,
-                                                                          ReferenceQuadratureView<1> reference,
+                                                                          IntegrationSurfaceRuleView<1> reference,
                                                                           PairQuadratureView<1, 1> output ) const
   {
     if ( !validEdges( edge1, edge2 ) ) return { QuadratureStatus::InvalidGeometry, 0 };
@@ -100,12 +100,12 @@ struct CommonPlaneEdgeMapping {
     const RealT determinant1 = Vector::cross_product( edge1.direction(), frame.normal )[2];
     const RealT determinant2 = Vector::cross_product( edge2.direction(), frame.normal )[2];
     for ( IndexT q = 0; q < count; ++q ) {
-      const auto point = frame.origin + reference.parent_coordinates( q, 0 ) * frame.tangent;
-      output.geometry1_parent_coordinates( q, 0 ) =
+      const auto point = frame.origin + reference.coords( q, 0 ) * frame.tangent;
+      output.geometry1_coords( q, 0 ) =
           2.0 * Vector::cross_product( Vector( edge1.origin(), point ), frame.normal )[2] / determinant1 - 1.0;
-      output.geometry2_parent_coordinates( q, 0 ) =
+      output.geometry2_coords( q, 0 ) =
           2.0 * Vector::cross_product( Vector( edge2.origin(), point ), frame.normal )[2] / determinant2 - 1.0;
-      output.physical_weights[q] = reference.reference_weights[q];
+      output.weights[q] = reference.weights[q];
     }
     return { QuadratureStatus::Success, count };
   }
