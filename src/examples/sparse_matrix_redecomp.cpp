@@ -39,6 +39,7 @@
 #include "mfem.hpp"
 
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 #include "redecomp/redecomp.hpp"
 
@@ -60,7 +61,7 @@ int main( int argc, char** argv )
   // number of times to uniformly refine the serial mesh before constructing the parallel mesh
   int ref_levels{ 0 };
   // filter radius of the explicit density filter
-  double filter_radius{ 1.0 };
+  tribol::RealT filter_radius{ 1.0 };
   // set and parse options
   axom::CLI::App app{ "sparse_matrix_redecomp" };
   app.add_option( "-d,--dim", dim, "Spatial dimension of the mesh" )->capture_default_str();
@@ -75,8 +76,8 @@ int main( int argc, char** argv )
   SLIC_INFO_ROOT( axom::fmt::format( "filter-radius: {0}\n", filter_radius ) );
 
   SLIC_INFO_ROOT( "Creating mfem::ParMesh..." );
-  double side_length{ 1.0 };  // side length of square domain
-  int n_elem_per_dim{ 4 };    // number of elements per dimension
+  tribol::RealT side_length{ 1.0 };  // side length of square domain
+  int n_elem_per_dim{ 4 };           // number of elements per dimension
   mfem::Mesh serial_mesh;
   if ( dim == 2 ) {
     serial_mesh = mfem::Mesh::MakeCartesian2D( n_elem_per_dim, n_elem_per_dim, mfem::Element::Type::QUADRILATERAL,
@@ -92,7 +93,7 @@ int main( int argc, char** argv )
   // update the number of elements per dimension to reflect the refined mesh
   n_elem_per_dim *= std::pow( 2, ref_levels );
   // compute the element side length
-  double dx{ side_length / n_elem_per_dim };
+  tribol::RealT dx{ side_length / n_elem_per_dim };
   // create parallel mesh from serial
   mfem::ParMesh par_mesh{ MPI_COMM_WORLD, serial_mesh };
 
@@ -132,7 +133,7 @@ int main( int argc, char** argv )
     for ( int j = 0; j < n_local_elem; j++ ) {
       redecomp_mesh.GetElementCenter( j, xj );
       // evaluate kernel which takes in both element centroids
-      double Wij = filter_kernel( xi, xj );
+      tribol::RealT Wij = filter_kernel( xi, xj );
       // if kernel returns a non-zero value, create entry in the sparse redecomp matrix
       if ( Wij > 0.0 ) {
         W_redecomp.Add( i, j, Wij );
@@ -157,8 +158,8 @@ int main( int argc, char** argv )
   SLIC_INFO_ROOT( "Comparing transferred operator to analytic solution for a field..." );
   // define analytical field for testing
   auto x_function = [&]( const mfem::Vector& x ) {
-    double pi = 3.1415;
-    double f = 0.0;
+    tribol::RealT pi = 3.1415;
+    tribol::RealT f = 0.0;
     for ( int i = 0; i < dim; i++ ) {
       f += std::sin( 2. * pi * x[i] / side_length );
     }
@@ -168,8 +169,8 @@ int main( int argc, char** argv )
   // leverage uniform mesh to write analytical definition of the filtered field
   auto xf_function = [&]( const mfem::Vector& x ) {
     mfem::Vector xj( dim );
-    double value = 0.0;
-    double denom = 0.0;
+    tribol::RealT value = 0.0;
+    tribol::RealT denom = 0.0;
     if ( dim == 2 ) {
       for ( int i = 0; i < n_elem_per_dim; i++ ) {
         xj( 0 ) = dx / 2. + i * dx;

@@ -3,6 +3,7 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/utils/TestUtils.hpp"
 #include "tribol/utils/Math.hpp"
 
@@ -1794,7 +1795,7 @@ namespace mfem_ext {
 
 CentralDiffSolver::CentralDiffSolver( const mfem::Array<int>& bc_vdofs_ ) : bc_vdofs( bc_vdofs_ ), first_step{ true } {}
 
-void CentralDiffSolver::Step( mfem::Vector& x, mfem::Vector& dxdt, double& t, double& dt )
+void CentralDiffSolver::Step( mfem::Vector& x, mfem::Vector& dxdt, tribol::RealT& t, tribol::RealT& dt )
 {
   // acceleration at t
   f->SetTime( t );

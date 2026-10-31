@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "tribol/config.hpp"
+#include "shared/common/BasicTypes.hpp"
 
 #include <gtest/gtest.h>
 
@@ -65,7 +66,7 @@ class TransferTest : public testing::TestWithParam<std::pair<std::string, int>> 
       auto quad_val = mfem::Vector();
       orig_quad_fn_->GetValues( e, quad_val );
       for ( int i{ 0 }; i < quad_val.Size(); ++i ) {
-        quad_val[i] = static_cast<double>( par_mesh_.GetGlobalElementNum( e ) );
+        quad_val[i] = static_cast<shared::RealT>( par_mesh_.GetGlobalElementNum( e ) );
       }
     }
     redecomp_quad_space_ = std::make_unique<mfem::QuadratureSpace>( redecomp_mesh_.get(), 0 );
@@ -73,7 +74,7 @@ class TransferTest : public testing::TestWithParam<std::pair<std::string, int>> 
     final_quad_fn_ = std::make_unique<mfem::QuadratureFunction>( par_quad_space_.get() );
   }
   template <typename T>
-  double Calcl2Error( const T& orig, T& final )
+  shared::RealT Calcl2Error( const T& orig, T& final )
   {
     final -= orig;
     return final.Norml2() / orig.Norml2();

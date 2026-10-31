@@ -10,6 +10,7 @@
 
 #include "axom/core.hpp"
 
+#include "shared/common/BasicTypes.hpp"
 #include "redecomp/common/TypeDefs.hpp"
 
 namespace redecomp {
@@ -64,7 +65,7 @@ class RedecompMesh : public mfem::Mesh {
    * @param n_ranks Sets number of MPI ranks to build RedecompMesh on (default = 0). Set this to zero to have this
    * automatically determined.
    */
-  RedecompMesh( const mfem::ParMesh& parent, double ghost_length, PartitionType method = RCB, int n_ranks = 0 );
+  RedecompMesh( const mfem::ParMesh& parent, shared::RealT ghost_length, PartitionType method = RCB, int n_ranks = 0 );
 
   /**
    * @brief Construct a new RedecompMesh object
@@ -93,7 +94,7 @@ class RedecompMesh : public mfem::Mesh {
    * @param n_ranks Sets number of MPI ranks to build RedecompMesh on (default = 0). Set this to zero to have this
    * automatically determined.
    */
-  RedecompMesh( const mfem::ParMesh& parent, double ghost_length, std::unique_ptr<const Partitioner> partitioner,
+  RedecompMesh( const mfem::ParMesh& parent, shared::RealT ghost_length, std::unique_ptr<const Partitioner> partitioner,
                 int n_ranks = 0 );
 
   /**
@@ -158,7 +159,7 @@ class RedecompMesh : public mfem::Mesh {
    *
    * @return Largest element length in terms of stretch component at element centroid
    */
-  static double MaxElementSize( const mfem::ParMesh& parent, const MPIUtility& mpi );
+  static shared::RealT MaxElementSize( const mfem::ParMesh& parent, const MPIUtility& mpi );
 
  private:
   /**
@@ -168,7 +169,7 @@ class RedecompMesh : public mfem::Mesh {
    *
    * @return Default ghost element lemgth
    */
-  double DefaultGhostLength( const mfem::ParMesh& parent ) const;
+  shared::RealT DefaultGhostLength( const mfem::ParMesh& parent ) const;
 
   /**
    * @brief Builds list of parent elements to be transfered to Redecomp ranks
@@ -178,7 +179,8 @@ class RedecompMesh : public mfem::Mesh {
    * @param ghost_length Size of layer of un-owned ghost elements to include around the edge of the on-rank domain
    * @return List of parent element IDs and ghost elements sorted by Redecomp rank
    */
-  EntityIndexByRank BuildP2RElementList( const Partitioner& partitioner, int n_parts, double ghost_length ) const;
+  EntityIndexByRank BuildP2RElementList( const Partitioner& partitioner, int n_parts,
+                                         shared::RealT ghost_length ) const;
 
   /**
    * @brief Builds the Redecomp mesh and inverse element transfer list

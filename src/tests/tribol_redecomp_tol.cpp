@@ -12,6 +12,7 @@
 
 // Tribol includes
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
@@ -45,7 +46,7 @@ TEST_F( MfemRedecompSkipTest, test_skip_redecomp )
   // 1. Initialize simplified problem: Two unit cubes separated by a small gap
   // Mesh is refined once, so element size is 0.5.
   // clang-format off
-  double initial_sep = 0.1;
+  tribol::RealT initial_sep = 0.1;
   mfem::ParMesh mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::Unify( {
     shared::MeshBuilder::CubeMesh( 1, 1, 1 ),
     shared::MeshBuilder::CubeMesh( 1, 1, 1 )
@@ -77,7 +78,7 @@ TEST_F( MfemRedecompSkipTest, test_skip_redecomp )
   const mfem::Mesh* redecomp_mesh_ptr_1 = &mfem_data->GetRedecompMesh();
 
   // Verify we can compute forces (should be zero as gap > 0)
-  double dt = 0.1;
+  tribol::RealT dt = 0.1;
   tribol::update( 0, 0.0, dt );
   mfem::Vector force_1( coords.Size() );
   force_1 = 0.0;

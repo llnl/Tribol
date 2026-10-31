@@ -60,6 +60,9 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Numerical coordinates, fields, matrix entries, and parameters consistently use `RealT` across Tribol, shared helpers,
+  Redecomp, examples, and tests. Public C++ declarations retain their existing types because `RealT` aliases `double`;
+  generated C/Fortran interfaces retain their concrete types. Single precision remains unsupported.
 - Pair quadrature constructs element geometry objects once per pair calculation. For linear edges, each object copies
   the endpoints and caches the edge vector and squared length. Mappings use these objects by const reference to compute
   Primal points, parent projection coordinates, normals, and Jacobians.

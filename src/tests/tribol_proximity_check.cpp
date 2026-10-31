@@ -10,6 +10,7 @@
 
 // Tribol includes
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
@@ -33,7 +34,7 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
   /**
    * @brief Maximum force computed over the mesh.
    */
-  double max_force_;
+  tribol::RealT max_force_;
 
   /**
    * @brief Binning methods to test for each contact problem.

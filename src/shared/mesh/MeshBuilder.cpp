@@ -5,6 +5,8 @@
 #include "axom/slic.hpp"
 #include "axom/primal.hpp"
 
+#include "shared/common/BasicTypes.hpp"
+
 namespace shared {
 
 MeshBuilder MeshBuilder::Unify( std::initializer_list<MeshBuilder> meshes )
@@ -24,21 +26,21 @@ MeshBuilder MeshBuilder::SquareMesh( int n_x_els, int n_y_els )
   return mfem::Mesh::MakeCartesian2D( n_x_els, n_y_els, mfem::Element::QUADRILATERAL );
 }
 
-MeshBuilder MeshBuilder::Cylinder2D( int n_radial_els, int n_hoop_els, double inner_radius, double outer_radius )
+MeshBuilder MeshBuilder::Cylinder2D( int n_radial_els, int n_hoop_els, RealT inner_radius, RealT outer_radius )
 {
   mfem::Mesh mesh = mfem::Mesh::MakeCartesian2D( n_radial_els, n_hoop_els, mfem::Element::QUADRILATERAL );
   mesh.EnsureNodes();
   mfem::GridFunction& nodes = *mesh.GetNodes();
-  const double pi = std::acos( -1.0 );
+  const RealT pi = std::acos( -1.0 );
   for ( int i = 0; i < mesh.GetNV(); ++i ) {
     int vdof_x = nodes.FESpace()->DofToVDof( i, 0 );
     int vdof_y = nodes.FESpace()->DofToVDof( i, 1 );
 
-    double x = nodes( vdof_x );
-    double y = nodes( vdof_y );
+    RealT x = nodes( vdof_x );
+    RealT y = nodes( vdof_y );
 
-    double r = inner_radius + x * ( outer_radius - inner_radius );
-    double theta = y * 2.0 * pi;
+    RealT r = inner_radius + x * ( outer_radius - inner_radius );
+    RealT theta = y * 2.0 * pi;
 
     nodes( vdof_x ) = r * std::cos( theta );
     nodes( vdof_y ) = r * std::sin( theta );
@@ -46,21 +48,21 @@ MeshBuilder MeshBuilder::Cylinder2D( int n_radial_els, int n_hoop_els, double in
   return mesh;
 }
 
-MeshBuilder MeshBuilder::HalfCylinder2D( int n_radial_els, int n_hoop_els, double inner_radius, double outer_radius )
+MeshBuilder MeshBuilder::HalfCylinder2D( int n_radial_els, int n_hoop_els, RealT inner_radius, RealT outer_radius )
 {
   mfem::Mesh mesh = mfem::Mesh::MakeCartesian2D( n_radial_els, n_hoop_els, mfem::Element::QUADRILATERAL );
   mesh.EnsureNodes();
   mfem::GridFunction& nodes = *mesh.GetNodes();
-  const double pi = std::acos( -1.0 );
+  const RealT pi = std::acos( -1.0 );
   for ( int i = 0; i < mesh.GetNV(); ++i ) {
     int vdof_x = nodes.FESpace()->DofToVDof( i, 0 );
     int vdof_y = nodes.FESpace()->DofToVDof( i, 1 );
 
-    double x = nodes( vdof_x );
-    double y = nodes( vdof_y );
+    RealT x = nodes( vdof_x );
+    RealT y = nodes( vdof_y );
 
-    double r = inner_radius + x * ( outer_radius - inner_radius );
-    double theta = pi + y * pi;
+    RealT r = inner_radius + x * ( outer_radius - inner_radius );
+    RealT theta = pi + y * pi;
 
     nodes( vdof_x ) = r * std::cos( theta );
     nodes( vdof_y ) = r * std::sin( theta );
@@ -90,7 +92,7 @@ MeshBuilder MeshBuilder::HypercubeMesh( int dim, int n_els )
 
 MeshBuilder::MeshBuilder( mfem::Mesh&& mesh ) : mesh_{ std::move( mesh ) } { mesh_.EnsureNodes(); }
 
-MeshBuilder&& MeshBuilder::scale( std::initializer_list<double> scale_factors )
+MeshBuilder&& MeshBuilder::scale( std::initializer_list<RealT> scale_factors )
 {
   SLIC_ERROR_ROOT_IF( static_cast<int>( scale_factors.size() ) != mesh_.SpaceDimension(),
                       "scale_factors size does not match mesh dimension." );
@@ -104,7 +106,7 @@ MeshBuilder&& MeshBuilder::scale( std::initializer_list<double> scale_factors )
   return std::move( *this );
 }
 
-MeshBuilder&& MeshBuilder::translate( std::initializer_list<double> dx )
+MeshBuilder&& MeshBuilder::translate( std::initializer_list<RealT> dx )
 {
   SLIC_ERROR_ROOT_IF( static_cast<int>( dx.size() ) != mesh_.SpaceDimension(), "Invalid size for dx" );
   auto& coords = *mesh_.GetNodes();
@@ -117,7 +119,7 @@ MeshBuilder&& MeshBuilder::translate( std::initializer_list<double> dx )
   return std::move( *this );
 }
 
-MeshBuilder&& MeshBuilder::translateNode( int node_id, std::initializer_list<double> dx )
+MeshBuilder&& MeshBuilder::translateNode( int node_id, std::initializer_list<RealT> dx )
 {
   SLIC_ERROR_ROOT_IF( static_cast<int>( dx.size() ) != mesh_.SpaceDimension(), "Invalid size for dx" );
   auto& coords = *mesh_.GetNodes();
@@ -158,14 +160,14 @@ MeshBuilder&& MeshBuilder::bdrAttribInfo()
   for ( int i{ 0 }; i < mesh_.bdr_attributes.Size(); ++i ) {
     auto current_attrib = mesh_.bdr_attributes[i];
     auto num_elems = 0;
-    auto attrib_bbox = axom::primal::BoundingBox<double, 3>();
+    auto attrib_bbox = axom::primal::BoundingBox<RealT, 3>();
     for ( int j = 0; j < mesh_.GetNBE(); ++j ) {
       if ( mesh_.GetBdrAttribute( j ) == current_attrib ) {
         num_elems++;
         mfem::Array<int> bdr_dofs;
         mesh_.GetNodes()->FESpace()->GetBdrElementDofs( j, bdr_dofs );
         for ( int k{ 0 }; k < bdr_dofs.Size(); ++k ) {
-          axom::primal::Point<double, 3> vert;
+          axom::primal::Point<RealT, 3> vert;
           for ( int d{ 0 }; d < mesh_.SpaceDimension(); ++d ) {
             auto vdof = mesh_.GetNodes()->FESpace()->DofToVDof( bdr_dofs[k], d );
             vert[d] = ( *mesh_.GetNodes() )[vdof];

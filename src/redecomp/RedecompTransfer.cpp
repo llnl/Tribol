@@ -7,6 +7,7 @@
 
 #include "axom/slic.hpp"
 
+#include "shared/common/BasicTypes.hpp"
 #include "shared/infrastructure/Profiling.hpp"
 
 #include "redecomp/RedecompMesh.hpp"
@@ -50,9 +51,9 @@ void RedecompTransfer::TransferToSerial( const mfem::QuadratureFunction& src, mf
 
   // send and receive quadrature point values from other ranks
   TRIBOL_MARK_BEGIN( "Send and receive values over MPI" );
-  auto dst_vals = MPIArray<double>( &redecomp->getMPIUtility() );
+  auto dst_vals = MPIArray<shared::RealT>( &redecomp->getMPIUtility() );
   dst_vals.SendRecvEach( [redecomp, &src]( int dest ) {
-    auto src_vals = MPIArray<double>::ArrayT();
+    auto src_vals = MPIArray<shared::RealT>::ArrayT();
     const auto& src_elem_idx = redecomp->getParentToRedecompElems().first[dest];
     auto n_els = src_elem_idx.Size();
     if ( n_els > 0 ) {
@@ -108,9 +109,9 @@ void RedecompTransfer::TransferToParallel( const mfem::QuadratureFunction& src, 
                       "Redecomp -> ParMesh relationship." );
 
   // send and receive quadrature point values from other ranks
-  auto dst_vals = MPIArray<double>( &redecomp->getMPIUtility() );
+  auto dst_vals = MPIArray<shared::RealT>( &redecomp->getMPIUtility() );
   dst_vals.SendRecvEach( [redecomp, &src]( int dest ) {
-    auto src_vals = MPIArray<double>::ArrayT();
+    auto src_vals = MPIArray<shared::RealT>::ArrayT();
     auto first_el = redecomp->getRedecompToParentElemOffsets()[dest];
     auto last_el = redecomp->getRedecompToParentElemOffsets()[dest + 1];
     auto n_els = last_el - first_el;

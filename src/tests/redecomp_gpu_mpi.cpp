@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "tribol/config.hpp"
+#include "shared/common/BasicTypes.hpp"
 
 #include <memory>
 
@@ -87,7 +88,7 @@ TEST_F( GpuMpiTest, VerifyTransfer )
 
   // Verify values (L2 error)
   *final_ -= *orig_;
-  double err = final_->Norml2() / orig_->Norml2();
+  shared::RealT err = final_->Norml2() / orig_->Norml2();
   EXPECT_LT( err, 1e-12 );
 }
 
@@ -112,8 +113,8 @@ TEST_F( GpuMpiTest, VerifyDeviceTransferStrict )
 
   // Pollute Host to verify we are reading from Device
   {
-    const double* h_read = send_vec.HostRead();  // Syncs to host (1.0)
-    double* h_ptr = const_cast<double*>( h_read );
+    const shared::RealT* h_read = send_vec.HostRead();  // Syncs to host (1.0)
+    shared::RealT* h_ptr = const_cast<shared::RealT*>( h_read );
     for ( int i = 0; i < N; ++i ) h_ptr[i] = 2.0;  // Host = 2.0
   }
   // send_vec internal state: ValidDevice=true, ValidHost=true (but we hacked it).
@@ -131,7 +132,7 @@ TEST_F( GpuMpiTest, VerifyDeviceTransferStrict )
 
   if ( rank == 1 ) {
     // Check if we received 1.0 (from Device) or 2.0 (from Host)
-    const double* res = recv_vec.HostRead();
+    const shared::RealT* res = recv_vec.HostRead();
     EXPECT_DOUBLE_EQ( res[0], 1.0 );
   }
 }

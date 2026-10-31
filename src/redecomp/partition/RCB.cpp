@@ -7,6 +7,7 @@
 
 #include "axom/slic.hpp"
 
+#include "shared/common/BasicTypes.hpp"
 #include "shared/infrastructure/Profiling.hpp"
 
 #include "redecomp/common/TypeDefs.hpp"
@@ -16,7 +17,7 @@
 namespace redecomp {
 
 template <int NDIMS>
-RCB<NDIMS>::RCB( const MPI_Comm& comm, double max_out_of_balance, int n_try_new_axis )
+RCB<NDIMS>::RCB( const MPI_Comm& comm, shared::RealT max_out_of_balance, int n_try_new_axis )
     : PartitionMethod<NDIMS>{ comm }, max_out_of_balance_{ max_out_of_balance }, n_try_new_axis_{ n_try_new_axis }
 {
 }
@@ -24,7 +25,7 @@ RCB<NDIMS>::RCB( const MPI_Comm& comm, double max_out_of_balance, int n_try_new_
 template <int NDIMS>
 std::vector<EntityIndexByRank> RCB<NDIMS>::generatePartitioning( int n_parts,
                                                                  const std::vector<CoordList<NDIMS>>& coords_by_mesh,
-                                                                 double ghost_len ) const
+                                                                 shared::RealT ghost_len ) const
 {
   TRIBOL_MARK_FUNCTION;
   auto partitioning = std::vector<EntityIndexByRank>();
@@ -78,7 +79,7 @@ std::vector<EntityIndexByRank> RCB<NDIMS>::generatePartitioning( int n_parts,
 template <int NDIMS>
 BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts,
                                                         const std::vector<CoordList<NDIMS>>& coords_by_mesh,
-                                                        double ghost_len ) const
+                                                        shared::RealT ghost_len ) const
 {
   TRIBOL_MARK_FUNCTION;
   // subdivide the domain into n_parts pieces.  create a bisection tree of the
@@ -87,7 +88,7 @@ BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts,
 
   // store the desired fraction of each piece in the lowest level of the tree
   {
-    auto base_problem_frac = 1.0 / static_cast<double>( n_parts );
+    shared::RealT base_problem_frac = 1.0 / static_cast<shared::RealT>( n_parts );
     auto lvl_it = --problem_tree.end();
     for ( auto node_it = problem_tree.begin( lvl_it ); node_it != problem_tree.end( lvl_it ); ++node_it ) {
       ( *node_it ).desired_frac_ = base_problem_frac;
@@ -145,9 +146,9 @@ BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts,
                         [&bbox_range]( int i, int j ) { return bbox_range[i] > bbox_range[j]; } );
 
       auto axis_ok = false;
-      auto actual_left_prop = 0.0;
-      auto node_max_out_of_balance = 1.0;
-      auto total_node_ents = 0.0;
+      shared::RealT actual_left_prop = 0.0;
+      shared::RealT node_max_out_of_balance = 1.0;
+      shared::RealT total_node_ents = 0.0;
       for ( auto cut_ax : best_axes ) {
         auto bbox_min = ( *node_it ).bbox_.getMin();
         auto bbox_max = ( *node_it ).bbox_.getMax();
@@ -159,7 +160,7 @@ BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts,
         auto cut_coord = min_coord * ( 1.0 - left_prop ) + max_coord * left_prop;
 
         // use bisection method to find a cut coordinate within the relative tolerance mesh_max_out_of_balance
-        auto prev_actual_left_prop = 0.0;
+        shared::RealT prev_actual_left_prop = 0.0;
         int same_prop_ct{ 0 };
         while ( true ) {
           left_max[cut_ax] = cut_coord;
@@ -168,8 +169,8 @@ BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts,
           ( *right_it.second ).bbox_ = BoundingBox<NDIMS>( right_min, bbox_max );
 
           auto n_ents = CountEntities( ( *left_it.second ).bbox_, ( *right_it.second ).bbox_, coords_by_mesh );
-          total_node_ents = static_cast<double>( n_ents.first + n_ents.second );
-          actual_left_prop = static_cast<double>( n_ents.first ) / total_node_ents;
+          total_node_ents = static_cast<shared::RealT>( n_ents.first + n_ents.second );
+          actual_left_prop = static_cast<shared::RealT>( n_ents.first ) / total_node_ents;
           node_max_out_of_balance = 1.0;
           if ( total_node_ents > 0.0 ) {
             node_max_out_of_balance = std::max( max_out_of_balance_, 2.0 / total_node_ents );
@@ -183,9 +184,10 @@ BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts,
           } else {
             // cut coordinate is ok if we get here
             axis_ok = true;
-            ( *left_it.second ).actual_frac_ = static_cast<double>( n_ents.first ) / static_cast<double>( total_ents );
+            ( *left_it.second ).actual_frac_ =
+                static_cast<shared::RealT>( n_ents.first ) / static_cast<shared::RealT>( total_ents );
             ( *right_it.second ).actual_frac_ =
-                static_cast<double>( n_ents.second ) / static_cast<double>( total_ents );
+                static_cast<shared::RealT>( n_ents.second ) / static_cast<shared::RealT>( total_ents );
             // set ghost bounding boxes
             for ( int d{ 0 }; d < NDIMS; ++d ) {
               bbox_min[d] -= ghost_len;

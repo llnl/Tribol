@@ -10,6 +10,7 @@
 
 #include "mfem.hpp"
 
+#include "shared/common/BasicTypes.hpp"
 #include "redecomp/common/TypeDefs.hpp"
 
 namespace redecomp {
@@ -30,7 +31,7 @@ class Partitioner {
    */
   virtual std::vector<EntityIndexByRank> generatePartitioning( int n_parts,
                                                                const std::vector<const mfem::ParMesh*>& par_meshes,
-                                                               double ghost_size ) const = 0;
+                                                               shared::RealT ghost_size ) const = 0;
 
   /**
    * @brief Returns the MPIUtility associated with the Partitioner
@@ -86,7 +87,7 @@ class PartitionerByDim : public Partitioner {
    * sorted by each subdomain
    */
   std::vector<EntityIndexByRank> generatePartitioning( int n_parts, const std::vector<const mfem::ParMesh*>& par_meshes,
-                                                       double ghost_size ) const override;
+                                                       shared::RealT ghost_size ) const override;
 
   /**
    * @brief Get the PartitionEntity object

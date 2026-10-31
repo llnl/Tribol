@@ -9,6 +9,7 @@
 
 #include "axom/slic.hpp"
 
+#include "shared/common/BasicTypes.hpp"
 #include "shared/infrastructure/Profiling.hpp"
 
 #include "redecomp/RedecompMesh.hpp"
@@ -32,7 +33,7 @@ void TransferByElements::TransferToSerial( const mfem::ParGridFunction& src, mfe
                       "not the same." );
 
   // send and receive DOF values from other ranks
-  MPIArray<double, mfem::Vector> dst_dofs( &redecomp->getMPIUtility() );
+  MPIArray<shared::RealT, mfem::Vector> dst_dofs( &redecomp->getMPIUtility() );
   dst_dofs.SendRecvEach(
       [redecomp, &src]( int dest ) {
         mfem::Vector src_dofs;
@@ -101,7 +102,7 @@ void TransferByElements::TransferToParallel( const mfem::GridFunction& src, mfem
                       "not the same." );
 
   // send and receive non-ghost DOF values from other ranks
-  MPIArray<double, mfem::Vector> dst_dofs( &redecomp->getMPIUtility() );
+  MPIArray<shared::RealT, mfem::Vector> dst_dofs( &redecomp->getMPIUtility() );
   dst_dofs.SendRecvEach(
       [redecomp, &src]( int dest ) {
         mfem::Vector src_dofs;

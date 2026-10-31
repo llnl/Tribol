@@ -6,6 +6,7 @@
 #ifndef SRC_TRIBOL_UTILS_TESTUTILS_HPP_
 #define SRC_TRIBOL_UTILS_TESTUTILS_HPP_
 
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 
 // MFEM includes
@@ -487,7 +488,7 @@ class CentralDiffSolver : public mfem::SecondOrderODESolver {
    * @param t Current time
    * @param dt Timestep size
    */
-  void Step( mfem::Vector& x, mfem::Vector& dxdt, double& t, double& dt ) override;
+  void Step( mfem::Vector& x, mfem::Vector& dxdt, tribol::RealT& t, tribol::RealT& dt ) override;
 
  private:
   /**

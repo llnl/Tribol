@@ -3,6 +3,7 @@
 #include <array>
 
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
@@ -17,9 +18,9 @@ namespace tribol {
 
 /// Parameters controlling ENERGY_MORTAR contact evaluation.
 struct ContactParams {
-  double k;                    ///< Penalty stiffness.
-  bool enzyme_quadrature;      ///< Whether Enzyme differentiates the quadrature construction.
-  double residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
+  RealT k;                    ///< Penalty stiffness.
+  bool enzyme_quadrature;     ///< Whether Enzyme differentiates the quadrature construction.
+  RealT residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
 };
 
 /// Stores quadrature-point penalty energy derivatives for one interface pair.
@@ -30,35 +31,35 @@ struct QuadraturePointPenaltyData {
   static constexpr int num_force_dofs = dim * max_nodes_per_elem * pair_size;  ///< Pair coordinate degrees of freedom.
   static constexpr int num_stiffness_entries = num_force_dofs * num_force_dofs;  ///< Flattened stiffness size.
 
-  bool has_active_qp{ false };                            ///< True when any quadrature-point gap is nonpositive.
-  double energy{ 0.0 };                                   ///< Penalty energy for the interface pair.
-  std::array<double, num_force_dofs> force{};             ///< Derivative with respect to pair coordinates.
-  std::array<double, num_stiffness_entries> stiffness{};  ///< Flattened force derivative matrix.
+  bool has_active_qp{ false };                           ///< True when any quadrature-point gap is nonpositive.
+  RealT energy{ 0.0 };                                   ///< Penalty energy for the interface pair.
+  std::array<RealT, num_force_dofs> force{};             ///< Derivative with respect to pair coordinates.
+  std::array<RealT, num_stiffness_entries> stiffness{};  ///< Flattened force derivative matrix.
 };
 
 /// Stores weighted nodal gaps and tributary areas for one interface pair.
 struct NodalContactData {
-  std::array<double, 2> AI;       ///< Tributary areas for the two integration-edge nodes.
-  std::array<double, 2> g_tilde;  ///< Weighted gaps for the two integration-edge nodes.
+  std::array<RealT, 2> AI;       ///< Tributary areas for the two integration-edge nodes.
+  std::array<RealT, 2> g_tilde;  ///< Weighted gaps for the two integration-edge nodes.
 };
 
 /// Stores finite-difference and analytical derivative data for validation tests.
 struct FiniteDiffResult {
   /// Finite-difference approximation of the gradient/Hessian for the first
   /// nodal smoothed gap contribution.
-  std::vector<double> fd_gradient_g1;
+  std::vector<RealT> fd_gradient_g1;
 
   /// Finite-difference approximation of the gradient/Hessian for the second
   /// nodal smoothed gap contribution.
-  std::vector<double> fd_gradient_g2;
+  std::vector<RealT> fd_gradient_g2;
 
   /// Analytical/Enzyme-computed gradient/Hessian for the first nodal smoothed
   /// gap contribution.
-  std::vector<double> analytical_gradient_g1;
+  std::vector<RealT> analytical_gradient_g1;
 
   /// Analytical/Enzyme-computed gradient/Hessian for the second nodal smoothed
   /// gap contribution.
-  std::vector<double> analytical_gradient_g2;
+  std::vector<RealT> analytical_gradient_g2;
 
   /// Global node ids associated with the differentiated degrees of freedom.
   /// The expected ordering is the two nodes of edge A followed by the two nodes
@@ -67,11 +68,11 @@ struct FiniteDiffResult {
 
   /// Baseline value of the first nodal smoothed gap contribution before applying
   /// any finite-difference perturbations.
-  double g_tilde1_baseline{ 0.0 };
+  RealT g_tilde1_baseline{ 0.0 };
 
   /// Baseline value of the second nodal smoothed gap contribution before applying
   /// any finite-difference perturbations.
-  double g_tilde2_baseline{ 0.0 };
+  RealT g_tilde2_baseline{ 0.0 };
 };
 
 /// Evaluates Energy Mortar contact quantities for a single interface pair.
@@ -113,7 +114,7 @@ class EnergyMortarCalculator {
   /// contributions, while `area` stores the corresponding tributary area
   /// contributions.
   void compute_gtilde_and_area( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                                double gtilde[2], double area[2] ) const;
+                                RealT gtilde[2], RealT area[2] ) const;
 
   /// Compute first derivatives of the nodal smoothed gap integrals.
   ///
@@ -123,7 +124,7 @@ class EnergyMortarCalculator {
   /// the quadrature rule is held fixed during differentiation. If true, the
   /// derivative includes the geometry-dependent quadrature construction.
   void grad_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                    double dgt1_dx[8], double dgt2_dx[8] ) const;
+                    RealT dgt1_dx[8], RealT dgt2_dx[8] ) const;
 
   /// Compute first derivatives of the nodal tributary areas.
   ///
@@ -134,7 +135,7 @@ class EnergyMortarCalculator {
   /// differentiation. If true, the derivative includes the geometry-dependent
   /// quadrature construction.
   void grad_trib_area( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                       double dA1_dx[8], double dA2_dx[8] ) const;
+                       RealT dA1_dx[8], RealT dA2_dx[8] ) const;
 
   /// Compute second derivatives of the nodal smoothed gap integrals.
   ///
@@ -144,7 +145,7 @@ class EnergyMortarCalculator {
   /// is held fixed during differentiation. If true, the derivative includes the
   /// geometry-dependent quadrature construction.
   void d2_g2tilde( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                   double dgt1_dx[64], double dgt2_dx[64] ) const;
+                   RealT dgt1_dx[64], RealT dgt2_dx[64] ) const;
 
   /// Compute second derivatives of the nodal tributary areas.
   ///
@@ -154,7 +155,7 @@ class EnergyMortarCalculator {
   /// the quadrature rule is held fixed during differentiation. If true, the
   /// derivative includes the geometry-dependent quadrature construction.
   void compute_d2A_d2u( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                        double dgt1_dx[64], double dgt2_dx[64] ) const;
+                        RealT dgt1_dx[64], RealT dgt2_dx[64] ) const;
 
   /// Compute local energy, force, and stiffness for quadrature-point penalty enforcement.
   QuadraturePointPenaltyData compute_quadrature_point_penalty_data( const InterfacePair& pair,
@@ -162,16 +163,16 @@ class EnergyMortarCalculator {
                                                                     const MeshData::Viewer& mesh2 ) const;
 
   /// Evaluate only the local quadrature-point penalty energy.
-  double compute_quadrature_point_penalty_energy( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                  const MeshData::Viewer& mesh2 ) const;
+  RealT compute_quadrature_point_penalty_energy( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                 const MeshData::Viewer& mesh2 ) const;
 
   /// Evaluate and return the two nodal smoothed gap integrals.
   ///
   /// This is a convenience wrapper for obtaining only the gap integral
   /// quantities without also returning the tributary areas for the Finite
   /// difference test.
-  std::pair<double, double> eval_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                         const MeshData::Viewer& mesh2 ) const;
+  std::pair<RealT, RealT> eval_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                       const MeshData::Viewer& mesh2 ) const;
 
   /// Validate first derivatives of the smoothed gap integrals using finite differences.
   ///
@@ -179,7 +180,7 @@ class EnergyMortarCalculator {
   /// compares finite-difference approximations against the Enzyme-computed
   /// gradients. The perturbation size is controlled by `epsilon`.
   FiniteDiffResult validate_g_tilde( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
-                                     double epsilon = 1e-7 ) const;
+                                     RealT epsilon = 1e-7 ) const;
 
   /// Evaluate the two nodal smoothed gap integrals using a fixed quadrature rule.
   ///
@@ -187,9 +188,9 @@ class EnergyMortarCalculator {
   /// weights should remain fixed under coordinate perturbations. Holding the
   /// quadrature fixed isolates derivatives of the gap kernel from derivatives
   /// of the geometry-dependent quadrature construction.
-  std::pair<double, double> eval_gtilde_fixed_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                  const MeshData::Viewer& mesh2,
-                                                  const IntegrationSurfaceRule& qp_fixed ) const;
+  std::pair<RealT, RealT> eval_gtilde_fixed_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                const MeshData::Viewer& mesh2,
+                                                const IntegrationSurfaceRule& qp_fixed ) const;
 
   /// Validate second derivatives of the smoothed gap integrals using finite differences.
   ///
@@ -197,7 +198,7 @@ class EnergyMortarCalculator {
   /// approximations of the first derivatives. The perturbation size is
   /// controlled by `epsilon`.
   FiniteDiffResult validate_hessian( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
-                                     double epsilon = 1e-7 ) const;
+                                     RealT epsilon = 1e-7 ) const;
 
  private:
   /// Contact parameters controlling penalty stiffness and derivative behavior.
@@ -214,14 +215,14 @@ class EnergyMortarCalculator {
   /// This is used by finite-difference verification routines to isolate
   /// derivatives of the gap kernel from derivatives of the quadrature rule.
   void grad_gtilde_with_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                            const IntegrationSurfaceRule& qp_fixed, double dgt1_dx[8], double dgt2_dx[8] ) const;
+                            const IntegrationSurfaceRule& qp_fixed, RealT dgt1_dx[8], RealT dgt2_dx[8] ) const;
 
   /// Evaluate the signed normal gap at a local coordinate on edge A.
   ///
   /// The point on edge A is projected onto edge B, and the gap is evaluated
   /// using the normal from edge B together with the normal-alignment factor.
-  double compute_weighted_normal_gap( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                      const MeshData::Viewer& mesh2, double xiA ) const;
+  RealT compute_weighted_normal_gap( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                     const MeshData::Viewer& mesh2, RealT xiA ) const;
 
   /// Assemble nodal gap and tributary area data for one interface pair.
   ///
