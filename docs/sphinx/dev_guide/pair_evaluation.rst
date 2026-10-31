@@ -106,3 +106,20 @@ Nodal gap, area, gradient, and Hessian methods use the same coordinate view. The
 performs no mesh lookup. Finite-difference checks perturb local copies of this array. Frozen quadrature continues to
 hold integration-surface coordinates and reference weights fixed while current normals and physical Jacobian weights
 change with the coordinates.
+
+Nodal integral results
+-----------------------
+
+``computeNodalValues(coordinates)`` returns weighted nodal gaps and tributary areas without derivatives.
+``computeContactQuantities(coordinates)`` returns those integrals together with ``gap_gradients`` and
+``area_gradients``, indexed by first-element node and pair coordinate DOF. ``computeSecondDerivatives(coordinates)``
+returns ``gap_hessians`` and ``area_hessians``, indexed by node, coordinate row, and coordinate column. All results own
+fixed-size ``MdArray`` storage. These replace the separate gap/area output-array methods. Finite-difference validation
+helpers are confined to tests rather than declared as calculator members.
+
+For LM enforcement, ``computeSecondDerivatives(coordinates, false)`` skips area Hessians and leaves their arrays zero.
+Each combined request prepares frozen integration-surface points once. Gradients still use reverse differentiation of
+individual scalar integrals with a unit output seed; Hessians use forward differentiation of those gradients. Varying
+quadrature is generated inside the differentiated calculation, while frozen quadrature still differentiates current
+projections, normals, and physical weights. Invalid geometry throws before quadrature data or normals are consumed;
+valid zero-point rules return zero integrals and derivatives.

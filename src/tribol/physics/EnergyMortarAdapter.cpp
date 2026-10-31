@@ -108,49 +108,37 @@ typename Nodal<Adapter>::NodalData Nodal<Adapter>::computeNodalData( MeshData::V
     const auto elem1 = static_cast<int>( pair.element_id1_ );
     const auto elem2 = static_cast<int>( pair.element_id2_ );
 
-    RealT g_tilde_elem[2];
-    RealT A_elem[2];
+    const auto quantities = adapter->evaluator_->computeContactQuantities( coordinates.view() );
 
-    adapter->evaluator_->compute_gtilde_and_area( coordinates.view(), g_tilde_elem, A_elem );
-
-    if ( A_elem[0] <= 0.0 && A_elem[1] <= 0.0 ) {
+    if ( quantities.AI[0] <= 0.0 && quantities.AI[1] <= 0.0 ) {
       continue;
     }
 
     auto A_conn = mesh1.getConnectivity()( elem1 );
 
     // Add to nodes of Element A
-    redecomp_gap( A_conn[0] ) += g_tilde_elem[0];
-    redecomp_gap( A_conn[1] ) += g_tilde_elem[1];
+    redecomp_gap( A_conn[0] ) += quantities.g_tilde[0];
+    redecomp_gap( A_conn[1] ) += quantities.g_tilde[1];
 
-    redecomp_area( A_conn[0] ) += A_elem[0];
-    redecomp_area( A_conn[1] ) += A_elem[1];
+    redecomp_area( A_conn[0] ) += quantities.AI[0];
+    redecomp_area( A_conn[1] ) += quantities.AI[1];
 
-    // compute g_tilde first derivative
-    RealT dg_dx_node1[8];
-    RealT dg_dx_node2[8];
-    // TODO: make grad_gtilde return directly in dg_tilde_dx_blocks format
-    adapter->evaluator_->grad_gtilde( coordinates.view(), dg_dx_node1, dg_dx_node2 );
     RealT dg_tilde_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
-      dg_tilde_dx_blocks[0][i * 2] = dg_dx_node1[node_idx[i]];
-      dg_tilde_dx_blocks[0][i * 2 + 1] = dg_dx_node2[node_idx[i]];
-      dg_tilde_dx_blocks[1][i * 2] = dg_dx_node1[node_idx[i + 4]];
-      dg_tilde_dx_blocks[1][i * 2 + 1] = dg_dx_node2[node_idx[i + 4]];
+      dg_tilde_dx_blocks[0][i * 2] = quantities.gap_gradients( 0, node_idx[i] );
+      dg_tilde_dx_blocks[0][i * 2 + 1] = quantities.gap_gradients( 1, node_idx[i] );
+      dg_tilde_dx_blocks[1][i * 2] = quantities.gap_gradients( 0, node_idx[i + 4] );
+      dg_tilde_dx_blocks[1][i * 2 + 1] = quantities.gap_gradients( 1, node_idx[i + 4] );
     }
     dg_lm_nm.append( elem1, elem1, dg_tilde_dx_blocks[0], 8 );
     dg_lm_m.append( elem1, elem2, dg_tilde_dx_blocks[1], 8 );
 
-    RealT dA_dx_node1[8];
-    RealT dA_dx_node2[8];
-    // TODO: make grad_trib_area return directly in dA_dx_blocks format
-    adapter->evaluator_->grad_trib_area( coordinates.view(), dA_dx_node1, dA_dx_node2 );
     RealT dA_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
-      dA_dx_blocks[0][i * 2] = dA_dx_node1[node_idx[i]];
-      dA_dx_blocks[0][i * 2 + 1] = dA_dx_node2[node_idx[i]];
-      dA_dx_blocks[1][i * 2] = dA_dx_node1[node_idx[i + 4]];
-      dA_dx_blocks[1][i * 2 + 1] = dA_dx_node2[node_idx[i + 4]];
+      dA_dx_blocks[0][i * 2] = quantities.area_gradients( 0, node_idx[i] );
+      dA_dx_blocks[0][i * 2 + 1] = quantities.area_gradients( 1, node_idx[i] );
+      dA_dx_blocks[1][i * 2] = quantities.area_gradients( 0, node_idx[i + 4] );
+      dA_dx_blocks[1][i * 2 + 1] = quantities.area_gradients( 1, node_idx[i + 4] );
     }
     dA_lm_nm.append( elem1, elem1, dA_dx_blocks[0], 8 );
     dA_lm_m.append( elem1, elem2, dA_dx_blocks[1], 8 );
@@ -370,17 +358,17 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( const Adapt
     const RealT lambda1 = redecomp_lambda( node11 );
     const RealT lambda2 = redecomp_lambda( node12 );
 
-    RealT d2g_dx2_node1[64];
-    RealT d2g_dx2_node2[64];
-    adapter->evaluator_->d2_g2tilde( coordinates.view(), d2g_dx2_node1, d2g_dx2_node2 );
+    const auto hessians = adapter->evaluator_->computeSecondDerivatives( coordinates.view(), false );
 
     RealT df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
       for ( int j{ 0 }; j < 2; ++j ) {
         for ( int k{ 0 }; k < 4; ++k ) {
           for ( int l{ 0 }; l < 4; ++l ) {
-            const auto idx = node_idx[l + i * 4] + node_idx[k + j * 4] * 8;
-            df_dx_blocks[i][j][l + k * 4] = lambda1 * d2g_dx2_node1[idx] + lambda2 * d2g_dx2_node2[idx];
+            const auto row = node_idx[k + j * 4];
+            const auto column = node_idx[l + i * 4];
+            df_dx_blocks[i][j][l + k * 4] =
+                lambda1 * hessians.gap_hessians( 0, row, column ) + lambda2 * hessians.gap_hessians( 1, row, column );
           }
         }
       }
@@ -448,22 +436,19 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty(
     const RealT g_p_ainv1 = -redecomp_g_tilde( node11 ) * redecomp_pressure( node11 ) / redecomp_A( node11 );
     const RealT g_p_ainv2 = -redecomp_g_tilde( node12 ) * redecomp_pressure( node12 ) / redecomp_A( node12 );
 
-    RealT d2g_dx2_node1[64];
-    RealT d2g_dx2_node2[64];
-    adapter->evaluator_->d2_g2tilde( coordinates.view(), d2g_dx2_node1, d2g_dx2_node2 );
-
-    RealT d2A_dx2_node1[64];
-    RealT d2A_dx2_node2[64];
-    adapter->evaluator_->compute_d2A_d2u( coordinates.view(), d2A_dx2_node1, d2A_dx2_node2 );
+    const auto hessians = adapter->evaluator_->computeSecondDerivatives( coordinates.view() );
 
     RealT df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
       for ( int j{ 0 }; j < 2; ++j ) {
         for ( int k{ 0 }; k < 4; ++k ) {
           for ( int l{ 0 }; l < 4; ++l ) {
-            const auto idx = node_idx[l + i * 4] + node_idx[k + j * 4] * 8;
-            df_dx_blocks[i][j][l + k * 4] = pressure1 * d2g_dx2_node1[idx] + pressure2 * d2g_dx2_node2[idx] +
-                                            g_p_ainv1 * d2A_dx2_node1[idx] + g_p_ainv2 * d2A_dx2_node2[idx];
+            const auto row = node_idx[k + j * 4];
+            const auto column = node_idx[l + i * 4];
+            df_dx_blocks[i][j][l + k * 4] = pressure1 * hessians.gap_hessians( 0, row, column ) +
+                                            pressure2 * hessians.gap_hessians( 1, row, column ) +
+                                            g_p_ainv1 * hessians.area_hessians( 0, row, column ) +
+                                            g_p_ainv2 * hessians.area_hessians( 1, row, column );
           }
         }
       }

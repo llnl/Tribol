@@ -1,11 +1,21 @@
-#pragma once
-#include <vector>
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
+// other Tribol Project Developers. See the top-level LICENSE file for details.
+//
+// SPDX-License-Identifier: (MIT)
+
+#ifndef SRC_TRIBOL_PHYSICS_ENERGYMORTAR_HPP_
+#define SRC_TRIBOL_PHYSICS_ENERGYMORTAR_HPP_
+
+/**
+ * @file
+ * @brief Coordinate-based nodal and quadrature-point Energy Mortar calculations.
+ */
+
 #include <array>
 
 #include "tribol/config.hpp"
 #include "tribol/common/BasicTypes.hpp"
-
-#include "tribol/common/Parameters.hpp"
+#include "tribol/common/MdArray.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
 #include "tribol/integ/PairQuadratureRule.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
@@ -35,37 +45,11 @@ struct QuadraturePointPenaltyData {
   std::array<RealT, num_stiffness_entries> stiffness{};  ///< Flattened force derivative matrix.
 };
 
-/// Stores weighted nodal gaps and tributary areas for one interface pair.
+/// Weighted nodal gaps and tributary areas for one linear-edge pair.
 struct NodalContactData {
-  std::array<RealT, 2> AI;       ///< Tributary areas for the two integration-edge nodes.
-  std::array<RealT, 2> g_tilde;  ///< Weighted gaps for the two integration-edge nodes.
-};
-
-/// Stores finite-difference and analytical derivative data for validation tests.
-struct FiniteDiffResult {
-  /// Finite-difference approximation of the gradient/Hessian for the first
-  /// nodal smoothed gap contribution.
-  std::vector<RealT> fd_gradient_g1;
-
-  /// Finite-difference approximation of the gradient/Hessian for the second
-  /// nodal smoothed gap contribution.
-  std::vector<RealT> fd_gradient_g2;
-
-  /// Analytical/Enzyme-computed gradient/Hessian for the first nodal smoothed
-  /// gap contribution.
-  std::vector<RealT> analytical_gradient_g1;
-
-  /// Analytical/Enzyme-computed gradient/Hessian for the second nodal smoothed
-  /// gap contribution.
-  std::vector<RealT> analytical_gradient_g2;
-
-  /// Baseline value of the first nodal smoothed gap contribution before applying
-  /// any finite-difference perturbations.
-  RealT g_tilde1_baseline{ 0.0 };
-
-  /// Baseline value of the second nodal smoothed gap contribution before applying
-  /// any finite-difference perturbations.
-  RealT g_tilde2_baseline{ 0.0 };
+  static constexpr IndexT node_count = LinearEdgeGeometry::vertex_count;  ///< Nodes on the linear integration edge.
+  MdArray<RealT, node_count> g_tilde{};  ///< Weighted gaps in first-element node order.
+  MdArray<RealT, node_count> AI{};       ///< Corresponding nodal tributary areas.
 };
 
 /// Evaluates Energy Mortar quantities from coordinates of one element pair.
@@ -106,65 +90,33 @@ class EnergyMortarCalculator {
 
   EnergyMortarCalculator( const ContactParams&, const QuadratureRule&& ) = delete;
 
-  /// Compute the nodal smoothed gap integrals and tributary areas.
-  ///
-  /// The output arrays each have length 2, with entries corresponding to the
-  /// two nodes of edge A. `gtilde` stores the integrated smoothed gap
-  /// contributions, while `area` stores the corresponding tributary area
-  /// contributions.
-  /// @param coordinates Current pair coordinates in element/node/component order; not retained.
-  /// @param[out] gtilde Weighted gaps at the first element's two nodes.
-  /// @param[out] area Corresponding nodal tributary areas.
-  void compute_gtilde_and_area( CoordinateView coordinates, RealT gtilde[2], RealT area[2] ) const;
+  /// Nodal integrals and coordinate gradients for one element pair.
+  struct NodalContactQuantities : NodalContactData {
+    MdArray<RealT, node_count, dof_count> gap_gradients{};   ///< Weighted-gap gradients [node][pair DOF].
+    MdArray<RealT, node_count, dof_count> area_gradients{};  ///< Tributary-area gradients [node][pair DOF].
+  };
 
-  /// Compute first derivatives of the nodal smoothed gap integrals.
-  ///
-  /// `dgt1_dx` and `dgt2_dx` each have length 8 and store derivatives of the
-  /// two nodal gap integrals with respect to the endpoint coordinate vector
-  /// described in the class documentation. If `enzyme_quadrature` is false,
-  /// the quadrature rule is held fixed during differentiation. If true, the
-  /// derivative includes the geometry-dependent quadrature construction.
-  /// @param coordinates Current pair coordinates in element/node/component order; not retained.
-  /// @param[out] dgt1_dx Gradient of the first weighted gap in pair DOF order.
-  /// @param[out] dgt2_dx Gradient of the second weighted gap in pair DOF order.
-  void grad_gtilde( CoordinateView coordinates, RealT dgt1_dx[8], RealT dgt2_dx[8] ) const;
+  /// Nodal integral Hessians with coordinate rows and columns in pair DOF order.
+  struct NodalContactHessians {
+    MdArray<RealT, NodalContactData::node_count, dof_count, dof_count> gap_hessians{};   ///< Weighted-gap Hessians.
+    MdArray<RealT, NodalContactData::node_count, dof_count, dof_count> area_hessians{};  ///< Tributary-area Hessians.
+  };
 
-  /// Compute first derivatives of the nodal tributary areas.
-  ///
-  /// `dA1_dx` and `dA2_dx` each have length 8 and store derivatives of the
-  /// two nodal tributary area contributions with respect to the endpoint
-  /// coordinate vector described in the class documentation. If
-  /// `enzyme_quadrature` is false, the quadrature rule is held fixed during
-  /// differentiation. If true, the derivative includes the geometry-dependent
-  /// quadrature construction.
+  /// Calculate nodal integrals without calculating derivatives.
   /// @param coordinates Current pair coordinates in element/node/component order; not retained.
-  /// @param[out] dA1_dx Gradient of the first tributary area in pair DOF order.
-  /// @param[out] dA2_dx Gradient of the second tributary area in pair DOF order.
-  void grad_trib_area( CoordinateView coordinates, RealT dA1_dx[8], RealT dA2_dx[8] ) const;
+  /// @return Owned weighted gaps and tributary areas; valid zero-measure rules give zeros.
+  NodalContactData computeNodalValues( CoordinateView coordinates ) const;
 
-  /// Compute second derivatives of the nodal smoothed gap integrals.
-  ///
-  /// `H1` and `H2` each have length 64 and store flattened 8 by 8 Hessian
-  /// matrices for the two nodal gap integrals. Entries use row-major indexing:
-  /// `H[row * 8 + col]`. If `enzyme_quadrature` is false, the quadrature rule
-  /// is held fixed during differentiation. If true, the derivative includes the
-  /// geometry-dependent quadrature construction.
+  /// Calculate nodal integrals and their gradients using the configured quadrature derivative mode.
   /// @param coordinates Current pair coordinates in element/node/component order; not retained.
-  /// @param[out] dgt1_dx Row-major Hessian of the first weighted gap.
-  /// @param[out] dgt2_dx Row-major Hessian of the second weighted gap.
-  void d2_g2tilde( CoordinateView coordinates, RealT dgt1_dx[64], RealT dgt2_dx[64] ) const;
+  /// @return Owned integrals and gradients; valid zero-measure rules give zeros.
+  NodalContactQuantities computeContactQuantities( CoordinateView coordinates ) const;
 
-  /// Compute second derivatives of the nodal tributary areas.
-  ///
-  /// `d2A1` and `d2A2` each have length 64 and store flattened 8 by 8 Hessian
-  /// matrices for the two nodal tributary area contributions. Entries use
-  /// row-major indexing: `H[row * 8 + col]`. If `enzyme_quadrature` is false,
-  /// the quadrature rule is held fixed during differentiation. If true, the
-  /// derivative includes the geometry-dependent quadrature construction.
+  /// Calculate nodal integral Hessians using the configured quadrature derivative mode.
   /// @param coordinates Current pair coordinates in element/node/component order; not retained.
-  /// @param[out] dgt1_dx Row-major Hessian of the first tributary area.
-  /// @param[out] dgt2_dx Row-major Hessian of the second tributary area.
-  void compute_d2A_d2u( CoordinateView coordinates, RealT dgt1_dx[64], RealT dgt2_dx[64] ) const;
+  /// @param include_area Whether to calculate tributary-area Hessians; LM enforcement does not need them.
+  /// @return Owned Hessians; area_hessians remain zero when include_area is false. Zero-measure rules give zeros.
+  NodalContactHessians computeSecondDerivatives( CoordinateView coordinates, bool include_area = true ) const;
 
   /// Compute local energy, force, and stiffness for quadrature-point penalty enforcement.
   /// @param coordinates Current pair coordinates in element/node/component order; not retained.
@@ -176,88 +128,14 @@ class EnergyMortarCalculator {
   /// @return Penalty energy, including zero for inactive or zero-measure pairs.
   RealT compute_quadrature_point_penalty_energy( CoordinateView coordinates ) const;
 
-  /// Evaluate and return the two nodal smoothed gap integrals.
-  ///
-  /// This is a convenience wrapper for obtaining only the gap integral
-  /// quantities without also returning the tributary areas for the Finite
-  /// difference test.
-  /// @param coordinates Current pair coordinates in element/node/component order; not retained.
-  /// @return First and second weighted nodal gap integrals.
-  std::pair<RealT, RealT> eval_gtilde( CoordinateView coordinates ) const;
-
-  /// Validate first derivatives of the smoothed gap integrals using finite differences.
-  ///
-  /// This routine perturbs the endpoint coordinates of the interface pair and
-  /// compares finite-difference approximations against the Enzyme-computed
-  /// gradients. The perturbation size is controlled by `epsilon`.
-  /// @param coordinates Current pair coordinates in element/node/component order; not retained.
-  /// @param epsilon Positive central-difference perturbation of each pair coordinate.
-  /// @return Finite-difference and analytical gradients in pair coordinate order.
-  FiniteDiffResult validate_g_tilde( CoordinateView coordinates, RealT epsilon = 1e-7 ) const;
-
-  /// Evaluate the two nodal smoothed gap integrals using a fixed quadrature rule.
-  ///
-  /// This is used for derivative verification when the quadrature points and
-  /// weights should remain fixed under coordinate perturbations. Holding the
-  /// quadrature fixed isolates derivatives of the gap kernel from derivatives
-  /// of the geometry-dependent quadrature construction.
-  /// @param coordinates Current pair coordinates in element/node/component order; not retained.
-  /// @param qp_fixed Integration-surface coordinates and weights held fixed under perturbations.
-  /// @return Weighted nodal gaps with fixed integration-surface coordinates and reference weights.
-  std::pair<RealT, RealT> eval_gtilde_fixed_qp( CoordinateView coordinates,
-                                                const IntegrationSurfaceRule& qp_fixed ) const;
-
-  /// Validate second derivatives of the smoothed gap integrals using finite differences.
-  ///
-  /// This routine compares Enzyme-computed Hessians against finite-difference
-  /// approximations of the first derivatives. The perturbation size is
-  /// controlled by `epsilon`.
-  /// @param coordinates Current pair coordinates in element/node/component order; not retained.
-  /// @param epsilon Positive central-difference perturbation of each pair coordinate.
-  /// @return Row-major finite-difference and analytical Hessians in pair coordinate order.
-  FiniteDiffResult validate_hessian( CoordinateView coordinates, RealT epsilon = 1e-7 ) const;
-
  private:
   /// Contact parameters controlling penalty stiffness and derivative behavior.
   ContactParams p_;
   /// Generator owned by the adapter or caller; no mesh views or generated quadrature are retained here.
   const QuadratureRule& quadrature_rule_;
-
-  /// Generate an integration-surface rule for frozen-quadrature derivatives from the supplied coordinates.
-  /// @param coordinates Current pair coordinates in element/node/component order; not retained.
-  /// @return Frozen integration-surface points and reference weights, including an empty rule for zero measure.
-  IntegrationSurfaceRule generateIntegrationSurfaceRule( CoordinateView coordinates ) const;
-
-  /// Compute smoothed gap gradients while holding the quadrature rule fixed.
-  ///
-  /// This is used by finite-difference verification routines to isolate
-  /// derivatives of the gap kernel from derivatives of the quadrature rule.
-  /// @param coordinates Current pair coordinates in element/node/component order; not retained.
-  /// @param qp_fixed Integration-surface coordinates and weights held fixed.
-  /// @param[out] dgt1_dx First weighted-gap gradient.
-  /// @param[out] dgt2_dx Second weighted-gap gradient.
-  void grad_gtilde_with_qp( CoordinateView coordinates, const IntegrationSurfaceRule& qp_fixed, RealT dgt1_dx[8],
-                            RealT dgt2_dx[8] ) const;
-
-  /// Evaluate the signed normal gap at a local coordinate on edge A.
-  ///
-  /// The point on edge A is projected onto edge B, and the gap is evaluated
-  /// using the normal from edge B together with the normal-alignment factor.
-  /// @param coordinates Current pair coordinates in element/node/component order; not retained.
-  /// @param xiA Parametric coordinate on the first element.
-  /// @return Alignment-corrected signed normal distance minus the residual gap.
-  RealT compute_weighted_normal_gap( CoordinateView coordinates, RealT xiA ) const;
-
-  /// Assemble nodal gap and tributary area data for one interface pair.
-  ///
-  /// This computes the two smoothed nodal gap integrals and the two corresponding
-  /// tributary area contributions used to evaluate pressures, forces, energy,
-  /// and stiffness terms.
-  /// @param coordinates Current pair coordinates in element/node/component order; not retained.
-  /// @return Weighted nodal gaps and tributary areas; valid zero-measure rules give zeros.
-  NodalContactData compute_nodal_contact_data( CoordinateView coordinates ) const;
 };
 
 #endif  // TRIBOL_USE_ENZYME
 
 }  // namespace tribol
+#endif  // SRC_TRIBOL_PHYSICS_ENERGYMORTAR_HPP_
