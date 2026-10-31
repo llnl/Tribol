@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "tribol/physics/CommonPlaneFormulation.hpp"
+#include "tribol/mesh/MfemPairAssembler.hpp"
 #include <cmath>
 #include <stdexcept>
 
@@ -44,37 +45,10 @@ ContactFormulationResult CommonPlaneFormulation<BaseQuadratureRule>::computeNoda
   const RealT penalty = ComputePenaltyStiffnessPerArea( penalty1, penalty2 );
   const auto candidates = coarse_search_->findCandidatePairs( mesh1, mesh2 );
   const auto pairs = refined_search_->filterCandidatePairs( candidates, mesh1, mesh2 );
-  constexpr int dimension = CommonPlaneResidualData::dimension;
-  constexpr int nodes = CommonPlaneResidualData::nodes_per_element;
-  constexpr int pair_size = CommonPlaneResidualData::pair_size;
-  constexpr int element_dofs = dimension * nodes;
-  constexpr int block_entries = element_dofs * element_dofs;
-  const auto& displacement_surface_fes = mesh_data_.GetSubmeshFESpace();
-  const auto& displacement_redecomp_fes = *mesh_data_.GetRedecompResponse().FESpace();
-  const auto& element_map1 = mesh_data_.GetElemMap1();
-  const auto& element_map2 = mesh_data_.GetElemMap2();
-
-  PackedPairJacobianContribs jacobian11( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                         displacement_redecomp_fes, element_map1, element_map1 );
-  PackedPairJacobianContribs jacobian12( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                         displacement_redecomp_fes, element_map1, element_map2 );
-  PackedPairJacobianContribs jacobian21( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                         displacement_redecomp_fes, element_map2, element_map1 );
-  PackedPairJacobianContribs jacobian22( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                         displacement_redecomp_fes, element_map2, element_map2 );
-
-  jacobian11.reserve( pairs.size(), block_entries );
-  jacobian12.reserve( pairs.size(), block_entries );
-  jacobian21.reserve( pairs.size(), block_entries );
-  jacobian22.reserve( pairs.size(), block_entries );
-
-  mfem::GridFunction redecomp_residual( const_cast<mfem::FiniteElementSpace*>( &displacement_redecomp_fes ) );
-  redecomp_residual = 0.0;
-  const int scalar_size = redecomp_residual.FESpace()->GetVSize() / redecomp_residual.FESpace()->GetVDim();
+  MfemPairAssembler assembler( mesh_data_, jacobian_data_, mesh1, mesh2, pairs.size() );
+  constexpr IndexT pair_dofs = CommonPlaneResidualData::coordinate_count;
 
   for ( const auto& pair : pairs ) {
-    const auto elem1 = static_cast<int>( pair.element_id1_ );
-    const auto elem2 = static_cast<int>( pair.element_id2_ );
     MdArray<RealT, LinearEdgeGeometry::vertex_count, LinearEdgeGeometry::spatial_dimension> coordinates1{},
         coordinates2{};
     mesh1.getFaceCoords( pair.element_id1_, coordinates1.data() );
@@ -86,55 +60,10 @@ ContactFormulationResult CommonPlaneFormulation<BaseQuadratureRule>::computeNoda
       continue;
     }
 
-    const auto connectivity1 = mesh1.getConnectivity()( elem1 );
-    const auto connectivity2 = mesh2.getConnectivity()( elem2 );
-    for ( int node = 0; node < nodes; ++node ) {
-      for ( int component = 0; component < dimension; ++component ) {
-        redecomp_residual( connectivity1[node] + component * scalar_size ) +=
-            qp_data.residual[node * dimension + component];
-        redecomp_residual( connectivity2[node] + component * scalar_size ) +=
-            qp_data.residual[( node + nodes ) * dimension + component];
-      }
-    }
-
-    RealT df_dx_blocks[pair_size][pair_size][block_entries];
-    for ( int i = 0; i < pair_size; ++i ) {
-      for ( int j = 0; j < pair_size; ++j ) {
-        for ( int row = 0; row < element_dofs; ++row ) {
-          for ( int column = 0; column < element_dofs; ++column ) {
-            const int pair_row = i * element_dofs + ( row % nodes ) * dimension + row / nodes;
-            const int pair_column = j * element_dofs + ( column % nodes ) * dimension + column / nodes;
-            df_dx_blocks[i][j][row + column * element_dofs] = qp_data.jacobian( pair_row, pair_column );
-          }
-        }
-      }
-    }
-
-    jacobian11.append( elem1, elem1, df_dx_blocks[0][0], block_entries );
-    jacobian12.append( elem1, elem2, df_dx_blocks[0][1], block_entries );
-    jacobian21.append( elem2, elem1, df_dx_blocks[1][0], block_entries );
-    jacobian22.append( elem2, elem2, df_dx_blocks[1][1], block_entries );
+    assembler.addPair( pair, { qp_data.residual.data(), pair_dofs },
+                       { qp_data.jacobian.data(), { pair_dofs, pair_dofs } } );
   }
-
-  auto* parent_fes = mesh_data_.GetParentCoords().ParFESpace();
-  shared::ParVector residual( const_cast<mfem::ParFiniteElementSpace*>( parent_fes ) );
-  residual.fill( 0.0 );
-  mfem::Vector parent_residual( parent_fes->GetVSize() );
-  parent_residual = 0.0;
-  mesh_data_.GetParentRedecompTransfer().RedecompToParent( redecomp_residual, parent_residual );
-  parent_fes->GetProlongationMatrix()->MultTranspose( parent_residual, residual.get() );
-
-  std::vector<PackedPairJacobianContribs> df_contribs;
-  df_contribs.reserve( pair_size * pair_size );
-  df_contribs.push_back( std::move( jacobian11 ) );
-  df_contribs.push_back( std::move( jacobian12 ) );
-  df_contribs.push_back( std::move( jacobian21 ) );
-  df_contribs.push_back( std::move( jacobian22 ) );
-  auto jacobian = jacobian_data_.GetMfemJacobian( parent_fes, parent_fes, df_contribs );
-  ContactFormulationResult result;
-  result.force.reset( residual.release() );
-  result.df_dx.reset( jacobian.release() );
-  return result;
+  return assembler.assemble();
 }
 template class CommonPlaneFormulation<EdgeQuadratureRuleGenerator<1>>;
 template class CommonPlaneFormulation<EdgeQuadratureRuleGenerator<2>>;

@@ -68,6 +68,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Common Plane and quadrature-point Energy Mortar share host MFEM assembly of pair residuals and Jacobians through
+  `MfemPairAssembler`. Local numerical array views use element/node/component DOF order and residual-row,
+  coordinate-column Jacobians. The assembler handles MFEM ordering and parent transfers independently of physics
+  and derivative calculation, with storage reserved from the supplied pair count.
 - `ContactFormulation::computeNodalGaps()` and `computeNodalForces()` return an owning `ContactFormulationResult`.
   Uncalculated outputs are absent. These replace the update methods and formulation getters; formulations no longer
   retain computed results. The default nodal-gap calculation throws for methods without a nodal gap field. Existing

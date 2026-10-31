@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "tribol/mesh/MfemData.hpp"
+#include "tribol/mesh/MfemPairAssembler.hpp"
 
 namespace tribol {
 
@@ -480,36 +481,10 @@ ContactFormulationResult QuadraturePoint<Adapter>::computeNodalForces( MeshData:
   SLIC_ERROR_ROOT_IF( !adapter->use_penalty_,
                       "ENERGY_MORTAR quadrature-point enforcement requires penalty enforcement." );
 
-  const bool use_lor = ( adapter->mesh_data_.GetLORMesh() != nullptr );
-  const auto& displacement_surface_fes =
-      use_lor ? *adapter->mesh_data_.GetLORMeshFESpace() : adapter->mesh_data_.GetSubmeshFESpace();
-  const auto& displacement_redecomp_fes = *adapter->mesh_data_.GetRedecompResponse().FESpace();
-  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap1();
-  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap2();
-
-  PackedPairJacobianContribs df_nm_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                       displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
-  PackedPairJacobianContribs df_nm_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                      displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
-  PackedPairJacobianContribs df_m_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                      displacement_redecomp_fes, mortar_elem_map, nonmortar_elem_map );
-  PackedPairJacobianContribs df_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                     displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
-
-  df_nm_nm.reserve( pairs.size(), 16 );
-  df_nm_m.reserve( pairs.size(), 16 );
-  df_m_nm.reserve( pairs.size(), 16 );
-  df_m_m.reserve( pairs.size(), 16 );
-
-  mfem::GridFunction redecomp_force( const_cast<mfem::FiniteElementSpace*>( &displacement_redecomp_fes ) );
-  redecomp_force = 0.0;
-  const int scalar_size = redecomp_force.FESpace()->GetVSize() / redecomp_force.FESpace()->GetVDim();
-
-  const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
+  MfemPairAssembler assembler( adapter->mesh_data_, adapter->jac_data_, mesh1, mesh2, pairs.size() );
+  constexpr IndexT pair_dofs = QuadraturePointPenaltyData::num_force_dofs;
 
   for ( const auto& pair : pairs ) {
-    const auto elem1 = static_cast<int>( pair.element_id1_ );
-    const auto elem2 = static_cast<int>( pair.element_id2_ );
     const auto qp_data = adapter->evaluator_->compute_quadrature_point_penalty_data( pair, mesh1, mesh2 );
 
     if ( !qp_data.has_active_qp ) {
@@ -518,54 +493,12 @@ ContactFormulationResult QuadraturePoint<Adapter>::computeNodalForces( MeshData:
 
     energy += qp_data.energy;
 
-    auto A_conn = mesh1.getConnectivity()( elem1 );
-    auto B_conn = mesh2.getConnectivity()( elem2 );
-    redecomp_force( A_conn[0] ) += qp_data.force[0];
-    redecomp_force( scalar_size + A_conn[0] ) += qp_data.force[1];
-    redecomp_force( A_conn[1] ) += qp_data.force[2];
-    redecomp_force( scalar_size + A_conn[1] ) += qp_data.force[3];
-    redecomp_force( B_conn[0] ) += qp_data.force[4];
-    redecomp_force( scalar_size + B_conn[0] ) += qp_data.force[5];
-    redecomp_force( B_conn[1] ) += qp_data.force[6];
-    redecomp_force( scalar_size + B_conn[1] ) += qp_data.force[7];
-
-    RealT df_dx_blocks[2][2][16];
-    for ( int i{ 0 }; i < 2; ++i ) {
-      for ( int j{ 0 }; j < 2; ++j ) {
-        for ( int k{ 0 }; k < 4; ++k ) {
-          for ( int l{ 0 }; l < 4; ++l ) {
-            const auto idx = node_idx[l + i * 4] + node_idx[k + j * 4] * 8;
-            df_dx_blocks[i][j][l + k * 4] = qp_data.stiffness[idx];
-          }
-        }
-      }
-    }
-
-    df_nm_nm.append( elem1, elem1, df_dx_blocks[0][0], 16 );
-    df_nm_m.append( elem1, elem2, df_dx_blocks[0][1], 16 );
-    df_m_nm.append( elem2, elem1, df_dx_blocks[1][0], 16 );
-    df_m_m.append( elem2, elem2, df_dx_blocks[1][1], 16 );
+    assembler.addPair( pair, { qp_data.force.data(), pair_dofs },
+                       { qp_data.stiffness.data(), { pair_dofs, pair_dofs } } );
   }
 
-  auto* parent_fes = adapter->mesh_data_.GetParentCoords().ParFESpace();
-  shared::ParVector force_vec( const_cast<mfem::ParFiniteElementSpace*>( parent_fes ) );
-  force_vec.fill( 0.0 );
-  mfem::Vector parent_force( parent_fes->GetVSize() );
-  parent_force = 0.0;
-  adapter->mesh_data_.GetParentRedecompTransfer().RedecompToParent( redecomp_force, parent_force );
-  parent_fes->GetProlongationMatrix()->MultTranspose( parent_force, force_vec.get() );
-
-  std::vector<PackedPairJacobianContribs> df_contribs;
-  df_contribs.reserve( 4 );
-  df_contribs.push_back( std::move( df_nm_nm ) );
-  df_contribs.push_back( std::move( df_nm_m ) );
-  df_contribs.push_back( std::move( df_m_nm ) );
-  df_contribs.push_back( std::move( df_m_m ) );
-  auto df_dx = adapter->jac_data_.GetMfemJacobian( parent_fes, parent_fes, df_contribs );
-  ContactFormulationResult result;
+  auto result = assembler.assemble();
   result.energy = energy;
-  result.force.reset( force_vec.release() );
-  result.df_dx.reset( df_dx.release() );
   return result;
 }
 
