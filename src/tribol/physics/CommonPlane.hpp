@@ -83,6 +83,61 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE CommonPlaneResidualData computeCommonPla
   return result;
 }
 
+/**
+ * @brief Define Common Plane through its local residual, independently of derivative calculation.
+ * @tparam BaseRule Gauss rule on the common-line interval.
+ */
+template <typename BaseRule>
+class CommonPlaneForce {
+ public:
+  static constexpr IndexT dof_count = CommonPlaneResidualData::coordinate_count;  ///< Pair coordinate count.
+
+  /**
+   * @brief Copy the pair rule and fixed penalty inputs.
+   * @param quadrature_rule Common-line pair quadrature generator.
+   * @param penalty Effective positive spring stiffness.
+   * @param residual_gap Gap offset held fixed during differentiation.
+   */
+  TRIBOL_HOST_DEVICE CommonPlaneForce( CommonPlaneQuadratureRule<BaseRule> quadrature_rule, RealT penalty,
+                                       RealT residual_gap )
+      : quadrature_rule_( quadrature_rule ), penalty_( penalty ), residual_gap_( residual_gap )
+  {
+  }
+
+  /**
+   * @brief Calculate residual, activation, and quadrature status from the current geometry.
+   * @param coordinates Endpoints ordered by element, node, and spatial component.
+   * @return Primal residual and status; failed quadrature must be discarded, and valid empty rules return zeros.
+   */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE CommonPlaneResidualData
+  evaluate( MdSpan<const RealT, dof_count> coordinates ) const
+  {
+    constexpr IndexT edge_dofs = dof_count / CommonPlaneResidualData::pair_size;
+    return computeCommonPlaneResidual( { coordinates.data(), edge_dofs }, { coordinates.data() + edge_dofs, edge_dofs },
+                                       quadrature_rule_, penalty_, residual_gap_ );
+  }
+
+  /**
+   * @brief Return the residual consumed by a force pair evaluator.
+   * @param coordinates Current pair coordinates.
+   * @return Node-major residual, including zero for valid empty or inactive rules.
+   * @throws std::invalid_argument Pair geometry is invalid.
+   * @throws std::length_error Quadrature capacity is insufficient.
+   */
+  TRIBOL_ENZYME_INLINE MdArray<RealT, dof_count> residual( MdSpan<const RealT, dof_count> coordinates ) const
+  {
+    const auto value = evaluate( coordinates );
+    if ( value.quadrature_result.status != QuadratureStatus::Success )
+      reportQuadratureFailure( value.quadrature_result.status );
+    return value.residual;
+  }
+
+ private:
+  CommonPlaneQuadratureRule<BaseRule> quadrature_rule_;  ///< Owned common-line quadrature configuration.
+  RealT penalty_;                                        ///< Inactive effective spring stiffness.
+  RealT residual_gap_;                                   ///< Inactive gap offset.
+};
+
 #ifdef TRIBOL_USE_ENZYME
 /**
  * @brief Evaluate a pair residual and differentiate it with respect to both current edges using Enzyme.

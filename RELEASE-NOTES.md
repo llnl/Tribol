@@ -8,6 +8,12 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added `EnergyPairEvaluator` and `ForcePairEvaluator` for local energy gradients/Hessians and residual Jacobians.
+  Defaults use Enzyme on the host; methods can specialize either evaluator to provide other derivatives. Both accept
+  a previously calculated primal value and return owning arrays in pair DOF order for shared MFEM assembly.
+- Added independent `EnergyMortarEnergy` and `CommonPlaneForce` definitions. Quadrature-point Energy Mortar and
+  Common Plane use the shared derivative evaluators, with current geometry and quadrature differentiated inside
+  each definition. Primal definitions remain callable without Enzyme, including in device kernels.
 - Added an opt-in linear 2D `CommonPlaneFormulation` for host MFEM frictionless constant-penalty contact. Enable it
   with `setMfemUseCommonPlaneFormulation()` after setting positive mesh penalties. Gaps and activation are evaluated at
   quadrature points; Enzyme differentiates the direct residual, including geometry-dependent overlap and normals.

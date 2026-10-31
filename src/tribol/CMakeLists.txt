@@ -56,6 +56,8 @@ set(tribol_headers
     physics/ContactFormulationFactory.hpp
     physics/Mortar.hpp
     physics/EnergyMortar.hpp
+    physics/EnergyMortarEnergy.hpp
+    physics/PairEvaluation.hpp
     physics/EnergyMortarAdapter.hpp
      physics/CommonPlaneFormulation.hpp
     physics/Physics.hpp
@@ -86,6 +88,7 @@ set(tribol_sources
 
     integ/FE.cpp
     integ/Integration.cpp
+    integ/QuadratureCommon.cpp
 
     interface/mfem_tribol.cpp
     interface/simple_tribol.cpp

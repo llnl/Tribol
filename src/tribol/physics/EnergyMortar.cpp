@@ -1,4 +1,6 @@
 #include "tribol/physics/EnergyMortar.hpp"
+#include "tribol/physics/EnergyMortarEnergy.hpp"
+#include "tribol/physics/PairEvaluation.hpp"
 #include "tribol/common/BasicTypes.hpp"
 
 #include <stdexcept>
@@ -32,22 +34,6 @@ struct KernelParams {
   RealT k;
   RealT residual_gap;
 };
-
-/**
- * @brief Report a failed rule before any quadrature data is consumed.
- *
- * Keep exception construction outside differentiated functions; the integer status has no derivative.
- * @param status Unsuccessful quadrature generation status.
- * @throws std::invalid_argument The element-pair geometry is invalid.
- * @throws std::length_error The rule requires more output storage.
- */
-[[noreturn, gnu::noinline]] MFEM_ENZYME_INACTIVE void reportQuadratureFailure( QuadratureStatus status )
-{
-  if ( status == QuadratureStatus::InsufficientCapacity ) {
-    throw std::length_error( "Insufficient storage for the pair quadrature rule." );
-  }
-  throw std::invalid_argument( "Cannot generate a quadrature rule for invalid pair geometry." );
-}
 
 TRIBOL_ENZYME_INLINE RealT effective_gap( RealT gap_normal, RealT normal_cosine, RealT residual_gap )
 {
@@ -246,87 +232,6 @@ void d2_kernel( const RealT* x, const KernelParams<QuadratureRule>* kp, RealT* H
                             (const void*)kp, enzyme_dup, grad, dgrad );
 
     for ( int row = 0; row < 8; ++row ) H[row * 8 + col] = dgrad[row];
-  }
-}
-
-TRIBOL_ENZYME_INLINE RealT qp_penalty_kernel_qp_energy( RealT w, const RealT* x1, const RealT* x2, const RealT* nB,
-                                                        RealT eta, RealT residual_gap, RealT penalty,
-                                                        bool* pair_has_active_qp )
-{
-  const RealT gn = ( x2[0] - x1[0] ) * nB[0] + ( x2[1] - x1[1] ) * nB[1];
-  const RealT gap = effective_gap( gn, eta, residual_gap );
-  const bool is_active = gap <= 0.0;
-
-  *pair_has_active_qp = *pair_has_active_qp || is_active;
-
-  return is_active ? 0.5 * penalty * gap * gap * w : 0.0;
-}
-
-template <typename QuadratureRule>
-TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const RealT* x, const KernelParams<QuadratureRule>* kp, RealT* energy,
-                                             bool* pair_has_active_qp )
-{
-  *pair_has_active_qp = false;
-
-  RealT A0[2] = { x[0], x[1] };
-  RealT A1[2] = { x[2], x[3] };
-  RealT B0[2] = { x[4], x[5] };
-  RealT B1[2] = { x[6], x[7] };
-
-  const auto generated = kp->quadrature_rule.generate( { x, LinearEdgeCoords::size() },
-                                                       { x + LinearEdgeCoords::size(), LinearEdgeCoords::size() } );
-  if ( generated.result.status != QuadratureStatus::Success ) reportQuadratureFailure( generated.result.status );
-  const auto quadrature = generated.getView();
-
-  RealT nB[2];
-  find_normal( B0, B1, nB );
-  RealT nA[2];
-  find_normal( A0, A1, nA );
-  // Only keep the contribution when the edge normals oppose each other.
-  // Refined search rejects co-oriented normals; direct calculator calls also need this clamp.
-  const RealT dot = nA[0] * nB[0] + nA[1] * nB[1];
-  const RealT eta = ( dot < 0 ) ? dot : 0.0;
-  RealT value = 0.0;
-  for ( int i = 0; i < quadrature.weights.size(); ++i ) {
-    const auto x1 =
-        LinearEdgeGeometry::position( { x, LinearEdgeCoords::size() }, quadrature.geometry1_coords( i, 0 ) );
-    const auto x2 = LinearEdgeGeometry::position( { x + LinearEdgeCoords::size(), LinearEdgeCoords::size() },
-                                                  quadrature.geometry2_coords( i, 0 ) );
-    value += qp_penalty_kernel_qp_energy( quadrature.weights[i], x1.data(), x2.data(), nB, eta, kp->residual_gap, kp->k,
-                                          pair_has_active_qp );
-  }
-
-  *energy = value;
-}
-
-template <typename QuadratureRule>
-void grad_qp_penalty_kernel( const RealT* x, const KernelParams<QuadratureRule>* kp, RealT* dout_du )
-{
-  RealT dx[8] = { 0.0 };
-  RealT out = 0.0;
-  RealT dout = 1.0;
-  bool pair_has_active_qp = false;
-  __enzyme_autodiff<void>( (void*)qp_penalty_kernel<QuadratureRule>, enzyme_dup, x, dx, enzyme_const, (const void*)kp,
-                           enzyme_dup, &out, &dout, enzyme_const, &pair_has_active_qp );
-
-  for ( int i = 0; i < 8; ++i ) {
-    dout_du[i] = dx[i];
-  }
-}
-
-template <typename QuadratureRule>
-void d2_qp_penalty_kernel( const RealT* x, const KernelParams<QuadratureRule>* kp, RealT* H )
-{
-  for ( int col = 0; col < 8; ++col ) {
-    RealT dx[8] = { 0.0 };
-    dx[col] = 1.0;
-    RealT grad[8] = { 0.0 };
-    RealT dgrad[8] = { 0.0 };
-    __enzyme_fwddiff<void>( (void*)grad_qp_penalty_kernel<QuadratureRule>, enzyme_dup, x, dx, enzyme_const,
-                            (const void*)kp, enzyme_dup, grad, dgrad );
-    for ( int row = 0; row < 8; ++row ) {
-      H[row * 8 + col] = dgrad[row];
-    }
   }
 }
 
@@ -586,12 +491,10 @@ RealT EnergyMortarCalculator<QuadratureRule>::compute_quadrature_point_penalty_e
   endpoints( mesh1, pair.element_id1_, A0, A1 );
   endpoints( mesh2, pair.element_id2_, B0, B1 );
 
-  const RealT x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  const KernelParams<QuadratureRule> kp{ quadrature_rule_, p_.k, p_.residual_gap };
-  RealT energy = 0.0;
-  bool pair_has_active_qp = false;
-  qp_penalty_kernel<QuadratureRule>( x, &kp, &energy, &pair_has_active_qp );
-  return energy;
+  const MdArray<RealT, EnergyMortarEnergy<QuadratureRule>::dof_count> coordinates{ A0[0], A0[1], A1[0], A1[1],
+                                                                                   B0[0], B0[1], B1[0], B1[1] };
+  const EnergyMortarEnergy<QuadratureRule> definition{ quadrature_rule_, p_.k, p_.residual_gap };
+  return definition.energy( coordinates.view() );
 }
 
 template <typename QuadratureRule>
@@ -603,13 +506,21 @@ QuadraturePointPenaltyData EnergyMortarCalculator<QuadratureRule>::compute_quadr
   endpoints( mesh1, pair.element_id1_, A0, A1 );
   endpoints( mesh2, pair.element_id2_, B0, B1 );
 
-  const RealT x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  const KernelParams<QuadratureRule> kp{ quadrature_rule_, p_.k, p_.residual_gap };
-
-  QuadraturePointPenaltyData result;
-  qp_penalty_kernel<QuadratureRule>( x, &kp, &result.energy, &result.has_active_qp );
-  grad_qp_penalty_kernel<QuadratureRule>( x, &kp, result.force.data() );
-  d2_qp_penalty_kernel<QuadratureRule>( x, &kp, result.stiffness.data() );
+  const MdArray<RealT, EnergyMortarEnergy<QuadratureRule>::dof_count> coordinates{ A0[0], A0[1], A1[0], A1[1],
+                                                                                   B0[0], B0[1], B1[0], B1[1] };
+  const EnergyMortarEnergy<QuadratureRule> definition{ quadrature_rule_, p_.k, p_.residual_gap };
+  const auto primal = definition.evaluate( coordinates.view() );
+  if ( primal.quadrature_result.status != QuadratureStatus::Success )
+    reportQuadratureFailure( primal.quadrature_result.status );
+  QuadraturePointPenaltyData result{};
+  result.energy = primal.energy;
+  result.has_active_qp = primal.has_active_qp;
+  if ( !primal.has_active_qp ) return result;
+  const auto derivatives = EnergyPairEvaluator<EnergyMortarEnergy<QuadratureRule>>::evaluate(
+      coordinates.view(), definition, primal.energy );
+  for ( IndexT i = 0; i < QuadraturePointPenaltyData::num_force_dofs; ++i ) result.force[i] = derivatives.residual[i];
+  for ( IndexT i = 0; i < QuadraturePointPenaltyData::num_stiffness_entries; ++i )
+    result.stiffness[i] = derivatives.jacobian[i];
   return result;
 }
 

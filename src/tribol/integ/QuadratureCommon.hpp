@@ -42,6 +42,18 @@ enum class QuadratureStatus
 };
 
 /**
+ * @brief Throw a quadrature failure outside differentiated calculations.
+ * @param status Failed generation status; must not be Success.
+ * @throws std::length_error The rule requires more point storage.
+ * @throws std::invalid_argument Pair geometry is invalid.
+ */
+[[noreturn, gnu::noinline]]
+#ifdef TRIBOL_USE_ENZYME
+MFEM_ENZYME_INACTIVE
+#endif
+    void reportQuadratureFailure( QuadratureStatus status );
+
+/**
  * @brief Reports the complete point count, even when the supplied storage is too small
  *
  * Success initializes every point below required_point_count; success with zero points means zero integration
