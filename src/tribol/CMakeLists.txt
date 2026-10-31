@@ -31,11 +31,11 @@ set(tribol_headers
     geom/SmoothedProjectedEdgeMapping.hpp
 
     integ/BasisFunction.hpp
-    integ/EdgeQuadratureRule.hpp
+    integ/EdgeQuadratureRuleGenerator.hpp
     integ/FE.hpp
     integ/Integration.hpp
     integ/PairQuadratureRule.hpp
-    integ/Quadrature.hpp
+    integ/QuadratureCommon.hpp
     integ/QuadratureRuleFactory.hpp
 
     interface/mfem_tribol.hpp

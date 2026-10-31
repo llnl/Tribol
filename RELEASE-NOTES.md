@@ -68,19 +68,36 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Primal points, parent projection coordinates, normals, and Jacobians.
 - Energy Mortar generates and consumes quadrature locally for each pair during gap and force calculations. Independent
   quadrature output is deferred, and the unused `ContactFormulation::updateIntegrationRule()` operation is removed.
-- `PairQuadratureRule<Mapping, BaseQuadratureRule>` combines an element-pair integration mapping with a reference rule.
-  `SmoothedProjectedEdgeMapping` selects the integration interval and maps its points to both elements' parent
-  coordinates, applying the first geometry's physical Jacobian once. `EdgeQuadratureRule<NumPoints>` only places Gauss
-  points and reference weights on an interval. The calculator evaluates fields at the returned parent points on both elements.
+- `PairQuadratureRule<Mapping, IntegrationSurfaceRuleGenerator>` combines an element-pair integration mapping with an
+  integration-surface rule generator. `SmoothedProjectedEdgeMapping` selects the integration interval and maps
+  its quadrature points to both elements' parametric coordinates, applying the first geometry's physical Jacobian once.
+  `EdgeQuadratureRuleGenerator<NumPoints>` generates an `IntegrationSurfaceRule` containing Gauss points and weights
+  expressed in the supplied interval's coordinates. `IntegrationSurfaceRuleView` provides read-only access to those
+  arrays.
+  The calculator evaluates fields at the returned parametric coordinates on both elements.
+  C++20 concepts check the mapping and generator interfaces, including whether the generator accepts the integration
+  surface and the mapping accepts the generated rule's view.
+  Rule generators expose `coordinate_dimension`, the number of coordinate components per integration-surface point.
+  `LinearEdgeGeometry`, `FaceElementTraits`, and `BasisFunction` use `parametric_dimension` in place of `parent_dimension`.
+  Consumers access geometry properties through the rule's `FirstGeometry` and `SecondGeometry` types. Energy Mortar
+  checks both geometries' parametric dimensions, vertex counts, and spatial dimensions.
+  Coordinate fields use `coords`, `geometry1_coords`, and `geometry2_coords`; geometry input views use the `Coords`
+  alias.
+  The basis coordinate-array alias is renamed from `ParentCoordinates` to `ParentCoords`, and
+  `GetParentNodeCoordinates()` is renamed to `getParentNodeCoords()`.
+  Methods and functions in `BasisFunction.hpp` use lower camelCase, including `eval()`, `evalParentDerivatives()`,
+  `getFaceNodeCount()`, `mapToPhysical()`, and the interpolation, Jacobian, and derivative utilities.
   Coordinates and weights use `RealT`. Mapping types identify their element geometries; the implemented mapping supports
   straight two-dimensional edges. Co-oriented edge pairs produce valid zero-point rules before point generation,
-  including when mapping existing reference points; they cannot contribute tributary area or residual-gap forces.
+  including when mapping existing integration-surface quadrature points; they cannot contribute tributary area or
+  residual-gap forces.
   Failed quadrature generation reports an exception before Energy Mortar consumes the data, including differentiated
   calculations; invalid geometry is not treated as a valid zero-point rule.
-- `EnergyMortarAdapter` owns its configured pair rule, and its calculator borrows that generator. The mapping owns
-  smoothing settings; refined search leaves overlap determination to quadrature generation. `ContactParams` no longer
-  carries a runtime quadrature count or smoothing length. Frozen reference points are mapped to both current elements,
-  preserving the varying and frozen derivative modes. Assembly remains host-only; the generators are device-callable.
+- `EnergyMortarAdapter` owns its configured pair rule, and its calculator keeps a reference to that generator.
+  The mapping owns smoothing settings; refined search leaves overlap determination to quadrature generation.
+  `ContactParams` no longer carries a runtime quadrature count or smoothing length. Frozen integration-surface
+  quadrature points are mapped to both current elements, preserving the varying and frozen derivative modes.
+  Assembly remains host-only; the generators are device-callable.
 - Energy Mortar calculates straight-edge normal gaps from the corresponding element points. Very short nondegenerate mortar
   edges retain their normal gap instead of depending on a line-intersection tolerance. The calculator's unused
   `compute_projection_bounds()` helper was removed. Surface-region representations beyond edge intervals remain future

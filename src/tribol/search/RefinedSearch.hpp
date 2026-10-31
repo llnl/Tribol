@@ -21,10 +21,10 @@ class RefinedSearch {
    * @brief Filter current candidates and return those that pass the implementation's checks
    *
    * Returned pairs remain candidates; implementations are not required to compute or store overlap geometry.
-   * Candidates and mesh arrays are borrowed for this call and remain unchanged. Implementations retain configuration,
+   * Candidate and mesh arrays belong to the caller and remain unchanged. Implementations retain configuration,
    * not mesh views or search results. Returned pair order is unspecified; element IDs preserve the input mesh order.
-   * Candidate element IDs must be valid for the corresponding meshes. Implementations finish all work using borrowed
-   * data before returning, so callers may immediately replace that data or destroy the strategy.
+   * Candidate element IDs must be valid for the corresponding meshes. Implementations finish all work using the input
+   * arrays before returning, so callers may immediately replace those arrays or destroy the strategy.
    */
   virtual ArrayT<InterfacePair> filterCandidatePairs( const ArrayT<InterfacePair>& candidate_pairs,
                                                       MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const = 0;

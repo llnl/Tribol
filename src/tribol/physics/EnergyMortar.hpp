@@ -8,7 +8,7 @@
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/integ/EdgeQuadratureRule.hpp"
+#include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
 #include "tribol/integ/PairQuadratureRule.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 
@@ -87,14 +87,19 @@ struct FiniteDiffResult {
 /// storage. Failed quadrature data is never consumed; valid zero-point rules retain their zero contribution.
 template <typename QuadratureRule>
 class EnergyMortarCalculator {
-  static_assert( QuadratureRule::parent_dimension == 1 && QuadratureRule::endpoint_count == 2 &&
-                     QuadratureRule::spatial_dimension == 2,
-                 "Energy Mortar currently supports linear-edge rules." );
+  static_assert( QuadratureRule::FirstGeometry::parametric_dimension == 1 &&
+                     QuadratureRule::FirstGeometry::vertex_count == 2 &&
+                     QuadratureRule::FirstGeometry::spatial_dimension == 2,
+                 "Energy Mortar requires a one-dimensional first geometry with two vertices in 2D." );
+  static_assert( QuadratureRule::SecondGeometry::parametric_dimension == 1 &&
+                     QuadratureRule::SecondGeometry::vertex_count == 2 &&
+                     QuadratureRule::SecondGeometry::spatial_dimension == 2,
+                 "Energy Mortar requires a one-dimensional second geometry with two vertices in 2D." );
 
  public:
-  using ReferenceQuadrature = typename QuadratureRule::ReferenceQuadrature;
+  using IntegrationSurfaceRule = typename QuadratureRule::IntegrationSurfaceRule;
 
-  /// Borrow a generator; it must outlive this evaluator. Current geometry is supplied to each calculation.
+  /// Store a reference to the generator, which must outlive this calculator. Geometry is supplied for each calculation.
   EnergyMortarCalculator( const ContactParams& p, const QuadratureRule& quadrature_rule )
       : p_( p ), quadrature_rule_( quadrature_rule )
   {
@@ -185,7 +190,7 @@ class EnergyMortarCalculator {
   /// of the geometry-dependent quadrature construction.
   std::pair<RealT, RealT> eval_gtilde_fixed_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                 const MeshData::Viewer& mesh2,
-                                                const ReferenceQuadrature& qp_fixed ) const;
+                                                const IntegrationSurfaceRule& qp_fixed ) const;
 
   /// Validate second derivatives of the smoothed gap integrals using finite differences.
   ///
@@ -201,16 +206,16 @@ class EnergyMortarCalculator {
   /// Generator owned by the adapter or caller; no mesh views or generated quadrature are retained here.
   const QuadratureRule& quadrature_rule_;
 
-  /// Gather current element coordinates and construct reference data for frozen-quadrature derivatives.
-  ReferenceQuadrature constructReferenceQuadrature( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                    const MeshData::Viewer& mesh2 ) const;
+  /// Gather current element coordinates and generate an integration-surface rule for frozen-quadrature derivatives.
+  IntegrationSurfaceRule generateIntegrationSurfaceRule( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                         const MeshData::Viewer& mesh2 ) const;
 
   /// Compute smoothed gap gradients while holding the quadrature rule fixed.
   ///
   /// This is used by finite-difference verification routines to isolate
   /// derivatives of the gap kernel from derivatives of the quadrature rule.
   void grad_gtilde_with_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                            const ReferenceQuadrature& qp_fixed, RealT dgt1_dx[8], RealT dgt2_dx[8] ) const;
+                            const IntegrationSurfaceRule& qp_fixed, RealT dgt1_dx[8], RealT dgt2_dx[8] ) const;
 
   /// Evaluate the signed normal gap at a local coordinate on edge A.
   ///

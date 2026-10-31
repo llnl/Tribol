@@ -507,7 +507,9 @@ struct Parameters {
 
   EnforcementLocation enforcement_location =
       EnforcementLocation::QuadraturePoint;  ///! Defaults to quadrature-point enforcement
-  int quadrature_order = 5;  ///! Requested reference polynomial degree; ENERGY_MORTAR defaults to three points
+  ///! Requested polynomial degree to integrate exactly.
+  ///! The default (5) corresponds to a three-point Gauss-Legendre rule in 1D.
+  int quadrature_order = 5;
   RealT residual_gap = 0.0;  ///! Nonnegative gap constraint; positive values enforce separation
 };
 

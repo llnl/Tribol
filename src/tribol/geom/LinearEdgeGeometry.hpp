@@ -28,35 +28,44 @@ namespace tribol {
  */
 class LinearEdgeGeometry {
  public:
-  static constexpr int endpoint_count = 2;     ///< Endpoints defining the straight edge.
-  static constexpr int parent_dimension = 1;   ///< Components in normalized [-1, 1] parent coordinates.
-  static constexpr int spatial_dimension = 2;  ///< Physical components per endpoint.
+  static constexpr int vertex_count = 2;                          ///< Number of vertices defining the straight edge.
+  static constexpr int parametric_dimension = 1;                  ///< Number of parametric coordinate components.
+  static constexpr int spatial_dimension = 2;                     ///< Physical components per endpoint.
   using Point = axom::primal::Point<RealT, spatial_dimension>;    ///< Physical point on the edge.
-  using Vector = axom::primal::Vector<RealT, spatial_dimension>;  ///< Directed displacement or normal.
-  using Coordinates =
-      MdSpan<const RealT, endpoint_count, spatial_dimension>;  ///< Borrowed node-major input coordinates.
+  using Vector = axom::primal::Vector<RealT, spatial_dimension>;  ///< Vector in physical space.
+  using Coords =
+      MdSpan<const RealT, vertex_count, spatial_dimension>;  ///< Input coordinates [vertex][spatial component].
 
   /**
-   * @brief Copy the endpoint geometry and calculate the directed edge and squared length once.
-   * @param coordinates Current endpoints indexed by endpoint, then physical component.
+   * @brief Copy the edge vertices and calculate the edge vector and squared length once.
+   *
+   * The edge vector is (x1 - x0, y1 - y0), directed from the first input vertex to the second.
+   * Its magnitude is the physical edge length; no normalization is applied.
+   * @param coords Current vertices indexed by vertex, then physical component.
    * @pre Coordinates are finite.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE explicit LinearEdgeGeometry( Coordinates coordinates )
-      : origin_( coordinates.data() ),
-        end_( coordinates.data() + spatial_dimension ),
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE explicit LinearEdgeGeometry( Coords coords )
+      : origin_( coords.data() ),
+        end_( coords.data() + spatial_dimension ),
         edge_( origin_, end_ ),
         length_squared_( edge_.dot( edge_ ) )
   {
   }
 
-  /** @brief Borrow the first endpoint. @return Origin valid while this geometry remains alive. */
+  /**
+   * @brief Access the first edge vertex.
+   * @return Read-only reference valid while this geometry remains alive.
+   */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE const Point& origin() const& { return origin_; }
-  /** @brief Prevent borrowing an origin from temporary geometry. */
+  /** @brief Prevent returning a vertex reference from a temporary geometry object. */
   const Point& origin() const&& = delete;
 
-  /** @brief Borrow the directed edge vector. @return Displacement valid while this geometry remains alive. */
+  /**
+   * @brief Access the edge vector from the first vertex to the second.
+   * @return Read-only reference to the unnormalized edge vector, valid while this geometry remains alive.
+   */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE const Vector& direction() const& { return edge_; }
-  /** @brief Prevent borrowing a direction from temporary geometry. */
+  /** @brief Prevent returning an edge vector reference from a temporary geometry object. */
   const Vector& direction() const&& = delete;
 
   /** @brief Read the cached squared length. @return Squared physical edge length, including zero. */
@@ -67,20 +76,23 @@ class LinearEdgeGeometry {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT jacobian() const { return 0.5 * length(); }
 
   /**
-   * @brief Interpolate or extrapolate a point using normalized parent coordinates.
-   * @param parent Parent coordinate; endpoints are -1 and 1.
-   * @return Physical point on the infinite edge line, including for degenerate geometry.
+   * @brief Map a parametric edge coordinate to a point in the current physical configuration.
+   * @param xi Parametric coordinate; vertices are at -1 and 1. Values outside [-1,1] allow extrapolation.
+   * @return Physical point, including for degenerate edge geometry.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Point position( RealT parent ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Point position( RealT xi ) const
   {
-    return Point::lerp( origin_, end_, 0.5 * ( parent + 1.0 ) );
+    return Point::lerp( origin_, end_, 0.5 * ( xi + 1.0 ) );
   }
 
   /**
-   * @brief Orthogonally project a physical point and return its normalized parent coordinate.
-   * @param point Physical point, not necessarily on the line.
+   * @brief Return the parametric coordinate of a physical point's orthogonal projection onto the edge's line.
+   *
+   * Projection is along the edge normal. The first vertex has xi = -1 and the second has xi = 1.
+   * The projection lies on the edge segment for xi in [-1,1] and beyond a vertex otherwise.
+   * @param point Physical point to project.
    * @pre The edge is nondegenerate.
-   * @return Unclamped parent coordinate of the projection; values outside [-1,1] are allowed.
+   * @return Parametric coordinate xi of the projection.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT parentCoordinate( const Point& point ) const
   {
@@ -100,20 +112,20 @@ class LinearEdgeGeometry {
   }
 
   /**
-   * @brief Evaluate a physical point directly from borrowed coordinates.
-   * @param coordinates Current edge endpoints.
-   * @param parent Normalized parent coordinate.
-   * @return Interpolated or extrapolated point; no input views are retained.
+   * @brief Map a parametric edge coordinate using the supplied physical vertex coordinates.
+   * @param coords Current edge vertex coordinates.
+   * @param xi Parametric coordinate; vertices are at -1 and 1. Values outside [-1,1] allow extrapolation.
+   * @return Physical point; no input views are retained.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static Point position( Coordinates coordinates, RealT parent )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static Point position( Coords coords, RealT xi )
   {
-    return LinearEdgeGeometry( coordinates ).position( parent );
+    return LinearEdgeGeometry( coords ).position( xi );
   }
 
  private:
   Point origin_;          ///< Owned first endpoint of the current edge.
   Point end_;             ///< Owned second endpoint, preserving interpolation at the input coordinates.
-  Vector edge_;           ///< Owned displacement from the first endpoint to the second.
+  Vector edge_;           ///< Unnormalized edge vector from the first vertex to the second.
   RealT length_squared_;  ///< Cached squared physical edge length.
 };
 
