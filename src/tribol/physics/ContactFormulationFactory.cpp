@@ -109,7 +109,8 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
         auto refined = std::make_unique<ProjectedEdgeSearch>( cs->getExecutionMode(), cs->getContactCase() == AUTO );
         return std::make_unique<PairContactFormulation<CommonPlanePairMethod<BaseRule>>>(
             *cs->getMfemMeshData(), *cs->getMfemJacobianData(), std::move( coarse ), std::move( refined ),
-            CommonPlanePairMethod<BaseRule>{ cs->getParameters().residual_gap } );
+            CommonPlanePairMethod<BaseRule>{ CommonPlaneQuadratureRule<BaseRule>{}, cs->getParameters().residual_gap,
+                                             ScaledMeshPenaltyInputs<>{} } );
       } );
 }
 
@@ -131,7 +132,7 @@ std::unique_ptr<ContactFormulation> createEnergyMortarForRule( CouplingScheme* c
     return std::make_unique<PairContactFormulation<Method>>(
         *cs->getMfemMeshData(), *cs->getMfemJacobianData(), std::move( coarse_search ), std::move( refined_search ),
         Method{ std::move( quadrature_rule ), residual_gap,
-                cs->getEnforcementOptions().penalty_options.kinematic_calc_set } );
+                RegisteredPenaltyInputs<>{ cs->getEnforcementOptions().penalty_options.kinematic_calc_set } } );
   }
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "Nodal Energy Mortar requires pressure/gap data." );
   RealT k = 1000.0;

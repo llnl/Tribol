@@ -91,6 +91,8 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE CommonPlaneResidualData computeCommonPla
 template <typename BaseRule>
 class CommonPlaneForce {
  public:
+  using Quadrature = CommonPlaneQuadratureRule<BaseRule>;  ///< Pair quadrature configuration.
+  using PrimalResult = CommonPlaneResidualData;            ///< Primal residual, activation, and quadrature status.
   static constexpr IndexT dof_count = CommonPlaneResidualData::coordinate_count;  ///< Pair coordinate count.
 
   /**

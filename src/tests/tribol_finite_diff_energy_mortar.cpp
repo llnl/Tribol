@@ -90,7 +90,7 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
   const TestEnergy definition{ TestRule{}, 3.0, 0.0 };
   const auto primal = definition.evaluate( coordinates.view() );
   ASSERT_EQ( primal.quadrature_result.status, QuadratureStatus::Success );
-  EXPECT_FALSE( primal.has_active_qp );
+  EXPECT_FALSE( primal.has_active_points );
   EXPECT_EQ( primal.energy, 0.0 );
   const auto result = TestEnergyEvaluator::evaluate( coordinates.view(), definition, primal.energy );
   EXPECT_EQ( result.energy, 0.0 );
@@ -115,7 +115,7 @@ TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
   const TestEnergy definition{ TestRule{}, 3.0, 0.0 };
   const auto primal = definition.evaluate( coordinates.view() );
   ASSERT_EQ( primal.quadrature_result.status, QuadratureStatus::Success );
-  EXPECT_TRUE( primal.has_active_qp );
+  EXPECT_TRUE( primal.has_active_points );
   EXPECT_EQ( primal.energy, 0.0 );
   const auto result = TestEnergyEvaluator::evaluate( coordinates.view(), definition, primal.energy );
   EXPECT_EQ( result.energy, 0.0 );
@@ -175,7 +175,7 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
   const TestEnergy without_residual{ TestRule{}, 3.0, 0.0 };
   const auto inactive = without_residual.evaluate( coordinates.view() );
   ASSERT_EQ( inactive.quadrature_result.status, QuadratureStatus::Success );
-  EXPECT_FALSE( inactive.has_active_qp );
+  EXPECT_FALSE( inactive.has_active_points );
   EXPECT_EQ( inactive.energy, 0.0 );
   const auto inactive_derivatives =
       TestEnergyEvaluator::evaluate( coordinates.view(), without_residual, inactive.energy );
@@ -187,7 +187,7 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
   const TestEnergy with_residual{ TestRule{}, 3.0, 0.15 };
   const auto active = with_residual.evaluate( coordinates.view() );
   ASSERT_EQ( active.quadrature_result.status, QuadratureStatus::Success );
-  EXPECT_TRUE( active.has_active_qp );
+  EXPECT_TRUE( active.has_active_points );
   EXPECT_GT( active.energy, 0.0 );
   const auto active_derivatives = TestEnergyEvaluator::evaluate( coordinates.view(), with_residual, active.energy );
   EXPECT_TRUE( std::any_of( active_derivatives.residual.data(),
@@ -259,7 +259,7 @@ TEST( EnergyMortarCoordinates, disjoint_projected_intervals_have_zero_contributi
   const auto primal = definition.evaluate( coordinates.view() );
   ASSERT_EQ( primal.quadrature_result.status, QuadratureStatus::Success );
   EXPECT_EQ( primal.quadrature_result.required_point_count, 0 );
-  EXPECT_FALSE( primal.has_active_qp );
+  EXPECT_FALSE( primal.has_active_points );
   const auto penalty = TestEnergyEvaluator::evaluate( coordinates.view(), definition, primal.energy );
   EXPECT_EQ( penalty.energy, 0.0 );
   for ( IndexT entry = 0; entry < penalty.residual.size(); ++entry ) EXPECT_EQ( penalty.residual[entry], 0.0 );
@@ -287,7 +287,7 @@ TEST( EnergyMortarCoordinates, cooriented_pairs_have_zero_contribution_without_s
     const auto primal = definition.evaluate( coordinates.view() );
     ASSERT_EQ( primal.quadrature_result.status, QuadratureStatus::Success );
     EXPECT_EQ( primal.quadrature_result.required_point_count, 0 );
-    EXPECT_FALSE( primal.has_active_qp );
+    EXPECT_FALSE( primal.has_active_points );
     const auto penalty = TestEnergyEvaluator::evaluate( coordinates.view(), definition, primal.energy );
     EXPECT_EQ( penalty.energy, 0.0 );
     for ( IndexT entry = 0; entry < penalty.residual.size(); ++entry ) EXPECT_EQ( penalty.residual[entry], 0.0 );
@@ -326,7 +326,7 @@ TEST( EnergyMortarCoordinates, rejects_degenerate_geometry_before_consuming_quad
           EXPECT_EQ( primal.quadrature_result.status, QuadratureStatus::InvalidGeometry );
           EXPECT_EQ( primal.quadrature_result.required_point_count, 0 );
           EXPECT_EQ( primal.energy, 0.0 );
-          EXPECT_FALSE( primal.has_active_qp );
+          EXPECT_FALSE( primal.has_active_points );
           EXPECT_THROW( definition.energy( coordinates.view() ), std::invalid_argument );
           EXPECT_THROW( EnergyPairEvaluator<Definition>::evaluate( coordinates.view(), definition ),
                         std::invalid_argument );
@@ -478,7 +478,7 @@ void checkSelectedRuleDerivatives( bool varying, RealT residual_gap, const PairC
   const Definition definition{ quadrature_rule, 7.0, residual_gap };
   const auto primal = definition.evaluate( coordinates.view() );
   ASSERT_EQ( primal.quadrature_result.status, QuadratureStatus::Success );
-  if ( !primal.has_active_qp ) return;
+  if ( !primal.has_active_points ) return;
   const auto penalty = EnergyPairEvaluator<Definition>::evaluate( coordinates.view(), definition, primal.energy );
   for ( IndexT col = 0; col < dofs; ++col ) {
     coordinates[col] = initial_coordinates[col] + step;

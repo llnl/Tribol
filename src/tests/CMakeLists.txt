@@ -174,6 +174,7 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
       tribol_mfem_mortar_lm.cpp
       tribol_mfem_jacobian.cpp
       tribol_mfem_pair_assembler.cpp
+      tribol_pair_method.cpp
       tribol_proximity_check.cpp
       tribol_redecomp_tol.cpp
       )
@@ -208,6 +209,10 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
     endif()
 
   endforeach()
+
+  blt_add_test( NAME tribol_pair_method
+                COMMAND tribol_pair_method_test
+                NUM_MPI_TASKS 1 )
 
   blt_add_test(NAME tribol_mfem_pair_assembler
                COMMAND tribol_mfem_pair_assembler_test)

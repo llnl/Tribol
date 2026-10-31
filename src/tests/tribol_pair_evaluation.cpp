@@ -114,7 +114,7 @@ class PairDefinitionTest : public tribol::detail::ExecutionTest {
       SCOPED_TRACE( i );
       EXPECT_EQ( host[i].quadrature_result.status, QuadratureStatus::Success );
       EXPECT_EQ( host[i].quadrature_result.required_point_count, Count );
-      EXPECT_EQ( host[i].has_active_qp, host_cases[i].active );
+      EXPECT_EQ( host[i].has_active_points, host_cases[i].active );
       EXPECT_NEAR( host[i].energy, host_cases[i].expected_energy, tolerance );
     }
     ArrayT<EnergyMortarEnergyValue> failed( 1, 1, allocatorId() );
@@ -128,7 +128,7 @@ class PairDefinitionTest : public tribol::detail::ExecutionTest {
     EXPECT_EQ( invalid[0].quadrature_result.status, QuadratureStatus::InvalidGeometry );
     EXPECT_EQ( invalid[0].quadrature_result.required_point_count, 0 );
     EXPECT_EQ( invalid[0].energy, 0.0 );
-    EXPECT_FALSE( invalid[0].has_active_qp );
+    EXPECT_FALSE( invalid[0].has_active_points );
   }
 };
 

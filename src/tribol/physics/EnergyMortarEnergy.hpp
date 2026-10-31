@@ -18,7 +18,7 @@ namespace tribol {
 /** @brief Primal pair energy, activation, and quadrature status. */
 struct EnergyMortarEnergyValue {
   RealT energy{ 0.0 };                   ///< Integrated penalty energy; discard when quadrature fails.
-  bool has_active_qp{ false };           ///< Whether any nonpositive gap uses the compressive branch.
+  bool has_active_points{ false };       ///< Whether any nonpositive gap uses the compressive branch.
   QuadratureResult quadrature_result{};  ///< Generation status and point count; valid empty rules give zero energy.
 };
 
@@ -33,6 +33,8 @@ struct EnergyMortarEnergyValue {
 template <typename QuadratureRule>
 class EnergyMortarEnergy {
  public:
+  using Quadrature = QuadratureRule;             ///< Pair quadrature configuration accepted by this definition.
+  using PrimalResult = EnergyMortarEnergyValue;  ///< Primal energy, activation, and quadrature status.
   static constexpr IndexT dof_count =
       2 * LinearEdgeGeometry::vertex_count * LinearEdgeGeometry::spatial_dimension;  ///< Pair coordinate DOFs.
 
@@ -74,7 +76,7 @@ class EnergyMortarEnergy {
       const auto point2 = edge2.position( points.geometry2_coords( q, 0 ) );
       const RealT gap = LinearEdgeGeometry::Vector( point1, point2 ).dot( normal2 ) * alignment - residual_gap_;
       if ( gap > 0.0 ) continue;
-      result.has_active_qp = true;
+      result.has_active_points = true;
       result.energy += 0.5 * penalty_ * gap * gap * points.weights[q];
     }
     return result;

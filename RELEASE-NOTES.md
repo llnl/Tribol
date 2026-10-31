@@ -8,6 +8,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added generic `EnergyPairMethod` and `ForcePairMethod` adapters with shared definition preparation, geometry-layout
+  checks, cached-primal derivative calls, and energy availability. `RegisteredPenaltyInputs` and
+  `ScaledMeshPenaltyInputs` independently read current fixed parameters on each request, preserving their respective
+  fallback, scaling, and validation behavior. Preparation works without Enzyme when MFEM/Redecomp is enabled.
 - Added portable `AveragePenaltyStiffness` and `SeriesPenaltyStiffness` callable types. Both pair methods accept either
   as their second template argument and own the selected combination object. Default factory choices, mesh scaling,
   and contact calculations are unchanged.
@@ -77,6 +81,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- `EnergyMortarPairMethod` and `CommonPlanePairMethod` are aliases rather than classes with separate preparation and
+  derivative implementations. Constructors now take an explicit pair rule, gap offset, and input-provider object.
+  `EnergyMortarEnergyValue::has_active_points` replaces `has_active_qp`, matching force primal results. Physics and
+  evaluator specialization interfaces are unchanged.
 - Common Plane and quadrature-point Energy Mortar use `PairContactFormulation<PairMethod>` for search, coordinate
   gathering, and parent MFEM residual/Jacobian assembly. Their force/energy definitions, penalty combinations, and
   derivative evaluators remain method-specific. Energy remains absent for Common Plane.

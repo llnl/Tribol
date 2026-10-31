@@ -158,11 +158,44 @@ The second template argument selects the combination independently of the pair e
    using AveragedCommonPlane = tribol::CommonPlanePairMethod<BaseRule, tribol::AveragePenaltyStiffness>;
    using SeriesEnergyMortar = tribol::EnergyMortarPairMethod<PairRule, tribol::SeriesPenaltyStiffness>;
 
-Each method owns its combination object and accepts it as an optional final constructor argument. Default factory
-selection remains springs in series for Common Plane and averaging for Energy Mortar. Common Plane applies the mesh
-penalty scales before combining; Energy Mortar combines its registered constant penalties. The chosen scalar stiffness
+The input provider owns the combination object and accepts it as an optional constructor argument. Each method
+receives an explicit pair rule, a gap offset, and an input-provider object. Default factory selection remains springs
+in series with scaled mesh inputs for Common Plane, and averaging with registered constants for Energy Mortar. The chosen scalar stiffness
 is held fixed during coordinate differentiation. The nodal Energy Mortar factory also uses the shared average
 calculation, and the legacy Common Plane stiffness function delegates to the shared series calculation.
 
-The library explicitly instantiates both built-in combinations for both pair methods and all three supported Gauss
-point counts. Additional combination types require matching method and formulation instantiations.
+The library explicitly instantiates pair formulations for both built-in combinations, the default input providers,
+and all three supported Gauss point counts. Other method configurations require matching formulation instantiations;
+the generic adapters and input providers are defined in headers.
+
+Generic energy and force adapters
+----------------------------------
+
+``EnergyPairMethod<Definition, InputProvider>`` and ``ForcePairMethod<Definition, InputProvider>`` share rule ownership,
+coordinate-layout checks, and construction of the definition. Both accept the same constructor arguments:
+
+.. code-block:: cpp
+
+   using Inputs = tribol::RegisteredPenaltyInputs<tribol::AveragePenaltyStiffness>;
+   using Method = tribol::EnergyPairMethod<tribol::EnergyMortarEnergy<PairRule>, Inputs>;
+   Method method{rule, residual_gap, Inputs{penalty_enabled}};
+
+The definition provides ``Quadrature`` and ``PrimalResult`` aliases in addition to its evaluator interface.
+Its constructor accepts ``(quadrature, penalty, residual_gap)``. Both primal result types expose
+``quadrature_result`` and ``has_active_points``; energy results also carry ``energy`` and force results carry
+``residual``. ``EnergyMortarEnergyValue::has_active_points`` replaces its former ``has_active_qp`` name.
+
+Each adapter's ``differentiate()`` calls the existing evaluator overload with cached energy or residual. The energy
+adapter reports energy availability; the force adapter leaves energy absent. Existing evaluator specializations
+continue to work with their two ``evaluate()`` overloads. Rule coordinates, current normals, and physical weights
+remain inside the differentiated physics definition.
+
+``RegisteredPenaltyInputs`` reads the current MFEM constant penalties and preserves fallback stiffness 1000.0 when
+either constant is absent. It requires configured penalty enforcement and passes the gap offset through unchanged.
+``ScaledMeshPenaltyInputs`` reads current mesh stiffnesses and scales, validates positive finite scaled values and a
+nonnegative finite gap offset, then combines the stiffnesses. Both return ``PairDefinitionParameters`` and retain no
+mesh data. Preparation works without Enzyme when MFEM/Redecomp is enabled.
+
+``EnergyMortarPairMethod`` and ``CommonPlanePairMethod`` are aliases selecting a physics definition, derivative kind,
+and input provider. Their names contain no preparation or derivative implementation. Either generic adapter can use
+either input provider. These changes add no contact geometry or enforcement support to the physics definitions.

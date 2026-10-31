@@ -193,9 +193,9 @@ TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
         auto coarse = createCoarseSearch( cs.spatialDimension(), cs.getBinningMethod(), cs.getExecutionMode(),
                                           cs.getEffectiveBinningProximityScale(), 0.0 );
         auto refined = std::make_unique<ProjectedEdgeSearch>( cs.getExecutionMode(), false );
-        return std::make_unique<PairContactFormulation<Method>>( *cs.getMfemMeshData(), *cs.getMfemJacobianData(),
-                                                                 std::move( coarse ), std::move( refined ),
-                                                                 Method{ std::move( rule ), 0.0, true } );
+        return std::make_unique<PairContactFormulation<Method>>(
+            *cs.getMfemMeshData(), *cs.getMfemJacobianData(), std::move( coarse ), std::move( refined ),
+            Method{ std::move( rule ), 0.0, RegisteredPenaltyInputs<SeriesPenaltyStiffness>{ true } } );
       } );
   auto result = alternate->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView() );
   ASSERT_NE( result.force, nullptr );

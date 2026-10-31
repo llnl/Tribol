@@ -59,6 +59,8 @@ set(tribol_headers
     physics/EnergyMortarEnergy.hpp
     physics/PenaltyStiffness.hpp
     physics/PairEvaluation.hpp
+    physics/PairMethod.hpp
+    physics/PairMethodInputs.hpp
     physics/EnergyMortarAdapter.hpp
     physics/PairContactFormulation.hpp
     physics/Physics.hpp
