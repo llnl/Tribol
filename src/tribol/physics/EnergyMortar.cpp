@@ -4,8 +4,6 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "tribol/physics/EnergyMortar.hpp"
-#include "tribol/physics/EnergyMortarEnergy.hpp"
-#include "tribol/physics/PairEvaluation.hpp"
 
 #include <algorithm>
 
@@ -194,33 +192,6 @@ EnergyMortarCalculator<QuadratureRule>::computeSecondDerivatives( CoordinateView
     computeHessian<QuadratureRule, node_count + 1>(
         coordinates, parameters, { result.area_hessians.data() + dof_count * dof_count, dof_count * dof_count } );
   }
-  return result;
-}
-
-template <typename QuadratureRule>
-RealT EnergyMortarCalculator<QuadratureRule>::compute_quadrature_point_penalty_energy(
-    CoordinateView coordinates ) const
-{
-  const EnergyMortarEnergy<QuadratureRule> definition{ quadrature_rule_, p_.k, p_.residual_gap };
-  return definition.energy( coordinates );
-}
-
-template <typename QuadratureRule>
-QuadraturePointPenaltyData EnergyMortarCalculator<QuadratureRule>::compute_quadrature_point_penalty_data(
-    CoordinateView coordinates ) const
-{
-  const EnergyMortarEnergy<QuadratureRule> definition{ quadrature_rule_, p_.k, p_.residual_gap };
-  const auto primal = definition.evaluate( coordinates );
-  if ( primal.quadrature_result.status != QuadratureStatus::Success )
-    reportQuadratureFailure( primal.quadrature_result.status );
-  QuadraturePointPenaltyData result{};
-  result.energy = primal.energy;
-  result.has_active_qp = primal.has_active_qp;
-  if ( !primal.has_active_qp ) return result;
-  const auto derivatives =
-      EnergyPairEvaluator<EnergyMortarEnergy<QuadratureRule>>::evaluate( coordinates, definition, primal.energy );
-  for ( IndexT i = 0; i < dof_count; ++i ) result.force[i] = derivatives.residual[i];
-  for ( IndexT i = 0; i < dof_count * dof_count; ++i ) result.stiffness[i] = derivatives.jacobian[i];
   return result;
 }
 

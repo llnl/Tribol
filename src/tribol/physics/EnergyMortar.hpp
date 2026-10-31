@@ -8,10 +8,8 @@
 
 /**
  * @file
- * @brief Coordinate-based nodal and quadrature-point Energy Mortar calculations.
+ * @brief Coordinate-based nodal Energy Mortar integrals and derivatives.
  */
-
-#include <array>
 
 #include "tribol/config.hpp"
 #include "tribol/common/BasicTypes.hpp"
@@ -31,20 +29,6 @@ struct ContactParams {
   RealT residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
 };
 
-/// Stores quadrature-point penalty energy derivatives for one interface pair.
-struct QuadraturePointPenaltyData {
-  static constexpr int dim = 2;                 ///< Spatial dimension.
-  static constexpr int max_nodes_per_elem = 2;  ///< Maximum nodes on each line element.
-  static constexpr int pair_size = 2;           ///< Number of elements in an interface pair.
-  static constexpr int num_force_dofs = dim * max_nodes_per_elem * pair_size;  ///< Pair coordinate degrees of freedom.
-  static constexpr int num_stiffness_entries = num_force_dofs * num_force_dofs;  ///< Flattened stiffness size.
-
-  bool has_active_qp{ false };                           ///< True when any quadrature-point gap is nonpositive.
-  RealT energy{ 0.0 };                                   ///< Penalty energy for the interface pair.
-  std::array<RealT, num_force_dofs> force{};             ///< Derivative with respect to pair coordinates.
-  std::array<RealT, num_stiffness_entries> stiffness{};  ///< Flattened force derivative matrix.
-};
-
 /// Weighted nodal gaps and tributary areas for one linear-edge pair.
 struct NodalContactData {
   static constexpr IndexT node_count = LinearEdgeGeometry::vertex_count;  ///< Nodes on the linear integration edge.
@@ -52,7 +36,7 @@ struct NodalContactData {
   MdArray<RealT, node_count> AI{};       ///< Corresponding nodal tributary areas.
 };
 
-/// Evaluates Energy Mortar quantities from coordinates of one element pair.
+/// Evaluates nodal Energy Mortar integrals and derivatives from coordinates of one element pair.
 ///
 /// Coordinates contain the first (non-mortar) element followed by the second (mortar) element, with each element's
 /// nodes in finite-element order and each node's spatial components adjacent. The calculator retains no coordinate
@@ -118,18 +102,8 @@ class EnergyMortarCalculator {
   /// @return Owned Hessians; area_hessians remain zero when include_area is false. Zero-measure rules give zeros.
   NodalContactHessians computeSecondDerivatives( CoordinateView coordinates, bool include_area = true ) const;
 
-  /// Compute local energy, force, and stiffness for quadrature-point penalty enforcement.
-  /// @param coordinates Current pair coordinates in element/node/component order; not retained.
-  /// @return Owned energy, activation, residual, and Jacobian; inactive or zero-measure pairs give zeros.
-  QuadraturePointPenaltyData compute_quadrature_point_penalty_data( CoordinateView coordinates ) const;
-
-  /// Evaluate only the local quadrature-point penalty energy.
-  /// @param coordinates Current pair coordinates in element/node/component order; not retained.
-  /// @return Penalty energy, including zero for inactive or zero-measure pairs.
-  RealT compute_quadrature_point_penalty_energy( CoordinateView coordinates ) const;
-
  private:
-  /// Contact parameters controlling penalty stiffness and derivative behavior.
+  /// Contact parameters supplying the residual gap and quadrature derivative mode.
   ContactParams p_;
   /// Generator owned by the adapter or caller; no mesh views or generated quadrature are retained here.
   const QuadratureRule& quadrature_rule_;

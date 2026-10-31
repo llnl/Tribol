@@ -74,6 +74,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Quadrature-point Energy Mortar uses `EnergyMortarEnergy` and `EnergyPairEvaluator` directly, passing residual and
+  Jacobian array views to MFEM assembly without copying them into another result type. Removed
+  `QuadraturePointPenaltyData`, `compute_quadrature_point_penalty_data()`, and
+  `compute_quadrature_point_penalty_energy()` from the nodal calculator interface.
 - Nodal `EnergyMortarCalculator` requests return owning `MdArray` results through `computeNodalValues()`,
   `computeContactQuantities()`, and `computeSecondDerivatives()`, replacing separate gap/area output-array methods.
   Combined requests share frozen quadrature preparation; LM continues to skip area Hessians. Finite-difference helpers

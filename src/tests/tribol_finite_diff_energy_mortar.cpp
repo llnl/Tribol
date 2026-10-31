@@ -11,6 +11,8 @@
 #include <gtest/gtest.h>
 
 #include "tribol/physics/EnergyMortar.hpp"
+#include "tribol/physics/EnergyMortarEnergy.hpp"
+#include "tribol/physics/PairEvaluation.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/integ/BasisFunction.hpp"
 
@@ -25,6 +27,8 @@ using LinearEdgeBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
 namespace {
 using TestRule = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>;
 using PairCoordinates = EnergyMortarCalculator<TestRule>::Coordinates;
+using TestEnergy = EnergyMortarEnergy<TestRule>;
+using TestEnergyEvaluator = EnergyPairEvaluator<TestEnergy>;
 
 /**
  * @brief Read the two test elements in finite-element order before evaluating their coordinates.
@@ -69,6 +73,7 @@ void expectZeroNodalResponse( const Calculator& calculator, typename Calculator:
 }
 }  // namespace
 
+// An open gap must report inactive contact and have zero energy and derivatives.
 TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -82,20 +87,18 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
   MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
   const auto coordinates = gatherCoordinates( mesh1.getView(), mesh2.getView() );
 
-  ContactParams params;
-  params.k = 3.0;
-  params.enzyme_quadrature = true;
-
-  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>> quadrature_rule{};
-  EnergyMortarCalculator evaluator( params, quadrature_rule );
-  const auto result = evaluator.compute_quadrature_point_penalty_data( coordinates.view() );
-  EXPECT_FALSE( result.has_active_qp );
+  const TestEnergy definition{ TestRule{}, 3.0, 0.0 };
+  const auto primal = definition.evaluate( coordinates.view() );
+  ASSERT_EQ( primal.quadrature_result.status, QuadratureStatus::Success );
+  EXPECT_FALSE( primal.has_active_qp );
+  EXPECT_EQ( primal.energy, 0.0 );
+  const auto result = TestEnergyEvaluator::evaluate( coordinates.view(), definition, primal.energy );
   EXPECT_EQ( result.energy, 0.0 );
-  EXPECT_TRUE( std::all_of( result.force.begin(), result.force.end(), []( RealT force ) { return force == 0.0; } ) );
-  EXPECT_TRUE( std::all_of( result.stiffness.begin(), result.stiffness.end(),
-                            []( RealT stiffness ) { return stiffness == 0.0; } ) );
+  for ( IndexT entry = 0; entry < result.residual.size(); ++entry ) EXPECT_EQ( result.residual[entry], 0.0 );
+  for ( IndexT entry = 0; entry < result.jacobian.size(); ++entry ) EXPECT_EQ( result.jacobian[entry], 0.0 );
 }
 
+// Zero gap remains active: energy and residual vanish, but the compressive-side Jacobian must remain nonzero.
 TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -109,18 +112,15 @@ TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
   MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
   const auto coordinates = gatherCoordinates( mesh1.getView(), mesh2.getView() );
 
-  ContactParams params;
-  params.k = 3.0;
-  params.enzyme_quadrature = true;
-
-  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>> quadrature_rule{};
-  EnergyMortarCalculator evaluator( params, quadrature_rule );
-  const auto result = evaluator.compute_quadrature_point_penalty_data( coordinates.view() );
-
-  EXPECT_TRUE( result.has_active_qp );
+  const TestEnergy definition{ TestRule{}, 3.0, 0.0 };
+  const auto primal = definition.evaluate( coordinates.view() );
+  ASSERT_EQ( primal.quadrature_result.status, QuadratureStatus::Success );
+  EXPECT_TRUE( primal.has_active_qp );
+  EXPECT_EQ( primal.energy, 0.0 );
+  const auto result = TestEnergyEvaluator::evaluate( coordinates.view(), definition, primal.energy );
   EXPECT_EQ( result.energy, 0.0 );
-  EXPECT_TRUE( std::all_of( result.force.begin(), result.force.end(), []( RealT force ) { return force == 0.0; } ) );
-  EXPECT_TRUE( std::any_of( result.stiffness.begin(), result.stiffness.end(),
+  for ( IndexT entry = 0; entry < result.residual.size(); ++entry ) EXPECT_EQ( result.residual[entry], 0.0 );
+  EXPECT_TRUE( std::any_of( result.jacobian.data(), result.jacobian.data() + result.jacobian.size(),
                             []( RealT stiffness ) { return stiffness != 0.0; } ) );
 }
 
@@ -172,27 +172,29 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
   MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
   const auto coordinates = gatherCoordinates( mesh1.getView(), mesh2.getView() );
 
-  ContactParams params;
-  params.k = 3.0;
-  params.enzyme_quadrature = true;
-
-  const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>> quadrature_rule{};
-  EnergyMortarCalculator evaluator_without_residual( params, quadrature_rule );
-  const auto inactive = evaluator_without_residual.compute_quadrature_point_penalty_data( coordinates.view() );
+  const TestEnergy without_residual{ TestRule{}, 3.0, 0.0 };
+  const auto inactive = without_residual.evaluate( coordinates.view() );
+  ASSERT_EQ( inactive.quadrature_result.status, QuadratureStatus::Success );
   EXPECT_FALSE( inactive.has_active_qp );
   EXPECT_EQ( inactive.energy, 0.0 );
-  EXPECT_TRUE(
-      std::all_of( inactive.force.begin(), inactive.force.end(), []( RealT force ) { return force == 0.0; } ) );
-  EXPECT_TRUE( std::all_of( inactive.stiffness.begin(), inactive.stiffness.end(),
-                            []( RealT stiffness ) { return stiffness == 0.0; } ) );
+  const auto inactive_derivatives =
+      TestEnergyEvaluator::evaluate( coordinates.view(), without_residual, inactive.energy );
+  for ( IndexT entry = 0; entry < inactive_derivatives.residual.size(); ++entry )
+    EXPECT_EQ( inactive_derivatives.residual[entry], 0.0 );
+  for ( IndexT entry = 0; entry < inactive_derivatives.jacobian.size(); ++entry )
+    EXPECT_EQ( inactive_derivatives.jacobian[entry], 0.0 );
 
-  params.residual_gap = 0.15;
-  EnergyMortarCalculator evaluator_with_residual( params, quadrature_rule );
-  const auto active = evaluator_with_residual.compute_quadrature_point_penalty_data( coordinates.view() );
+  const TestEnergy with_residual{ TestRule{}, 3.0, 0.15 };
+  const auto active = with_residual.evaluate( coordinates.view() );
+  ASSERT_EQ( active.quadrature_result.status, QuadratureStatus::Success );
   EXPECT_TRUE( active.has_active_qp );
   EXPECT_GT( active.energy, 0.0 );
-  EXPECT_TRUE( std::any_of( active.force.begin(), active.force.end(), []( RealT force ) { return force != 0.0; } ) );
-  EXPECT_TRUE( std::any_of( active.stiffness.begin(), active.stiffness.end(),
+  const auto active_derivatives = TestEnergyEvaluator::evaluate( coordinates.view(), with_residual, active.energy );
+  EXPECT_TRUE( std::any_of( active_derivatives.residual.data(),
+                            active_derivatives.residual.data() + active_derivatives.residual.size(),
+                            []( RealT force ) { return force != 0.0; } ) );
+  EXPECT_TRUE( std::any_of( active_derivatives.jacobian.data(),
+                            active_derivatives.jacobian.data() + active_derivatives.jacobian.size(),
                             []( RealT stiffness ) { return stiffness != 0.0; } ) );
 }
 
@@ -203,33 +205,32 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
 {
   PairCoordinates coordinates{ 1.0, 0.0, 0.0, 0.0, 0.2, -0.1, 0.8, -0.1 };
   const auto baseline = coordinates;
-  const TestRule quadrature_rule{};
-  const EnergyMortarCalculator evaluator( ContactParams{ 3.0, true, GetParam() }, quadrature_rule );
-  const auto analytical = evaluator.compute_quadrature_point_penalty_data( coordinates.view() );
+  const TestEnergy definition{ TestRule{}, 3.0, GetParam() };
+  const auto analytical = TestEnergyEvaluator::evaluate( coordinates.view(), definition );
   ASSERT_GT( analytical.energy, 0.0 );
   constexpr IndexT dofs = PairCoordinates::size();
   constexpr RealT gradient_step = 1.0e-7;
   constexpr RealT gradient_tolerance = 1.0e-6;
   for ( IndexT dof = 0; dof < dofs; ++dof ) {
     coordinates[dof] = baseline[dof] + gradient_step;
-    const RealT plus = evaluator.compute_quadrature_point_penalty_energy( coordinates.view() );
+    const RealT plus = definition.energy( coordinates.view() );
     coordinates[dof] = baseline[dof] - gradient_step;
-    const RealT minus = evaluator.compute_quadrature_point_penalty_energy( coordinates.view() );
+    const RealT minus = definition.energy( coordinates.view() );
     coordinates[dof] = baseline[dof];
-    EXPECT_NEAR( analytical.force[dof], ( plus - minus ) / ( 2.0 * gradient_step ), gradient_tolerance )
+    EXPECT_NEAR( analytical.residual[dof], ( plus - minus ) / ( 2.0 * gradient_step ), gradient_tolerance )
         << "force mismatch at DOF " << dof;
   }
   constexpr RealT hessian_step = 1.0e-6;
   constexpr RealT hessian_tolerance = 1.0e-4;
   for ( IndexT column = 0; column < dofs; ++column ) {
     coordinates[column] = baseline[column] + hessian_step;
-    const auto plus = evaluator.compute_quadrature_point_penalty_data( coordinates.view() );
+    const auto plus = TestEnergyEvaluator::evaluate( coordinates.view(), definition );
     coordinates[column] = baseline[column] - hessian_step;
-    const auto minus = evaluator.compute_quadrature_point_penalty_data( coordinates.view() );
+    const auto minus = TestEnergyEvaluator::evaluate( coordinates.view(), definition );
     coordinates[column] = baseline[column];
     for ( IndexT row = 0; row < dofs; ++row ) {
-      EXPECT_NEAR( analytical.stiffness[row * dofs + column],
-                   ( plus.force[row] - minus.force[row] ) / ( 2.0 * hessian_step ), hessian_tolerance )
+      EXPECT_NEAR( analytical.jacobian( row, column ),
+                   ( plus.residual[row] - minus.residual[row] ) / ( 2.0 * hessian_step ), hessian_tolerance )
           << "stiffness mismatch at row " << row << ", column " << column;
     }
   }
@@ -254,12 +255,15 @@ TEST( EnergyMortarCoordinates, disjoint_projected_intervals_have_zero_contributi
     const EnergyMortarCalculator calculator( ContactParams{ 1.0, varying, 0.0 }, quadrature_rule );
     expectZeroNodalResponse( calculator, coordinates.view() );
   }
-  const EnergyMortarCalculator evaluator( params, quadrature_rule );
-  const auto penalty = evaluator.compute_quadrature_point_penalty_data( coordinates.view() );
-  EXPECT_FALSE( penalty.has_active_qp );
+  const TestEnergy definition{ quadrature_rule, params.k, params.residual_gap };
+  const auto primal = definition.evaluate( coordinates.view() );
+  ASSERT_EQ( primal.quadrature_result.status, QuadratureStatus::Success );
+  EXPECT_EQ( primal.quadrature_result.required_point_count, 0 );
+  EXPECT_FALSE( primal.has_active_qp );
+  const auto penalty = TestEnergyEvaluator::evaluate( coordinates.view(), definition, primal.energy );
   EXPECT_EQ( penalty.energy, 0.0 );
-  for ( const RealT force : penalty.force ) EXPECT_EQ( force, 0.0 );
-  for ( const RealT stiffness : penalty.stiffness ) EXPECT_EQ( stiffness, 0.0 );
+  for ( IndexT entry = 0; entry < penalty.residual.size(); ++entry ) EXPECT_EQ( penalty.residual[entry], 0.0 );
+  for ( IndexT entry = 0; entry < penalty.jacobian.size(); ++entry ) EXPECT_EQ( penalty.jacobian[entry], 0.0 );
 }
 
 // Calling the calculator without search must give no gap, area, or penalty contribution for co-oriented edges.
@@ -279,12 +283,15 @@ TEST( EnergyMortarCoordinates, cooriented_pairs_have_zero_contribution_without_s
       const EnergyMortarCalculator calculator( ContactParams{ 1.0, varying, residual_gap }, quadrature_rule );
       expectZeroNodalResponse( calculator, coordinates.view() );
     }
-    const EnergyMortarCalculator calculator( ContactParams{ 1.0, true, residual_gap }, quadrature_rule );
-    const auto penalty = calculator.compute_quadrature_point_penalty_data( coordinates.view() );
-    EXPECT_FALSE( penalty.has_active_qp );
+    const TestEnergy definition{ quadrature_rule, 1.0, residual_gap };
+    const auto primal = definition.evaluate( coordinates.view() );
+    ASSERT_EQ( primal.quadrature_result.status, QuadratureStatus::Success );
+    EXPECT_EQ( primal.quadrature_result.required_point_count, 0 );
+    EXPECT_FALSE( primal.has_active_qp );
+    const auto penalty = TestEnergyEvaluator::evaluate( coordinates.view(), definition, primal.energy );
     EXPECT_EQ( penalty.energy, 0.0 );
-    for ( const auto force : penalty.force ) EXPECT_EQ( force, 0.0 );
-    for ( const auto stiffness : penalty.stiffness ) EXPECT_EQ( stiffness, 0.0 );
+    for ( IndexT entry = 0; entry < penalty.residual.size(); ++entry ) EXPECT_EQ( penalty.residual[entry], 0.0 );
+    for ( IndexT entry = 0; entry < penalty.jacobian.size(); ++entry ) EXPECT_EQ( penalty.jacobian[entry], 0.0 );
   }
 }
 
@@ -292,7 +299,8 @@ TEST( EnergyMortarCoordinates, cooriented_pairs_have_zero_contribution_without_s
 TEST( EnergyMortarCoordinates, rejects_degenerate_geometry_before_consuming_quadrature )
 {
   const auto check = []<int PointCount>() {
-    const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<PointCount>> quadrature_rule;
+    using QuadratureRule = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<PointCount>>;
+    const QuadratureRule quadrature_rule;
     // Test coincident endpoints and a nonzero edge below the mapping's accepted length.
     for ( const RealT edge_length : { 0.0, 5.0e-15 } ) {
       for ( const bool collapse_mesh1 : { false, true } ) {
@@ -312,9 +320,16 @@ TEST( EnergyMortarCoordinates, rejects_degenerate_geometry_before_consuming_quad
           EXPECT_THROW( calculator.computeContactQuantities( coordinates.view() ), std::invalid_argument );
           EXPECT_THROW( calculator.computeSecondDerivatives( coordinates.view() ), std::invalid_argument );
           EXPECT_THROW( calculator.computeSecondDerivatives( coordinates.view(), false ), std::invalid_argument );
-          EXPECT_THROW( calculator.compute_quadrature_point_penalty_energy( coordinates.view() ),
+          using Definition = EnergyMortarEnergy<QuadratureRule>;
+          const Definition definition{ quadrature_rule, 1.0, 0.0 };
+          const auto primal = definition.evaluate( coordinates.view() );
+          EXPECT_EQ( primal.quadrature_result.status, QuadratureStatus::InvalidGeometry );
+          EXPECT_EQ( primal.quadrature_result.required_point_count, 0 );
+          EXPECT_EQ( primal.energy, 0.0 );
+          EXPECT_FALSE( primal.has_active_qp );
+          EXPECT_THROW( definition.energy( coordinates.view() ), std::invalid_argument );
+          EXPECT_THROW( EnergyPairEvaluator<Definition>::evaluate( coordinates.view(), definition ),
                         std::invalid_argument );
-          EXPECT_THROW( calculator.compute_quadrature_point_penalty_data( coordinates.view() ), std::invalid_argument );
         }
       }
     }
@@ -459,17 +474,21 @@ void checkSelectedRuleDerivatives( bool varying, RealT residual_gap, const PairC
   }
   if ( !varying ) return;
   // Penalty gradients and Hessians must use the same selected rule, including its geometry-dependent weights.
-  const auto penalty = calculator.compute_quadrature_point_penalty_data( coordinates.view() );
-  if ( !penalty.has_active_qp ) return;
+  using Definition = EnergyMortarEnergy<QuadratureRule>;
+  const Definition definition{ quadrature_rule, 7.0, residual_gap };
+  const auto primal = definition.evaluate( coordinates.view() );
+  ASSERT_EQ( primal.quadrature_result.status, QuadratureStatus::Success );
+  if ( !primal.has_active_qp ) return;
+  const auto penalty = EnergyPairEvaluator<Definition>::evaluate( coordinates.view(), definition, primal.energy );
   for ( IndexT col = 0; col < dofs; ++col ) {
     coordinates[col] = initial_coordinates[col] + step;
-    const auto plus = calculator.compute_quadrature_point_penalty_data( coordinates.view() );
+    const auto plus = EnergyPairEvaluator<Definition>::evaluate( coordinates.view(), definition );
     coordinates[col] = initial_coordinates[col] - step;
-    const auto minus = calculator.compute_quadrature_point_penalty_data( coordinates.view() );
+    const auto minus = EnergyPairEvaluator<Definition>::evaluate( coordinates.view(), definition );
     coordinates[col] = initial_coordinates[col];
-    EXPECT_NEAR( penalty.force[col], ( plus.energy - minus.energy ) / ( 2.0 * step ), gradient_tolerance );
+    EXPECT_NEAR( penalty.residual[col], ( plus.energy - minus.energy ) / ( 2.0 * step ), gradient_tolerance );
     for ( IndexT row = 0; row < dofs; ++row ) {
-      EXPECT_NEAR( penalty.stiffness[row * dofs + col], ( plus.force[row] - minus.force[row] ) / ( 2.0 * step ),
+      EXPECT_NEAR( penalty.jacobian( row, col ), ( plus.residual[row] - minus.residual[row] ) / ( 2.0 * step ),
                    hessian_tolerance );
     }
   }

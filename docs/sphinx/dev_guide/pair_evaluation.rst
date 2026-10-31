@@ -79,9 +79,16 @@ Contact implementations
 
 ``EnergyMortarEnergy`` defines quadrature-point penalty energy, while ``CommonPlaneForce`` defines the direct Common
 Plane residual. Their portable ``evaluate()`` methods return primal values, activation, and quadrature status. Their
-host ``energy()`` or ``residual()`` methods implement the definition interfaces above. The contact calculators check
-primal status and activation, then pass the already calculated value to the corresponding derivative evaluator.
+host ``energy()`` or ``residual()`` methods implement the definition interfaces above. Energy Mortar's adapter and
+the Common Plane pair calculation check primal status and activation, then pass the already calculated value to the
+corresponding derivative evaluator.
 At zero gap, the compressive branch remains active so its tangent is calculated even though pressure is zero.
+
+Quadrature-point Energy Mortar constructs one ``EnergyMortarEnergy`` definition per force request. Inside the pair
+loop, it checks the primal quadrature status and skips inactive pairs before requesting derivatives. The evaluator
+reuses the calculated energy, and the adapter passes views of its ``residual`` and ``jacobian`` arrays directly to
+``MfemPairAssembler::addPair()``. ``EnergyMortarCalculator`` supplies only nodal integrals and derivatives; it has no
+quadrature-point penalty result or evaluation wrappers.
 
 These evaluators differentiate independent pair functions with respect to coordinates. Nodal Energy Mortar continues
 to assemble its gap and area integrals and apply its existing nodal chain rule, including coupling between pairs that
@@ -100,7 +107,7 @@ same array for values and derivatives:
    Calculator::Coordinates coordinates;
    mesh1.getFaceCoords(pair.element_id1_, coordinates.data());
    mesh2.getFaceCoords(pair.element_id2_, coordinates.data() + Calculator::element_dof_count);
-   const auto result = calculator.compute_quadrature_point_penalty_data(coordinates.view());
+   const auto result = calculator.computeContactQuantities(coordinates.view());
 
 Nodal gap, area, gradient, and Hessian methods use the same coordinate view. The calculator retains no views and
 performs no mesh lookup. Finite-difference checks perturb local copies of this array. Frozen quadrature continues to

@@ -12,6 +12,8 @@
 
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/mesh/MfemPairAssembler.hpp"
+#include "tribol/physics/EnergyMortarEnergy.hpp"
+#include "tribol/physics/PairEvaluation.hpp"
 
 namespace tribol {
 
@@ -482,20 +484,25 @@ ContactFormulationResult QuadraturePoint<Adapter>::computeNodalForces( MeshData:
                       "ENERGY_MORTAR quadrature-point enforcement requires penalty enforcement." );
 
   MfemPairAssembler assembler( adapter->mesh_data_, adapter->jac_data_, mesh1, mesh2, pairs.size() );
-  constexpr IndexT pair_dofs = QuadraturePointPenaltyData::num_force_dofs;
+  using Definition = EnergyMortarEnergy<decltype( adapter->quadrature_rule_ )>;
+  const Definition definition{ adapter->quadrature_rule_, adapter->params_.k, adapter->params_.residual_gap };
+  constexpr IndexT pair_dofs = Definition::dof_count;
 
   for ( const auto& pair : pairs ) {
     const auto coordinates = adapter->getPairCoordinates( pair, mesh1, mesh2 );
-    const auto qp_data = adapter->evaluator_->compute_quadrature_point_penalty_data( coordinates.view() );
+    const auto primal = definition.evaluate( coordinates.view() );
+    if ( primal.quadrature_result.status != QuadratureStatus::Success )
+      reportQuadratureFailure( primal.quadrature_result.status );
 
-    if ( !qp_data.has_active_qp ) {
+    if ( !primal.has_active_qp ) {
       continue;
     }
 
-    energy += qp_data.energy;
+    const auto derivatives = EnergyPairEvaluator<Definition>::evaluate( coordinates.view(), definition, primal.energy );
+    energy += derivatives.energy;
 
-    assembler.addPair( pair, { qp_data.force.data(), pair_dofs },
-                       { qp_data.stiffness.data(), { pair_dofs, pair_dofs } } );
+    assembler.addPair( pair, { derivatives.residual.data(), pair_dofs },
+                       { derivatives.jacobian.data(), { pair_dofs, pair_dofs } } );
   }
 
   auto result = assembler.assemble();
