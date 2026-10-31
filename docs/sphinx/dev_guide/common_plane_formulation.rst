@@ -29,7 +29,7 @@ matrix. Calling ``setMfemUseCommonPlaneFormulation(cs_id, false)`` restores lega
 
 Orders 0--1 select one Gauss point, 2--3 select two, and 4--5 select three. The default is order 5. Unsupported
 configurations are rejected before enabling the formulation. Nodal gap, energy, and timestep calculations are not
-provided; requesting a nodal gap update or energy reports an unsupported-operation error.
+provided. ``computeNodalGaps()`` reports an unsupported-operation error; energy and timestep outputs are absent.
 
 Pair geometry and residual
 --------------------------
@@ -49,7 +49,9 @@ The method does not derive forces from an energy. Unlike legacy Common Plane's u
 activation can differ between quadrature points. Parallel-edge constant-pressure results agree after converting the
 residual sign to physical force.
 
-Geometry and quadrature remain local to each pair calculation. The formulation retains searches and the latest
-assembled outputs. Displacement Jacobian transfer uses no pressure or gap finite-element field. Empty overlap and
+Geometry and quadrature remain local to each pair calculation. The formulation retains only configuration and
+searches. Each ``computeNodalForces()`` call returns an owning ``ContactFormulationResult`` with force and Jacobian
+fields; its other fields are absent. The coupling scheme stores the latest returned result for the public MFEM
+retrieval functions. Displacement Jacobian transfer uses no pressure or gap finite-element field. Empty overlap and
 nonopposing normals produce successful zero-point rules; invalid geometry and insufficient capacity are failures
 whose output is discarded and reported before residual evaluation.

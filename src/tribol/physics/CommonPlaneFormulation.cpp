@@ -26,19 +26,8 @@ CommonPlaneFormulation<BaseQuadratureRule>::CommonPlaneFormulation( MfemMeshData
 }
 
 template <typename BaseQuadratureRule>
-void CommonPlaneFormulation<BaseQuadratureRule>::updateNodalGaps( MeshData::Viewer, MeshData::Viewer )
-{
-  throw std::logic_error( "CommonPlaneFormulation has no nodal gap field." );
-}
-
-template <typename BaseQuadratureRule>
-RealT CommonPlaneFormulation<BaseQuadratureRule>::getEnergy() const
-{
-  throw std::logic_error( "CommonPlaneFormulation defines a residual, not an energy." );
-}
-
-template <typename BaseQuadratureRule>
-void CommonPlaneFormulation<BaseQuadratureRule>::updateNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 )
+ContactFormulationResult CommonPlaneFormulation<BaseQuadratureRule>::computeNodalForces( MeshData::Viewer mesh1,
+                                                                                         MeshData::Viewer mesh2 ) const
 {
   for ( const auto& mesh : { mesh1, mesh2 } ) {
     if ( mesh.spatialDimension() != CommonPlaneResidualData::dimension || mesh.getElementType() != EDGE ||
@@ -128,12 +117,12 @@ void CommonPlaneFormulation<BaseQuadratureRule>::updateNodalForces( MeshData::Vi
   }
 
   auto* parent_fes = mesh_data_.GetParentCoords().ParFESpace();
-  residual_ = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( parent_fes ) );
-  residual_.fill( 0.0 );
+  shared::ParVector residual( const_cast<mfem::ParFiniteElementSpace*>( parent_fes ) );
+  residual.fill( 0.0 );
   mfem::Vector parent_residual( parent_fes->GetVSize() );
   parent_residual = 0.0;
   mesh_data_.GetParentRedecompTransfer().RedecompToParent( redecomp_residual, parent_residual );
-  parent_fes->GetProlongationMatrix()->MultTranspose( parent_residual, residual_.get() );
+  parent_fes->GetProlongationMatrix()->MultTranspose( parent_residual, residual.get() );
 
   std::vector<PackedPairJacobianContribs> df_contribs;
   df_contribs.reserve( pair_size * pair_size );
@@ -141,7 +130,11 @@ void CommonPlaneFormulation<BaseQuadratureRule>::updateNodalForces( MeshData::Vi
   df_contribs.push_back( std::move( jacobian12 ) );
   df_contribs.push_back( std::move( jacobian21 ) );
   df_contribs.push_back( std::move( jacobian22 ) );
-  jacobian_ = jacobian_data_.GetMfemJacobian( parent_fes, parent_fes, df_contribs );
+  auto jacobian = jacobian_data_.GetMfemJacobian( parent_fes, parent_fes, df_contribs );
+  ContactFormulationResult result;
+  result.force.reset( residual.release() );
+  result.df_dx.reset( jacobian.release() );
+  return result;
 }
 template class CommonPlaneFormulation<EdgeQuadratureRuleGenerator<1>>;
 template class CommonPlaneFormulation<EdgeQuadratureRuleGenerator<2>>;

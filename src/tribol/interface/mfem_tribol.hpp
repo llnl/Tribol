@@ -299,6 +299,8 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id );
 /**
  * @brief Get the derivative of the force with respect to displacement
  *
+ * Transfers the latest result out of the coupling scheme. Returns null if it was not calculated or already taken.
+ *
  * @param cs_id Coupling scheme id with a registered MFEM mesh
  * @return Unique pointer to MFEM HypreParMatrix
  */
@@ -306,6 +308,8 @@ std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx( IndexT cs_id );
 
 /**
  * @brief Get the derivative of the force with respect to pressure
+ *
+ * Transfers the latest result out of the coupling scheme. Returns null if it was not calculated or already taken.
  *
  * @param cs_id Coupling scheme id with a registered MFEM mesh
  * @return Unique pointer to MFEM HypreParMatrix
@@ -315,13 +319,18 @@ std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp( IndexT cs_id );
 /**
  * @brief Get the derivative of the gap with respect to displacement
  *
+ * This is the derivative of weighted nodal gaps. Transfers the latest result out of the coupling scheme and returns
+ * null if it was not calculated or already taken.
+ *
  * @param cs_id Coupling scheme id with a registered MFEM mesh
  * @return Unique pointer to MFEM HypreParMatrix
  */
 std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx( IndexT cs_id );
 
 /**
- * @brief Returns gap vector to a given mfem::Vector
+ * @brief Returns a legacy-method gap vector to a given mfem::Vector
+ *
+ * @throws std::logic_error The scheme uses ContactFormulation; use getMfemContactGap() instead.
  *
  * @note This is stored as an MFEM dual vector, meaning the shared DOFs expect to be summed over all ranks to obtain
  * their value.
@@ -338,8 +347,9 @@ void getMfemGap( IndexT cs_id, mfem::Vector& g );
 /**
  * @brief Returns the true-dof contact gap vector
  *
- * @note Values on shared DOFs are already consistent across ranks. For CommonPlaneFormulation, the negative of
- * this residual is the physical force returned by the legacy getMfemResponse() path.
+ * @note Values on shared DOFs are already consistent across ranks. Nodal Energy Mortar returns normalized gaps for
+ * penalty enforcement and weighted gaps for LM enforcement. Quadrature-point methods have no nodal gap output.
+ * @throws std::logic_error The latest calculation did not provide nodal gaps.
  *
  * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
  * @pre Redecomp mesh must be created and up to date by calling updateMfemParallelDecomposition()
@@ -365,8 +375,11 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id );
 /**
  * @brief Returns a reference to the true-dof contact pressure vector
  *
- * In penalty-style methods, this corresponds to the pressure true-dof vector. In Lagrange-multiplier-based methods,
- * this may be interpreted as the multiplier vector.
+ * For nodal penalty enforcement, returns the pressure in the latest coupling-scheme result. For LM enforcement,
+ * returns the caller-supplied multiplier input for the next update(), available immediately after registration.
+ * Formulations retain neither this input nor computed pressure. Quadrature-point methods have no nodal pressure.
+ *
+ * @throws std::logic_error No nodal pressure output or multiplier input is available.
  *
  * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
  *

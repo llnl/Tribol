@@ -23,7 +23,7 @@ namespace tribol {
  * @brief Assemble a force-defined, frictionless common-plane method on linear 2D MFEM surfaces.
  *
  * Returned vectors use the contact residual sign, opposite the physical forces in the legacy Common Plane response.
- * Only assembled outputs and configuration are retained; current coordinates and pair quadrature are local to updates.
+ * Only configuration is retained; geometry, quadrature, and assembled outputs are local to each calculation.
  * @tparam BaseQuadratureRule Gauss rule on each common-line overlap.
  */
 template <typename BaseQuadratureRule>
@@ -42,36 +42,13 @@ class CommonPlaneFormulation : public ContactFormulation {
                           RealT residual_gap );
 
   /**
-   * @brief Report that this quadrature-point method has no nodal gap field.
-   * @param mesh1 Current first mesh; not retained.
-   * @param mesh2 Current second mesh; not retained.
-   * @throws std::logic_error Always; no nodal gap field is defined.
-   */
-  void updateNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) override;
-
-  /**
-   * @brief Search current geometry and assemble residual and Jacobian on parent true DOFs.
+   * @brief Search current geometry and return residual and Jacobian on parent true DOFs.
    * @param mesh1 Current first mesh with constant penalty data.
    * @param mesh2 Current second mesh with constant penalty data.
+   * @return Owned force and df_dx; energy, nodal gap, pressure, and timestep outputs are absent.
    * @throws std::invalid_argument Geometry or penalty data is invalid.
    */
-  void updateNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) override;
-
-  /** @brief Report no timestep calculation. @return False. */
-  bool hasTimeStepCalculation() override { return false; }
-  /** @brief Report that a force-defined method has no energy output. @throws std::logic_error Always. @return Never. */
-  RealT getEnergy() const override;
-  /** @brief Borrow the latest assembled contact residual. @return Parent true-DOF residual after updateNodalForces().
-   */
-  const mfem::HypreParVector& getMfemForce() const override { return residual_.get(); }
-  /**
-   * @brief Transfer ownership of the latest assembled residual Jacobian.
-   * @return Parent true-DOF matrix; repeated calls without updating return null.
-   */
-  std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx() const override
-  {
-    return std::unique_ptr<mfem::HypreParMatrix>( jacobian_.release() );
-  }
+  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override;
 
  private:
   MfemMeshData& mesh_data_;                                          ///< Borrowed displacement and decomposition data.
@@ -79,9 +56,7 @@ class CommonPlaneFormulation : public ContactFormulation {
   std::unique_ptr<CoarseSearch> coarse_search_;                      ///< Owned spatial candidate search.
   std::unique_ptr<RefinedSearch> refined_search_;                    ///< Owned topology and orientation checks.
   CommonPlaneQuadratureRule<BaseQuadratureRule> quadrature_rule_{};  ///< Owned pair-generator configuration.
-  RealT residual_gap_;                     ///< Gap offset held constant during differentiation.
-  shared::ParVector residual_;             ///< Latest parent true-DOF contact residual.
-  mutable shared::ParSparseMat jacobian_;  ///< Latest parent true-DOF Jacobian, transferable to the caller.
+  RealT residual_gap_;  ///< Gap offset held constant during differentiation.
 };
 #endif
 }  // namespace tribol

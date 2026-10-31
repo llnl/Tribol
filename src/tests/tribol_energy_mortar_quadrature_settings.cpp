@@ -6,9 +6,11 @@
 /**
  * @file
  * @brief Tests factory selection and changes to Energy Mortar quadrature order for both enforcement locations.
+ * Direct gap and force calls check returned outputs and repeated calculations without a decomposition refresh.
  * Local quadrature accuracy is checked in tribol_pair_quadrature; gap and force derivatives have separate tests.
  */
 #include <gtest/gtest.h>
+#include <cmath>
 #include "axom/slic/core/SimpleLogger.hpp"
 #include "mfem.hpp"
 #include "shared/mesh/MeshBuilder.hpp"
@@ -109,6 +111,62 @@ TEST_P( EnergyMortarQuadratureSettingsTest, selects_and_rebuilds_adapter )
   EXPECT_FALSE( cs->hasContactFormulation() );
   cs->updateContactFormulation();
   EXPECT_TRUE( usesPointCount<2>( cs->getContactFormulation(), location ) );
+}
+
+// Gap and force calls must work independently, initialize only their outputs, and leave earlier results unchanged.
+TEST_P( EnergyMortarQuadratureSettingsTest, returns_owned_outputs_for_each_calculation )
+{
+  tribol::updateMfemParallelDecomposition();
+  auto& cs = tribol::CouplingSchemeManager::getInstance().at( 0 );
+  const auto& formulation = *cs.getContactFormulation();
+  const auto mesh1 = cs.getMesh1().getView();
+  const auto mesh2 = cs.getMesh2().getView();
+  mfem::Vector legacy_gap;
+  EXPECT_THROW( tribol::getMfemGap( 0, legacy_gap ), std::logic_error );
+  if ( std::get<0>( GetParam() ) == tribol::EnforcementLocation::Nodal ) {
+    auto gaps = formulation.computeNodalGaps( mesh1, mesh2 );
+    ASSERT_NE( gaps.gap, nullptr );
+    ASSERT_NE( gaps.dg_dx, nullptr );
+    EXPECT_EQ( gaps.force, nullptr );
+    EXPECT_EQ( gaps.pressure, nullptr );
+    EXPECT_EQ( gaps.df_dx, nullptr );
+    EXPECT_EQ( gaps.df_dp, nullptr );
+    EXPECT_FALSE( gaps.energy.has_value() );
+    EXPECT_FALSE( gaps.time_step.has_value() );
+    const mfem::HypreParVector original( *gaps.gap );
+    auto repeated = formulation.computeNodalGaps( mesh1, mesh2 );
+    repeated.gap->Add( -1.0, original );
+    EXPECT_LT( repeated.gap->Norml2(), 1.0e-12 );
+    EXPECT_EQ( gaps.gap->Norml2(), original.Norml2() );
+  } else {
+    EXPECT_THROW( formulation.computeNodalGaps( mesh1, mesh2 ), std::logic_error );
+  }
+
+  auto first = formulation.computeNodalForces( mesh1, mesh2 );
+  ASSERT_NE( first.force, nullptr );
+  ASSERT_NE( first.df_dx, nullptr );
+  ASSERT_TRUE( first.energy.has_value() );
+  EXPECT_FALSE( first.time_step.has_value() );
+  EXPECT_EQ( first.df_dp, nullptr );
+  const bool nodal = std::get<0>( GetParam() ) == tribol::EnforcementLocation::Nodal;
+  EXPECT_EQ( first.gap != nullptr, nodal );
+  EXPECT_EQ( first.pressure != nullptr, nodal );
+  EXPECT_EQ( first.dg_dx != nullptr, nodal );
+  const mfem::HypreParVector original( *first.force );
+  ASSERT_GT( original.Norml2(), 0.0 );
+  auto second = formulation.computeNodalForces( mesh1, mesh2 );
+  second.force->Add( -1.0, original );
+  EXPECT_LT( second.force->Norml2(), 1.0e-12 );
+  EXPECT_NEAR( *second.energy, *first.energy, 1.0e-12 );
+  EXPECT_EQ( cs.getContactFormulationResult().force, nullptr );
+  cs.setContactFormulation( nullptr );
+  auto difference = *first.force;
+  difference -= original;
+  EXPECT_EQ( difference.Norml2(), 0.0 );
+  mfem::Vector direction( first.df_dx->Width() ), action( first.df_dx->Height() );
+  direction = 1.0;
+  first.df_dx->Mult( direction, action );
+  EXPECT_TRUE( std::isfinite( action.Norml2() ) );
 }
 
 /** @brief Host edges used to register an unsupported contact method. */

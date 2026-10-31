@@ -314,6 +314,7 @@ CouplingScheme::CouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, 
       m_mesh_id1( mesh_id1 ),
       m_mesh_id2( mesh_id2 ),
       m_given_exec_mode( given_exec_mode ),
+      m_exec_mode( given_exec_mode ),
       m_numTotalNodes( 0 ),
       m_fixedBinning( false ),
       m_isBinned( false ),
@@ -1036,10 +1037,13 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   if ( m_formulation ) {
     if ( m_parameters.use_common_plane_formulation ) detail::validateCommonPlaneFormulation( *this );
     // The formulation performs the search and gap calculations needed to compute forces from the current mesh data.
-    m_formulation->updateNodalForces( getMesh1().getView(), getMesh2().getView() );
-    if ( m_formulation->hasTimeStepCalculation() ) {
-      dt = m_formulation->computeTimeStep();
+#ifdef BUILD_REDECOMP
+    if ( m_contact_multiplier ) {
+      getMfemSubmeshData()->GetSubmeshPressure().SetFromTrueDofs( *m_contact_multiplier );
     }
+#endif
+    m_formulation_result = m_formulation->computeNodalForces( getMesh1().getView(), getMesh2().getView() );
+    if ( m_formulation_result.time_step ) dt = *m_formulation_result.time_step;
     return 0;
   }
 
@@ -1146,6 +1150,25 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   }
 
 }  // end CouplingScheme::apply()
+
+//------------------------------------------------------------------------------
+void CouplingScheme::setContactFormulation( std::unique_ptr<ContactFormulation> formulation )
+{
+  m_formulation = std::move( formulation );
+  m_formulation_result = {};
+#ifdef BUILD_REDECOMP
+  if ( m_formulation && m_enforcementMethod == LAGRANGE_MULTIPLIER ) {
+    auto* fes = const_cast<mfem::ParFiniteElementSpace*>( &getMfemSubmeshData()->GetSubmeshFESpace() );
+    if ( !m_contact_multiplier || m_contact_multiplier->Size() != fes->GetTrueVSize() ) {
+      shared::ParVector multiplier( fes );
+      multiplier.fill( 0.0 );
+      m_contact_multiplier.reset( multiplier.release() );
+    }
+  } else {
+    m_contact_multiplier.reset();
+  }
+#endif
+}
 
 //------------------------------------------------------------------------------
 void CouplingScheme::updateContactFormulation()

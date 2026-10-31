@@ -7,6 +7,7 @@
  * @file
  * @brief Check explicit MFEM Common Plane selection, nonmatching constant-traction patches, and parent Jacobians.
  * The same tests run on one and two ranks; decomposition onto rank zero exercises a rank without contact elements.
+ * Direct calls also check output availability and validity after destroying the formulation.
  * Local quadrature and full pair derivatives are checked in tribol_common_plane_formulation.
  */
 #include <cmath>
@@ -108,10 +109,46 @@ TEST_P( MfemCommonPlaneTest, matches_nonmatching_constant_traction_patch )
   MPI_Comm_size( MPI_COMM_WORLD, &size );
   if ( size == 2 && rank == 1 )
     EXPECT_EQ( scheme().getMesh1().numberOfElements() + scheme().getMesh2().numberOfElements(), 0 );
-  EXPECT_THROW( scheme().getContactFormulation()->getEnergy(), std::logic_error );
-  EXPECT_THROW(
-      scheme().getContactFormulation()->updateNodalGaps( scheme().getMesh1().getView(), scheme().getMesh2().getView() ),
-      std::logic_error );
+  EXPECT_FALSE( scheme().getContactFormulationResult().energy.has_value() );
+  EXPECT_THROW( scheme().getContactFormulation()->computeNodalGaps( scheme().getMesh1().getView(),
+                                                                    scheme().getMesh2().getView() ),
+                std::logic_error );
+}
+
+// Each direct call returns its own force and matrix, without changing earlier results or the coupling-scheme cache.
+TEST_P( MfemCommonPlaneTest, returns_owned_outputs_without_retaining_results )
+{
+  enable();
+  updateMfemParallelDecomposition( 1, true );
+  const auto& formulation = *scheme().getContactFormulation();
+  auto first = formulation.computeNodalForces( scheme().getMesh1().getView(), scheme().getMesh2().getView() );
+  ASSERT_NE( first.force, nullptr );
+  ASSERT_NE( first.df_dx, nullptr );
+  EXPECT_FALSE( first.energy.has_value() );
+  EXPECT_FALSE( first.time_step.has_value() );
+  EXPECT_EQ( first.gap, nullptr );
+  EXPECT_EQ( first.pressure, nullptr );
+  EXPECT_EQ( first.dg_dx, nullptr );
+  EXPECT_EQ( first.df_dp, nullptr );
+  EXPECT_EQ( scheme().getContactFormulationResult().force, nullptr );
+  const mfem::HypreParVector original( *first.force );
+  ASSERT_GT( norm( original ), 0.0 );
+
+  setPenaltyScale( 0, 2.0 );
+  setPenaltyScale( 1, 2.0 );
+  auto second = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
+                                                                      scheme().getMesh2().getView() );
+  auto error = *second.force;
+  error.Add( -2.0, original );
+  EXPECT_LT( norm( error ), 1.0e-11 );
+  scheme().setContactFormulation( nullptr );
+  error = *first.force;
+  error -= original;
+  EXPECT_EQ( norm( error ), 0.0 );
+  mfem::Vector direction( first.df_dx->Width() ), action( first.df_dx->Height() );
+  direction = 1.0;
+  first.df_dx->Mult( direction, action );
+  EXPECT_TRUE( std::isfinite( norm( action ) ) );
 }
 
 // Parent Jacobians must differentiate assembled forces through nonmatching pair maps and MPI transfers.

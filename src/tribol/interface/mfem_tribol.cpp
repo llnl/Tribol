@@ -614,7 +614,9 @@ mfem::HypreParVector getMfemContactForce( IndexT cs_id )
   SLIC_ERROR_ROOT_IF(
       !cs->hasContactFormulation(),
       "Coupling scheme does not contain a contact formulation. Forces are returned using getMfemResponse() instead." );
-  return cs->getContactFormulation()->getMfemForce();
+  const auto& force = cs->getContactFormulationResult().force;
+  if ( !force ) throw std::logic_error( "No contact force is available; call update() first." );
+  return *force;
 }
 
 std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
@@ -630,11 +632,11 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
                       "Use getMfemDfDx() instead." );
 
   if ( cs->hasContactFormulation() ) {
-    auto* formulation = cs->getContactFormulation();
-    // Use formulation derivatives
-    auto DfDx = formulation->getMfemDfDx();
-    auto DfDp = formulation->getMfemDfDp();
-    auto DgDx = formulation->getMfemDgDx();
+    auto& result = cs->getContactFormulationResult();
+    if ( !result.df_dx ) throw std::logic_error( "No contact Jacobian is available; call update() first." );
+    auto DfDx = std::move( result.df_dx );
+    auto DfDp = std::move( result.df_dp );
+    auto DgDx = std::move( result.dg_dx );
 
     // Determine sizes
     mfem::Array<int> offsets( 3 );
@@ -710,7 +712,7 @@ std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx( IndexT cs_id )
                               cs_id ) );
 
   if ( cs->hasContactFormulation() ) {
-    return cs->getContactFormulation()->getMfemDfDx();
+    return std::move( cs->getContactFormulationResult().df_dx );
   }
   SLIC_ERROR_ROOT( "getMfemDfDx() is only supported for coupling schemes with a ContactFormulation." );
   return nullptr;
@@ -725,7 +727,7 @@ std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp( IndexT cs_id )
                               cs_id ) );
 
   if ( cs->hasContactFormulation() ) {
-    return cs->getContactFormulation()->getMfemDfDp();
+    return std::move( cs->getContactFormulationResult().df_dp );
   }
   SLIC_ERROR_ROOT( "getMfemDfDp() is only supported for coupling schemes with a ContactFormulation." );
   return nullptr;
@@ -740,7 +742,7 @@ std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx( IndexT cs_id )
                               cs_id ) );
 
   if ( cs->hasContactFormulation() ) {
-    return cs->getContactFormulation()->getMfemDgDx();
+    return std::move( cs->getContactFormulationResult().dg_dx );
   }
   SLIC_ERROR_ROOT( "getMfemDgDx() is only supported for coupling schemes with a ContactFormulation." );
   return nullptr;
@@ -754,6 +756,9 @@ void getMfemGap( IndexT cs_id, mfem::Vector& g )
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
 
+  if ( cs->hasContactFormulation() ) {
+    throw std::logic_error( "Contact formulations return nodal gaps through getMfemContactGap()." );
+  }
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(),
                       axom::fmt::format( "Coupling scheme cs_id={0} does not contain MFEM pressure field data. "
                                          "Create the coupling scheme using registerMfemCouplingScheme() and set the "
@@ -770,7 +775,9 @@ mfem::HypreParVector getMfemContactGap( IndexT cs_id )
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
   SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
-  return cs->getContactFormulation()->getMfemGap();
+  const auto& gap = cs->getContactFormulationResult().gap;
+  if ( !gap ) throw std::logic_error( "No nodal contact gap is available." );
+  return *gap;
 }
 
 mfem::ParGridFunction& getMfemPressure( IndexT cs_id )
@@ -797,7 +804,10 @@ mfem::HypreParVector& getMfemContactPressure( IndexT cs_id )
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
   SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
-  return cs->getContactFormulation()->getMfemPressure();
+  if ( cs->getEnforcementMethod() == LAGRANGE_MULTIPLIER ) return cs->getContactMultiplier();
+  const auto& pressure = cs->getContactFormulationResult().pressure;
+  if ( !pressure ) throw std::logic_error( "No nodal contact pressure is available." );
+  return *pressure;
 }
 
 void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )

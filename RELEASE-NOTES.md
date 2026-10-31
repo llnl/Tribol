@@ -68,6 +68,11 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- `ContactFormulation::computeNodalGaps()` and `computeNodalForces()` return an owning `ContactFormulationResult`.
+  Uncalculated outputs are absent. These replace the update methods and formulation getters; formulations no longer
+  retain computed results. The default nodal-gap calculation throws for methods without a nodal gap field. Existing
+  MFEM contact retrieval functions read the latest result stored by the coupling scheme. Use `getMfemContactGap()`
+  for formulation gaps; legacy `getMfemGap()` rejects schemes using a formulation.
 - Numerical coordinates, fields, matrix entries, and parameters consistently use `RealT` across Tribol, shared helpers,
   Redecomp, examples, and tests. Public C++ declarations retain their existing types because `RealT` aliases `double`;
   generated C/Fortran interfaces retain their concrete types. Single precision remains unsupported.
