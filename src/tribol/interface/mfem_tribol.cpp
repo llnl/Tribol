@@ -285,8 +285,8 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
       std::make_unique<MfemMeshData>( mesh_id_1, mesh_id_2, mesh, current_coords, std::move( b_attributes_1 ),
                                       std::move( b_attributes_2 ), exec_mode, mem_space );
   // register empty meshes so the coupling scheme is valid
-  registerMesh( mesh_id_1, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, mem_space );
-  registerMesh( mesh_id_2, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, mem_space );
+  registerMesh( mesh_id_1, 0, 0, nullptr, EDGE, LINEAR_LAGRANGE, nullptr, nullptr, nullptr, mem_space );
+  registerMesh( mesh_id_2, 0, 0, nullptr, EDGE, LINEAR_LAGRANGE, nullptr, nullptr, nullptr, mem_space );
   registerCouplingScheme( cs_id, mesh_id_1, mesh_id_2, contact_mode, contact_case, contact_method, contact_model,
                           enforcement_method, binning_method, exec_mode );
   auto& cs = CouplingSchemeManager::getInstance().at( cs_id );
@@ -360,6 +360,9 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
   if ( cs->hasMfemJacobianData() && cs->getMfemSubmeshData() ) {
     cs->setMfemJacobianData( std::make_unique<MfemJacobianData>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData() ) );
   }
+  if ( cs->hasContactFormulation() ) {
+    cs->updateContactFormulation();
+  }
 }
 
 void setMfemRedecompTriggerDisplacement( IndexT cs_id, RealT val )
@@ -392,7 +395,7 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
   cs->getMfemMeshData()->SetMesh2KinematicConstantPenalty( mesh2_penalty );
 
   if ( cs->hasContactFormulation() ) {
-    cs->getContactFormulation()->updateConstantPenaltyStiffness( mesh1_penalty, mesh2_penalty );
+    cs->updateContactFormulation();
   }
 }
 
@@ -782,11 +785,11 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
           mfem_data->UpdateMfemMeshData( effective_binning_proximity, n_ranks, force_new_redecomp, residual_gap );
       auto coord_ptrs = mfem_data->GetRedecompCoordsPtrs();
 
-      registerMesh( mesh_ids[0], mfem_data->GetMesh1NE(), mfem_data->GetNV(), mfem_data->GetMesh1Conn(),
-                    mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2],
+      registerMesh( mesh_ids[0], mfem_data->GetMesh1NE(), mfem_data->GetNumNodes(), mfem_data->GetMesh1Conn(),
+                    mfem_data->GetElemType(), mfem_data->GetFaceOrder(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2],
                     mfem_data->GetMemorySpace() );
-      registerMesh( mesh_ids[1], mfem_data->GetMesh2NE(), mfem_data->GetNV(), mfem_data->GetMesh2Conn(),
-                    mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2],
+      registerMesh( mesh_ids[1], mfem_data->GetMesh2NE(), mfem_data->GetNumNodes(), mfem_data->GetMesh2Conn(),
+                    mfem_data->GetElemType(), mfem_data->GetFaceOrder(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2],
                     mfem_data->GetMemorySpace() );
 
       auto f_ptrs = mfem_data->GetRedecompResponsePtrs();
@@ -811,10 +814,12 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         // updates submesh-native grid functions and transfer operators on
         // the new redecomp mesh
         submesh_data->UpdateMfemSubmeshData( mfem_data->GetRedecompMesh(), new_redecomp );
+        // ContactFormulation uses mesh 1 as non-mortar; legacy mortar methods use mesh 2.
+        const auto nonmortar_mesh_id = mesh_ids[cs.hasContactFormulation() ? 0 : 1];
         auto g_ptrs = submesh_data->GetRedecompGapPtrs();
-        registerMortarGaps( mesh_ids[1], g_ptrs[0] );
+        registerMortarGaps( nonmortar_mesh_id, g_ptrs[0] );
         auto p_ptrs = submesh_data->GetRedecompPressurePtrs();
-        registerMortarPressures( mesh_ids[1], p_ptrs[0] );
+        registerMortarPressures( nonmortar_mesh_id, p_ptrs[0] );
         if ( ( cs.hasMfemJacobianData() || cs.getContactMethod() == ENERGY_MORTAR ) && new_redecomp ) {
           // updates Jacobian transfer operator for new redecomp mesh
           cs.getMfemJacobianData()->UpdateJacobianXfer();

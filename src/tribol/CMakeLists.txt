@@ -18,6 +18,8 @@ set(tribol_headers
     common/Enzyme.hpp
     common/ExecModel.hpp
     common/LoopExec.hpp
+    common/MdArray.hpp
+    common/MdSpan.hpp
     common/Parameters.hpp
 
     geom/CompGeom.hpp
@@ -26,6 +28,7 @@ set(tribol_headers
     geom/Hyperplane.hpp
     geom/NodalNormal.hpp
 
+    integ/BasisFunction.hpp
     integ/FE.hpp
     integ/Integration.hpp
 
@@ -48,7 +51,14 @@ set(tribol_headers
     physics/EnergyMortarAdapter.hpp
     physics/Physics.hpp
 
+    search/CoarseSearch.hpp
+    search/CoarseSearchFactory.hpp
+    search/BvhSearch.hpp
+    search/GridSearch.hpp
+    search/InterfacePairChecks.hpp
     search/InterfacePairFinder.hpp
+    search/RefinedSearch.hpp
+    search/ProjectedEdgeSearch.hpp
 
     utils/Algorithm.hpp
     utils/ContactPlaneOutput.hpp
@@ -85,7 +95,9 @@ set(tribol_sources
     physics/EnergyMortarAdapter.cpp
     physics/Physics.cpp
      
+    search/CoarseSearchFactory.cpp
     search/InterfacePairFinder.cpp
+    search/ProjectedEdgeSearch.cpp
 
     utils/ContactPlaneOutput.cpp
     utils/Math.cpp

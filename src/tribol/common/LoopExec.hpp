@@ -13,6 +13,7 @@
 #include "tribol/common/ExecModel.hpp"
 
 // Axom includes
+#include "axom/core/execution/execution_space.hpp"
 #include "axom/slic.hpp"
 
 // RAJA includes
@@ -130,16 +131,60 @@ void forAllImpl( forAllType<ExecutionMode::OpenMP>, IndexT N, BODY&& body )
 #define TRIBOL_BLOCK_SIZE 256
 
 /**
+ * @brief Map a Tribol execution mode to the synchronous Axom execution space required by Axom algorithms
+ *
+ * Keeping this conversion at the Axom call boundary allows Tribol classes to expose ExecutionMode without requiring
+ * callers to select an Axom execution policy. Dynamic has no specialization because an Axom execution-space type must
+ * be selected at compile time.
+ *
+ * @tparam EXEC Tribol execution mode
+ * @tparam BLOCK_SIZE Number of threads in each CUDA or HIP block
+ */
+template <ExecutionMode EXEC, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE>
+struct toAxomExecSpace;
+
+template <int BLOCK_SIZE>
+struct toAxomExecSpace<ExecutionMode::Sequential, BLOCK_SIZE> {
+  using type = axom::SEQ_EXEC;
+};
+
+#ifdef TRIBOL_USE_OPENMP
+template <int BLOCK_SIZE>
+struct toAxomExecSpace<ExecutionMode::OpenMP, BLOCK_SIZE> {
+  using type = axom::OMP_EXEC;
+};
+#endif
+
+#ifdef TRIBOL_USE_CUDA
+template <int BLOCK_SIZE>
+struct toAxomExecSpace<ExecutionMode::Cuda, BLOCK_SIZE> {
+  using type = axom::CUDA_EXEC<BLOCK_SIZE>;
+};
+#endif
+
+#ifdef TRIBOL_USE_HIP
+template <int BLOCK_SIZE>
+struct toAxomExecSpace<ExecutionMode::Hip, BLOCK_SIZE> {
+  using type = axom::HIP_EXEC<BLOCK_SIZE>;
+};
+#endif
+
+/**
  * @brief Call a RAJA forall loop with the execution mode known at compile time
  *
+ * GPU loops complete before this function returns by default because callers commonly consume their output or release
+ * captured storage immediately afterward. Set ASYNC to true only when all captured storage remains valid and the caller
+ * synchronizes before reading results on the host or releasing that storage. Sequential and OpenMP loops always
+ * complete before returning.
+ *
  * @tparam EXEC Execution mode for loop
- * @tparam BODY Functor type defining what to do inside the loop
- * @tparam ASYNC Can the loops be run asynchroniously?
+ * @tparam ASYNC Whether CUDA and HIP loops may return before their kernels complete
  * @tparam BLOCK_SIZE Block size for kernel (if applicable)
+ * @tparam BODY Functor type defining what to do inside the loop
  * @param N Number of items to iterate over
  * @param body Functor body defining what to do inside the loop
  */
-template <ExecutionMode EXEC, typename BODY, bool ASYNC = true, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE>
+template <ExecutionMode EXEC, bool ASYNC = false, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE, typename BODY>
 void forAllExec( IndexT N, BODY&& body )
 {
   detail::forAllImpl<BODY, ASYNC, BLOCK_SIZE>( detail::forAllType<EXEC>(), N, std::move( body ) );
@@ -148,14 +193,19 @@ void forAllExec( IndexT N, BODY&& body )
 /**
  * @brief Call a RAJA forall loop with the execution mode determined at run time
  *
- * @tparam ASYNC Can the loops be run asynchroniously?
+ * GPU loops complete before this function returns by default because callers commonly consume their output or release
+ * captured storage immediately afterward. Set ASYNC to true only when all captured storage remains valid and the caller
+ * synchronizes before reading results on the host or releasing that storage. Sequential and OpenMP loops always
+ * complete before returning.
+ *
+ * @tparam ASYNC Whether CUDA and HIP loops may return before their kernels complete
  * @tparam BLOCK_SIZE Block size for kernel (if applicable)
  * @tparam BODY Functor type defining what to do inside the loop
  * @param exec_mode Execution mode for loop
  * @param N Number of items to iterate over
  * @param body Functor body defining what to do inside the loop
  */
-template <bool ASYNC = true, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE, typename BODY>
+template <bool ASYNC = false, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE, typename BODY>
 void forAllExec( ExecutionMode exec_mode, IndexT N, BODY&& body )
 {
   switch ( exec_mode ) {

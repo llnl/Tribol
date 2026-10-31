@@ -569,10 +569,10 @@ bool CouplingScheme::isValidMethod()
 
   // check all methods for basic validity issues for non-null meshes
   if ( !this->m_nullMeshes ) {
-    if ( ( this->m_mesh1->getElementType() != LINEAR_EDGE && this->m_mesh1->getElementType() != LINEAR_QUAD &&
-           this->m_mesh1->getElementType() != LINEAR_TRIANGLE ) ||
-         ( this->m_mesh2->getElementType() != LINEAR_EDGE && this->m_mesh2->getElementType() != LINEAR_QUAD &&
-           this->m_mesh2->getElementType() != LINEAR_TRIANGLE ) ) {
+    if ( ( this->m_mesh1->getElementType() != EDGE && this->m_mesh1->getElementType() != QUAD &&
+           this->m_mesh1->getElementType() != TRIANGLE ) ||
+         ( this->m_mesh2->getElementType() != EDGE && this->m_mesh2->getElementType() != QUAD &&
+           this->m_mesh2->getElementType() != TRIANGLE ) ) {
       this->m_couplingSchemeErrors.cs_method_error = INVALID_ELEMENT_TYPE;
       return false;
     }
@@ -1004,6 +1004,11 @@ int CouplingScheme::checkExecutionModeData()
 //------------------------------------------------------------------------------
 void CouplingScheme::performBinning()
 {
+  // Contact formulations own their candidate search because each formulation decides which coarse pairs are usable.
+  if ( m_formulation ) {
+    return;
+  }
+
   // Find the interacting pairs for this coupling scheme. Will not use
   // binning if setInterfacePairs has been called.
   if ( !this->hasFixedBinning() ) {
@@ -1011,7 +1016,6 @@ void CouplingScheme::performBinning()
     m_interface_pairs = ArrayT<InterfacePair>( 0, 0, m_allocator_id );
 
     InterfacePairFinder finder( this );
-    finder.initialize();
     finder.findInterfacePairs();
 
     // For Cartesian binning, we only need to compute the binning once
@@ -1030,11 +1034,8 @@ void CouplingScheme::performBinning()
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
   if ( m_formulation ) {
-    if ( m_interface_pairs.size() > 0 || !hasFixedBinning() ) {
-      m_formulation->setInterfacePairs( std::move( m_interface_pairs ), 0 );
-    }
-    m_formulation->updateNodalGaps();
-    m_formulation->updateNodalForces();
+    // The formulation performs the search and gap calculations needed to compute forces from the current mesh data.
+    m_formulation->updateNodalForces( getMesh1().getView(), getMesh2().getView() );
     if ( m_formulation->hasTimeStepCalculation() ) {
       dt = m_formulation->computeTimeStep();
     }
@@ -1068,21 +1069,18 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // array of size one for counting number of planes on device
   ArrayT<IndexT> planes_ct_data( 1, 1, getAllocatorId() );
   auto planes_ct = planes_ct_data.view();
-  // Note: A true reduction would be more efficient here.
-  // However, it is not currently implemented because forAllExec would need
-  // to know the execution mode at compile time to instantiate the correct reducer.
+  // Check every binned pair and leave the pair array unchanged. Fixed binning reruns geometry checks on this array, so
+  // a pair that does not create a contact plane this cycle can still create one after the meshes move. Contact planes
+  // keep pointers to their source entries, so the array must not be resized or reordered until interface physics
+  // finishes. Note: A true reduction would be more efficient here. However, it is not currently implemented because
+  // forAllExec would need to know the execution mode at compile time to instantiate the correct reducer.
   forAllExec( getExecutionMode(), numPairs,
               [pairs, mesh1, mesh2, params, contact_method, contact_case, cg_view, planes_ct,
                pair_err] TRIBOL_HOST_DEVICE( IndexT i ) mutable {
                 auto& pair = pairs[i];
 
-                // call wrapper around the contact method/case specific
-                // geometry checks to determine whether to include a pair
-                // in the active set
-                bool interact = false;
-
-                FaceGeomException interact_err = CheckInterfacePair(
-                    pair, mesh1, mesh2, params, contact_method, contact_case, interact, cg_view, planes_ct.data() );
+                FaceGeomException interact_err = CheckInterfacePair( pair, mesh1, mesh2, params, contact_method,
+                                                                     contact_case, cg_view, planes_ct.data() );
 
                 // // Update pair reporting data for this coupling scheme
                 // this->updatePairReportingData( interact_err );
@@ -1091,15 +1089,8 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                 // they are not registered for contact, but we don't error out.
                 if ( interact_err != NO_FACE_GEOM_EXCEPTION ) {
                   tribol::atomicMax( &pair_err[0], 1 );
-                  pair.m_is_contact_candidate = false;
                   // TODO consider printing offending face(s) coordinates for debugging
                   // SLIC_DEBUG("Face geometry error, " << static_cast<int>(interact_err) << "for pair, " << kp << ".");
-                  // continue; // TODO SRW why do we need this? Seems like we want to update interface pair below
-                  // if-statements
-                } else if ( !interact ) {
-                  pair.m_is_contact_candidate = false;
-                } else {
-                  pair.m_is_contact_candidate = true;
                 }
               } );
 
@@ -1159,6 +1150,13 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 void CouplingScheme::updateContactFormulation()
 {
   if ( m_contactMethod == ENERGY_MORTAR ) {
+    // Formulation construction captures search configuration, so valid current meshes are required before invoking
+    // the factory. Setters that change search configuration update its derived values before rebuilding here.
+    // Status 2 selects a usable but nonoptimal execution mode, so only status 1 prevents formulation construction.
+    if ( !setMeshPointers() || checkExecutionModeData() == 1 ) {
+      SLIC_ERROR_ROOT( "ENERGY_MORTAR formulation configuration requires valid registered meshes." );
+      return;
+    }
     this->setContactFormulation( createContactFormulation( this ) );
   } else {
     SLIC_WARNING_ROOT(
@@ -1174,13 +1172,12 @@ bool CouplingScheme::init()
     // validity checks are done in the constructors of ContactFormulations
     this->m_isValid = true;
     // the validity checks also set mesh pointers and allocator id, so these calls are still needed
-    if ( !setMeshPointers() || checkExecutionModeData() != 0 ) {
+    // Status 2 selects a usable but nonoptimal execution mode, so only status 1 prevents initialization.
+    if ( !setMeshPointers() || checkExecutionModeData() == 1 ) {
       // TODO: consider design; should these checks be specific to a contact formulation or are they specific to
       // ENERGY_MORTAR?
       return false;
     }
-    // pass the new meshes to the formulation
-    m_formulation->updateMeshes( *m_mesh1, *m_mesh2 );
   } else {
     this->m_isValid = this->isValidCouplingScheme();
   }
@@ -1188,14 +1185,6 @@ bool CouplingScheme::init()
   if ( this->m_isValid ) {
     // set individual coupling scheme logging level
     this->setSlicLoggingLevel();
-
-    // set effective binning proximity, based on binning proximity scale and LOR factor
-    this->m_effective_binning_proximity_scale = this->getParameters().binning_proximity_scale;
-#ifdef BUILD_REDECOMP
-    if ( this->hasMfemData() && this->getMfemMeshData()->GetLORFactor() > 1 ) {
-      this->m_effective_binning_proximity_scale *= static_cast<RealT>( this->getMfemMeshData()->GetLORFactor() );
-    }
-#endif
 
     // compute the face data
     // different element normals for enzyme + mortar (matching Puso and Laursen)
@@ -1217,6 +1206,18 @@ bool CouplingScheme::init()
   } else {
     return false;
   }
+}
+
+//------------------------------------------------------------------------------
+RealT CouplingScheme::getEffectiveBinningProximityScale() const
+{
+  RealT effective_binning_proximity_scale = m_parameters.binning_proximity_scale;
+#ifdef BUILD_REDECOMP
+  if ( hasMfemData() && getMfemMeshData()->GetLORFactor() > 1 ) {
+    effective_binning_proximity_scale *= static_cast<RealT>( getMfemMeshData()->GetLORFactor() );
+  }
+#endif
+  return effective_binning_proximity_scale;
 }
 
 //------------------------------------------------------------------------------
@@ -1399,13 +1400,13 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                 RealT cXf1 = plane.m_cXf1;
                 RealT cYf1 = plane.m_cYf1;
                 RealT cZf1 = ( dim == 3 ) ? plane.m_cZf1 : 0.;
-                GalerkinEval( x1, cXf1, cYf1, cZf1, LINEAR, PHYSICAL, dim, dim, v1, vel_f1 );
+                GalerkinEval( x1, cXf1, cYf1, cZf1, LINEAR_LAGRANGE, PHYSICAL, dim, dim, v1, vel_f1 );
                 // interpolate nodal velocity at overlap centroid as projected
                 // onto face 2
                 RealT cXf2 = plane.m_cXf2;
                 RealT cYf2 = plane.m_cYf2;
                 RealT cZf2 = ( dim == 3 ) ? plane.m_cZf2 : 0.;
-                GalerkinEval( x2, cXf2, cYf2, cZf2, LINEAR, PHYSICAL, dim, dim, v2, vel_f2 );
+                GalerkinEval( x2, cXf2, cYf2, cZf2, LINEAR_LAGRANGE, PHYSICAL, dim, dim, v2, vel_f2 );
 
                 ////////////////////////////////////////////////
                 //                                            //
@@ -1804,7 +1805,7 @@ void CouplingScheme::createNodalNormalJacobianData()
 //------------------------------------------------------------------------------
 CouplingScheme::Viewer::Viewer( CouplingScheme& cs )
     : m_parameters( cs.m_parameters ),
-      m_effective_binning_proximity_scale( cs.m_effective_binning_proximity_scale ),
+      m_effective_binning_proximity_scale( cs.getEffectiveBinningProximityScale() ),
       m_contact_mode( cs.m_contactMode ),
       m_contact_case( cs.m_contactCase ),
       m_contact_method( cs.m_contactMethod ),

@@ -60,7 +60,7 @@ class MortarForceTest : public ::testing::Test {
     int cellType = static_cast<int>( tribol::UNDEFINED_ELEMENT );
     switch ( this->numNodesPerFace ) {
       case 4: {
-        cellType = (int)( tribol::LINEAR_QUAD );
+        cellType = (int)( tribol::QUAD );
         break;
       }
       default: {
@@ -72,8 +72,10 @@ class MortarForceTest : public ::testing::Test {
     const int nonmortarMeshId = 1;
 
     // register mesh
-    tribol::registerMesh( mortarMeshId, 1, this->numNodes, conn1, cellType, x, y, z, tribol::MemorySpace::Host );
-    tribol::registerMesh( nonmortarMeshId, 1, this->numNodes, conn2, cellType, x, y, z, tribol::MemorySpace::Host );
+    tribol::registerMesh( mortarMeshId, 1, this->numNodes, conn1, cellType, tribol::LINEAR_LAGRANGE, x, y, z,
+                          tribol::MemorySpace::Host );
+    tribol::registerMesh( nonmortarMeshId, 1, this->numNodes, conn2, cellType, tribol::LINEAR_LAGRANGE, x, y, z,
+                          tribol::MemorySpace::Host );
 
     tribol::Array1D<RealT> fx1( this->numNodes );
     tribol::Array1D<RealT> fy1( this->numNodes );

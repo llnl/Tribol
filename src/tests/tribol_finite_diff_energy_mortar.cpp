@@ -23,9 +23,60 @@
 
 #include "tribol/config.hpp"
 #include "tribol/common/Parameters.hpp"
+#include "tribol/integ/BasisFunction.hpp"
 #include "tribol/interface/tribol.hpp"
 
 namespace tribol {
+
+using LinearEdgeBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
+using LinearEdgePointView = MdSpan<const double, LinearEdgeBasis::spatial_dimension>;
+using LinearEdgeCoordinates = MdArray<double, LinearEdgeBasis::node_count, LinearEdgeBasis::spatial_dimension>;
+
+TEST( EnergyMortarCoordinates, preserves_edge_fraction_smoothing_on_normalized_interval )
+{
+  // EnergyMortar now evaluates edges on [-1, 1], so a smoothing length expressed as an edge fraction must expand and
+  // contract the normalized interval without changing its physical meaning.
+  constexpr double smoothing_length_fraction = 0.1;
+  constexpr double coordinate_tolerance = 1.0e-14;
+  // An edge fraction spans twice that distance on [-1, 1], so smoothing extends the endpoint at xi = 1 by 2 * del.
+  constexpr double normalized_support_limit = 1.0 + 2.0 * smoothing_length_fraction;
+  const double projections[2] = { -2.0, 2.0 };
+  double bounds[2];
+  ContactSmoothing::bounds_from_projections( projections, smoothing_length_fraction, bounds );
+
+  EXPECT_DOUBLE_EQ( bounds[0], -normalized_support_limit );
+  EXPECT_DOUBLE_EQ( bounds[1], normalized_support_limit );
+
+  double smooth_bounds[2];
+  ContactSmoothing::smooth_bounds( bounds, smoothing_length_fraction, smooth_bounds );
+  // Symmetric projections cover the complete edge, so smoothing must recover the exact normalized element endpoints.
+  EXPECT_NEAR( smooth_bounds[0], -1.0, coordinate_tolerance );
+  EXPECT_NEAR( smooth_bounds[1], 1.0, coordinate_tolerance );
+}
+
+/** @brief Pairs with disjoint projected intervals must contribute no measure or active quadrature points. */
+TEST( EnergyMortarCoordinates, disjoint_projected_intervals_have_zero_contribution )
+{
+  const RealT x1[] = { 0.0, 1.0 }, y1[] = { 0.0, 0.0 };
+  const RealT x2[] = { 3.0, 2.0 }, y2[] = { 0.1, 0.1 };
+  const IndexT connectivity[] = { 0, 1 };
+  MeshData mesh1( 0, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
+  const ContactParams params{ 0.1, 1.0, 3, true, 0.0 };
+  const EnergyMortarCalculator evaluator( params );
+  NodalContactData nodal{};
+  evaluator.compute_gtilde_and_area( { 0, 0 }, mesh1.getView(), mesh2.getView(), nodal.g_tilde.data(),
+                                     nodal.AI.data() );
+  for ( int node = 0; node < LinearEdgeBasis::node_count; ++node ) {
+    EXPECT_EQ( nodal.g_tilde[node], 0.0 );
+    EXPECT_EQ( nodal.AI[node], 0.0 );
+  }
+  const auto penalty = evaluator.compute_quadrature_point_penalty_data( { 0, 0 }, mesh1.getView(), mesh2.getView() );
+  EXPECT_FALSE( penalty.has_active_qp );
+  EXPECT_EQ( penalty.energy, 0.0 );
+  for ( const double force : penalty.force ) EXPECT_EQ( force, 0.0 );
+  for ( const double stiffness : penalty.stiffness ) EXPECT_EQ( stiffness, 0.0 );
+}
 
 // static ContactSmoothing smoother( ContactParams{} );
 
@@ -74,8 +125,8 @@ FiniteDiffResult EnergyMortarCalculator::validate_g_tilde( const InterfacePair& 
   result.g_tilde1_baseline = g1_base;
   result.g_tilde2_baseline = g2_base;
 
-  auto A_conn = viewer1.getConnectivity()( static_cast<std::size_t>( pair.m_element_id1 ) );
-  auto B_conn = viewer2.getConnectivity()( static_cast<std::size_t>( pair.m_element_id2 ) );
+  auto A_conn = viewer1.getConnectivity()( static_cast<std::size_t>( pair.element_id1_ ) );
+  auto B_conn = viewer2.getConnectivity()( static_cast<std::size_t>( pair.element_id2_ ) );
 
   result.node_ids = { static_cast<int>( A_conn[0] ), static_cast<int>( A_conn[1] ), static_cast<int>( B_conn[0] ),
                       static_cast<int>( B_conn[1] ) };
@@ -216,9 +267,10 @@ std::pair<double, double> EnergyMortarCalculator::eval_gtilde_fixed_qp( const In
                                                                         const QuadPoints& qp_fixed ) const
 {
   double A0[2], A1[2];
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
 
-  const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
+  const double J = ComputeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coordinates.view() );
 
   double gt1 = 0.0, gt2 = 0.0;
 
@@ -226,13 +278,15 @@ std::pair<double, double> EnergyMortarCalculator::eval_gtilde_fixed_qp( const In
     const double xiA = qp_fixed.qp[i];
     const double w = qp_fixed.w[i];
 
-    const double N1 = 0.5 - xiA;
-    const double N2 = 0.5 + xiA;
+    double basis_values[LinearEdgeBasis::node_count];
+    LinearEdgeBasis::Eval(
+        MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &xiA, LinearEdgeBasis::parent_dimension },
+        basis_values );
 
     const double gn = compute_weighted_normal_gap( pair, mesh1, mesh2, xiA );
 
-    gt1 += w * N1 * J * gn;
-    gt2 += w * N2 * J * gn;
+    gt1 += w * basis_values[0] * J * gn;
+    gt2 += w * basis_values[1] * J * gn;
   }
 
   return { gt1, gt2 };
@@ -253,8 +307,8 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
   result.fd_gradient_g1.assign( ndof * ndof, 0.0 );
   result.fd_gradient_g2.assign( ndof * ndof, 0.0 );
 
-  auto A_conn = viewer1.getConnectivity()( static_cast<std::size_t>( pair.m_element_id1 ) );
-  auto B_conn = viewer2.getConnectivity()( static_cast<std::size_t>( pair.m_element_id2 ) );
+  auto A_conn = viewer1.getConnectivity()( static_cast<std::size_t>( pair.element_id1_ ) );
+  auto B_conn = viewer2.getConnectivity()( static_cast<std::size_t>( pair.element_id2_ ) );
 
   result.node_ids = { static_cast<int>( A_conn[0] ), static_cast<int>( A_conn[1] ), static_cast<int>( B_conn[0] ),
                       static_cast<int>( B_conn[1] ) };
@@ -382,12 +436,12 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
   IndexT conn1[2] = { 1, 0 };
-  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh1( 0, 1, 2, conn1, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
 
   RealT x2[2] = { 0.2, 0.8 };
   RealT y2[2] = { 0.1, 0.1 };
   IndexT conn2[2] = { 0, 1 };
-  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
 
   ContactParams params;
   params.del = 0.1;
@@ -397,7 +451,7 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
 
   EnergyMortarCalculator evaluator( params );
   const auto result =
-      evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
+      evaluator.compute_quadrature_point_penalty_data( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView() );
   EXPECT_FALSE( result.has_active_qp );
   EXPECT_EQ( result.energy, 0.0 );
   EXPECT_TRUE( std::all_of( result.force.begin(), result.force.end(), []( double force ) { return force == 0.0; } ) );
@@ -410,12 +464,12 @@ TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
   IndexT conn1[2] = { 1, 0 };
-  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh1( 0, 1, 2, conn1, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
 
   RealT x2[2] = { 0.2, 0.8 };
   RealT y2[2] = { 0.0, 0.0 };
   IndexT conn2[2] = { 0, 1 };
-  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
 
   ContactParams params;
   params.del = 0.1;
@@ -425,7 +479,7 @@ TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
 
   EnergyMortarCalculator evaluator( params );
   const auto result =
-      evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
+      evaluator.compute_quadrature_point_penalty_data( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView() );
 
   EXPECT_TRUE( result.has_active_qp );
   EXPECT_EQ( result.energy, 0.0 );
@@ -440,12 +494,12 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
   IndexT conn1[2] = { 1, 0 };
-  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh1( 0, 1, 2, conn1, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
 
   RealT x2[2] = { 0.2, 0.8 };
   RealT y2[2] = { 0.1, 0.1 };
   IndexT conn2[2] = { 0, 1 };
-  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
 
   ContactParams params;
   params.del = 0.1;
@@ -456,14 +510,14 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
   double gap_without_residual[2] = { 0.0, 0.0 };
   double tributary_area_without_residual[2] = { 0.0, 0.0 };
   EnergyMortarCalculator evaluator_without_residual( params );
-  evaluator_without_residual.compute_gtilde_and_area( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(),
+  evaluator_without_residual.compute_gtilde_and_area( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView(),
                                                       gap_without_residual, tributary_area_without_residual );
 
   params.residual_gap = 0.15;
   double gap_with_residual[2] = { 0.0, 0.0 };
   double tributary_area_with_residual[2] = { 0.0, 0.0 };
   EnergyMortarCalculator evaluator_with_residual( params );
-  evaluator_with_residual.compute_gtilde_and_area( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(),
+  evaluator_with_residual.compute_gtilde_and_area( InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView(),
                                                    gap_with_residual, tributary_area_with_residual );
 
   // The residual gap shifts the gap integral without changing the projected overlap geometry.
@@ -480,12 +534,12 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
   IndexT conn1[2] = { 1, 0 };
-  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh1( 0, 1, 2, conn1, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
 
   RealT x2[2] = { 0.2, 0.8 };
   RealT y2[2] = { 0.1, 0.1 };
   IndexT conn2[2] = { 0, 1 };
-  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
 
   ContactParams params;
   params.del = 0.1;
@@ -495,7 +549,7 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
 
   EnergyMortarCalculator evaluator_without_residual( params );
   const auto inactive = evaluator_without_residual.compute_quadrature_point_penalty_data(
-      InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
+      InterfacePair{ 0, 0 }, mesh1.getView(), mesh2.getView() );
   EXPECT_FALSE( inactive.has_active_qp );
   EXPECT_EQ( inactive.energy, 0.0 );
   EXPECT_TRUE(
@@ -505,7 +559,7 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
 
   params.residual_gap = 0.15;
   EnergyMortarCalculator evaluator_with_residual( params );
-  const auto active = evaluator_with_residual.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ),
+  const auto active = evaluator_with_residual.compute_quadrature_point_penalty_data( InterfacePair{ 0, 0 },
                                                                                      mesh1.getView(), mesh2.getView() );
   EXPECT_TRUE( active.has_active_qp );
   EXPECT_GT( active.energy, 0.0 );
@@ -521,12 +575,12 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
   IndexT conn1[2] = { 1, 0 };
-  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh1( 0, 1, 2, conn1, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
 
   RealT x2[2] = { 0.2, 0.8 };
   RealT y2[2] = { -0.1, -0.1 };
   IndexT conn2[2] = { 0, 1 };
-  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
 
   ContactParams params;
   params.del = 0.1;
@@ -536,7 +590,7 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   params.residual_gap = GetParam();
 
   EnergyMortarCalculator evaluator( params );
-  const InterfacePair pair( 0, 0 );
+  const InterfacePair pair{ 0, 0 };
   const auto analytical = evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() );
   ASSERT_GT( analytical.energy, 0.0 );
 
@@ -611,21 +665,21 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
 
 TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
 {
-  // ── Geometry: two facing LINEAR_EDGE segments ────────────────────────────
+  // ── Geometry: two facing EDGE segments ────────────────────────────
   // Segment A: (0,0) -> (1,0)
   // Segment B: (0.2, 0.5) -> (0.8, 0.5)
 
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
   IndexT conn1[2] = { 1, 0 };  // reversed so nA points toward B
-  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh1( 0, 1, 2, conn1, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
 
   RealT x2[2] = { 0.2, 0.8 };
   RealT y2[2] = { 0.5, 0.5 };
   IndexT conn2[2] = { 0, 1 };
-  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
 
-  InterfacePair pair( 0, 0 );
+  InterfacePair pair{ 0, 0 };
 
   // ── Evaluator setup ──────────────────────────────────────────────────────
   ContactParams params_;
@@ -669,7 +723,7 @@ TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
 
 TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
 {
-  // ── Geometry: two facing LINEAR_EDGE segments ────────────────────────────
+  // ── Geometry: two facing EDGE segments ────────────────────────────
   // Segment A: (0,0) -> (1,0)
   // Segment B: (0.2, 0.5) -> (0.8, 0.5)
 
@@ -682,10 +736,10 @@ TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
   IndexT conn1[2] = { 1, 0 };
   IndexT conn2[2] = { 0, 1 };
 
-  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
-  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  MeshData mesh1( 0, 1, 2, conn1, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
 
-  InterfacePair pair( 0, 0 );
+  InterfacePair pair{ 0, 0 };
 
   // ── Evaluator setup ──────────────────────────────────────────────────────
   ContactParams params_;

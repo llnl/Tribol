@@ -425,7 +425,7 @@ TRIBOL_HOST_DEVICE inline int GetNumFaceNodes( int dim, FaceOrderType order_type
   // order for consistency
   int numNodes = 0;
   switch ( order_type ) {
-    case LINEAR:
+    case LINEAR_LAGRANGE:
       numNodes = ( dim == 3 ) ? 4 : 2;  // segments and quads
       break;
     default:

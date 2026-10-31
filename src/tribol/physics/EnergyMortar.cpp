@@ -2,6 +2,7 @@
 
 #include "axom/slic.hpp"
 #include "tribol/common/Enzyme.hpp"
+#include "tribol/integ/BasisFunction.hpp"
 
 #include <algorithm>
 #include <array>
@@ -16,6 +17,14 @@ namespace tribol {
 
 namespace {
 
+using LinearEdgeBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
+// View each endpoint as one [node][physical component] row so the owning coordinates retain the basis layout.
+using LinearEdgePointView = MdSpan<const double, LinearEdgeBasis::spatial_dimension>;
+using LinearEdgeCoordinates = MdArray<double, LinearEdgeBasis::node_count, LinearEdgeBasis::spatial_dimension>;
+
+constexpr double minimum_edge_length = 1.0e-14;
+constexpr double minimum_projection_determinant = 1.0e-12;
+
 // This MUST match what the ContactParams struct has in EnergyMortarAdapter
 // These had to be saved locally in order for enzyme to work correctly
 struct KernelParams {
@@ -28,13 +37,6 @@ struct KernelParams {
 TRIBOL_ENZYME_INLINE double effective_gap( double gap_normal, double normal_cosine, double residual_gap )
 {
   return gap_normal * normal_cosine - residual_gap;
-}
-
-// Return the line-element mapping Jacobian. Local edge coordinates span [-0.5, 0.5], so the Jacobian is the physical
-// length of the segment from A0 to A1.
-TRIBOL_ENZYME_INLINE double line_jacobian( const double* A0, const double* A1 )
-{
-  return std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
 }
 
 // Compute a unit normal vector for the line segment from coord1 to coord2
@@ -111,16 +113,6 @@ TRIBOL_ENZYME_INLINE void determine_legendre_weights( int N, double* W )
   }
 }
 
-// Map a point from the 1D parent segment coordinate to physical coordinates.
-// Parametric space: [-0.5, 0.5]
-TRIBOL_ENZYME_INLINE void iso_map( const double* coord1, const double* coord2, double xi, double* mapped_coord )
-{
-  double N1 = 0.5 - xi;
-  double N2 = 0.5 + xi;
-  mapped_coord[0] = N1 * coord1[0] + N2 * coord2[0];
-  mapped_coord[1] = N1 * coord1[1] + N2 * coord2[1];
-}
-
 // returns P0 and P1 which are the edge vertex coordinates associated with the edge with elem_id.
 // coordinates it returns
 TRIBOL_ENZYME_INLINE void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], double P1[2] )
@@ -136,9 +128,9 @@ TRIBOL_ENZYME_INLINE void endpoints( const MeshData::Viewer& mesh, int elem_id, 
 // Projects the point p onto the infinite line defined by edge A, using nB as
 // the projection direction.
 //
-// Edge A defines the target line:
+// Edge A defines the target line with the segment fraction alphaA:
 //
-//     x_A(xiA) = A0 + xiA * (A1 - A0)
+//     x_A(alphaA) = A0 + alphaA * (A1 - A0)
 //
 // The projection line is the line passing through p in the direction nB:
 // Point p is assumed to be on edge B
@@ -148,7 +140,7 @@ TRIBOL_ENZYME_INLINE void endpoints( const MeshData::Viewer& mesh, int elem_id, 
 // This function computes the point where the projection line intersects the
 // infinite line containing edge A.
 // The returned intersection is not restricted to the finite segment A0--A1.
-// If xiA is outside [0, 1], the intersection lies on the infinite extension of
+// If alphaA is outside [0, 1], the intersection lies on the infinite extension of
 // edge A. If nB is degenerate, or if the projection direction is nearly parallel
 // to edge A, the function falls back to returning p.
 TRIBOL_ENZYME_INLINE void find_intersection( const double* A0, const double* A1, const double* p, const double* nB,
@@ -158,7 +150,7 @@ TRIBOL_ENZYME_INLINE void find_intersection( const double* A0, const double* A1,
   const double d[2] = { p[0] - A0[0], p[1] - A0[1] };
 
   const double nlen = std::sqrt( nB[0] * nB[0] + nB[1] * nB[1] );
-  if ( nlen < 1e-14 ) {
+  if ( nlen < minimum_edge_length ) {
     intersection[0] = p[0];
     intersection[1] = p[1];
     return;
@@ -168,7 +160,7 @@ TRIBOL_ENZYME_INLINE void find_intersection( const double* A0, const double* A1,
   const double det = tA[0] * n[1] - tA[1] * n[0];
 
   // If the projection direction is nearly parallel to edge A, use p as a safe fallback.
-  if ( std::abs( det ) < 1e-12 ) {
+  if ( std::abs( det ) < minimum_projection_determinant ) {
     intersection[0] = p[0];
     intersection[1] = p[1];
     return;
@@ -181,65 +173,75 @@ TRIBOL_ENZYME_INLINE void find_intersection( const double* A0, const double* A1,
   intersection[1] = A0[1] + alpha * tA[1];
 }
 
-// Project the verticies of edge B onto edge A and return their local coordinates on A.
-// The variable projections is retuned with the coordinates in the parametric space where
-// the projections of edge B intersect edge A
-// If the projection lies outside of Edge A, the bounds (in the parametric space) are returned
+// Project the vertices of edge B onto edge A and return normalized [-1, 1] coordinates on A. Values outside this range
+// identify intersections with the infinite extension of edge A.
 TRIBOL_ENZYME_INLINE void get_projections( const double* A0, const double* A1, const double* B0, const double* B1,
                                            double* projections )
 {
-  double nB[2] = { 0.0, 0.0 };
-  find_normal( B0, B1, nB );
+  const double projected_edge_x = B1[0] - B0[0];
+  const double projected_edge_y = B1[1] - B0[1];
+  const double projected_edge_length =
+      std::sqrt( projected_edge_x * projected_edge_x + projected_edge_y * projected_edge_y );
+  const double integration_edge_x = A1[0] - A0[0];
+  const double integration_edge_y = A1[1] - A0[1];
+  const double integration_edge_length_squared =
+      integration_edge_x * integration_edge_x + integration_edge_y * integration_edge_y;
+  if ( projected_edge_length < minimum_edge_length ||
+       integration_edge_length_squared <= minimum_edge_length * minimum_edge_length ) {
+    projections[0] = 0.0;
+    projections[1] = 0.0;
+    return;
+  }
 
-  const double dxA = A1[0] - A0[0];
-  const double dyA = A1[1] - A0[1];
-  const double len2A = dxA * dxA + dyA * dyA;
+  double projected_normal[2] = { 0.0, 0.0 };
+  find_normal( B0, B1, projected_normal );
 
-  double q0[2] = { 0.0, 0.0 };
-  find_intersection( A0, A1, B0, nB, q0 );
-  // Convert the physical projection point on A to the local coordinate xi in [-0.5, 0.5].
-  const double alphaA0 = ( ( q0[0] - A0[0] ) * dxA + ( q0[1] - A0[1] ) * dyA ) / len2A;
-  const double xi0 = alphaA0 - 0.5;
+  double projected_point0[2] = { 0.0, 0.0 };
+  find_intersection( A0, A1, B0, projected_normal, projected_point0 );
+  const double integration_fraction0 =
+      ( ( projected_point0[0] - A0[0] ) * integration_edge_x + ( projected_point0[1] - A0[1] ) * integration_edge_y ) /
+      integration_edge_length_squared;
 
-  double q1[2] = { 0.0, 0.0 };
-  find_intersection( A0, A1, B1, nB, q1 );
-  const double alphaA1 = ( ( q1[0] - A0[0] ) * dxA + ( q1[1] - A0[1] ) * dyA ) / len2A;
-  const double xi1 = alphaA1 - 0.5;
+  double projected_point1[2] = { 0.0, 0.0 };
+  find_intersection( A0, A1, B1, projected_normal, projected_point1 );
+  const double integration_fraction1 =
+      ( ( projected_point1[0] - A0[0] ) * integration_edge_x + ( projected_point1[1] - A0[1] ) * integration_edge_y ) /
+      integration_edge_length_squared;
 
-  double xi_min = std::min( xi0, xi1 );
-  double xi_max = std::max( xi0, xi1 );
-
-  projections[0] = xi_min;
-  projections[1] = xi_max;
+  const double normalized_coordinate0 = 2.0 * integration_fraction0 - 1.0;
+  const double normalized_coordinate1 = 2.0 * integration_fraction1 - 1.0;
+  projections[0] = std::min( normalized_coordinate0, normalized_coordinate1 );
+  projections[1] = std::max( normalized_coordinate0, normalized_coordinate1 );
 }
 
 // Isolate each endpoint to avoid incorrect loop-local tape reuse in Enzyme reverse mode.
 TRIBOL_ENZYME_INLINE double smooth_bound( double bound, double del )
 {
-  double xi = 0.0;
-  double xi_hat = 0.0;
+  double unit_coordinate = 0.0;
+  double smoothed_unit_coordinate = 0.0;
 
-  // Shift from the local coordinate interval [-0.5, 0.5] to [0, 1].
-  xi = bound + 0.5;
+  // The smoothing length is a fraction of edge length, so apply the existing ramp after mapping [-1, 1] to [0, 1].
+  unit_coordinate = 0.5 * ( bound + 1.0 );
   if ( del == 0.0 ) {
-    xi_hat = xi;
+    smoothed_unit_coordinate = unit_coordinate;
   } else {
     // Apply quadratic ramps near the endpoints and leave the interior unchanged.
-    if ( 0.0 - del <= xi && xi <= del ) {
-      xi_hat = ( 1.0 / ( 4 * del ) ) * ( xi * xi ) + 0.5 * xi + del / 4.0;
-    } else if ( ( 1.0 - del ) <= xi && xi <= 1.0 + del ) {
+    if ( 0.0 - del <= unit_coordinate && unit_coordinate <= del ) {
+      smoothed_unit_coordinate =
+          ( 1.0 / ( 4 * del ) ) * ( unit_coordinate * unit_coordinate ) + 0.5 * unit_coordinate + del / 4.0;
+    } else if ( ( 1.0 - del ) <= unit_coordinate && unit_coordinate <= 1.0 + del ) {
       double b = -1.0 / ( 4.0 * del );
       double c = 0.5 + 1.0 / ( 2.0 * del );
       double d = 1.0 - del + ( 1.0 / ( 4.0 * del ) ) * pow( 1.0 - del, 2 ) - 0.5 * ( 1.0 - del ) -
                  ( 1.0 - del ) / ( 2.0 * del );
 
-      xi_hat = b * xi * xi + c * xi + d;
-    } else if ( del <= xi && xi <= ( 1.0 - del ) ) {
-      xi_hat = xi;
+      smoothed_unit_coordinate = b * unit_coordinate * unit_coordinate + c * unit_coordinate + d;
+    } else if ( del <= unit_coordinate && unit_coordinate <= ( 1.0 - del ) ) {
+      smoothed_unit_coordinate = unit_coordinate;
     }
   }
-  // Shift the smoothed coordinate back to [-0.5, 0.5].
-  return xi_hat - 0.5;
+  // Return to the normalized basis interval after preserving the original edge-fraction smoothing behavior.
+  return 2.0 * smoothed_unit_coordinate - 1.0;
 }
 
 // Integrate the nodal smoothed gap and tributary area contributions over edge A.
@@ -253,9 +255,9 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, Gparams* gp, double* g
   const double B0[2] = { x[4], x[5] };
   const double B1[2] = { x[6], x[7] };
 
-  const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
-
-  const double J_ref = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
+  const double J = ComputeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coordinates.view() );
+  const double J_ref = J;
 
   double nB[2];
   find_normal( B0, B1, nB );
@@ -276,12 +278,14 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, Gparams* gp, double* g
     const double xiA = gp->qp[i];
     const double w = gp->w[i];
 
-    const double N1 = 0.5 - xiA;
-    const double N2 = 0.5 + xiA;
+    double basis_values[LinearEdgeBasis::node_count];
+    LinearEdgeBasis::Eval(
+        MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &xiA, LinearEdgeBasis::parent_dimension },
+        basis_values );
 
     // x1 on segment A
     double x1[2];
-    iso_map( A0, A1, xiA, x1 );
+    MapToPhysical<LinearEdgeBasis>( basis_values, edge_coordinates.view(), x1 );
 
     // Project the quadrature point on edge A (nonmortar) onto edge B (mortar) along B's normal.
     double x2[2];
@@ -294,11 +298,11 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, Gparams* gp, double* g
     const double gn = -( dx * nB[0] + dy * nB[1] );
     const double g = effective_gap( gn, eta, gp->residual_gap );
 
-    g1 += w * N1 * g * J;
-    g2 += w * N2 * g * J;
+    g1 += w * basis_values[0] * g * J;
+    g2 += w * basis_values[1] * g * J;
 
-    AI_1 += w * N1 * J_ref;
-    AI_2 += w * N2 * J_ref;
+    AI_1 += w * basis_values[0] * J_ref;
+    AI_2 += w * basis_values[1] * J_ref;
   }
 
   g_tilde_out[0] = g1;
@@ -321,9 +325,9 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel_quad( const double* x, const Gparams* gp
   const double B0[2] = { x[4], x[5] };
   const double B1[2] = { x[6], x[7] };
 
-  const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
-
-  const double J_ref = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
+  const double J = ComputeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coordinates.view() );
+  const double J_ref = J;
 
   double nB[2];
   find_normal( B0, B1, nB );
@@ -343,12 +347,14 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel_quad( const double* x, const Gparams* gp
     const double xiA = gp->qp[i];
     const double w = gp->w[i];
 
-    const double N1 = 0.5 - xiA;
-    const double N2 = 0.5 + xiA;
+    double basis_values[LinearEdgeBasis::node_count];
+    LinearEdgeBasis::Eval(
+        MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &xiA, LinearEdgeBasis::parent_dimension },
+        basis_values );
 
     // x1 on segment A
     double x1[2];
-    iso_map( A0, A1, xiA, x1 );
+    MapToPhysical<LinearEdgeBasis>( basis_values, edge_coordinates.view(), x1 );
 
     // Project the quadrature point on edge A (non mortar) onto edge B (mortar) along B's normal.
     double x2[2];
@@ -361,11 +367,11 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel_quad( const double* x, const Gparams* gp
     const double gn = -( dx * nB[0] + dy * nB[1] );
     const double g = effective_gap( gn, eta, gp->residual_gap );
 
-    g1 += w * N1 * g * J;
-    g2 += w * N2 * g * J;
+    g1 += w * basis_values[0] * g * J;
+    g2 += w * basis_values[1] * g * J;
 
-    AI_1 += w * N1 * J_ref;
-    AI_2 += w * N2 * J_ref;
+    AI_1 += w * basis_values[0] * J_ref;
+    AI_2 += w * basis_values[1] * J_ref;
   }
 
   g_tilde_out[0] = g1;
@@ -508,13 +514,22 @@ void d2_kernel( const double* x, const KernelParams* kp, double* H )
 }
 
 // Isolate loop-local arrays to avoid a leak in Enzyme's reverse-mode tape.
-TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double xiA, double w, const double* A0, const double* A1,
+TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double xiA, double w, const double* edge_coordinates,
                                                          const double* B0, const double* B1, const double* nB,
                                                          double eta, double residual_gap, double penalty, double J,
                                                          bool* pair_has_active_qp )
 {
+  double basis_values[LinearEdgeBasis::node_count];
+  LinearEdgeBasis::Eval(
+      MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &xiA, LinearEdgeBasis::parent_dimension },
+      basis_values );
   double x1[2];
-  iso_map( A0, A1, xiA, x1 );
+  // Keep the Enzyme helper's raw-pointer interface and add the edge shape only where the mapping utility consumes it.
+  MapToPhysical<LinearEdgeBasis>(
+      basis_values,
+      MdSpan<const double, LinearEdgeBasis::node_count, LinearEdgeBasis::spatial_dimension>{
+          edge_coordinates, LinearEdgeBasis::node_count * LinearEdgeBasis::spatial_dimension },
+      x1 );
 
   double x2[2];
   find_intersection( B0, B1, x1, nB, x2 );
@@ -546,6 +561,12 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   ContactSmoothing::bounds_from_projections( projs, kp->del, bounds );
   double xi_bounds[2];
   ContactSmoothing::smooth_bounds( bounds, kp->del, xi_bounds );
+  // A zero-length projected interval has zero quadrature weight. Return before evaluating the gap so the pair remains
+  // inactive and contributes no energy.
+  if ( xi_bounds[1] <= xi_bounds[0] ) {
+    *energy = 0.0;
+    return;
+  }
   QuadPoints qp;
   EnergyMortarCalculator::compute_quadrature( xi_bounds, kp->N, &qp );
 
@@ -558,12 +579,13 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   // but the clamp is retained for defensive correctness in tests and direct calls.
   const double dot = nA[0] * nB[0] + nA[1] * nB[1];
   const double eta = ( dot < 0 ) ? dot : 0.0;
-  const double J = line_jacobian( A0, A1 );
+  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
+  const double J = ComputeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coordinates.view() );
 
   double value = 0.0;
   for ( int i = 0; i < kp->N; ++i ) {
-    value += qp_penalty_kernel_qp_energy( qp.qp[i], qp.w[i], A0, A1, B0, B1, nB, eta, kp->residual_gap, kp->k, J,
-                                          pair_has_active_qp );
+    value += qp_penalty_kernel_qp_energy( qp.qp[i], qp.w[i], edge_coordinates.data(), B0, B1, nB, eta, kp->residual_gap,
+                                          kp->k, J, pair_has_active_qp );
   }
 
   *energy = value;
@@ -623,8 +645,9 @@ Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, co
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
+  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
   double nB[2] = { 0.0 };
   find_normal( B0, B1, nB );
 
@@ -643,8 +666,12 @@ Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, co
   std::vector<double> x2( 2 * N );
 
   for ( int i = 0; i < N; ++i ) {
+    double basis_values[LinearEdgeBasis::node_count];
+    LinearEdgeBasis::Eval(
+        MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &qp.qp[i], LinearEdgeBasis::parent_dimension },
+        basis_values );
     double x1[2] = { 0.0 };
-    iso_map( A0, A1, qp.qp[i], x1 );
+    MapToPhysical<LinearEdgeBasis>( basis_values, edge_coordinates.view(), x1 );
 
     // Cache the projection of each quadrature point on edge A onto edge B.
     double x2_i[2] = { 0.0 };
@@ -671,10 +698,10 @@ std::array<double, 2> EnergyMortarCalculator::projections( const InterfacePair& 
 {
   double A0[2];
   double A1[2];
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
   double B0[2];
   double B1[2];
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   double projs[2];
   get_projections( A0, A1, B0, B1, projs );
@@ -689,18 +716,18 @@ TRIBOL_ENZYME_INLINE void ContactSmoothing::bounds_from_projections( const doubl
   double xi_min = std::min( projections[0], projections[1] );
   double xi_max = std::max( projections[0], projections[1] );
 
-  // Limit the integration interval to the extended range [-0.5 - del, 0.5 + del].
-  if ( xi_max < -0.5 - del ) {
-    xi_max = -0.5 - del;
+  // The normalized basis interval doubles edge fractions, so del extends each endpoint by 2 * del.
+  if ( xi_max < -1.0 - 2.0 * del ) {
+    xi_max = -1.0 - 2.0 * del;
   }
-  if ( xi_min > 0.5 + del ) {
-    xi_min = 0.5 + del;
+  if ( xi_min > 1.0 + 2.0 * del ) {
+    xi_min = 1.0 + 2.0 * del;
   }
-  if ( xi_min < -0.5 - del ) {
-    xi_min = -0.5 - del;
+  if ( xi_min < -1.0 - 2.0 * del ) {
+    xi_min = -1.0 - 2.0 * del;
   }
-  if ( xi_max > 0.5 + del ) {
-    xi_max = 0.5 + del;
+  if ( xi_max > 1.0 + 2.0 * del ) {
+    xi_max = 1.0 + 2.0 * del;
   }
 
   bounds[0] = xi_min;
@@ -745,16 +772,21 @@ double EnergyMortarCalculator::compute_weighted_normal_gap( const InterfacePair&
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   double nA[2] = { 0.0 };
   double nB[2] = { 0.0 };
   find_normal( A0, A1, nA );
   find_normal( B0, B1, nB );
 
+  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
+  double basis_values[LinearEdgeBasis::node_count];
+  LinearEdgeBasis::Eval(
+      MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &xiA, LinearEdgeBasis::parent_dimension },
+      basis_values );
   double x1[2] = { 0.0 };
-  iso_map( A0, A1, xiA, x1 );
+  MapToPhysical<LinearEdgeBasis>( basis_values, edge_coordinates.view(), x1 );
 
   // Project the point on edge A onto edge B along B's normal.
   double x2[2] = { 0.0 };
@@ -777,10 +809,11 @@ NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const Inter
 {
   double A0[2];
   double A1[2];
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
 
-  double J = std::sqrt( ( std::pow( ( A1[0] - A0[0] ), 2 ) + std::pow( ( A1[1] - A0[1] ), 2 ) ) );
-  double J_ref = std::sqrt( std::pow( A1[0] - A0[0], 2 ) + std::pow( A1[1] - A0[1], 2 ) );
+  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
+  const double J = ComputeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coordinates.view() );
+  const double J_ref = J;
 
   auto projs = projections( pair, mesh1, mesh2 );
 
@@ -801,18 +834,20 @@ NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const Inter
   for ( size_t i = 0; i < qp.qp.size(); ++i ) {
     double xiA = qp.qp[i];
     double w = qp.w[i];
-    double N1 = 0.5 - xiA;
-    double N2 = 0.5 + xiA;
+    double basis_values[LinearEdgeBasis::node_count];
+    LinearEdgeBasis::Eval(
+        MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &xiA, LinearEdgeBasis::parent_dimension },
+        basis_values );
 
     // Evaluate the weighted gap at the current quadrature point on edge A.
     double gn = compute_weighted_normal_gap( pair, mesh1, mesh2, xiA );
     double gn_active = gn;
 
-    g_tilde1 += w * N1 * gn_active * J;
-    g_tilde2 += w * N2 * gn_active * J;
+    g_tilde1 += w * basis_values[0] * gn_active * J;
+    g_tilde2 += w * basis_values[1] * gn_active * J;
 
-    AI_1 += w * N1 * J_ref;
-    AI_2 += w * N2 * J_ref;
+    AI_1 += w * basis_values[0] * J_ref;
+    AI_2 += w * basis_values[1] * J_ref;
   }
 
   NodalContactData contact_data;
@@ -841,8 +876,8 @@ void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshD
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
 
@@ -878,8 +913,8 @@ void EnergyMortarCalculator::grad_trib_area( const InterfacePair& pair, const Me
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
 
@@ -906,8 +941,8 @@ void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshDa
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
 
@@ -943,8 +978,8 @@ void EnergyMortarCalculator::compute_d2A_d2u( const InterfacePair& pair, const M
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
 
@@ -980,8 +1015,8 @@ double EnergyMortarCalculator::compute_quadrature_point_penalty_energy( const In
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
   const KernelParams kp{ p_.N, p_.del, p_.k, p_.residual_gap };
@@ -996,8 +1031,8 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1_, A0, A1 );
+  endpoints( mesh2, pair.element_id2_, B0, B1 );
 
   const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
   const KernelParams kp{ p_.N, p_.del, p_.k, p_.residual_gap };

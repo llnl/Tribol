@@ -75,7 +75,7 @@ TEST_F( TetMeshTest, build_and_check_tet_mesh )
 
   // sanity checks for this specific mesh
   EXPECT_EQ( this->m_mesh.mesh_constructed, true );
-  EXPECT_EQ( this->m_mesh.cellType, (int)( tribol::LINEAR_TRIANGLE ) );
+  EXPECT_EQ( this->m_mesh.cellType, (int)( tribol::TRIANGLE ) );
   EXPECT_EQ( this->m_mesh.numNodesPerFace, 3 );
   EXPECT_EQ( this->m_mesh.numNodesPerElement, 4 );
   EXPECT_EQ( this->m_mesh.numMortarElements, 6 * nMortarElems * nMortarElems * nMortarElems );

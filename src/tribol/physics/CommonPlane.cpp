@@ -77,14 +77,14 @@ TRIBOL_HOST_DEVICE RealT ComputeGapRatePressure( CommonPlanePair& plane, const M
   RealT cXf1 = plane.m_cXf1;
   RealT cYf1 = plane.m_cYf1;
   RealT cZf1 = ( dim == 3 ) ? plane.m_cZf1 : 0.;
-  GalerkinEval( x1, cXf1, cYf1, cZf1, LINEAR, PHYSICAL, dim, dim, v1, vel_f1 );
+  GalerkinEval( x1, cXf1, cYf1, cZf1, LINEAR_LAGRANGE, PHYSICAL, dim, dim, v1, vel_f1 );
 
   // interpolate nodal velocity at overlap centroid as projected
   // onto face 2
   RealT cXf2 = plane.m_cXf2;
   RealT cYf2 = plane.m_cYf2;
   RealT cZf2 = ( dim == 3 ) ? plane.m_cZf2 : 0.;
-  GalerkinEval( x2, cXf2, cYf2, cZf2, LINEAR, PHYSICAL, dim, dim, v2, vel_f2 );
+  GalerkinEval( x2, cXf2, cYf2, cZf2, LINEAR_LAGRANGE, PHYSICAL, dim, dim, v2, vel_f2 );
 
   // compute velocity gap vector
   RealT velGap[max_dim];
@@ -439,14 +439,14 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
     RealT cXf1 = plane.m_cXf1;
     RealT cYf1 = plane.m_cYf1;
     RealT cZf1 = ( dim == 3 ) ? plane.m_cZf1 : 0.;
-    GalerkinEval( x1, cXf1, cYf1, cZf1, LINEAR, PHYSICAL, dim, dim, v1, vel_f1 );
+    GalerkinEval( x1, cXf1, cYf1, cZf1, LINEAR_LAGRANGE, PHYSICAL, dim, dim, v1, vel_f1 );
 
     // interpolate nodal velocity at overlap centroid as projected
     // onto face 2
     RealT cXf2 = plane.m_cXf2;
     RealT cYf2 = plane.m_cYf2;
     RealT cZf2 = ( dim == 3 ) ? plane.m_cZf2 : 0.;
-    GalerkinEval( x2, cXf2, cYf2, cZf2, LINEAR, PHYSICAL, dim, dim, v2, vel_f2 );
+    GalerkinEval( x2, cXf2, cYf2, cZf2, LINEAR_LAGRANGE, PHYSICAL, dim, dim, v2, vel_f2 );
 
     // compute velocity gap vector
     RealT velGap[max_dim];

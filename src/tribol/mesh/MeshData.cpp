@@ -17,6 +17,7 @@
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/Atomics.hpp"
 #include "tribol/geom/ElementNormal.hpp"
+#include "tribol/integ/BasisFunction.hpp"
 #include "tribol/utils/Math.hpp"
 
 namespace tribol {
@@ -175,10 +176,11 @@ bool MeshElemData::isValidRatePenalty( PenaltyEnforcementOptions& pen_options )
 //                             //
 /////////////////////////////////
 MeshData::MeshData( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity,
-                    InterfaceElementType element_type, const RealT* x, const RealT* y, const RealT* z,
-                    MemorySpace mem_space )
+                    InterfaceElementType element_type, FaceOrderType face_order, const RealT* x, const RealT* y,
+                    const RealT* z, MemorySpace mem_space )
     : m_mesh_id( mesh_id ),
       m_element_type( element_type ),
+      m_face_order( face_order ),
       m_dim( getDimFromElementType() ),
       m_num_nodes( num_nodes ),
       m_mem_space( mem_space ),
@@ -241,11 +243,11 @@ void MeshData::setResponse( RealT* rx, RealT* ry, RealT* rz ) { m_response = cre
 int MeshData::getDimFromElementType() const
 {
   switch ( m_element_type ) {
-    case LINEAR_EDGE: {
+    case EDGE: {
       return 2;
     }
-    case LINEAR_TRIANGLE:
-    case LINEAR_QUAD: {
+    case TRIANGLE:
+    case QUAD: {
       return 3;
     }
     default: {
@@ -258,21 +260,13 @@ int MeshData::getDimFromElementType() const
 //------------------------------------------------------------------------------
 ArrayViewT<const IndexT, 2> MeshData::createConnectivity( IndexT num_elements, const IndexT* connectivity )
 {
-  switch ( m_element_type ) {
-    case LINEAR_EDGE: {
-      return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 2 } );
-    }
-    case LINEAR_TRIANGLE: {
-      return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 3 } );
-    }
-    case LINEAR_QUAD: {
-      return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 4 } );
-    }
-    default: {
-      SLIC_ERROR_ROOT( "Unsupported element type for a contact mesh." );
-      return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 0 } );
-    }
+  const int face_node_count = GetFaceNodeCount( m_element_type, m_face_order );
+  if ( face_node_count > 0 ) {
+    return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, face_node_count } );
   }
+
+  SLIC_ERROR_ROOT( "Unsupported element type and face order for a contact mesh." );
+  return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 0 } );
 }
 
 //------------------------------------------------------------------------------
@@ -319,6 +313,14 @@ template <typename ElemNormalMethod>
 bool MeshData::computeFaceData( ExecutionMode exec_mode, ElemNormalMethod elem_normal )
 {
   constexpr RealT nrml_mag_tol = 1.0e-15;
+
+  // Quadratic connectivity includes edge and interior nodes that are not polygon corners. The current centroid, radius,
+  // area, and normal formulas treat every connectivity entry as a corner, so they must not modify face data until a
+  // higher-order calculation is available.
+  if ( m_face_order != LINEAR_LAGRANGE ) {
+    SLIC_WARNING_ROOT( "MeshData::computeFaceData() does not support higher-order faces." );
+    return false;
+  }
 
   // allocate m_c
   m_c = ArrayT<RealT, 2>( { m_dim, numberOfElements() }, m_allocator_id );
@@ -597,6 +599,7 @@ void MeshData::print( std::ostream& os ) const
 MeshData::Viewer::Viewer( MeshData& mesh )
     : m_mesh_id( mesh.m_mesh_id ),
       m_element_type( mesh.m_element_type ),
+      m_face_order( mesh.m_face_order ),
       m_num_nodes( mesh.m_num_nodes ),
       m_mem_space( mesh.m_mem_space ),
       m_allocator_id( mesh.m_allocator_id ),
