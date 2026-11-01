@@ -53,11 +53,25 @@ class MfemPairAssembler {
   void addPair( InterfacePair pair, ArrayViewT<const RealT> residual, ArrayViewT<const RealT, 2> jacobian );
 
   /**
+   * @brief Add one pair's four Jacobian blocks without accumulating a residual.
+   * @param pair Valid element IDs in the supplied meshes.
+   * @param jacobian Host-accessible matrix with residual rows and coordinate columns in pair DOF order.
+   * @throws std::invalid_argument Matrix dimensions do not match the pair DOF count; no contributions are added.
+   */
+  void addPairJacobian( InterfacePair pair, ArrayViewT<const RealT, 2> jacobian );
+
+  /**
    * @brief Return assembled residual and Jacobian on parent true DOFs.
    * @return Owned force and df_dx; other outputs are absent. No pairs produce allocated zero outputs.
    * Results remain valid after this assembler is destroyed, while their MFEM spaces and communicator remain alive.
    */
   ContactFormulationResult assemble() const;
+
+  /**
+   * @brief Return the assembled Jacobian on parent displacement true DOFs.
+   * @return Owned parent true-DOF sparse matrix; zero pairs produce an allocated zero matrix.
+   */
+  shared::ParSparseMat assembleJacobian() const;
 
  private:
   const MfemMeshData& mesh_data_;                          ///< Borrowed displacement mesh and field transfers.

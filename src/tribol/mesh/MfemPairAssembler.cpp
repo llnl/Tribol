@@ -79,13 +79,26 @@ void MfemPairAssembler::addPair( InterfacePair pair, ArrayViewT<const RealT> res
   constexpr int pair_size = 2;
   for ( int i = 0; i < pair_size; ++i ) {
     const IndexT row_nodes = connectivity_[i].shape()[1];
-    const IndexT row_dofs = dof_offsets_[i + 1] - dof_offsets_[i];
     for ( IndexT node = 0; node < row_nodes; ++node ) {
       for ( int component = 0; component < dimension_; ++component ) {
         redecomp_residual_( connectivity_[i]( elements[i], node ) + component * scalar_size ) +=
             residual[dof_offsets_[i] + node * dimension_ + component];
       }
     }
+  }
+  addPairJacobian( pair, jacobian );
+}
+
+void MfemPairAssembler::addPairJacobian( InterfacePair pair, ArrayViewT<const RealT, 2> jacobian )
+{
+  if ( jacobian.shape()[0] != dof_offsets_[2] || jacobian.shape()[1] != dof_offsets_[2] ) {
+    throw std::invalid_argument( "Pair Jacobian must match the two elements' displacement DOFs." );
+  }
+  const MdArray<IndexT, 2> elements{ pair.element_id1_, pair.element_id2_ };
+  constexpr int pair_size = 2;
+  for ( int i = 0; i < pair_size; ++i ) {
+    const IndexT row_nodes = connectivity_[i].shape()[1];
+    const IndexT row_dofs = dof_offsets_[i + 1] - dof_offsets_[i];
     for ( int j = 0; j < pair_size; ++j ) {
       const IndexT column_nodes = connectivity_[j].shape()[1];
       const IndexT column_dofs = dof_offsets_[j + 1] - dof_offsets_[j];
@@ -111,11 +124,17 @@ ContactFormulationResult MfemPairAssembler::assemble() const
   parent_residual = 0.0;
   mesh_data_.GetParentRedecompTransfer().RedecompToParent( redecomp_residual_, parent_residual );
   parent_fes->GetProlongationMatrix()->MultTranspose( parent_residual, residual.get() );
-  auto jacobian = jacobian_data_.GetMfemJacobian( parent_fes, parent_fes, jacobian_contributions_ );
+  auto jacobian = assembleJacobian();
   ContactFormulationResult result;
   result.force.reset( residual.release() );
   result.df_dx.reset( jacobian.release() );
   return result;
+}
+
+shared::ParSparseMat MfemPairAssembler::assembleJacobian() const
+{
+  auto* parent_fes = mesh_data_.GetParentCoords().ParFESpace();
+  return jacobian_data_.GetMfemJacobian( parent_fes, parent_fes, jacobian_contributions_ );
 }
 
 }  // namespace tribol

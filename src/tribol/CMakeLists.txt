@@ -49,6 +49,7 @@ set(tribol_headers
     mesh/MeshData.hpp
     mesh/MethodCouplingData.hpp
     mesh/MfemData.hpp
+    mesh/MfemNodalAssembler.hpp
     mesh/MfemPairAssembler.hpp
 
     physics/AlignedMortar.hpp
@@ -102,6 +103,7 @@ set(tribol_sources
     mesh/MeshData.cpp
     mesh/MethodCouplingData.cpp
     mesh/MfemData.cpp
+    mesh/MfemNodalAssembler.cpp
     mesh/MfemPairAssembler.cpp
 
     physics/AlignedMortar.cpp

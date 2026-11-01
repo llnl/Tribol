@@ -110,8 +110,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   loop and reuse the array for gap, area, and derivative requests. Finite-difference checks perturb local coordinates
   without replacing mesh storage.
 - Common Plane and quadrature-point Energy Mortar share host MFEM assembly of pair residuals and Jacobians through
-  `MfemPairAssembler`. Local numerical array views use element/node/component DOF order and residual-row,
-  coordinate-column Jacobians. The assembler handles MFEM ordering and parent transfers independently of physics
+  `MfemPairAssembler`. Nodal Energy Mortar uses `MfemNodalAssembler` to accumulate nodal gap and area integrals,
+  assemble dual-to-displacement gradient matrices, transfer dual true DOFs to Redecomp, and assemble node-weighted pair
+  Hessians into parent displacement true DOFs. Local numerical array views use element/node/component DOF order and
+  residual-row, coordinate-column Jacobians. Both assemblers handle MFEM ordering and transfers independently of physics
   and derivative calculation, with storage reserved from the supplied pair count.
 - `ContactFormulation::computeNodalGaps()` and `computeNodalForces()` return an owning `ContactFormulationResult`.
   Uncalculated outputs are absent. These replace the update methods and formulation getters; formulations no longer

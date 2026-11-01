@@ -11,6 +11,7 @@
 #include "tribol/physics/ContactFormulation.hpp"
 #include "tribol/physics/EnergyMortar.hpp"
 #include "tribol/mesh/MfemData.hpp"
+#include "tribol/mesh/MfemNodalAssembler.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/search/CoarseSearch.hpp"
 #include "tribol/search/RefinedSearch.hpp"
@@ -81,66 +82,24 @@ class EnergyMortarAdapter : public ContactFormulation {
   virtual ~EnergyMortarAdapter() = default;
 
  private:
-  /** @brief Intermediate nodal fields owned by one calculation. */
-  struct NodalData {
-    ArrayT<InterfacePair> pairs;       ///< Geometry-approved pairs for the current call.
-    shared::ParVector g_tilde_vec;     ///< Weighted nodal gap on the dual submesh.
-    shared::ParVector A_vec;           ///< Nodal tributary areas.
-    shared::ParVector gap_vec;         ///< Area-normalized nodal gap.
-    shared::ParSparseMat dg_tilde_dx;  ///< Weighted-gap derivative on dual and parent true DOFs.
-    shared::ParSparseMat dA_dx;        ///< Tributary-area derivative on dual and parent true DOFs.
-  };
-
   /**
-   * @brief Assemble the nodal fields needed by gap or force calculations.
+   * @brief Accumulate pair nodal gaps, areas, and first derivatives into the supplied nodal assembler.
    * @param mesh1 Current non-mortar mesh.
    * @param mesh2 Current mortar mesh.
-   * @return Local nodal fields and pairs, discarded after producing the requested outputs.
+   * @param pairs Geometry-approved pairs for the current calculation.
+   * @param[in,out] assembler Nodal assembler receiving pair quantities and gradients.
+   * @return Assembled dual true-DOF vectors and (dual, parent) true-DOF Jacobian matrices.
    */
-  NodalData computeNodalData( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const;
+  MfemNodalQuantityData assembleNodalQuantities( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                                 ArrayViewT<const InterfacePair> pairs,
+                                                 MfemNodalAssembler& assembler ) const;
 
   /**
    * @brief Move the requested gap and weighted-gap derivative into the returned outputs.
-   * @param data Intermediate fields whose gap and derivative are transferred.
+   * @param quantities Assembled nodal fields whose gap and derivative are transferred.
    * @return Gap and dg_dx; other outputs are absent.
    */
-  ContactFormulationResult takeGapResult( NodalData& data ) const;
-
-  /**
-   * @brief Assemble the LM force Jacobian terms involving second derivatives of the weighted gap
-   *
-   * The weighted-gap Hessians are scaled by the redecomposed Lagrange multiplier field and assembled on the parent
-   * displacement true-dofs.
-   *
-   * @param mesh1 Current first mesh in Tribol coupling-scheme order
-   * @param mesh2 Current second mesh in Tribol coupling-scheme order
-   * @param pairs Geometry-approved pairs for the current calculation.
-   * @param redecomp_lambda Lagrange multiplier field on the redecomposed contact mesh
-   * @return Assembled parent displacement true-dof matrix
-   */
-  shared::ParSparseMat computeDfDxSecondDerivativesLM( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                                                       ArrayViewT<const InterfacePair> pairs,
-                                                       const mfem::GridFunction& redecomp_lambda ) const;
-
-  /**
-   * @brief Assemble the penalty force Jacobian terms involving second derivatives of gap and area
-   *
-   * The weighted-gap and tributary-area Hessians are scaled by the redecomposed pressure, weighted gap, and area fields
-   * and assembled on the parent displacement true-dofs.
-   *
-   * @param mesh1 Current first mesh in Tribol coupling-scheme order
-   * @param mesh2 Current second mesh in Tribol coupling-scheme order
-   * @param pairs Geometry-approved pairs for the current calculation.
-   * @param redecomp_pressure Penalty pressure field on the redecomposed contact mesh
-   * @param redecomp_g_tilde Weighted-gap field on the redecomposed contact mesh
-   * @param redecomp_A Tributary-area field on the redecomposed contact mesh
-   * @return Assembled parent displacement true-dof matrix
-   */
-  shared::ParSparseMat computeDfDxSecondDerivativesPenalty( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                                                            ArrayViewT<const InterfacePair> pairs,
-                                                            const mfem::GridFunction& redecomp_pressure,
-                                                            const mfem::GridFunction& redecomp_g_tilde,
-                                                            const mfem::GridFunction& redecomp_A ) const;
+  ContactFormulationResult takeGapResult( MfemNodalQuantityData& quantities ) const;
 
   /**
    * @brief Gather coordinates once for all calculations on the current element pair.

@@ -159,8 +159,9 @@ callers must not retain views into pressure/gap fields across an enforcement-loc
 ``EnergyMortarAdapter`` is nodal-only, stores its ``EnergyMortarCalculator`` by value, and no longer takes an
 enforcement-location template argument or uses a CRTP base class. ``ContactParams`` carries only the nodal quadrature
 differentiation flag and residual gap offset. Independent pair calculations share assembly through
-``PairContactFormulation``; nodal gap/area assembly and coupling between pairs that share nodes remain in
-``EnergyMortarAdapter``.
+``PairContactFormulation`` and ``MfemPairAssembler``. Nodal gap/area accumulation, dual-to-parent gradient transfers,
+submesh diagonal matrix construction, and weighted nodal Hessian assembly are handled by ``MfemNodalAssembler``,
+leaving ``EnergyMortarAdapter`` with only nodal energy/residual and chain-rule assembly.
 
 Selecting a penalty stiffness combination
 ------------------------------------------
