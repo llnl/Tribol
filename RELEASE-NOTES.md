@@ -19,9 +19,11 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   residual Jacobians, and multi-output nodal integral gradients/Hessians. Defaults use Enzyme on the host; methods can
   specialize the evaluators to provide other derivatives. They accept a previously calculated primal value and return
   owning arrays in pair DOF order.
-- Added independent `EnergyMortarEnergy` and `CommonPlaneForce` definitions. Quadrature-point Energy Mortar and
-  Common Plane use the shared derivative evaluators, with current geometry and quadrature differentiated inside
-  each definition. Primal definitions remain callable without Enzyme, including in device kernels.
+- Added independent `EnergyMortarEnergy` and `CommonPlaneForce` definitions and `integratePair()` for scalar and
+  fixed-size array quadrature integration. Quadrature-point Energy Mortar, Common Plane, and nodal Energy Mortar
+  evaluate point integrands through `integratePair()` and use the shared derivative evaluators, with current geometry
+  and quadrature differentiated inside each definition. Primal definitions remain callable without Enzyme, including in
+  device kernels.
 - Added an opt-in linear 2D Common Plane formulation for host MFEM frictionless constant-penalty contact. Enable it
   with `setMfemUseCommonPlaneFormulation()` after setting positive mesh penalties. Gaps and activation are evaluated at
   quadrature points; Enzyme differentiates the direct residual, including geometry-dependent overlap and normals.

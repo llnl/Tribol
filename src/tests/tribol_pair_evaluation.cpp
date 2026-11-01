@@ -5,9 +5,10 @@
 
 /**
  * @file
- * @brief Check local energy/residual definitions and their derivative interface independently of MFEM assembly.
- * Portable tests check Energy Mortar energy and activation on every enabled backend. Host Enzyme tests use analytical
- * gradients, Hessians, and nonsymmetric Jacobians. A specialized evaluator is also exercised without Enzyme.
+ * @brief Check local energy/residual definitions, pair integration, and derivative interfaces independently of MFEM
+ * assembly. Portable tests check pair integration and Energy Mortar energy/activation on every enabled backend. Host
+ * Enzyme tests use analytical gradients, Hessians, and nonsymmetric Jacobians. A specialized evaluator is also
+ * exercised without Enzyme.
  */
 #include "gtest/gtest.h"
 #include "axom/slic/core/SimpleLogger.hpp"
@@ -18,6 +19,7 @@
 #include "tribol/physics/EnergyMortarEnergy.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
+#include "tribol/integ/PairIntegral.hpp"
 #include "tribol/integ/PairQuadratureRule.hpp"
 
 namespace pair_evaluation_test {
@@ -138,6 +140,57 @@ TEST_P( PairDefinitionTest, computes_energy_from_current_geometry )
   checkEnergy<1>();
   checkEnergy<2>();
   checkEnergy<3>();
+}
+
+// Pair integration must weight active scalar/array contributions and skip the integrand on empty or invalid rules.
+TEST_P( PairDefinitionTest, integrates_scalar_and_vector_point_callables )
+{
+  using Rule = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
+  struct Summary {
+    PairIntegralValue<MdArray<RealT, 4>> vector_integral{};
+    PairIntegralValue<RealT> filtered_scalar{};
+    PairIntegralValue<RealT> invalid_scalar{};
+    IndexT invalid_calls{ 0 };
+  };
+  ArrayT<Summary> device_out( 1, 1, allocatorId() );
+  const auto out = device_out.view();
+  forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
+    const Rule rule{ SmoothedProjectedEdgeMapping{ 0.0 } };
+    const MdArray<RealT, 8> coordinates{ 0.0, 0.0, 2.0, 0.0, 2.0, 0.5, 0.0, 0.5 };
+    out[0].vector_integral = integratePair( coordinates.view(), rule, []( const auto& point ) {
+      const auto basis1 = point.template evalBasis1<EDGE, LINEAR_LAGRANGE>();
+      const auto basis2 = point.template evalBasis2<EDGE, LINEAR_LAGRANGE>();
+      const RealT x1 = point.position1()[0];
+      return MdArray<RealT, 4>{ basis1[0], basis1[1], basis2[0] + basis2[1], x1 };
+    } );
+    // Only keep the right half (x1 >= 1.0) of the [0, 2] interval; with 2 Gauss points, one point is active.
+    out[0].filtered_scalar =
+        integratePair( coordinates.view(), rule, []( const auto& point ) -> QuadraturePointContribution<RealT> {
+          if ( point.position1()[0] < 1.0 ) return {};
+          return { 1.0, true };
+        } );
+    const MdArray<RealT, 8> degenerate{ 1.0, 0.0, 1.0, 0.0, 2.0, 0.5, 0.0, 0.5 };
+    IndexT calls = 0;
+    out[0].invalid_scalar = integratePair( degenerate.view(), rule, [&]( const auto& ) {
+      ++calls;
+      return 1.0;
+    } );
+    out[0].invalid_calls = calls;
+  } );
+  const ArrayT<Summary, 1, MemorySpace::Host> host( device_out );
+  EXPECT_EQ( host[0].vector_integral.quadrature_result.status, QuadratureStatus::Success );
+  EXPECT_TRUE( host[0].vector_integral.has_active_points );
+  EXPECT_NEAR( host[0].vector_integral.value[0], 1.0, tolerance );
+  EXPECT_NEAR( host[0].vector_integral.value[1], 1.0, tolerance );
+  EXPECT_NEAR( host[0].vector_integral.value[2], 2.0, tolerance );
+  EXPECT_NEAR( host[0].vector_integral.value[3], 2.0, tolerance );
+  EXPECT_EQ( host[0].filtered_scalar.quadrature_result.status, QuadratureStatus::Success );
+  EXPECT_TRUE( host[0].filtered_scalar.has_active_points );
+  EXPECT_NEAR( host[0].filtered_scalar.value, 1.0, tolerance );
+  EXPECT_EQ( host[0].invalid_scalar.quadrature_result.status, QuadratureStatus::InvalidGeometry );
+  EXPECT_FALSE( host[0].invalid_scalar.has_active_points );
+  EXPECT_EQ( host[0].invalid_scalar.value, 0.0 );
+  EXPECT_EQ( host[0].invalid_calls, 0 );
 }
 INSTANTIATE_TEST_SUITE_P( execution, PairDefinitionTest, tribol::detail::enabledExecutionModes() );
 

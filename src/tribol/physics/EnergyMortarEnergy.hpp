@@ -11,6 +11,7 @@
 #define SRC_TRIBOL_PHYSICS_ENERGYMORTARENERGY_HPP_
 
 #include "tribol/geom/LinearEdgeGeometry.hpp"
+#include "tribol/integ/PairIntegral.hpp"
 #include "tribol/integ/QuadratureCommon.hpp"
 
 namespace tribol {
@@ -58,28 +59,18 @@ class EnergyMortarEnergy {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE EnergyMortarEnergyValue
   evaluate( MdSpan<const RealT, dof_count> coordinates ) const
   {
-    constexpr IndexT edge_dofs = dof_count / 2;
-    const LinearEdgeGeometry edge1( { coordinates.data(), edge_dofs } );
-    const LinearEdgeGeometry edge2( { coordinates.data() + edge_dofs, edge_dofs } );
-    const auto generated = quadrature_rule_.generate( edge1, edge2 );
-    EnergyMortarEnergyValue result{};
-    result.quadrature_result = { generated.result.status, generated.result.required_point_count };
-    if ( generated.result.status != QuadratureStatus::Success || generated.result.required_point_count == 0 ) {
-      return result;
-    }
-    const auto normal1 = edge1.normal(), normal2 = edge2.normal();
-    const RealT cosine = normal1.dot( normal2 );
-    const RealT alignment = cosine < 0.0 ? cosine : 0.0;
-    const auto points = generated.getView();
-    for ( IndexT q = 0; q < generated.result.required_point_count; ++q ) {
-      const auto point1 = edge1.position( points.geometry1_coords( q, 0 ) );
-      const auto point2 = edge2.position( points.geometry2_coords( q, 0 ) );
-      const RealT gap = LinearEdgeGeometry::Vector( point1, point2 ).dot( normal2 ) * alignment - residual_gap_;
-      if ( gap > 0.0 ) continue;
-      result.has_active_points = true;
-      result.energy += 0.5 * penalty_ * gap * gap * points.weights[q];
-    }
-    return result;
+    const auto integral =
+        integratePair( coordinates, quadrature_rule_, [&]( const auto& point ) -> QuadraturePointContribution<RealT> {
+          const auto normal1 = point.geometry1.normal(), normal2 = point.geometry2.normal();
+          const RealT cosine = normal1.dot( normal2 );
+          const RealT alignment = cosine < 0.0 ? cosine : 0.0;
+          const RealT gap =
+              LinearEdgeGeometry::Vector( point.position1(), point.position2() ).dot( normal2 ) * alignment -
+              residual_gap_;
+          if ( gap > 0.0 ) return {};
+          return { 0.5 * penalty_ * gap * gap, true };
+        } );
+    return { integral.value, integral.has_active_points, integral.quadrature_result };
   }
 
   /**

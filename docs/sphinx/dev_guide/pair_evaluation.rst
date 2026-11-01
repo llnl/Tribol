@@ -85,11 +85,18 @@ respectively. A specialization can be used without Enzyme; only the default impl
 Contact implementations
 ------------------------
 
+``integratePair()`` integrates scalar or fixed-size ``MdArray`` point callables over generated element-pair quadrature
+points. Each point provides ``geometry1``, ``geometry2``, ``geometry1_coords``, ``geometry2_coords``, ``position1()``,
+``position2()``, ``evalBasis1()``, and ``evalBasis2()``. Point callables can return an unweighted value directly or
+return a ``QuadraturePointContribution`` to indicate whether the quadrature point uses an active branch. The integrand
+is skipped when quadrature generation fails or produces zero points.
+
 ``EnergyMortarEnergy`` defines quadrature-point penalty energy, while ``CommonPlaneForce`` defines the direct Common
-Plane residual. Their portable ``evaluate()`` methods return primal values, activation, and quadrature status. Their
-host ``energy()`` or ``residual()`` methods implement the definition interfaces above. The shared pair formulation
-checks primal status and activation, then passes the already calculated value to the method's derivative evaluator.
-At zero gap, the compressive branch remains active so its tangent is calculated even though pressure is zero.
+Plane residual. Both call ``integratePair()`` in their portable ``evaluate()`` methods to return primal values,
+activation, and quadrature status. Their host ``energy()`` or ``residual()`` methods implement the definition
+interfaces above. The shared pair formulation checks primal status and activation, then passes the already calculated
+value to the method's derivative evaluator. At zero gap, the compressive branch remains active so its tangent is
+calculated even though pressure is zero.
 
 ``PairContactFormulation`` prepares one energy or force definition per request using current penalty data. Inside the
 pair loop it gathers coordinates, checks quadrature status, and skips inactive pairs before requesting derivatives.

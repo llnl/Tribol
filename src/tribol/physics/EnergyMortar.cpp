@@ -9,6 +9,7 @@
 #include <algorithm>
 
 #include "tribol/integ/BasisFunction.hpp"
+#include "tribol/integ/PairIntegral.hpp"
 
 namespace tribol {
 
@@ -16,7 +17,6 @@ namespace tribol {
 
 namespace {
 
-using LinearEdgeBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
 constexpr IndexT node_count = NodalContactData::node_count;
 
 /// Define nodal weighted-gap and tributary-area integrals for one pair calculation.
@@ -49,32 +49,23 @@ struct NodalIntegralDefinition {
   TRIBOL_ENZYME_INLINE MdArray<RealT, value_count> values( MdSpan<const RealT, dof_count> coordinates ) const
   {
     constexpr IndexT element_dofs = Calculator::element_dof_count;
-    const LinearEdgeGeometry::Coords coordinates1{ coordinates.data(), element_dofs };
-    const LinearEdgeGeometry::Coords coordinates2{ coordinates.data() + element_dofs, element_dofs };
+    const LinearEdgeGeometry geometry1( { coordinates.data(), element_dofs } );
+    const LinearEdgeGeometry geometry2( { coordinates.data() + element_dofs, element_dofs } );
     const auto quadrature =
-        varying ? quadrature_rule.generate( coordinates1, coordinates2 )
-                : quadrature_rule.mapIntegrationSurfaceRuleToElements( coordinates1, coordinates2, frozen.getView() );
-    if ( quadrature.result.status != QuadratureStatus::Success ) reportQuadratureFailure( quadrature.result.status );
-    MdArray<RealT, value_count> result{};
-    if ( quadrature.result.required_point_count == 0 ) return result;
-
-    const LinearEdgeGeometry geometry1( coordinates1 ), geometry2( coordinates2 );
-    const auto normal2 = geometry2.normal();
-    const RealT alignment = std::min( geometry1.normal().dot( normal2 ), RealT{ 0.0 } );
-    for ( IndexT q = 0; q < quadrature.result.required_point_count; ++q ) {
-      const RealT xi1 = quadrature.geometry1_coords( q, 0 );
-      MdArray<RealT, node_count> basis{};
-      LinearEdgeBasis::eval( { &xi1, LinearEdgeBasis::parametric_dimension }, basis.view() );
-      const auto point1 = geometry1.position( xi1 );
-      const auto point2 = geometry2.position( quadrature.geometry2_coords( q, 0 ) );
-      const RealT gap = LinearEdgeGeometry::Vector( point1, point2 ).dot( normal2 ) * alignment - residual_gap;
-      for ( IndexT node = 0; node < node_count; ++node ) {
-        const RealT weight = quadrature.weights[q] * basis[node];
-        result[node] += weight * gap;
-        result[node + node_count] += weight;
-      }
+        varying ? quadrature_rule.generate( geometry1, geometry2 )
+                : quadrature_rule.mapIntegrationSurfaceRuleToElements( geometry1, geometry2, frozen.getView() );
+    const auto integral = integratePair( geometry1, geometry2, quadrature, [&]( const auto& point ) {
+      const auto normal2 = point.geometry2.normal();
+      const RealT alignment = std::min( point.geometry1.normal().dot( normal2 ), RealT{ 0.0 } );
+      const auto basis1 = point.template evalBasis1<EDGE, LINEAR_LAGRANGE>();
+      const RealT gap =
+          LinearEdgeGeometry::Vector( point.position1(), point.position2() ).dot( normal2 ) * alignment - residual_gap;
+      return MdArray<RealT, value_count>{ basis1[0] * gap, basis1[1] * gap, basis1[0], basis1[1] };
+    } );
+    if ( integral.quadrature_result.status != QuadratureStatus::Success ) {
+      reportQuadratureFailure( integral.quadrature_result.status );
     }
-    return result;
+    return integral.value;
   }
 
   const QuadratureRule& quadrature_rule;  ///< Generator that outlives this call.
