@@ -374,6 +374,38 @@ TEST_F( MfemPairAssemblerTest, assembles_nodal_quantities_dual_transfers_and_wei
   reference_mat->Mult( parent_ones, reference_action );
   hessian_action -= reference_action;
   EXPECT_LT( norm( hessian_action ), tolerance );
+
+  // Verify chain-rule residual and outer-Hessian assembly from prescribed nodal derivatives.
+  auto derivatives = assembler.makeDerivativeData( true, true );
+  derivatives.d_energy_d_gap.fill( 3.0 );
+  derivatives.d_energy_d_area.fill( -1.5 );
+  derivatives.d2_energy_dg2.fill( 4.0 );
+  derivatives.d2_energy_dg_da.fill( -0.5 );
+  derivatives.d2_energy_da2.fill( 2.0 );
+
+  const auto chain_force = assembler.assembleForce( unclamped, derivatives );
+  const auto expected_force = ( derivatives.d_energy_d_gap * unclamped.weighted_gap_jacobian ) +
+                              ( derivatives.d_energy_d_area * unclamped.area_jacobian );
+  auto force_diff = chain_force.get();
+  force_diff -= expected_force.get();
+  EXPECT_LT( norm( force_diff ), tolerance );
+
+  const auto full_jacobian = assembler.assembleJacobian( unclamped, derivatives );
+  mfem::Vector full_action( fes_->GetTrueVSize() );
+  full_jacobian->Mult( parent_ones, full_action );
+  // Action of (dg^T * 4 * dg + dg^T * (-0.5) * dA + dA^T * (-0.5) * dg + dA^T * 2 * dA) * 1 on parent_ones:
+  mfem::Vector expected_outer_dual_g( unclamped_dg ), expected_outer_dual_a( unclamped_da );
+  expected_outer_dual_g *= 4.0;
+  expected_outer_dual_g.Add( -0.5, unclamped_da );
+  expected_outer_dual_a *= 2.0;
+  expected_outer_dual_a.Add( -0.5, unclamped_dg );
+  mfem::Vector expected_full_action( reference_action ), temp_parent( fes_->GetTrueVSize() );
+  unclamped.weighted_gap_jacobian->MultTranspose( expected_outer_dual_g, temp_parent );
+  expected_full_action += temp_parent;
+  unclamped.area_jacobian->MultTranspose( expected_outer_dual_a, temp_parent );
+  expected_full_action += temp_parent;
+  full_action -= expected_full_action;
+  EXPECT_LT( norm( full_action ), tolerance );
 }
 }  // namespace
 

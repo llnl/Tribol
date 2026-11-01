@@ -270,6 +270,264 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto integratePair(
                         std::forward<Integrand>( integrand ) );
 }
 
+/** @brief Tag base class enabling point-integrand arithmetic and clamping operators. */
+struct PairPointIntegrandTag {};
+
+/**
+ * @brief Evaluate a Lagrange basis on geometry1 at a pair quadrature point.
+ * @tparam Element Contact face shape matching geometry1's parametric dimension.
+ * @tparam Order Lagrange order of the basis.
+ */
+template <InterfaceElementType Element = EDGE, FaceOrderType Order = LINEAR_LAGRANGE>
+struct NodalBasis1 : PairPointIntegrandTag {
+  static constexpr IndexT node_count = BasisFunction<Element, Order>::node_count;  ///< Basis values per element.
+
+  /**
+   * @brief Evaluate basis functions on geometry1 at the current quadrature point.
+   * @tparam Point PairQuadraturePoint type.
+   * @param point Current pair quadrature point.
+   * @return Owned array of basis values in local-node order.
+   */
+  template <typename Point>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE MdArray<RealT, node_count> operator()( const Point& point ) const
+  {
+    return point.template evalBasis1<Element, Order>();
+  }
+};
+
+/** @brief Linear Lagrange basis functor on the first (non-mortar) edge at a pair quadrature point. */
+inline constexpr NodalBasis1<EDGE, LINEAR_LAGRANGE> nodal_basis{};
+
+namespace detail {
+
+/** @brief Detect whether T is an MdArray specialization. */
+template <typename T>
+inline constexpr bool is_md_array_v = false;
+
+template <typename T, IndexT... Extents>
+inline constexpr bool is_md_array_v<MdArray<T, Extents...>> = true;
+
+/**
+ * @brief Point integrand that activates only when the underlying scalar integrand is at most an upper bound.
+ * @tparam Integrand Scalar point integrand callable.
+ */
+template <typename Integrand>
+struct ClampedPointIntegrand : PairPointIntegrandTag {
+  Integrand integrand;       ///< Underlying point integrand.
+  RealT upper_bound{ 0.0 };  ///< Maximum active value.
+
+  /**
+   * @brief Evaluate and clamp the point integrand, marking values above upper_bound inactive.
+   * @tparam Point PairQuadraturePoint type.
+   * @param point Current pair quadrature point.
+   * @return Active point contribution when at most upper_bound; inactive zero otherwise.
+   */
+  template <typename Point>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadraturePointContribution<RealT> operator()( const Point& point ) const
+  {
+    const auto contribution = PairIntegrandTraits<decltype( integrand( point ) )>::toContribution( integrand( point ) );
+    if ( !contribution.active || contribution.value > upper_bound ) return {};
+    return { contribution.value, true };
+  }
+};
+
+/**
+ * @brief Point integrand scaled by a constant scalar factor.
+ * @tparam Integrand Point integrand callable.
+ */
+template <typename Integrand>
+struct ScaledPointIntegrand : PairPointIntegrandTag {
+  RealT scale{ 1.0 };   ///< Scalar multiplier.
+  Integrand integrand;  ///< Underlying point integrand.
+
+  /**
+   * @brief Evaluate the scaled point integrand, preserving explicit point activation when present.
+   * @tparam Point PairQuadraturePoint type.
+   * @param point Current pair quadrature point.
+   * @return Scaled point value or QuadraturePointContribution.
+   */
+  template <typename Point>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto operator()( const Point& point ) const
+  {
+    using RawType = std::remove_cvref_t<decltype( integrand( point ) )>;
+    if constexpr ( std::same_as<RawType, QuadraturePointContribution<typename PairIntegrandTraits<RawType>::Value>> ) {
+      const auto contribution = integrand( point );
+      using Value = typename PairIntegrandTraits<RawType>::Value;
+      if ( !contribution.active ) return QuadraturePointContribution<Value>{};
+      return QuadraturePointContribution<Value>{ scale * contribution.value, true };
+    } else {
+      return scale * integrand( point );
+    }
+  }
+};
+
+/**
+ * @brief Pointwise product of two point integrands.
+ * @tparam Left Left point integrand callable.
+ * @tparam Right Right point integrand callable.
+ */
+template <typename Left, typename Right>
+struct ProductPointIntegrand : PairPointIntegrandTag {
+  Left left;    ///< Left point integrand.
+  Right right;  ///< Right point integrand.
+
+  /**
+   * @brief Multiply both point integrands at the current quadrature point, preserving branch activation.
+   * @tparam Point PairQuadraturePoint type.
+   * @param point Current pair quadrature point.
+   * @return Product value or QuadraturePointContribution.
+   */
+  template <typename Point>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto operator()( const Point& point ) const
+  {
+    using LeftRaw = std::remove_cvref_t<decltype( left( point ) )>;
+    using RightRaw = std::remove_cvref_t<decltype( right( point ) )>;
+    using LeftTraits = PairIntegrandTraits<LeftRaw>;
+    using RightTraits = PairIntegrandTraits<RightRaw>;
+    constexpr bool has_contribution = std::same_as<LeftRaw, QuadraturePointContribution<typename LeftTraits::Value>> ||
+                                      std::same_as<RightRaw, QuadraturePointContribution<typename RightTraits::Value>>;
+    if constexpr ( has_contribution ) {
+      const auto left_c = LeftTraits::toContribution( left( point ) );
+      const auto right_c = RightTraits::toContribution( right( point ) );
+      using Value = std::remove_cvref_t<decltype( left_c.value * right_c.value )>;
+      if ( !left_c.active || !right_c.active ) return QuadraturePointContribution<Value>{};
+      return QuadraturePointContribution<Value>{ left_c.value * right_c.value, true };
+    } else {
+      return left( point ) * right( point );
+    }
+  }
+};
+
+}  // namespace detail
+
+/**
+ * @brief Clamp a scalar point integrand to at most an upper bound, marking points above the bound inactive.
+ * @tparam Integrand Point integrand callable type.
+ * @param integrand Scalar point integrand.
+ * @param upper_bound Maximum active value (typically 0.0 for compressive gaps).
+ * @return Point integrand returning an active QuadraturePointContribution when at most upper_bound.
+ */
+template <typename Integrand>
+  requires( !std::is_arithmetic_v<std::remove_cvref_t<Integrand>> &&
+            !detail::is_md_array_v<std::remove_cvref_t<Integrand>> )
+TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE constexpr detail::ClampedPointIntegrand<std::remove_cvref_t<Integrand>> min(
+    Integrand&& integrand, RealT upper_bound )
+{
+  return { {}, std::forward<Integrand>( integrand ), upper_bound };
+}
+
+/**
+ * @brief Scale a point integrand by a scalar on the left.
+ * @tparam Integrand Point integrand derived from PairPointIntegrandTag.
+ * @param scale Scalar multiplier.
+ * @param integrand Point integrand.
+ * @return Scaled point integrand.
+ */
+template <typename Integrand>
+  requires std::derived_from<std::remove_cvref_t<Integrand>, PairPointIntegrandTag>
+TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE constexpr detail::ScaledPointIntegrand<std::remove_cvref_t<Integrand>>
+operator*( RealT scale, Integrand&& integrand )
+{
+  return { {}, scale, std::forward<Integrand>( integrand ) };
+}
+
+/**
+ * @brief Scale a point integrand by a scalar on the right.
+ * @tparam Integrand Point integrand derived from PairPointIntegrandTag.
+ * @param integrand Point integrand.
+ * @param scale Scalar multiplier.
+ * @return Scaled point integrand.
+ */
+template <typename Integrand>
+  requires std::derived_from<std::remove_cvref_t<Integrand>, PairPointIntegrandTag>
+TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE constexpr detail::ScaledPointIntegrand<std::remove_cvref_t<Integrand>>
+operator*( Integrand&& integrand, RealT scale )
+{
+  return { {}, scale, std::forward<Integrand>( integrand ) };
+}
+
+/**
+ * @brief Multiply two point integrands pointwise at each quadrature point.
+ * @tparam Left Left point integrand callable.
+ * @tparam Right Right point integrand callable.
+ * @param left Left point integrand.
+ * @param right Right point integrand.
+ * @return Pointwise product integrand.
+ */
+template <typename Left, typename Right>
+  requires( ( std::derived_from<std::remove_cvref_t<Left>, PairPointIntegrandTag> ||
+              std::derived_from<std::remove_cvref_t<Right>, PairPointIntegrandTag> ) &&
+            !std::is_arithmetic_v<std::remove_cvref_t<Left>> && !std::is_arithmetic_v<std::remove_cvref_t<Right>> &&
+            !detail::is_md_array_v<std::remove_cvref_t<Left>> && !detail::is_md_array_v<std::remove_cvref_t<Right>> )
+TRIBOL_HOST_DEVICE
+    TRIBOL_ENZYME_INLINE constexpr detail::ProductPointIntegrand<std::remove_cvref_t<Left>, std::remove_cvref_t<Right>>
+    operator*( Left&& left, Right&& right )
+{
+  return { {}, std::forward<Left>( left ), std::forward<Right>( right ) };
+}
+
+/**
+ * @brief Bound element-pair integration rule that evaluates point integrands on a pair's generated quadrature points.
+ * @tparam QuadratureRule Element-pair quadrature generator.
+ */
+template <typename QuadratureRule>
+struct PairIntegrationRule {
+  using FirstGeometry = typename QuadratureRule::FirstGeometry;               ///< First element geometry type.
+  using SecondGeometry = typename QuadratureRule::SecondGeometry;             ///< Second element geometry type.
+  static constexpr IndexT first_dof_count = FirstGeometry::Coords::size();    ///< First-element coordinate DOFs.
+  static constexpr IndexT second_dof_count = SecondGeometry::Coords::size();  ///< Second-element coordinate DOFs.
+  static constexpr IndexT dof_count = first_dof_count + second_dof_count;     ///< Pair coordinate DOFs.
+
+  FirstGeometry geometry1;                         ///< First current element geometry.
+  SecondGeometry geometry2;                        ///< Second current element geometry.
+  typename QuadratureRule::QuadratureData points;  ///< Generated pair quadrature points and weights.
+  mutable QuadratureResult quadrature_result{};    ///< Generation status and point count from the latest integral.
+  mutable bool has_active_points{ false };         ///< Whether any evaluated integral had active quadrature points.
+
+  /**
+   * @brief Construct both element geometries and generate pair quadrature once for the current pair coordinates.
+   * @param coordinates Packed pair coordinates with element1 followed by element2.
+   * @param quadrature_rule Configured pair quadrature generator.
+   */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairIntegrationRule( MdSpan<const RealT, dof_count> coordinates,
+                                                               const QuadratureRule& quadrature_rule )
+      : geometry1( { coordinates.data(), first_dof_count } ),
+        geometry2( { coordinates.data() + first_dof_count, second_dof_count } ),
+        points( quadrature_rule.generate( geometry1, geometry2 ) ),
+        quadrature_result{ points.result.status, points.result.required_point_count }
+  {
+  }
+
+  /**
+   * @brief Integrate a point integrand over the generated pair quadrature points.
+   * @tparam Integrand Callable accepting PairQuadraturePoint<FirstGeometry, SecondGeometry>.
+   * @param integrand Point integrand.
+   * @return Integrated scalar or fixed-size array value.
+   */
+  template <typename Integrand>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto integrate( Integrand&& integrand ) const
+  {
+    const auto result = integratePair( geometry1, geometry2, points, std::forward<Integrand>( integrand ) );
+    quadrature_result = result.quadrature_result;
+    has_active_points = has_active_points || result.has_active_points;
+    return result.value;
+  }
+};
+
+/**
+ * @brief Integrate a point integrand using the supplied pair or nodal integration rule context.
+ * @tparam Integrand Point integrand callable.
+ * @tparam IntegrationRule Integration rule context providing integrate(integrand).
+ * @param integrand Point integrand expression (e.g., 0.5 * penalty * gap * gap or nodal_basis * gap).
+ * @param integration_rule Integration rule context.
+ * @return Integrated scalar or array value.
+ */
+template <typename Integrand, typename IntegrationRule>
+TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto integral( Integrand&& integrand, const IntegrationRule& integration_rule )
+{
+  return integration_rule.integrate( std::forward<Integrand>( integrand ) );
+}
+
 }  // namespace tribol
 
 #endif  // SRC_TRIBOL_INTEG_PAIRINTEGRAL_HPP_

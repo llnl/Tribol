@@ -183,6 +183,11 @@ shared::ParSparseMat MfemNodalAssembler::makeSubmeshDiagonalMatrix( const mfem::
                                                submesh_fes.GetTrueDofOffsets(), diagonal_true_dofs );
 }
 
+void MfemNodalAssembler::addPairHessian( InterfacePair pair, ArrayViewT<const RealT, 2> pair_hessian )
+{
+  pair_assembler_.addPairJacobian( pair, pair_hessian );
+}
+
 void MfemNodalAssembler::addPairHessians( InterfacePair pair, ArrayViewT<const RealT> gap_weights,
                                           ArrayViewT<const RealT, 3> gap_hessians, ArrayViewT<const RealT> area_weights,
                                           ArrayViewT<const RealT, 3> area_hessians )
@@ -221,6 +226,73 @@ void MfemNodalAssembler::addPairHessians( InterfacePair pair, ArrayViewT<const R
 
 shared::ParSparseMat MfemNodalAssembler::assembleHessians() const { return pair_assembler_.assembleJacobian(); }
 
+MfemNodalDerivativeData MfemNodalAssembler::makeDerivativeData( bool has_area_derivatives,
+                                                                bool has_outer_hessian ) const
+{
+  auto* submesh_fes = const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() );
+  MfemNodalDerivativeData data;
+  data.has_area_derivatives = has_area_derivatives;
+  data.has_outer_hessian = has_outer_hessian;
+  data.pressure = shared::ParVector( submesh_fes );
+  data.pressure.fill( 0.0 );
+  data.d_energy_d_gap = shared::ParVector( submesh_fes );
+  data.d_energy_d_gap.fill( 0.0 );
+  if ( has_area_derivatives ) {
+    data.d_energy_d_area = shared::ParVector( submesh_fes );
+    data.d_energy_d_area.fill( 0.0 );
+  }
+  if ( has_outer_hessian ) {
+    data.d2_energy_dg2 = shared::ParVector( submesh_fes );
+    data.d2_energy_dg2.fill( 0.0 );
+    if ( has_area_derivatives ) {
+      data.d2_energy_dg_da = shared::ParVector( submesh_fes );
+      data.d2_energy_dg_da.fill( 0.0 );
+      data.d2_energy_da2 = shared::ParVector( submesh_fes );
+      data.d2_energy_da2.fill( 0.0 );
+    }
+  }
+  return data;
+}
+
+shared::ParVector MfemNodalAssembler::assembleForce( const MfemNodalQuantityData& quantities,
+                                                     const MfemNodalDerivativeData& derivatives ) const
+{
+  const int dual_size = submesh_data_.GetSubmeshFESpace().GetTrueVSize();
+  if ( derivatives.d_energy_d_gap.size() != dual_size ||
+       ( derivatives.has_area_derivatives && derivatives.d_energy_d_area.size() != dual_size ) ) {
+    throw std::invalid_argument( "Nodal first-derivative vector lengths must match the dual submesh true-DOF count." );
+  }
+  auto force = derivatives.d_energy_d_gap * quantities.weighted_gap_jacobian;
+  if ( derivatives.has_area_derivatives ) {
+    force += derivatives.d_energy_d_area * quantities.area_jacobian;
+  }
+  return force;
+}
+
+shared::ParSparseMat MfemNodalAssembler::assembleJacobian( const MfemNodalQuantityData& quantities,
+                                                           const MfemNodalDerivativeData& derivatives ) const
+{
+  const int dual_size = submesh_data_.GetSubmeshFESpace().GetTrueVSize();
+  if ( derivatives.has_outer_hessian &&
+       ( derivatives.d2_energy_dg2.size() != dual_size ||
+         ( derivatives.has_area_derivatives &&
+           ( derivatives.d2_energy_dg_da.size() != dual_size || derivatives.d2_energy_da2.size() != dual_size ) ) ) ) {
+    throw std::invalid_argument( "Nodal second-derivative vector lengths must match the dual submesh true-DOF count." );
+  }
+  auto df_dx = assembleHessians();
+  if ( derivatives.has_outer_hessian ) {
+    auto d2_dg2_diag = makeSubmeshDiagonalMatrix( derivatives.d2_energy_dg2.get() );
+    df_dx += shared::ParSparseMat::rap( d2_dg2_diag, quantities.weighted_gap_jacobian );
+    if ( derivatives.has_area_derivatives ) {
+      auto d2_dg_da_diag = makeSubmeshDiagonalMatrix( derivatives.d2_energy_dg_da.get() );
+      auto d2_da2_diag = makeSubmeshDiagonalMatrix( derivatives.d2_energy_da2.get() );
+      df_dx += shared::ParSparseMat::rap( quantities.weighted_gap_jacobian, d2_dg_da_diag, quantities.area_jacobian );
+      df_dx += shared::ParSparseMat::rap( quantities.area_jacobian, d2_dg_da_diag, quantities.weighted_gap_jacobian );
+      df_dx += shared::ParSparseMat::rap( d2_da2_diag, quantities.area_jacobian );
+    }
+  }
+  return df_dx;
+}
+
 }  // namespace tribol
 #endif  // BUILD_REDECOMP
-

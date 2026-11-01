@@ -18,11 +18,11 @@
 #include "axom/slic/core/SimpleLogger.hpp"
 #include "mfem.hpp"
 #include "shared/mesh/MeshBuilder.hpp"
+#include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/physics/ContactFormulationFactory.hpp"
-#include "tribol/physics/EnergyMortarAdapter.hpp"
 #include "tribol/physics/PairContactFormulation.hpp"
 #include "tribol/integ/QuadratureRuleFactory.hpp"
 #include "tribol/search/CoarseSearchFactory.hpp"
@@ -82,7 +82,8 @@ bool usesPointCount( tribol::ContactFormulation* formulation, tribol::Enforcemen
   using Rule =
       tribol::PairQuadratureRule<tribol::SmoothedProjectedEdgeMapping, tribol::EdgeQuadratureRuleGenerator<Count>>;
   if ( location == tribol::EnforcementLocation::Nodal ) {
-    return dynamic_cast<tribol::EnergyMortarAdapter<Rule>*>( formulation ) != nullptr;
+    return dynamic_cast<tribol::PairContactFormulation<tribol::EnergyMortarNodalPairMethod<Rule>>*>( formulation ) !=
+           nullptr;
   }
   return dynamic_cast<tribol::PairContactFormulation<tribol::EnergyMortarPairMethod<Rule>>*>( formulation ) != nullptr;
 }
@@ -177,11 +178,10 @@ TEST_P( EnergyMortarQuadratureSettingsTest, returns_owned_outputs_for_each_calcu
   EXPECT_TRUE( std::isfinite( action.Norml2() ) );
 }
 
-// Changing only the combination to springs in series must scale pair energy and force for every Gauss count.
+// Changing only the combination to springs in series must scale energy and force for either location and Gauss count.
 TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
 {
   using namespace tribol;
-  setEnforcementLocation( 0, EnforcementLocation::QuadraturePoint );
   setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
   updateMfemParallelDecomposition( 1, true );
   auto& cs = CouplingSchemeManager::getInstance().at( 0 );
@@ -189,10 +189,17 @@ TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
       cs.getContactFormulation()->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView() );
   auto alternate = createWithQuadratureRule(
       quadratureOrder(), SmoothedProjectedEdgeMapping{}, [&]( auto rule ) -> std::unique_ptr<ContactFormulation> {
-        using Method = EnergyMortarPairMethod<decltype( rule ), SeriesPenaltyStiffness>;
         auto coarse = createCoarseSearch( cs.spatialDimension(), cs.getBinningMethod(), cs.getExecutionMode(),
                                           cs.getEffectiveBinningProximityScale(), 0.0 );
         auto refined = std::make_unique<ProjectedEdgeSearch>( cs.getExecutionMode(), false );
+        if ( std::get<0>( GetParam() ) == EnforcementLocation::Nodal ) {
+          using Method = EnergyMortarNodalPairMethod<decltype( rule ), SeriesPenaltyStiffness>;
+          return std::make_unique<PairContactFormulation<Method>>(
+              *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), std::move( coarse ),
+              std::move( refined ),
+              Method{ std::move( rule ), 0.0, RegisteredPenaltyInputs<SeriesPenaltyStiffness>{ true } } );
+        }
+        using Method = EnergyMortarPairMethod<decltype( rule ), SeriesPenaltyStiffness>;
         return std::make_unique<PairContactFormulation<Method>>(
             *cs.getMfemMeshData(), *cs.getMfemJacobianData(), std::move( coarse ), std::move( refined ),
             Method{ std::move( rule ), 0.0, RegisteredPenaltyInputs<SeriesPenaltyStiffness>{ true } } );
@@ -304,6 +311,54 @@ TEST_P( EnergyMortarQuadratureSettingsTest, uses_updated_penalties_without_redec
   updated.force->Add( -2.0, force );
   EXPECT_LT( updated.force->Norml2(), 1.0e-11 );
   EXPECT_NEAR( *updated.energy, 2.0 * energy, 1.0e-11 );
+}
+
+// Assembled force and Jacobian must match directional finite differences when both gap and tributary area vary.
+TEST_P( EnergyMortarQuadratureSettingsTest, assembled_force_and_jacobian_match_directional_finite_difference )
+{
+  tribol::setResidualGap( 0, 1.2 );
+  mfem::ParGridFunction base_coords( *coords_ );
+  mfem::ParGridFunction direction_gf( fes_.get() );
+  mfem::VectorFunctionCoefficient direction_coeff( 2, []( const mfem::Vector& x, mfem::Vector& v ) {
+    v.SetSize( 2 );
+    v[0] = 0.3 * x[0] * ( 1.0 - x[0] ) + 0.1 * x[1];
+    v[1] = -0.2 + 0.15 * x[0] - 0.1 * x[1];
+  } );
+  direction_gf.ProjectCoefficient( direction_coeff );
+  mfem::HypreParVector direction_true( fes_.get() );
+  direction_gf.GetTrueDofs( direction_true );
+
+  auto evaluate_at = [&]( tribol::RealT eps ) {
+    *coords_ = base_coords;
+    coords_->Add( eps, direction_gf );
+    tribol::updateMfemParallelDecomposition( 1, true );
+    auto& cs = tribol::CouplingSchemeManager::getInstance().at( 0 );
+    auto out = cs.getContactFormulation()->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView() );
+    if ( std::get<0>( GetParam() ) == tribol::EnforcementLocation::QuadraturePoint ) {
+      tribol::RealT global_energy = 0.0;
+      MPI_Allreduce( &*out.energy, &global_energy, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
+      out.energy = global_energy;
+    }
+    return out;
+  };
+
+  const auto base = evaluate_at( 0.0 );
+  constexpr tribol::RealT step = 1.0e-6;
+  const auto plus = evaluate_at( step );
+  const auto minus = evaluate_at( -step );
+
+  const tribol::RealT directional_force = mfem::InnerProduct( MPI_COMM_WORLD, *base.force, direction_true );
+  const tribol::RealT fd_energy = ( *plus.energy - *minus.energy ) / ( 2.0 * step );
+  EXPECT_NEAR( directional_force, fd_energy, 1.0e-5 );
+
+  mfem::Vector jv( fes_.get()->GetTrueVSize() );
+  base.df_dx->Mult( direction_true, jv );
+  mfem::Vector fd_force( *plus.force );
+  fd_force -= *minus.force;
+  fd_force *= 1.0 / ( 2.0 * step );
+  jv -= fd_force;
+  const tribol::RealT jv_err = std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, jv, jv ) );
+  EXPECT_LT( jv_err, 2.0e-4 );
 }
 
 /** @brief Host edges used to register an unsupported contact method. */

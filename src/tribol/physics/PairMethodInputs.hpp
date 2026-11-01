@@ -44,6 +44,12 @@ class RegisteredPenaltyInputs {
   }
 
   /**
+   * @brief Report whether kinematic penalty enforcement is enabled.
+   * @return True when penalty enforcement is active; false when Lagrange multiplier enforcement is active.
+   */
+  bool isEnabled() const noexcept { return enabled_; }
+
+  /**
    * @brief Read current registered constants and pass the supplied gap offset through unchanged.
    * @param mesh_data Registered constants, which can change between requests.
    * @param mesh1 Current first mesh, unused by this input provider.

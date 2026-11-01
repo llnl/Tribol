@@ -61,6 +61,43 @@ TEST( MdArray, owns_fixed_extent_row_major_data )
   EXPECT_EQ( copied_values( 0, 1 ), 8.0 );
 }
 
+// Rank-one arrays must support scalar multiplication on either side and inner products with arrays or views.
+TEST( MdArray, supports_rank_one_scalar_multiply_and_dot )
+{
+  const tribol::MdArray<double, 3> a{ 1.5, -2.0, 4.0 };
+  const auto right_scaled = a * 2.0;
+  const auto left_scaled = -3.0 * a;
+  EXPECT_DOUBLE_EQ( right_scaled[0], 3.0 );
+  EXPECT_DOUBLE_EQ( right_scaled[1], -4.0 );
+  EXPECT_DOUBLE_EQ( right_scaled[2], 8.0 );
+  EXPECT_DOUBLE_EQ( left_scaled[0], -4.5 );
+  EXPECT_DOUBLE_EQ( left_scaled[1], 6.0 );
+  EXPECT_DOUBLE_EQ( left_scaled[2], -12.0 );
+
+  const tribol::MdArray<double, 3> b{ 2.0, 0.5, -1.0 };
+  EXPECT_DOUBLE_EQ( tribol::dot( a, b ), -2.0 );
+  EXPECT_DOUBLE_EQ( tribol::dot( a.view(), b ), -2.0 );
+  EXPECT_DOUBLE_EQ( tribol::dot( a, b.view() ), -2.0 );
+  EXPECT_DOUBLE_EQ( tribol::dot( a.view(), b.view() ), -2.0 );
+
+  const auto clamped = tribol::min( a, 0.0 );
+  EXPECT_DOUBLE_EQ( clamped[0], 0.0 );
+  EXPECT_DOUBLE_EQ( clamped[1], -2.0 );
+  EXPECT_DOUBLE_EQ( clamped[2], 0.0 );
+
+  const tribol::MdArray<double, 3> areas{ 0.5, 0.0, 2.0 };
+  const auto inv_areas = 1.0 / areas;
+  EXPECT_DOUBLE_EQ( inv_areas[0], 2.0 );
+  EXPECT_DOUBLE_EQ( inv_areas[1], 0.0 );
+  EXPECT_DOUBLE_EQ( inv_areas[2], 0.5 );
+  EXPECT_DOUBLE_EQ( tribol::sum( clamped, clamped, inv_areas ), 0.0 );
+
+  const tribol::MdArray<double, 2> g_tilde{ -0.2, -0.4 };
+  const tribol::MdArray<double, 2> node_areas{ 0.5, 0.8 };
+  EXPECT_NEAR( 0.5 * 10.0 * tribol::sum( g_tilde, g_tilde, 1.0 / node_areas ), 0.5 * 10.0 * ( 0.04 / 0.5 + 0.16 / 0.8 ),
+               1.0e-15 );
+}
+
 }  // namespace
 
 int main( int argc, char* argv[] )

@@ -57,13 +57,11 @@ set(tribol_headers
     physics/ContactFormulation.hpp
     physics/ContactFormulationFactory.hpp
     physics/Mortar.hpp
-    physics/EnergyMortar.hpp
     physics/EnergyMortarEnergy.hpp
     physics/PenaltyStiffness.hpp
     physics/PairEvaluation.hpp
     physics/PairMethod.hpp
     physics/PairMethodInputs.hpp
-    physics/EnergyMortarAdapter.hpp
     physics/PairContactFormulation.hpp
     physics/Physics.hpp
 
@@ -110,8 +108,6 @@ set(tribol_sources
     physics/CommonPlane.cpp
     physics/ContactFormulationFactory.cpp
     physics/Mortar.cpp
-    physics/EnergyMortar.cpp
-    physics/EnergyMortarAdapter.cpp
     physics/PairContactFormulation.cpp
     physics/Physics.cpp
      

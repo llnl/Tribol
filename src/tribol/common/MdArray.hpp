@@ -6,6 +6,7 @@
 #ifndef SRC_TRIBOL_COMMON_MDARRAY_HPP_
 #define SRC_TRIBOL_COMMON_MDARRAY_HPP_
 
+#include <cmath>
 #include <concepts>
 #include <type_traits>
 
@@ -140,6 +141,108 @@ class MdArray {
 
   T data_[size()];
 };
+
+/**
+ * @brief Scale each entry of a rank-one array by a scalar.
+ * @tparam T Element value type.
+ * @tparam Extent Number of entries in the vector.
+ * @param array Input rank-one array.
+ * @param scalar Scalar multiplier.
+ * @return Owned rank-one array with each entry multiplied by scalar.
+ */
+template <typename T, IndexT Extent>
+TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE constexpr MdArray<T, Extent> operator*( const MdArray<T, Extent>& array,
+                                                                                T scalar )
+{
+  MdArray<T, Extent> result{};
+  for ( IndexT i = 0; i < Extent; ++i ) result[i] = array[i] * scalar;
+  return result;
+}
+
+/**
+ * @brief Scale each entry of a rank-one array by a scalar on the left.
+ * @tparam T Element value type.
+ * @tparam Extent Number of entries in the vector.
+ * @param scalar Scalar multiplier.
+ * @param array Input rank-one array.
+ * @return Owned rank-one array with each entry multiplied by scalar.
+ */
+template <typename T, IndexT Extent>
+TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE constexpr MdArray<T, Extent> operator*( T scalar,
+                                                                                const MdArray<T, Extent>& array )
+{
+  return array * scalar;
+}
+
+/**
+ * @brief Divide a scalar by each entry of a rank-one array, returning zero for entries within tolerance of zero.
+ * @tparam T Element value type.
+ * @tparam Extent Number of entries in the vector.
+ * @param scalar Numerator value.
+ * @param array Denominator rank-one array.
+ * @return Owned rank-one array with each nonzero entry dividing scalar.
+ */
+template <typename T, IndexT Extent>
+TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE constexpr MdArray<T, Extent> operator/( T scalar,
+                                                                                const MdArray<T, Extent>& array )
+{
+  constexpr T zero_tolerance = static_cast<T>( 1.0e-14 );
+  MdArray<T, Extent> result{};
+  for ( IndexT i = 0; i < Extent; ++i ) {
+    result[i] = std::abs( array[i] ) > zero_tolerance ? scalar / array[i] : T{};
+  }
+  return result;
+}
+
+/**
+ * @brief Clamp each entry of a rank-one array to at most an upper bound.
+ * @tparam T Element value type.
+ * @tparam Extent Number of entries in the vector.
+ * @param array Input rank-one array.
+ * @param upper_bound Maximum value retained for each entry.
+ * @return Owned rank-one array with each entry equal to min(array[i], upper_bound).
+ */
+template <typename T, IndexT Extent>
+TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE constexpr MdArray<T, Extent> min( const MdArray<T, Extent>& array,
+                                                                          T upper_bound )
+{
+  MdArray<T, Extent> result{};
+  for ( IndexT i = 0; i < Extent; ++i ) result[i] = array[i] < upper_bound ? array[i] : upper_bound;
+  return result;
+}
+
+/**
+ * @brief Sum the elementwise product of one or more rank-one owning arrays or views with matching extent.
+ * @tparam First First rank-one MdArray or MdSpan.
+ * @tparam Rest Additional rank-one MdArray or MdSpan types with the same extent as First.
+ * @param first First vector.
+ * @param rest Additional vectors multiplied entry-by-entry with first.
+ * @return Sum over all entries of the elementwise product.
+ */
+template <typename First, typename... Rest>
+  requires( First::rank() == 1 && ( ( Rest::rank() == 1 && Rest::size() == First::size() ) && ... ) )
+TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE constexpr auto sum( const First& first, const Rest&... rest )
+{
+  using ResultType = std::remove_cv_t<typename First::value_type>;
+  ResultType total{};
+  for ( IndexT i = 0; i < First::size(); ++i ) total += ( first[i] * ... * rest[i] );
+  return total;
+}
+
+/**
+ * @brief Compute the inner product of two rank-one owning arrays or views with matching extent.
+ * @tparam Left Rank-one MdArray or MdSpan.
+ * @tparam Right Rank-one MdArray or MdSpan with the same extent as Left.
+ * @param left First vector.
+ * @param right Second vector.
+ * @return Sum of elementwise products.
+ */
+template <typename Left, typename Right>
+  requires( Left::rank() == 1 && Right::rank() == 1 && Left::size() == Right::size() )
+TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE constexpr auto dot( const Left& left, const Right& right )
+{
+  return sum( left, right );
+}
 
 }  // namespace tribol
 

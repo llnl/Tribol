@@ -5,7 +5,6 @@
 
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/physics/ContactFormulationFactory.hpp"
-#include "tribol/physics/EnergyMortarAdapter.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/search/CoarseSearchFactory.hpp"
@@ -127,24 +126,19 @@ std::unique_ptr<ContactFormulation> createEnergyMortarForRule( CouplingScheme* c
   auto coarse_search = createCoarseSearch( cs->spatialDimension(), binning_method, execution_mode,
                                            binning_proximity_scale, residual_gap );
   auto refined_search = std::make_unique<ProjectedEdgeSearch>( execution_mode, cs->getContactCase() == AUTO );
+  const bool use_penalty = cs->getEnforcementOptions().penalty_options.kinematic_calc_set;
   if ( cs->getParameters().enforcement_location == EnforcementLocation::QuadraturePoint ) {
     using Method = EnergyMortarPairMethod<QuadratureRule>;
     return std::make_unique<PairContactFormulation<Method>>(
         *cs->getMfemMeshData(), *cs->getMfemJacobianData(), std::move( coarse_search ), std::move( refined_search ),
-        Method{ std::move( quadrature_rule ), residual_gap,
-                RegisteredPenaltyInputs<>{ cs->getEnforcementOptions().penalty_options.kinematic_calc_set } } );
+        Method{ std::move( quadrature_rule ), residual_gap, RegisteredPenaltyInputs<>{ use_penalty } } );
   }
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "Nodal Energy Mortar requires pressure/gap data." );
-  RealT k = 1000.0;
-  const auto* k1 = cs->getMfemMeshData()->GetMesh1KinematicConstantPenalty();
-  const auto* k2 = cs->getMfemMeshData()->GetMesh2KinematicConstantPenalty();
-  if ( k1 && k2 ) k = AveragePenaltyStiffness{}( *k1, *k2 );
-  const bool enzyme_quadrature = true;
-  // Nodal penalty enforcement is selected by the kinematic penalty options; otherwise use the multiplier field.
-  const bool use_penalty = cs->getEnforcementOptions().penalty_options.kinematic_calc_set;
-  return std::make_unique<EnergyMortarAdapter<QuadratureRule>>(
+  using Method = EnergyMortarNodalPairMethod<QuadratureRule>;
+  return std::make_unique<PairContactFormulation<Method>>(
       *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( coarse_search ),
-      std::move( refined_search ), k, std::move( quadrature_rule ), enzyme_quadrature, use_penalty, residual_gap );
+      std::move( refined_search ),
+      Method{ std::move( quadrature_rule ), residual_gap, RegisteredPenaltyInputs<>{ use_penalty } } );
 }
 
 std::unique_ptr<ContactFormulation> createEnergyMortar( CouplingScheme* cs )

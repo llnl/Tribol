@@ -33,6 +33,15 @@ using EnergyMortarPairMethod =
     EnergyPairMethod<EnergyMortarEnergy<QuadratureRule>, RegisteredPenaltyInputs<PenaltyStiffness>>;
 
 /**
+ * @brief Nodal Energy Mortar defaults: nodal gap/area integrals, nodal energy derivatives, and registered penalties.
+ * @tparam QuadratureRule Smoothed projected-edge pair rule.
+ * @tparam PenaltyStiffness Combination of registered mesh constants; defaults to their arithmetic mean.
+ */
+template <typename QuadratureRule, typename PenaltyStiffness = AveragePenaltyStiffness>
+using EnergyMortarNodalPairMethod =
+    NodalPairMethod<EnergyMortarNodalEnergy<QuadratureRule>, RegisteredPenaltyInputs<PenaltyStiffness>>;
+
+/**
  * @brief Common Plane defaults: residual derivatives and current scaled mesh penalties.
  * @tparam BaseQuadratureRule Gauss rule on the common-line interval.
  * @tparam PenaltyStiffness Combination of scaled mesh penalties; defaults to springs in series.
@@ -42,7 +51,7 @@ using CommonPlanePairMethod =
     ForcePairMethod<CommonPlaneForce<BaseQuadratureRule>, ScaledMeshPenaltyInputs<PenaltyStiffness>>;
 
 /**
- * @brief Search current surfaces and assemble independent element-pair residuals and Jacobians on parent true DOFs.
+ * @brief Search current surfaces and assemble element-pair or nodal residuals and Jacobians on MFEM true DOFs.
  *
  * No geometry, quadrature, or calculated fields are retained. Method preparation uses current settings on each request.
  * @tparam PairMethod Prepares a definition and calculates coordinate derivatives; primal results expose activation.
@@ -61,11 +70,35 @@ class PairContactFormulation : public ContactFormulation {
   PairContactFormulation( MfemMeshData& mesh_data, MfemJacobianData& jacobian_data,
                           std::unique_ptr<CoarseSearch> coarse_search, std::unique_ptr<RefinedSearch> refined_search,
                           PairMethod method );
+
   /**
-   * @brief Return the assembled residual and Jacobian, with energy only for an energy-defined method.
+   * @brief Borrow parent and dual submesh transfer data and own search and nodal method configuration.
+   * @param mesh_data Displacement data; must outlive this formulation.
+   * @param submesh_data Dual submesh pressure/gap data; must outlive this formulation.
+   * @param jacobian_data Displacement and dual Jacobian transfer; must outlive this formulation.
+   * @param coarse_search Non-null owned candidate search.
+   * @param refined_search Non-null owned pair acceptance checks.
+   * @param method Owned nodal method configuration; no coordinate views or calculated fields.
+   */
+  PairContactFormulation( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jacobian_data,
+                          std::unique_ptr<CoarseSearch> coarse_search, std::unique_ptr<RefinedSearch> refined_search,
+                          PairMethod method );
+
+  /**
+   * @brief Return assembled nodal gaps and their coordinate Jacobian for nodal methods.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
-   * @return Owned force and df_dx. Nodal gap, pressure, multiplier derivatives, and timestep are absent.
+   * @return Owned gap and dg_dx on dual submesh and parent true DOFs.
+   * @throws std::logic_error The method does not use nodal submesh assembly.
+   */
+  ContactFormulationResult computeNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override;
+
+  /**
+   * @brief Return the assembled residual and Jacobian, with energy for energy-defined methods and nodal fields for
+   * nodal methods.
+   * @param mesh1 Current first mesh.
+   * @param mesh2 Current second mesh.
+   * @return Owned force and df_dx, plus gap, dg_dx, pressure, and optional df_dp for nodal methods.
    * @throws std::invalid_argument Invalid method inputs or pair geometry.
    * @throws std::length_error Insufficient quadrature storage or unrepresentable assembly size.
    */
@@ -73,7 +106,8 @@ class PairContactFormulation : public ContactFormulation {
 
  private:
   MfemMeshData& mesh_data_;                        ///< Borrowed displacement and decomposition data.
-  MfemJacobianData& jacobian_data_;                ///< Borrowed parent Jacobian transfer, with no dual path required.
+  MfemSubmeshData* submesh_data_{ nullptr };       ///< Borrowed dual submesh data for nodal methods.
+  MfemJacobianData& jacobian_data_;                ///< Borrowed Jacobian transfer.
   std::unique_ptr<CoarseSearch> coarse_search_;    ///< Owned spatial search.
   std::unique_ptr<RefinedSearch> refined_search_;  ///< Owned pair acceptance checks.
   PairMethod method_;                              ///< Owned method configuration.

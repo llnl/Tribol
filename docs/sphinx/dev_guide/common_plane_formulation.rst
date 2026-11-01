@@ -56,9 +56,10 @@ retrieval functions. Displacement Jacobian transfer uses no pressure or gap fini
 nonopposing normals produce successful zero-point rules; invalid geometry and insufficient capacity are failures
 whose output is discarded and reported before residual evaluation.
 
-Common Plane and quadrature-point Energy Mortar share ``PairContactFormulation<PairMethod>`` for search, coordinate
-collection, and MFEM assembly. ``CommonPlanePairMethod`` defaults to ``SeriesPenaltyStiffness`` and selects
-``ForcePairEvaluator``. ``EnergyMortarPairMethod`` defaults to ``AveragePenaltyStiffness`` and selects
-``EnergyPairEvaluator``. These method names are aliases for generic force/energy adapters and independent input
-providers. Either method accepts the other stiffness combination as its second template argument. Both use displacement-only Jacobian transfer without pressure/gap fields. Nodal
-Energy Mortar remains in ``EnergyMortarAdapter<QuadratureRule>`` with its pressure/gap fields and nodal chain rule.
+Common Plane, quadrature-point Energy Mortar, and nodal Energy Mortar share ``PairContactFormulation<PairMethod>`` for
+search, coordinate collection, and MFEM assembly. ``CommonPlanePairMethod`` defaults to ``SeriesPenaltyStiffness`` and
+selects ``ForcePairEvaluator``. ``EnergyMortarPairMethod`` and ``EnergyMortarNodalPairMethod`` default to
+``AveragePenaltyStiffness``. These method names are aliases for generic force, energy, and nodal adapters and
+independent input providers. Any of these methods accepts the other stiffness combination as its second template
+argument. Common Plane and quadrature-point Energy Mortar use displacement-only Jacobian transfer without pressure/gap
+fields; nodal Energy Mortar uses dual submesh fields and ``MfemNodalAssembler``.

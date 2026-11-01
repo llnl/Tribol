@@ -91,77 +91,70 @@ points. Each point provides ``geometry1``, ``geometry2``, ``geometry1_coords``, 
 return a ``QuadraturePointContribution`` to indicate whether the quadrature point uses an active branch. The integrand
 is skipped when quadrature generation fails or produces zero points.
 
-``EnergyMortarEnergy`` defines quadrature-point penalty energy, while ``CommonPlaneForce`` defines the direct Common
-Plane residual. Both call ``integratePair()`` in their portable ``evaluate()`` methods to return primal values,
-activation, and quadrature status. Their host ``energy()`` or ``residual()`` methods implement the definition
-interfaces above. The shared pair formulation checks primal status and activation, then passes the already calculated
-value to the method's derivative evaluator. At zero gap, the compressive branch remains active so its tangent is
-calculated even though pressure is zero.
+``EnergyMortarEnergy`` defines quadrature-point penalty energy, ``EnergyMortarNodalEnergy`` defines nodal Energy Mortar
+integrals and nodal-weighted pair energy, and ``CommonPlaneForce`` defines the direct Common Plane residual. All three
+call ``integratePair()`` in their portable ``evaluate()`` methods to return primal values, activation, and quadrature
+status. Their host ``energy()``, ``values()``, or ``residual()`` methods implement the definition interfaces above. Both
+Energy Mortar definitions share ``EnergyMortarGap`` at each quadrature point. The shared pair formulation checks primal
+status and activation, then passes the already calculated value to the method's derivative evaluator. At zero gap, the
+compressive branch remains active so its tangent is calculated even though pressure is zero.
 
-``PairContactFormulation`` prepares one energy or force definition per request using current penalty data. Inside the
-pair loop it gathers coordinates, checks quadrature status, and skips inactive pairs before requesting derivatives.
-The evaluator reuses the calculated primal value, and the formulation passes views of its ``residual`` and
-``jacobian`` arrays directly to ``MfemPairAssembler::addPair()``. ``EnergyMortarCalculator`` supplies only nodal
-integrals and derivatives; it has no quadrature-point penalty result or evaluation wrappers.
+``PairContactFormulation`` prepares the energy, force, or nodal definition per request using current penalty data.
+Inside the pair loop it gathers coordinates, checks quadrature status, and skips inactive pairs before requesting
+derivatives. For parent-only methods, the evaluator reuses the calculated primal value, and the formulation passes views
+of its ``residual`` and ``jacobian`` arrays directly to ``MfemPairAssembler::addPair()``. For nodal methods,
+``EnergyMortarNodalEnergy`` defines the pair Lagrange-multiplier energy as
+``dot(pressure, integratePair(coordinates, rule, nodal_basis * gap))`` and nodal weighted-gap/tributary-area integrals
+through ``integratePair()``, while ``MfemNodalAssembler`` accumulates nodal integrals and assembles the nodal chain-rule
+residual and Jacobian.
 
-These evaluators differentiate independent pair functions with respect to coordinates. Nodal Energy Mortar continues
-to assemble its gap and area integrals and apply its existing nodal chain rule, including coupling between pairs that
-share a node.
+Coordinate-based nodal Energy Mortar calculations
+-------------------------------------------------
 
-Coordinate-based Energy Mortar calculations
--------------------------------------------
-
-``EnergyMortarCalculator`` accepts a ``CoordinateView`` into an owning ``Coordinates`` array. The array contains the
-first element followed by the second, with each node's spatial components adjacent. Coordinate counts come from the
-calculator's geometry traits. Mesh access belongs to the adapter, which gathers once in each pair loop and reuses the
-same array for values and derivatives:
+``EnergyMortarNodalEnergy`` accepts a ``CoordinateView`` into an owning ``Coordinates`` array. The array contains the
+first element followed by the second, with each node's spatial components adjacent:
 
 .. code-block:: cpp
 
-   Calculator::Coordinates coordinates;
+   EnergyMortarNodalEnergy<Rule>::Coordinates coordinates;
    mesh1.getFaceCoords(pair.element_id1_, coordinates.data());
-   mesh2.getFaceCoords(pair.element_id2_, coordinates.data() + Calculator::element_dof_count);
-   const auto result = calculator.computeContactQuantities(coordinates.view());
+   mesh2.getFaceCoords(pair.element_id2_, coordinates.data() + EnergyMortarNodalEnergy<Rule>::element_dof_count);
+   const auto primal = definition.evaluate(coordinates.view());
+   const auto gradients = VectorPairEvaluator<EnergyMortarNodalEnergy<Rule>>::evaluateGradients(
+       coordinates.view(), definition, primal.value.view());
 
-Nodal gap, area, gradient, and Hessian methods use the same coordinate view. The calculator retains no views and
-performs no mesh lookup. Finite-difference checks perturb local copies of this array. Frozen quadrature continues to
-hold integration-surface coordinates and reference weights fixed while current normals and physical Jacobian weights
-change with the coordinates.
+The definition retains no coordinate views and performs no mesh lookup. Finite-difference checks perturb local copies of
+this array.
 
-Nodal integral results
------------------------
+Nodal integral and energy results
+---------------------------------
 
-``computeNodalValues(coordinates)`` returns weighted nodal gaps and tributary areas without derivatives.
-``computeContactQuantities(coordinates)`` returns those integrals together with ``gap_gradients`` and
-``area_gradients``, indexed by first-element node and pair coordinate DOF. ``computeSecondDerivatives(coordinates)``
-returns ``gap_hessians`` and ``area_hessians``, indexed by node, coordinate row, and coordinate column. All results own
-fixed-size ``MdArray`` storage. These replace the separate gap/area output-array methods. Finite-difference validation
-helpers are confined to tests rather than declared as calculator members.
-
-For LM enforcement, ``computeSecondDerivatives(coordinates, false)`` calls
-``VectorPairEvaluator<Definition>::evaluateHessians<node_count>()`` to skip area Hessians and leave their arrays zero.
-Each combined request prepares frozen integration-surface points once in its nodal integral definition and delegates
-reverse-mode gradients and forward-over-reverse Hessians to ``VectorPairEvaluator``. Varying quadrature is generated
-inside the differentiated calculation, while frozen quadrature still differentiates current projections, normals, and
-physical weights. Invalid geometry throws before quadrature data or normals are consumed; valid zero-point rules return
-zero integrals and derivatives.
+``evaluate(coordinates)`` and ``values(coordinates)`` return the two nodal weighted gaps followed by the two nodal
+tributary areas in a fixed-size ``MdArray``. ``VectorPairEvaluator`` differentiates ``values(coordinates)`` to supply
+first-element nodal gradients and Hessians indexed by output, coordinate row, and coordinate column. Calling
+``energy(coordinates, pressure)`` or binding nodal weights with ``withWeights(pressure, area_weight)`` evaluates the
+nodal-weighted pair energy with ``dot()`` and ``integratePair()`` so ``EnergyPairEvaluator`` computes the inner weighted
+pair Hessian directly in one pass. Invalid geometry throws before quadrature data or normals are consumed; valid
+zero-point rules return zero integrals and derivatives.
 
 Pair formulation transfer data
 --------------------------------
 
-Pair formulations borrow only ``MfemMeshData`` and ``MfemJacobianData``. Quadrature-point Energy Mortar registration
-creates a parent-only Jacobian transfer and allocates no pressure/gap finite-element fields. Selecting nodal
-Energy Mortar creates those fields and its dual Jacobian transfer; selecting quadrature points releases them.
-When a decomposition already exists, newly selected transfers are initialized immediately, so a force request can
-follow ``setEnforcementLocation()`` without another decomposition update. Cached outputs are cleared on rebuilding;
-callers must not retain views into pressure/gap fields across an enforcement-location change.
+Parent-only pair formulations borrow ``MfemMeshData`` and ``MfemJacobianData``; nodal pair formulations also borrow
+``MfemSubmeshData``. Quadrature-point Energy Mortar registration creates a parent-only Jacobian transfer and allocates
+no pressure/gap finite-element fields. Selecting nodal Energy Mortar creates those fields and its dual Jacobian
+transfer; selecting quadrature points releases them. When a decomposition already exists, newly selected transfers are
+initialized immediately, so a force request can follow ``setEnforcementLocation()`` without another decomposition
+update. Cached outputs are cleared on rebuilding; callers must not retain views into pressure/gap fields across an
+enforcement-location change.
 
-``EnergyMortarAdapter`` is nodal-only, stores its ``EnergyMortarCalculator`` by value, and no longer takes an
-enforcement-location template argument or uses a CRTP base class. ``ContactParams`` carries only the nodal quadrature
-differentiation flag and residual gap offset. Independent pair calculations share assembly through
-``PairContactFormulation`` and ``MfemPairAssembler``. Nodal gap/area accumulation, dual-to-parent gradient transfers,
-submesh diagonal matrix construction, and weighted nodal Hessian assembly are handled by ``MfemNodalAssembler``,
-leaving ``EnergyMortarAdapter`` with only nodal energy/residual and chain-rule assembly.
+Both quadrature-point and nodal Energy Mortar use ``PairContactFormulation`` (with ``EnergyMortarPairMethod`` and
+``EnergyMortarNodalPairMethod``), eliminating separate method-specific calculator and adapter classes. Independent pair
+calculations share assembly through ``MfemPairAssembler``. Nodal Energy Mortar defines nodal penalty and
+Lagrange-multiplier energies through ``NodalPenaltyEnergy`` and ``NodalLagrangeMultiplierEnergy`` as functions of the
+two-component nodal state ``(weighted_gap, area)``, differentiates them with ``EnergyPairEvaluator``, and uses
+``MfemNodalAssembler`` to accumulate nodal integrals, transfer dual gradients, and assemble the two-variable chain-rule
+residual and Jacobian.
 
 Selecting a penalty stiffness combination
 ------------------------------------------
