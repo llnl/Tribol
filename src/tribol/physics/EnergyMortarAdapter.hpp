@@ -209,15 +209,19 @@ class EnergyMortarAdapter : public ContactFormulation {
   MfemJacobianData& jac_data_;
 
   /**
-   * @brief Contact stiffness, residual gap, and derivative settings
+   * @brief Penalty stiffness for nodal penalty enforcement
+   */
+  RealT penalty_;
+
+  /**
+   * @brief Residual gap and quadrature-derivative settings
    */
   ContactParams params_;
 
   /**
-   * @brief Evaluator holding a reference to quadrature_rule_, which remains alive until after the evaluator is
-   * destroyed
+   * @brief Evaluator holding a reference to quadrature_rule_, which is initialized before evaluator_
    */
-  std::unique_ptr<EnergyMortarCalculator<QuadratureRule>> evaluator_;
+  EnergyMortarCalculator<QuadratureRule> evaluator_;
 };
 
 #endif  // TRIBOL_USE_ENZYME

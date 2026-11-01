@@ -139,7 +139,6 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
   const auto coordinates = gatherCoordinates( mesh1.getView(), mesh2.getView() );
 
   ContactParams params;
-  params.k = 3.0;
   params.enzyme_quadrature = true;
 
   const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>> quadrature_rule{};
@@ -249,13 +248,12 @@ TEST( EnergyMortarCoordinates, disjoint_projected_intervals_have_zero_contributi
   MeshData mesh1( 0, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x1, y1, nullptr, MemorySpace::Host );
   MeshData mesh2( 1, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
   const auto coordinates = gatherCoordinates( mesh1.getView(), mesh2.getView() );
-  const ContactParams params{ 1.0, true, 0.0 };
   const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>> quadrature_rule;
   for ( const bool varying : { false, true } ) {
-    const EnergyMortarCalculator calculator( ContactParams{ 1.0, varying, 0.0 }, quadrature_rule );
+    const EnergyMortarCalculator calculator( ContactParams{ varying, 0.0 }, quadrature_rule );
     expectZeroNodalResponse( calculator, coordinates.view() );
   }
-  const TestEnergy definition{ quadrature_rule, params.k, params.residual_gap };
+  const TestEnergy definition{ quadrature_rule, 1.0, 0.0 };
   const auto primal = definition.evaluate( coordinates.view() );
   ASSERT_EQ( primal.quadrature_result.status, QuadratureStatus::Success );
   EXPECT_EQ( primal.quadrature_result.required_point_count, 0 );
@@ -280,7 +278,7 @@ TEST( EnergyMortarCoordinates, cooriented_pairs_have_zero_contribution_without_s
   for ( const RealT residual_gap : { 0.0, 0.15 } ) {
     SCOPED_TRACE( residual_gap );
     for ( const bool varying : { false, true } ) {
-      const EnergyMortarCalculator calculator( ContactParams{ 1.0, varying, residual_gap }, quadrature_rule );
+      const EnergyMortarCalculator calculator( ContactParams{ varying, residual_gap }, quadrature_rule );
       expectZeroNodalResponse( calculator, coordinates.view() );
     }
     const TestEnergy definition{ quadrature_rule, 1.0, residual_gap };
@@ -315,7 +313,7 @@ TEST( EnergyMortarCoordinates, rejects_degenerate_geometry_before_consuming_quad
           MeshData mesh2( 1, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
           const auto coordinates = gatherCoordinates( mesh1.getView(), mesh2.getView() );
 
-          const EnergyMortarCalculator calculator( ContactParams{ 1.0, varying_quadrature, 0.0 }, quadrature_rule );
+          const EnergyMortarCalculator calculator( ContactParams{ varying_quadrature, 0.0 }, quadrature_rule );
           EXPECT_THROW( calculator.computeNodalValues( coordinates.view() ), std::invalid_argument );
           EXPECT_THROW( calculator.computeContactQuantities( coordinates.view() ), std::invalid_argument );
           EXPECT_THROW( calculator.computeSecondDerivatives( coordinates.view() ), std::invalid_argument );
@@ -352,7 +350,7 @@ TEST( EnergyMortarGap, calculates_normal_distance_for_short_valid_edges )
   MeshData mesh2( 1, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
   const auto coordinates = gatherCoordinates( mesh1.getView(), mesh2.getView() );
   const PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>> quadrature_rule{};
-  const EnergyMortarCalculator calculator( ContactParams{ 1.0, true, 0.0 }, quadrature_rule );
+  const EnergyMortarCalculator calculator( ContactParams{ true, 0.0 }, quadrature_rule );
   const auto response = calculator.computeNodalValues( coordinates.view() );
   for ( int node = 0; node < LinearEdgeBasis::node_count; ++node ) {
     ASSERT_GT( response.AI[node], 0.0 );
@@ -382,7 +380,7 @@ void checkSelectedRuleDerivatives( bool varying, RealT residual_gap, const PairC
                                    << ", residual_gap=" << residual_gap );
   auto coordinates = initial_coordinates;
   const QuadratureRule quadrature_rule{ SmoothedProjectedEdgeMapping{ 0.2 } };
-  const Calculator calculator( ContactParams{ 7.0, varying, residual_gap }, quadrature_rule );
+  const Calculator calculator( ContactParams{ varying, residual_gap }, quadrature_rule );
   const auto frozen = quadrature_rule.generateIntegrationSurfaceRule(
       { coordinates.data(), Calculator::element_dof_count },
       { coordinates.data() + Calculator::element_dof_count, Calculator::element_dof_count } );

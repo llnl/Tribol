@@ -15,9 +15,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Added portable `AveragePenaltyStiffness` and `SeriesPenaltyStiffness` callable types. Both pair methods accept either
   as their second template argument and own the selected combination object. Default factory choices, mesh scaling,
   and contact calculations are unchanged.
-- Added `EnergyPairEvaluator` and `ForcePairEvaluator` for local energy gradients/Hessians and residual Jacobians.
-  Defaults use Enzyme on the host; methods can specialize either evaluator to provide other derivatives. Both accept
-  a previously calculated primal value and return owning arrays in pair DOF order for shared MFEM assembly.
+- Added `EnergyPairEvaluator`, `ForcePairEvaluator`, and `VectorPairEvaluator` for local energy gradients/Hessians,
+  residual Jacobians, and multi-output nodal integral gradients/Hessians. Defaults use Enzyme on the host; methods can
+  specialize the evaluators to provide other derivatives. They accept a previously calculated primal value and return
+  owning arrays in pair DOF order.
 - Added independent `EnergyMortarEnergy` and `CommonPlaneForce` definitions. Quadrature-point Energy Mortar and
   Common Plane use the shared derivative evaluators, with current geometry and quadrature differentiated inside
   each definition. Primal definitions remain callable without Enzyme, including in device kernels.
@@ -88,7 +89,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Common Plane and quadrature-point Energy Mortar use `PairContactFormulation<PairMethod>` for search, coordinate
   gathering, and parent MFEM residual/Jacobian assembly. Their force/energy definitions, penalty combinations, and
   derivative evaluators remain method-specific. Energy remains absent for Common Plane.
-- `EnergyMortarAdapter<QuadratureRule>` is nodal-only, replacing its enforcement-location CRTP classes. Pair-based
+- `EnergyMortarAdapter<QuadratureRule>` is nodal-only and owns its `EnergyMortarCalculator` by value, replacing its
+  enforcement-location CRTP classes. `ContactParams` retains only `enzyme_quadrature` and `residual_gap`. Pair-based
   Energy Mortar no longer constructs an `EnergyMortarCalculator` or MFEM pressure/gap fields. Switching locations
   rebuilds the required parent-only or dual transfers, initializes them on an existing decomposition, and clears
   cached outputs. Views into pressure/gap fields must not survive a location change.

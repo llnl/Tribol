@@ -190,6 +190,19 @@ struct AnalyticalResidual {
   }
 };
 
+/** @brief Vector of scalar outputs whose count differs from the active coordinate count. */
+struct AnalyticalVector {
+  static constexpr IndexT value_count = 2;  ///< Two scalar outputs.
+  static constexpr IndexT dof_count = 3;    ///< Three active variables.
+  RealT scale;                              ///< Fixed nonlinear coefficient for the first output.
+  RealT load;                               ///< Fixed coefficient for the second output.
+  /** @brief Calculate scalar outputs. @param x Active variables. @return Scalar outputs in definition order. */
+  TRIBOL_ENZYME_INLINE MdArray<RealT, value_count> values( MdSpan<const RealT, dof_count> x ) const
+  {
+    return MdArray<RealT, value_count>{ scale * x[0] * x[0] * x[1] + x[2], load * x[1] * x[2] - x[0] };
+  }
+};
+
 // Reverse-mode gradients and forward-over-reverse Hessians must include mixed terms and zero second derivatives.
 TEST( PairEvaluation, differentiates_scalar_energy )
 {
@@ -234,6 +247,46 @@ TEST( PairEvaluation, differentiates_nonsymmetric_residual )
     for ( IndexT column = 0; column < AnalyticalResidual::dof_count; ++column ) {
       EXPECT_NEAR( computed.jacobian( row, column ), jacobian( row, column ), tolerance );
       EXPECT_EQ( reused.jacobian( row, column ), computed.jacobian( row, column ) );
+    }
+  }
+}
+
+// Vector outputs must support reused values, reverse gradients, full Hessians, and leading-output Hessians.
+TEST( PairEvaluation, differentiates_vector_outputs_and_leading_hessians )
+{
+  const MdArray<RealT, AnalyticalVector::dof_count> x{ 1.5, -0.5, 2.0 };
+  const AnalyticalVector definition{ 4.0, 3.0 };
+  const auto computed = VectorPairEvaluator<AnalyticalVector>::evaluateGradients( x.view(), definition );
+  const auto primal = definition.values( x.view() );
+  const auto reused = VectorPairEvaluator<AnalyticalVector>::evaluateGradients( x.view(), definition, primal.view() );
+  const auto hessians = VectorPairEvaluator<AnalyticalVector>::evaluateHessians( x.view(), definition );
+  const auto leading = VectorPairEvaluator<AnalyticalVector>::evaluateHessians<1>( x.view(), definition );
+  const MdArray<RealT, AnalyticalVector::value_count> expected_values{ -2.5, -4.5 };
+  const MdArray<RealT, AnalyticalVector::value_count, AnalyticalVector::dof_count> expected_gradients{
+      MdArray<RealT, AnalyticalVector::dof_count>{ -6.0, 9.0, 1.0 },
+      MdArray<RealT, AnalyticalVector::dof_count>{ -1.0, 6.0, -1.5 } };
+  const MdArray<RealT, AnalyticalVector::dof_count, AnalyticalVector::dof_count> first_hessian{
+      MdArray<RealT, AnalyticalVector::dof_count>{ -4.0, 12.0, 0.0 },
+      MdArray<RealT, AnalyticalVector::dof_count>{ 12.0, 0.0, 0.0 },
+      MdArray<RealT, AnalyticalVector::dof_count>{ 0.0, 0.0, 0.0 } };
+  const MdArray<RealT, AnalyticalVector::dof_count, AnalyticalVector::dof_count> second_hessian{
+      MdArray<RealT, AnalyticalVector::dof_count>{ 0.0, 0.0, 0.0 },
+      MdArray<RealT, AnalyticalVector::dof_count>{ 0.0, 0.0, 3.0 },
+      MdArray<RealT, AnalyticalVector::dof_count>{ 0.0, 3.0, 0.0 } };
+  for ( IndexT output = 0; output < AnalyticalVector::value_count; ++output ) {
+    EXPECT_NEAR( computed.values[output], expected_values[output], tolerance );
+    EXPECT_EQ( reused.values[output], computed.values[output] );
+    for ( IndexT dof = 0; dof < AnalyticalVector::dof_count; ++dof ) {
+      EXPECT_NEAR( computed.gradients( output, dof ), expected_gradients( output, dof ), tolerance );
+      EXPECT_EQ( reused.gradients( output, dof ), computed.gradients( output, dof ) );
+    }
+  }
+  for ( IndexT row = 0; row < AnalyticalVector::dof_count; ++row ) {
+    for ( IndexT column = 0; column < AnalyticalVector::dof_count; ++column ) {
+      EXPECT_NEAR( hessians( 0, row, column ), first_hessian( row, column ), tolerance );
+      EXPECT_NEAR( hessians( 1, row, column ), second_hessian( row, column ), tolerance );
+      EXPECT_DOUBLE_EQ( leading( 0, row, column ), hessians( 0, row, column ) );
+      EXPECT_EQ( leading( 1, row, column ), 0.0 );
     }
   }
 }

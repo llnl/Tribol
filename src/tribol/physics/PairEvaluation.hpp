@@ -5,11 +5,12 @@
 
 /**
  * @file
- * @brief Local residuals and Jacobians from energy or residual definitions, with default Enzyme derivatives.
+ * @brief Local residuals, gradients, Jacobians, and Hessians from pair definitions, with default Enzyme derivatives.
  */
 #ifndef SRC_TRIBOL_PHYSICS_PAIREVALUATION_HPP_
 #define SRC_TRIBOL_PHYSICS_PAIREVALUATION_HPP_
 
+#include <utility>
 #include "tribol/common/Enzyme.hpp"
 #include "tribol/common/MdArray.hpp"
 
@@ -35,6 +36,17 @@ struct PairEnergyDerivatives : PairResidualJacobian<DofCount> {
 };
 
 /**
+ * @brief Own scalar values and their coordinate gradients.
+ * @tparam ValueCount Number of scalar outputs.
+ * @tparam DofCount Number of active coordinate entries.
+ */
+template <IndexT ValueCount, IndexT DofCount>
+struct PairVectorGradients {
+  MdArray<RealT, ValueCount> values{};               ///< Scalar outputs in definition order.
+  MdArray<RealT, ValueCount, DofCount> gradients{};  ///< Row-major matrix: output rows, coordinate columns.
+};
+
+/**
  * @brief Evaluate an energy definition and its derivatives on the host.
  *
  * Definition supplies a positive static dof_count and energy(MdSpan<const RealT, dof_count>) returning RealT.
@@ -57,6 +69,17 @@ class EnergyPairEvaluator;
  */
 template <typename Definition>
 class ForcePairEvaluator;
+
+/**
+ * @brief Evaluate a vector of scalar integrals and their first or second coordinate derivatives on the host.
+ *
+ * Definition supplies positive static value_count and dof_count and values(MdSpan<const RealT, dof_count>) returning
+ * MdArray<RealT, value_count>. Fixed inputs are inactive; current geometry must come from the coordinate argument.
+ * Specialize this class for a definition to supply other derivatives, including without Enzyme.
+ * @tparam Definition Vector calculation and fixed inputs. No object or coordinate view is retained.
+ */
+template <typename Definition>
+class VectorPairEvaluator;
 
 #ifdef TRIBOL_USE_ENZYME
 /**
@@ -190,6 +213,124 @@ class ForcePairEvaluator {
     const auto& definition = *static_cast<const Definition*>( definition_void );
     const auto value = definition.residual( { coordinates, dof_count } );
     for ( IndexT row = 0; row < dof_count; ++row ) residual[row] = value[row];
+  }
+};
+
+/**
+ * @brief Default evaluation of vector-valued scalar integrals using reverse-mode gradients and forward-over-reverse
+ * Hessians.
+ * @tparam Definition Vector calculation with fixed inputs and static value_count and dof_count.
+ */
+template <typename Definition>
+class VectorPairEvaluator {
+ public:
+  static constexpr IndexT value_count = Definition::value_count;            ///< Number of scalar outputs.
+  static constexpr IndexT dof_count = Definition::dof_count;                ///< Active pair coordinate count.
+  using GradientResult = PairVectorGradients<value_count, dof_count>;       ///< Owned values and gradients.
+  using HessianResult = MdArray<RealT, value_count, dof_count, dof_count>;  ///< Owned Hessians per output.
+
+  /**
+   * @brief Calculate all scalar outputs and their coordinate gradients.
+   * @param coordinates Current coordinates in pair DOF order.
+   * @param definition Vector calculation with inputs held constant during differentiation.
+   * @return Owned values and gradients; all entries are initialized, including zero derivatives.
+   */
+  static GradientResult evaluateGradients( MdSpan<const RealT, dof_count> coordinates, const Definition& definition )
+  {
+    const auto values = definition.values( coordinates );
+    return evaluateGradients( coordinates, definition, values.view() );
+  }
+
+  /**
+   * @brief Reuse calculated scalar outputs while computing their coordinate gradients.
+   * @param coordinates Current coordinates in pair DOF order.
+   * @param definition Vector calculation with fixed inputs.
+   * @param values Scalar outputs already calculated with these same coordinates and inputs.
+   * @return Owned values and gradients. Geometry and quadrature remain active in derivative calculations.
+   */
+  static GradientResult evaluateGradients( MdSpan<const RealT, dof_count> coordinates, const Definition& definition,
+                                           MdSpan<const RealT, value_count> values )
+  {
+    GradientResult result{};
+    for ( IndexT output = 0; output < value_count; ++output ) result.values[output] = values[output];
+    [&]<IndexT... Outputs>( std::integer_sequence<IndexT, Outputs...> ) {
+      ( gradientKernel<Outputs>( coordinates.data(), &definition, result.gradients.data() + Outputs * dof_count ),
+        ... );
+    }( std::make_integer_sequence<IndexT, value_count>{} );
+    return result;
+  }
+
+  /**
+   * @brief Calculate the coordinate Hessian of every scalar output, or of the first OutputCount outputs.
+   * @tparam OutputCount Number of leading outputs to differentiate; trailing outputs remain zero.
+   * @param coordinates Current coordinates in pair DOF order.
+   * @param definition Vector calculation with fixed inputs.
+   * @return Owned Hessians indexed by [output][row][column].
+   */
+  template <IndexT OutputCount = value_count>
+  static HessianResult evaluateHessians( MdSpan<const RealT, dof_count> coordinates, const Definition& definition )
+  {
+    static_assert( OutputCount >= 0 && OutputCount <= value_count, "OutputCount is out of range." );
+    HessianResult result{};
+    [&]<IndexT... Outputs>( std::integer_sequence<IndexT, Outputs...> ) {
+      ( computeOutputHessian<Outputs>( coordinates, definition, result ), ... );
+    }( std::make_integer_sequence<IndexT, OutputCount>{} );
+    return result;
+  }
+
+ private:
+  /**
+   * @brief Select one scalar output so reverse differentiation uses a fixed unit seed.
+   * @tparam Output Selected output index.
+   * @param coordinates Active coordinate storage.
+   * @param definition_void Inactive definition, erased to avoid internal-linkage types in Enzyme arguments.
+   * @param[out] value Calculated scalar output.
+   */
+  template <IndexT Output>
+  static void scalarKernel( const RealT* coordinates, const void* definition_void, RealT* value )
+  {
+    const auto& definition = *static_cast<const Definition*>( definition_void );
+    const auto values = definition.values( { coordinates, dof_count } );
+    *value = values[Output];
+  }
+
+  /**
+   * @brief Expose one scalar output's coordinate gradient for direct use or forward Hessian differentiation.
+   * @tparam Output Selected output index.
+   * @param coordinates Active coordinate storage.
+   * @param definition_void Inactive definition.
+   * @param[out] gradient Initialized coordinate gradient.
+   */
+  template <IndexT Output>
+  static void gradientKernel( const RealT* coordinates, const void* definition_void, RealT* gradient )
+  {
+    MdArray<RealT, dof_count> derivative{};
+    RealT value = 0.0;
+    RealT seed = 1.0;
+    __enzyme_autodiff<void>( (void*)scalarKernel<Output>, TRIBOL_ENZYME_DUP, coordinates, derivative.data(),
+                             TRIBOL_ENZYME_CONST, definition_void, TRIBOL_ENZYME_DUP, &value, &seed );
+    for ( IndexT row = 0; row < dof_count; ++row ) gradient[row] = derivative[row];
+  }
+
+  /**
+   * @brief Form one output's Hessian columns by forward differentiation of its gradient.
+   * @tparam Output Selected output index.
+   * @param coordinates Current coordinates in pair DOF order.
+   * @param definition Vector calculation with fixed inputs.
+   * @param[out] hessians Combined Hessian array receiving this output's rows and columns.
+   */
+  template <IndexT Output>
+  static void computeOutputHessian( MdSpan<const RealT, dof_count> coordinates, const Definition& definition,
+                                    HessianResult& hessians )
+  {
+    for ( IndexT column = 0; column < dof_count; ++column ) {
+      MdArray<RealT, dof_count> seed{}, gradient{}, derivative{};
+      seed[column] = 1.0;
+      __enzyme_fwddiff<void>( (void*)gradientKernel<Output>, TRIBOL_ENZYME_DUP, coordinates.data(), seed.data(),
+                              TRIBOL_ENZYME_CONST, (const void*)&definition, TRIBOL_ENZYME_DUP, gradient.data(),
+                              derivative.data() );
+      for ( IndexT row = 0; row < dof_count; ++row ) hessians( Output, row, column ) = derivative[row];
+    }
   }
 };
 #endif  // TRIBOL_USE_ENZYME

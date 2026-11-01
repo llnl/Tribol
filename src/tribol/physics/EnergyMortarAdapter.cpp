@@ -29,16 +29,13 @@ EnergyMortarAdapter<QuadratureRule>::EnergyMortarAdapter( MfemMeshData& mesh_dat
       quadrature_rule_( std::move( quadrature_rule ) ),
       mesh_data_( mesh_data ),
       submesh_data_( submesh_data ),
-      jac_data_( jac_data )
+      jac_data_( jac_data ),
+      penalty_( k ),
+      params_{ enzyme_quadrature, residual_gap },
+      evaluator_( params_, quadrature_rule_ )
 {
   SLIC_ASSERT_MSG( coarse_search_ != nullptr, "ENERGY_MORTAR requires a coarse search object." );
   SLIC_ASSERT_MSG( refined_search_ != nullptr, "ENERGY_MORTAR requires a refined search object." );
-
-  params_.k = k;
-  params_.enzyme_quadrature = enzyme_quadrature;
-  params_.residual_gap = residual_gap;
-
-  evaluator_ = std::make_unique<EnergyMortarCalculator<QuadratureRule>>( params_, quadrature_rule_ );
 }
 
 template <typename QuadratureRule>
@@ -105,7 +102,7 @@ typename EnergyMortarAdapter<QuadratureRule>::NodalData EnergyMortarAdapter<Quad
     const auto elem1 = static_cast<int>( pair.element_id1_ );
     const auto elem2 = static_cast<int>( pair.element_id2_ );
 
-    const auto quantities = evaluator_->computeContactQuantities( coordinates.view() );
+    const auto quantities = evaluator_.computeContactQuantities( coordinates.view() );
 
     if ( quantities.AI[0] <= 0.0 && quantities.AI[1] <= 0.0 ) {
       continue;
@@ -220,7 +217,7 @@ ContactFormulationResult EnergyMortarAdapter<QuadratureRule>::computeNodalForces
 
   if ( use_penalty_ ) {
     // Penalty mode: p = k * (g_tilde / A)
-    pressure_vec = params_.k * data.gap_vec;
+    pressure_vec = penalty_ * data.gap_vec;
   } else {
     // Read caller-supplied LM values from the current submesh field.
     pressure_vec = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
@@ -248,7 +245,7 @@ ContactFormulationResult EnergyMortarAdapter<QuadratureRule>::computeNodalForces
     // ---------------------------------------------------------------------------
     // Penalty mode: force and Jacobian include pressure/area coupling terms
     // ---------------------------------------------------------------------------
-    auto k_over_a = params_.k * data.A_vec.inverse( area_tol_ );
+    auto k_over_a = penalty_ * data.A_vec.inverse( area_tol_ );
     auto p_over_a = pressure_vec.divide( data.A_vec, area_tol_ );
 
     shared::ParSparseMat dp_dx( data.dg_tilde_dx.get() );
@@ -349,7 +346,7 @@ shared::ParSparseMat EnergyMortarAdapter<QuadratureRule>::computeDfDxSecondDeriv
     const RealT lambda1 = redecomp_lambda( node11 );
     const RealT lambda2 = redecomp_lambda( node12 );
 
-    const auto hessians = evaluator_->computeSecondDerivatives( coordinates.view(), false );
+    const auto hessians = evaluator_.computeSecondDerivatives( coordinates.view(), false );
 
     RealT df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
@@ -426,7 +423,7 @@ shared::ParSparseMat EnergyMortarAdapter<QuadratureRule>::computeDfDxSecondDeriv
     const RealT g_p_ainv1 = -redecomp_g_tilde( node11 ) * redecomp_pressure( node11 ) / redecomp_A( node11 );
     const RealT g_p_ainv2 = -redecomp_g_tilde( node12 ) * redecomp_pressure( node12 ) / redecomp_A( node12 );
 
-    const auto hessians = evaluator_->computeSecondDerivatives( coordinates.view() );
+    const auto hessians = evaluator_.computeSecondDerivatives( coordinates.view() );
 
     RealT df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {

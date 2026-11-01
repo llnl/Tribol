@@ -3,10 +3,12 @@
 Energy and residual pair definitions
 ====================================
 
-A local contact calculation can define a scalar energy or a residual vector. ``EnergyPairEvaluator`` calculates the
-energy gradient and Hessian with Enzyme. ``ForcePairEvaluator`` calculates the residual Jacobian. Both return owning
-``MdArray`` storage with residual rows and coordinate columns, in the pair's element/node/component DOF order.
-The arrays can be passed to ``MfemPairAssembler`` without depending on the method used to calculate derivatives.
+A local contact calculation can define a scalar energy, a residual vector, or a fixed-size vector of nodal integrals.
+``EnergyPairEvaluator`` calculates the energy gradient and Hessian with Enzyme. ``ForcePairEvaluator`` calculates the
+residual Jacobian. ``VectorPairEvaluator`` calculates coordinate gradients and per-component Hessians for multi-output
+pair definitions. The energy and force evaluators return owning ``MdArray`` storage with residual rows and coordinate
+columns, in the pair's element/node/component DOF order, which can be passed to ``MfemPairAssembler`` without depending
+on the method used to calculate derivatives.
 
 Definition interfaces
 ---------------------
@@ -22,6 +24,12 @@ A force definition provides the same coordinate count and the method:
 .. code-block:: cpp
 
    MdArray<RealT, dof_count> residual(MdSpan<const RealT, dof_count> coordinates) const;
+
+A multi-output definition provides positive static ``value_count`` and ``dof_count`` constants and the method:
+
+.. code-block:: cpp
+
+   MdArray<RealT, value_count> values(MdSpan<const RealT, dof_count> coordinates) const;
 
 Definitions own fixed configuration or refer to caller-owned fixed fields. Enzyme treats the definition object as
 inactive and differentiates the coordinate argument. Current normals, overlap bounds, quadrature coordinates, and
@@ -123,12 +131,13 @@ returns ``gap_hessians`` and ``area_hessians``, indexed by node, coordinate row,
 fixed-size ``MdArray`` storage. These replace the separate gap/area output-array methods. Finite-difference validation
 helpers are confined to tests rather than declared as calculator members.
 
-For LM enforcement, ``computeSecondDerivatives(coordinates, false)`` skips area Hessians and leaves their arrays zero.
-Each combined request prepares frozen integration-surface points once. Gradients still use reverse differentiation of
-individual scalar integrals with a unit output seed; Hessians use forward differentiation of those gradients. Varying
-quadrature is generated inside the differentiated calculation, while frozen quadrature still differentiates current
-projections, normals, and physical weights. Invalid geometry throws before quadrature data or normals are consumed;
-valid zero-point rules return zero integrals and derivatives.
+For LM enforcement, ``computeSecondDerivatives(coordinates, false)`` calls
+``VectorPairEvaluator<Definition>::evaluateHessians<node_count>()`` to skip area Hessians and leave their arrays zero.
+Each combined request prepares frozen integration-surface points once in its nodal integral definition and delegates
+reverse-mode gradients and forward-over-reverse Hessians to ``VectorPairEvaluator``. Varying quadrature is generated
+inside the differentiated calculation, while frozen quadrature still differentiates current projections, normals, and
+physical weights. Invalid geometry throws before quadrature data or normals are consumed; valid zero-point rules return
+zero integrals and derivatives.
 
 Pair formulation transfer data
 --------------------------------
@@ -140,9 +149,11 @@ When a decomposition already exists, newly selected transfers are initialized im
 follow ``setEnforcementLocation()`` without another decomposition update. Cached outputs are cleared on rebuilding;
 callers must not retain views into pressure/gap fields across an enforcement-location change.
 
-``EnergyMortarAdapter`` is nodal-only and no longer takes an enforcement-location template argument or uses a CRTP
-base class. Independent pair calculations share assembly through ``PairContactFormulation``; nodal gap/area assembly
-and coupling between pairs that share nodes remain in ``EnergyMortarAdapter``.
+``EnergyMortarAdapter`` is nodal-only, stores its ``EnergyMortarCalculator`` by value, and no longer takes an
+enforcement-location template argument or uses a CRTP base class. ``ContactParams`` carries only the nodal quadrature
+differentiation flag and residual gap offset. Independent pair calculations share assembly through
+``PairContactFormulation``; nodal gap/area assembly and coupling between pairs that share nodes remain in
+``EnergyMortarAdapter``.
 
 Selecting a penalty stiffness combination
 ------------------------------------------

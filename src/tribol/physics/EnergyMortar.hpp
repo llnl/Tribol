@@ -22,11 +22,10 @@ namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
-/// Parameters controlling ENERGY_MORTAR contact evaluation.
+/// Parameters controlling nodal ENERGY_MORTAR integral evaluation.
 struct ContactParams {
-  RealT k;                    ///< Penalty stiffness.
-  bool enzyme_quadrature;     ///< Whether Enzyme differentiates the quadrature construction.
-  RealT residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
+  bool enzyme_quadrature{ true };  ///< Whether Enzyme differentiates the quadrature construction.
+  RealT residual_gap{ 0.0 };       ///< User-defined gap offset subtracted from the kinematic gap.
 };
 
 /// Weighted nodal gaps and tributary areas for one linear-edge pair.
@@ -65,7 +64,7 @@ class EnergyMortarCalculator {
   using IntegrationSurfaceRule = typename QuadratureRule::IntegrationSurfaceRule;  ///< Frozen surface points/weights.
 
   /// Store a reference to the generator, which must outlive this calculator. Geometry is supplied for each calculation.
-  /// @param p Penalty, residual-gap, and derivative settings copied into this calculator.
+  /// @param p Residual-gap and quadrature-derivative settings copied into this calculator.
   /// @param quadrature_rule Quadrature generator that must outlive the calculator.
   EnergyMortarCalculator( const ContactParams& p, const QuadratureRule& quadrature_rule )
       : p_( p ), quadrature_rule_( quadrature_rule )
