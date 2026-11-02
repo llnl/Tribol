@@ -8,6 +8,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added host-only `ContactDomain` traversal and MFEM assembly entry points for independent pair contributions, nodal
+  gaps, and nodal forces. `PairContactFormulation` delegates its assembly loops to these functions. Domains borrow
+  current mesh views and supplied pairs without caching quadrature; geometry-dependent quadrature remains inside
+  differentiated calculations. Existing contact calculations and returned outputs are unchanged.
 - Added generic `EnergyPairMethod` and `ForcePairMethod` adapters with shared definition preparation, geometry-layout
   checks, cached-primal derivative calls, and energy availability. `RegisteredPenaltyInputs` and
   `ScaledMeshPenaltyInputs` independently read current fixed parameters on each request, preserving their respective

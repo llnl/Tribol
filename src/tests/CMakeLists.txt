@@ -24,6 +24,7 @@ set( tribol_tests
      tribol_hex_mesh.cpp
      tribol_pair_quadrature.cpp
      tribol_pair_evaluation.cpp
+     tribol_contact_domain.cpp
      tribol_penalty_stiffness.cpp
      tribol_common_plane_formulation.cpp
      tribol_refined_search.cpp

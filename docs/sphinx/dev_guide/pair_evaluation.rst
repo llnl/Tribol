@@ -10,6 +10,31 @@ pair definitions. The energy and force evaluators return owning ``MdArray`` stor
 columns, in the pair's element/node/component DOF order, which can be passed to ``MfemPairAssembler`` without depending
 on the method used to calculate derivatives.
 
+Contact-domain traversal and assembly
+-------------------------------------
+
+``ContactDomain<FirstGeometry, SecondGeometry>`` borrows geometry-approved pairs and current host mesh views for one
+calculation. Its ``forEachPair()`` visits pairs in supplied order and gathers coordinates on the stack in
+element/node/component order. The coordinate view passed to a visitor is valid only during that visitor call.
+The domain performs no search, overlap calculation, or activation check and retains no generated quadrature.
+Mesh arrays and pairs must remain alive and unchanged during traversal; the domain must not outlive mesh
+re-registration or decomposition updates. Domain traversal works without MFEM or Enzyme.
+
+``MfemContactAssembly.hpp`` provides three host assembly entry points for existing prepared pair definitions:
+
+* ``assemblePairContact<PairMethod>()`` evaluates independent energy or force contributions with an empty
+  ``MfemPairAssembler``.
+* ``assembleNodalContactGaps<PairMethod>()`` evaluates nodal gap integrals with an empty ``MfemNodalAssembler``.
+* ``assembleNodalContactForces<PairMethod>()`` assembles nodal integrals, evaluates the existing nodal penalty or LM
+  energy, and combines outer energy derivatives with weighted pair Hessians.
+
+These functions require Enzyme and MFEM/Redecomp. They check quadrature status before consuming a primal result or
+calculating derivatives. Definitions generate quadrature from current coordinates inside differentiated calculations;
+the domain supplies coordinates rather than cached points or weights. Assembly storage is sized from the supplied
+pair count. ``PairContactFormulation`` prepares the definition, searches for pairs, creates the domain and assembler,
+and calls the matching entry point. Existing activation, normalization, and result availability are preserved.
+Independent pair energies remain local sums; nodal energies are summed across the MPI communicator.
+
 Definition interfaces
 ---------------------
 

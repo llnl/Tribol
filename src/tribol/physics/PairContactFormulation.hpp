@@ -11,6 +11,7 @@
 #define SRC_TRIBOL_PHYSICS_PAIRCONTACTFORMULATION_HPP_
 
 #include "tribol/physics/ContactFormulation.hpp"
+#include "tribol/integ/ContactDomain.hpp"
 #include "tribol/physics/CommonPlane.hpp"
 #include "tribol/physics/EnergyMortarEnergy.hpp"
 #include "tribol/physics/PairMethod.hpp"
@@ -105,6 +106,9 @@ class PairContactFormulation : public ContactFormulation {
   ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override;
 
  private:
+  using Domain = ContactDomain<typename PairMethod::FirstGeometry,
+                               typename PairMethod::SecondGeometry>;  ///< Borrowed current pairs and mesh views.
+
   MfemMeshData& mesh_data_;                        ///< Borrowed displacement and decomposition data.
   MfemSubmeshData* submesh_data_{ nullptr };       ///< Borrowed dual submesh data for nodal methods.
   MfemJacobianData& jacobian_data_;                ///< Borrowed Jacobian transfer.

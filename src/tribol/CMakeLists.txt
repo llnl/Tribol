@@ -36,6 +36,7 @@ set(tribol_headers
     integ/FE.hpp
     integ/Integration.hpp
     integ/PairIntegral.hpp
+    integ/ContactDomain.hpp
     integ/PairQuadratureRule.hpp
     integ/QuadratureCommon.hpp
     integ/QuadratureRuleFactory.hpp
@@ -50,6 +51,7 @@ set(tribol_headers
     mesh/MethodCouplingData.hpp
     mesh/MfemData.hpp
     mesh/MfemNodalAssembler.hpp
+    mesh/MfemContactAssembly.hpp
     mesh/MfemPairAssembler.hpp
 
     physics/AlignedMortar.hpp
