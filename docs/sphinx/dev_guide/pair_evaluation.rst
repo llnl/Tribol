@@ -75,11 +75,43 @@ array must remain accessible, unchanged, and in the same DOF order and MPI parti
 Evaluation checks its local length. LM expressions require neither area partials nor an outer Hessian; their existing
 displacement/multiplier derivative block is assembled separately from the weighted-gap coordinate Jacobian.
 
-``EnergyMortarNodal::penaltyEnergyFromIntegrals()`` and ``lagrangeMultiplierEnergyFromIntegral()`` share each formula
+``EnergyMortarNodal::penaltyEnergy()`` and ``lagrangeMultiplierEnergy()`` share each formula
 between numerical arrays and assembled-field expressions. The portable expression definitions and node energy
 evaluations require neither MFEM nor Enzyme. The MFEM evaluator requires both and retains no expressions or borrowed
 inputs in returned derivative data. The current field set is weighted gap and tributary area on the existing dual
 space; pair traversal and integral differentiation still use the prepared nodal definition.
+
+Geometric gaps and configured offsets
+---------------------------------------
+
+``OpposingNormalGap`` calculates the unshifted alignment-corrected Energy Mortar gap. ``CommonPlaneGap`` calculates
+unshifted separation along the current common-plane normal. Both take current point geometry and retain no mesh data.
+``CommonPlaneGap`` also accepts an already computed common frame so the traction calculation reuses that normal.
+
+``OffsetGap<GapDefinition>`` owns a geometric gap and the fixed ``residual_gap`` subtracted from its value:
+
+.. code-block:: cpp
+
+   const auto gap = tribol::OffsetGap{tribol::OpposingNormalGap{}, residual_gap};
+   const auto energy = tribol::EnergyMortarPenalty{gap};
+
+Energy Mortar's energy and nodal functors, and Common Plane's residual functor, own their selected gap object. Pair
+methods and definitions own the complete functor and treat it as inactive configuration; current coordinates, normals,
+and physical weights remain active inside differentiation. Shared method/definition constructors and penalty readers
+accept no residual-gap scalar. Nodal outer energy evaluation uses the configured physics object from the prepared
+definition.
+
+Local energy and force definition aliases default to their unshifted geometric gap. Formulation aliases default to
+``OffsetGap`` so the factory can apply the coupling-scheme setting. The same setting still supplies coarse-search reach;
+public configuration and search behavior are preserved. Existing explicit formulation instantiations cover those
+factory gap types, both stiffness combinations, and all three Gauss counts. Other gap types require matching formulation
+instantiations. Local header-defined kernels can use either gap directly. Derivative evaluator specializations must
+name the configured definition type, including its gap type.
+
+``computeCommonPlaneResidual()`` and ``computeCommonPlanePair()`` also accept a gap object, defaulting to the unshifted
+common-plane gap. The latter has host Enzyme instantiations for all three Gauss counts and both unshifted and offset
+common-plane gaps. Gap definitions require valid geometry and finite configuration; public scheme validation remains
+at the configuration boundary.
 
 Definition interfaces
 ---------------------
@@ -162,22 +194,26 @@ points. Each point provides ``geometry1``, ``geometry2``, ``geometry1_coords``, 
 return a ``QuadraturePointContribution`` to indicate whether the quadrature point uses an active branch. The integrand
 is skipped when quadrature generation fails or produces zero points.
 
-``EnergyMortarEnergy`` defines quadrature-point penalty energy, ``EnergyMortarNodalEnergy`` defines nodal Energy Mortar
-integrals and nodal-weighted pair energy, and ``CommonPlaneForce`` defines the direct Common Plane residual. All three
-call ``integratePair()`` in their portable ``evaluate()`` methods to return primal values, activation, and quadrature
-status. Their host ``energy()``, ``values()``, or ``residual()`` methods implement the definition interfaces above. Both
-Energy Mortar definitions share ``EnergyMortarGap`` at each quadrature point. The shared pair formulation checks primal
-status and activation, then passes the already calculated value to the method's derivative evaluator. At zero gap, the
-compressive branch remains active so its tangent is calculated even though pressure is zero.
+``PairDefinition.hpp`` adapts mathematical expressions to the derivative interfaces. ``PairEnergyDefinition`` and
+``PairResidualDefinition`` both construct a local ``PairIntegrationRule`` and call their functor with
+``(integration_rule, penalty)``. ``EnergyMortarPenalty`` returns an energy through ``integral()``, while
+``CommonPlaneResidual`` returns an integral of nodal tractions in separate mesh1 and mesh2 residual blocks.
+``EnergyMortarEnergy`` and ``CommonPlaneForce`` select these shared wrappers. Failed quadrature is checked before the
+functor runs. At zero gap, the compressive branch remains active so its tangent is calculated even though pressure is
+zero.
 
-``PairContactFormulation`` prepares the energy, force, or nodal definition per request using current penalty data.
-Inside the pair loop it gathers coordinates, checks quadrature status, and skips inactive pairs before requesting
-derivatives. For parent-only methods, the evaluator reuses the calculated primal value, and the formulation passes views
-of its ``residual`` and ``jacobian`` arrays directly to ``MfemPairAssembler::addPair()``. For nodal methods,
-``EnergyMortarNodalEnergy`` defines the pair Lagrange-multiplier energy as
-``dot(pressure, integratePair(coordinates, rule, nodal_basis * gap))`` and nodal weighted-gap/tributary-area integrals
-through ``integratePair()``, while ``MfemNodalAssembler`` accumulates nodal integrals and assembles the nodal chain-rule
-residual and Jacobian.
+``NodalPairDefinition`` creates the same pair integration context and calls ``Physics::integrals()``. The functor
+returns ``NodalPairIntegrals<NodeCount>`` with explicitly named ``weighted_gap`` and ``area`` arrays. Packing those
+outputs for ``VectorPairEvaluator`` does not depend on the order or number of ``integral()`` calls. No energy is
+replayed to discover its input fields. ``EnergyMortarNodal`` defines both the primal integrals and their penalty/LM
+outer energy expressions.
+
+``PairContactFormulation`` prepares every method through the same ``prepare(mesh_data, mesh1, mesh2)`` interface,
+searches for pairs, constructs a ``ContactDomain``, and calls ``evaluateContactForces()``. A borrowed
+``MfemContactAssemblyContext`` supplies parent and optional dual transfer data. That entry point selects pair or nodal
+assembly, checks primal status and activation, and invokes the selected derivative evaluator. Independent pair methods
+pass residual/Jacobian views directly to ``MfemPairAssembler``; nodal methods use ``MfemNodalAssembler`` for integral
+accumulation, outer energy derivatives, and weighted coordinate Hessians.
 
 Coordinate-based nodal Energy Mortar calculations
 -------------------------------------------------
@@ -202,11 +238,23 @@ Nodal integral and energy results
 
 ``evaluate(coordinates)`` and ``values(coordinates)`` return the two nodal weighted gaps followed by the two nodal
 tributary areas in a fixed-size ``MdArray``. ``VectorPairEvaluator`` differentiates ``values(coordinates)`` to supply
-first-element nodal gradients and Hessians indexed by output, coordinate row, and coordinate column. Calling
-``energy(coordinates, pressure)`` or binding nodal weights with ``withWeights(pressure, area_weight)`` evaluates the
-nodal-weighted pair energy with ``dot()`` and ``integratePair()`` so ``EnergyPairEvaluator`` computes the inner weighted
-pair Hessian directly in one pass. Invalid geometry throws before quadrature data or normals are consumed; valid
-zero-point rules return zero integrals and derivatives.
+first-element nodal gradients and Hessians indexed by output, coordinate row, and coordinate column.
+``withWeights(gap_weights, area_weights)`` returns a ``WeightedNodalPairDefinition`` that contracts those named
+integrals with fixed outer energy partials. ``EnergyPairEvaluator`` differentiates this scalar definition for the inner
+weighted pair Hessian. Geometry and quadrature are regenerated inside differentiation using one shared pair rule for gap
+and area. Setting area weights to zero gives the LM contraction. Invalid geometry throws before integrals are consumed;
+valid zero-point rules return zero values and derivatives.
+
+For example:
+
+.. code-block:: cpp
+
+   const auto weighted = definition.withWeights(gap_weights, area_weights);
+   using Weighted = std::remove_cvref_t<decltype(weighted)>;
+   const auto derivatives = EnergyPairEvaluator<Weighted>::evaluate(coordinates.view(), weighted);
+
+The integral definition exposes vector values. ``WeightedNodalPairDefinition`` supplies the scalar ``energy()``
+interface for their weighted contraction. Outer nodal state energies are bound with ``NodalEnergyExpression::atNode()``.
 
 Pair formulation transfer data
 --------------------------------
@@ -222,8 +270,8 @@ enforcement-location change.
 Both quadrature-point and nodal Energy Mortar use ``PairContactFormulation`` (with ``EnergyMortarPairMethod`` and
 ``EnergyMortarNodalPairMethod``), eliminating separate method-specific calculator and adapter classes. Independent pair
 calculations share assembly through ``MfemPairAssembler``. Nodal Energy Mortar defines nodal penalty and
-Lagrange-multiplier energies through ``NodalPenaltyEnergy`` and ``NodalLagrangeMultiplierEnergy`` as functions of the
-two-component nodal state ``(weighted_gap, area)``, differentiates them with ``EnergyPairEvaluator``, and uses
+Lagrange-multiplier energies through named ``NodalEnergyExpression`` inputs for assembled weighted gap and area,
+differentiates them with ``EnergyPairEvaluator``, and uses
 ``MfemNodalAssembler`` to accumulate nodal integrals, transfer dual gradients, and assemble the two-variable chain-rule
 residual and Jacobian.
 
@@ -241,11 +289,12 @@ The second template argument selects the combination independently of the pair e
    using AveragedCommonPlane = tribol::CommonPlanePairMethod<BaseRule, tribol::AveragePenaltyStiffness>;
    using SeriesEnergyMortar = tribol::EnergyMortarPairMethod<PairRule, tribol::SeriesPenaltyStiffness>;
 
-The input provider owns the combination object and accepts it as an optional constructor argument. Each method
-receives an explicit pair rule, a gap offset, and an input-provider object. Default factory selection remains springs
-in series with scaled mesh inputs for Common Plane, and averaging with registered constants for Energy Mortar. The chosen scalar stiffness
-is held fixed during coordinate differentiation. The nodal Energy Mortar factory also uses the shared average
-calculation, and the legacy Common Plane stiffness function delegates to the shared series calculation.
+The input provider owns the combination object and accepts it as an optional constructor argument. Each method receives
+an explicit pair rule, an owned mathematical expression, and an input-provider object. Default factory selection remains
+springs in series with scaled mesh inputs for Common Plane, and averaging with registered constants for Energy Mortar.
+The chosen scalar stiffness is held fixed during coordinate differentiation. The nodal Energy Mortar factory also uses
+the shared average calculation, and the legacy Common Plane stiffness function delegates to the shared series
+calculation.
 
 The library explicitly instantiates pair formulations for both built-in combinations, the default input providers,
 and all three supported Gauss point counts. Other method configurations require matching formulation instantiations;
@@ -260,13 +309,16 @@ coordinate-layout checks, and construction of the definition. Both accept the sa
 .. code-block:: cpp
 
    using Inputs = tribol::RegisteredPenaltyInputs<tribol::AveragePenaltyStiffness>;
-   using Method = tribol::EnergyPairMethod<tribol::EnergyMortarEnergy<PairRule>, Inputs>;
-   Method method{rule, residual_gap, Inputs{penalty_enabled}};
+   using Gap = tribol::OffsetGap<tribol::OpposingNormalGap>;
+   using Definition = tribol::EnergyMortarEnergy<PairRule, Gap>;
+   using Method = tribol::EnergyPairMethod<Definition, Inputs>;
+   const auto energy = tribol::EnergyMortarPenalty{Gap{tribol::OpposingNormalGap{}, residual_gap}};
+   Method method{rule, energy, Inputs{penalty_enabled}};
 
-The definition provides ``Quadrature`` and ``PrimalResult`` aliases in addition to its evaluator interface.
-Its constructor accepts ``(quadrature, penalty, residual_gap)``. Both primal result types expose
-``quadrature_result`` and ``has_active_points``; energy results also carry ``energy`` and force results carry
-``residual``. ``EnergyMortarEnergyValue::has_active_points`` replaces its former ``has_active_qp`` name.
+The definition provides ``Physics``, ``Quadrature``, and ``PrimalResult`` aliases in addition to its evaluator interface. Its
+constructor accepts ``(quadrature, penalty, physics)``. The owned physics object contains gap configuration. Both primal
+result types expose ``quadrature_result`` and ``has_active_points``; energy results also carry ``energy`` and force
+results carry ``residual``. ``EnergyMortarEnergyValue::has_active_points`` replaces its former ``has_active_qp`` name.
 
 Each adapter's ``differentiate()`` calls the existing evaluator overload with cached energy or residual. The energy
 adapter reports energy availability; the force adapter leaves energy absent. Existing evaluator specializations
@@ -274,10 +326,9 @@ continue to work with their two ``evaluate()`` overloads. Rule coordinates, curr
 remain inside the differentiated physics definition.
 
 ``RegisteredPenaltyInputs`` reads the current MFEM constant penalties and preserves fallback stiffness 1000.0 when
-either constant is absent. It requires configured penalty enforcement and passes the gap offset through unchanged.
-``ScaledMeshPenaltyInputs`` reads current mesh stiffnesses and scales, validates positive finite scaled values and a
-nonnegative finite gap offset, then combines the stiffnesses. Both return ``PairDefinitionParameters`` and retain no
-mesh data. Preparation works without Enzyme when MFEM/Redecomp is enabled.
+either constant is absent. It requires configured penalty enforcement. ``ScaledMeshPenaltyInputs`` reads current mesh
+stiffnesses and scales, validates positive finite scaled values, and combines the stiffnesses. Both return only the
+stiffness as ``RealT`` and retain no mesh data. Preparation works without Enzyme when MFEM/Redecomp is enabled.
 
 ``EnergyMortarPairMethod`` and ``CommonPlanePairMethod`` are aliases selecting a physics definition, derivative kind,
 and input provider. Their names contain no preparation or derivative implementation. Either generic adapter can use

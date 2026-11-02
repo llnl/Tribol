@@ -46,14 +46,15 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
         const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
         const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, test.separation }, MdArray<RealT, 2>{ 0.0, test.separation } };
         const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<Count>> rule;
-        output[0] = computeCommonPlaneResidual( edge1.view(), edge2.view(), rule,
-                                                ComputePenaltyStiffnessPerArea( 2.0, 6.0 ), test.residual_gap );
+        output[0] =
+            computeCommonPlaneResidual( edge1.view(), edge2.view(), rule, ComputePenaltyStiffnessPerArea( 2.0, 6.0 ),
+                                        OffsetGap{ CommonPlaneGap{}, test.residual_gap } );
       } );
       const ArrayT<CommonPlaneResidualData, 1, MemorySpace::Host> host( results );
       ASSERT_EQ( host[0].quadrature_result.status, QuadratureStatus::Success );
       EXPECT_EQ( host[0].quadrature_result.required_point_count, Count );
       EXPECT_EQ( host[0].has_active_points, test.active );
-      for ( int node = 0; node < CommonPlaneResidualData::nodes_per_element; ++node ) {
+      for ( int node = 0; node < BasisFunction<EDGE, LINEAR_LAGRANGE>::node_count; ++node ) {
         EXPECT_NEAR( host[0].residual[2 * node], 0.0, tolerance );
         EXPECT_NEAR( host[0].residual[2 * node + 1], test.expected_first_y, tolerance );
         EXPECT_NEAR( host[0].residual[2 * ( node + 2 )], 0.0, tolerance );
@@ -134,7 +135,7 @@ TEST_P( CommonPlaneTest, balances_rotated_pair_forces_and_moments )
     const Coordinates edge1{ MdArray<RealT, 2>{ 1.0, 2.0 }, MdArray<RealT, 2>{ 4.0, 6.0 } };
     const Coordinates edge2{ MdArray<RealT, 2>{ 3.8, 6.15 }, MdArray<RealT, 2>{ 0.8, 2.15 } };
     const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<3>> rule;
-    const auto result = computeCommonPlaneResidual( edge1.view(), edge2.view(), rule, 2.0, 0.0 );
+    const auto result = computeCommonPlaneResidual( edge1.view(), edge2.view(), rule, 2.0 );
     for ( int i = 0; i < CommonPlaneResidualData::coordinate_count; ++i ) output[i] = result.residual[i];
   } );
   const ArrayT<RealT, 1, MemorySpace::Host> values( records );
@@ -220,7 +221,7 @@ TEST_P( CommonPlaneTest, activates_only_penetrating_quadrature_points )
                                               geometry1.position( quadrature.geometry1_coords( q, 0 ) ) )
                       .dot( frame.normal );
     }
-    const auto result = computeCommonPlaneResidual( edge1.view(), edge2.view(), rule, 1.0, 0.0 );
+    const auto result = computeCommonPlaneResidual( edge1.view(), edge2.view(), rule, 1.0 );
     output[2] = 0.0;
     for ( int node = 0; node < 2; ++node ) output[2] += result.residual[2 * node + 1];
   } );
@@ -246,7 +247,8 @@ void checkJacobian()
   for ( int geometry = 0; geometry < 2; ++geometry ) {
     const auto& edge1 = cases1[geometry];
     const auto& edge2 = cases2[geometry];
-    const auto result = computeCommonPlanePair( edge1.view(), edge2.view(), rule, 2.5, 0.03 );
+    const auto result =
+        computeCommonPlanePair( edge1.view(), edge2.view(), rule, 2.5, OffsetGap{ CommonPlaneGap{}, 0.03 } );
     for ( int column = 0; column < dofs; ++column ) {
       auto plus1 = edge1, minus1 = edge1, plus2 = edge2, minus2 = edge2;
       if ( column < Coordinates::size() ) {
@@ -256,8 +258,10 @@ void checkJacobian()
         plus2[column - Coordinates::size()] += step;
         minus2[column - Coordinates::size()] -= step;
       }
-      const auto plus = computeCommonPlaneResidual( plus1.view(), plus2.view(), rule, 2.5, 0.03 );
-      const auto minus = computeCommonPlaneResidual( minus1.view(), minus2.view(), rule, 2.5, 0.03 );
+      const auto plus =
+          computeCommonPlaneResidual( plus1.view(), plus2.view(), rule, 2.5, OffsetGap{ CommonPlaneGap{}, 0.03 } );
+      const auto minus =
+          computeCommonPlaneResidual( minus1.view(), minus2.view(), rule, 2.5, OffsetGap{ CommonPlaneGap{}, 0.03 } );
       for ( int row = 0; row < dofs; ++row ) {
         EXPECT_NEAR( result.jacobian( row, column ), ( plus.residual[row] - minus.residual[row] ) / ( 2.0 * step ),
                      2.0e-7 )
@@ -267,11 +271,11 @@ void checkJacobian()
   }
   const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
   const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, 0.0 }, MdArray<RealT, 2>{ 0.0, 0.0 } };
-  const auto zero = computeCommonPlanePair( edge1.view(), edge2.view(), rule, 1.0, 0.0 );
+  const auto zero = computeCommonPlanePair( edge1.view(), edge2.view(), rule, 1.0 );
   EXPECT_TRUE( zero.has_active_points );
   EXPECT_GT( zero.jacobian( 1, 1 ), 0.0 );
   const Coordinates invalid{};
-  EXPECT_THROW( computeCommonPlanePair( invalid.view(), edge2.view(), rule, 1.0, 0.0 ), std::invalid_argument );
+  EXPECT_THROW( computeCommonPlanePair( invalid.view(), edge2.view(), rule, 1.0 ), std::invalid_argument );
 }
 
 // All reference counts differentiate current normals, interval bounds, edge lengths, and mixed active-point residuals.

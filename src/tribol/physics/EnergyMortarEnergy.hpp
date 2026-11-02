@@ -10,75 +10,56 @@
 #ifndef SRC_TRIBOL_PHYSICS_ENERGYMORTARENERGY_HPP_
 #define SRC_TRIBOL_PHYSICS_ENERGYMORTARENERGY_HPP_
 
-#include "tribol/geom/LinearEdgeGeometry.hpp"
+#include "tribol/geom/OpposingNormalGap.hpp"
+#include "tribol/geom/OffsetGap.hpp"
 #include "tribol/integ/PairIntegral.hpp"
-#include "tribol/physics/PairMethod.hpp"
+#include "tribol/physics/PairDefinition.hpp"
 
 namespace tribol {
 
 /**
- * @brief Calculate the opposing-normal-weighted gap at one pair quadrature point.
- *
- * Mesh1 is the non-mortar integration side. The gap projects the separation from mesh1 to mesh2 onto mesh2's current
- * directed normal, scales by the opposing-normal alignment factor min(normal1 . normal2, 0), and subtracts the fixed
- * residual gap offset.
+ * @brief Define quadrature-point Energy Mortar penalty energy using an owned gap definition.
+ * @tparam GapDefinition Geometric or offset gap callable evaluated at each pair quadrature point.
  */
-struct OpposingNormalGap {
-  RealT residual_gap{ 0.0 };  ///< Gap offset held constant during differentiation.
-
-  /**
-   * @brief Evaluate the normal gap at a pair quadrature point.
-   * @tparam Point PairQuadraturePoint type with 1D linear-edge geometries.
-   * @param point Current pair quadrature point.
-   * @return Normal gap at the quadrature point.
-   */
-  template <typename Point>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT operator()( const Point& point ) const
-  {
-    const auto normal1 = point.geometry1.normal(), normal2 = point.geometry2.normal();
-    const RealT cosine = normal1.dot( normal2 );
-    const RealT alignment = cosine < 0.0 ? cosine : 0.0;
-    return LinearEdgeGeometry::Vector( point.position1(), point.position2() ).dot( normal2 ) * alignment - residual_gap;
-  }
-};
-
-/** @brief Define quadrature-point Energy Mortar penalty energy from OpposingNormalGap and the integration rule. */
+template <typename GapDefinition = OpposingNormalGap>
 struct EnergyMortarPenalty {
+  GapDefinition gap{};  ///< Owned gap configuration; no current geometry is retained.
   /**
    * @brief Evaluate quadrature-point penalty energy over the supplied integration rule.
    * @tparam IntegrationRule Pair integration rule context.
    * @param integration_rule Pair integration rule.
    * @param penalty Penalty stiffness.
-   * @param residual_gap Gap offset held fixed during differentiation.
    * @return Integrated quadrature-point penalty energy.
    */
   template <typename IntegrationRule>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT operator()( const IntegrationRule& integration_rule, RealT penalty,
-                                                            RealT residual_gap ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT operator()( const IntegrationRule& integration_rule,
+                                                            RealT penalty ) const
   {
-    const auto gap = min( OpposingNormalGap{ residual_gap }, 0.0 );
-    return integral( 0.5 * penalty * gap * gap, integration_rule );
+    const auto compressed_gap = min( gap, 0.0 );
+    return integral( 0.5 * penalty * compressed_gap * compressed_gap, integration_rule );
   }
 };
 
-/** @brief Define nodal Energy Mortar penalty and Lagrange multiplier energies from nodal basis and gap integrals. */
+/**
+ * @brief Define nodal Energy Mortar integrals and energies using an owned gap definition.
+ * @tparam GapDefinition Geometric or offset gap callable evaluated at each pair quadrature point.
+ */
+template <typename GapDefinition = OpposingNormalGap>
 struct EnergyMortarNodal {
+  GapDefinition gap{};                               ///< Owned gap configuration, used only by the primal gap integral.
+  using Basis = NodalBasis1<EDGE, LINEAR_LAGRANGE>;  ///< Dual basis on the first linear edge.
+  static constexpr IndexT node_count = Basis::node_count;  ///< Dual finite-element nodes on each element.
   /**
-   * @brief Evaluate nodal penalty energy from nodal weighted-gap and tributary-area integrals.
-   * @tparam IntegrationRule Pair or nodal integration rule context.
-   * @param integration_rule Integration rule context.
-   * @param penalty Penalty stiffness.
-   * @param residual_gap Gap offset held fixed during differentiation.
-   * @return Nodal penalty contact energy.
+   * @brief Calculate gap and area directly from the same pair integration context.
+   * @tparam IntegrationRule Current pair rule supporting integral().
+   * @param integration_rule Current geometry and generated quadrature.
+   * @return Named, unclamped weighted-gap and area integrals.
    */
   template <typename IntegrationRule>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT penaltyEnergy( const IntegrationRule& integration_rule, RealT penalty,
-                                                               RealT residual_gap ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE NodalPairIntegrals<node_count> integrals(
+      const IntegrationRule& integration_rule ) const
   {
-    const auto gap = OpposingNormalGap{ residual_gap };
-    const auto weighted_gap = integral( nodal_basis * gap, integration_rule );
-    const auto area = integral( nodal_basis, integration_rule );
-    return penaltyEnergyFromIntegrals( weighted_gap, area, penalty );
+    return { integral( nodal_basis * gap, integration_rule ), integral( nodal_basis, integration_rule ) };
   }
 
   /**
@@ -91,30 +72,11 @@ struct EnergyMortarNodal {
    * @return Numerical energy for arrays, or a deferred energy for expressions.
    */
   template <typename WeightedGap, typename Area>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto penaltyEnergyFromIntegrals( const WeightedGap& weighted_gap,
-                                                                           const Area& area, RealT penalty ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto penaltyEnergy( const WeightedGap& weighted_gap, const Area& area,
+                                                              RealT penalty ) const
   {
     const auto g_tilde = min( weighted_gap, 0.0 );
     return 0.5 * penalty * sum( g_tilde, g_tilde, 1.0 / area );
-  }
-
-  /**
-   * @brief Evaluate nodal Lagrange multiplier energy from nodal pressures and weighted-gap integrals.
-   * @tparam IntegrationRule Pair or nodal integration rule context.
-   * @tparam Pressure Nodal pressure array or span type.
-   * @param integration_rule Integration rule context.
-   * @param pressure Nodal Lagrange multipliers on mesh1's nodes.
-   * @param residual_gap Gap offset held fixed during differentiation.
-   * @return Nodal Lagrange multiplier contact energy.
-   */
-  template <typename IntegrationRule, typename Pressure>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT lagrangeMultiplierEnergy( const IntegrationRule& integration_rule,
-                                                                          const Pressure& pressure,
-                                                                          RealT residual_gap ) const
-  {
-    const auto gap = OpposingNormalGap{ residual_gap };
-    const auto g_tilde = integral( nodal_basis * gap, integration_rule );
-    return lagrangeMultiplierEnergyFromIntegral( g_tilde, pressure );
   }
 
   /**
@@ -126,8 +88,8 @@ struct EnergyMortarNodal {
    * @return Numerical or deferred nodal energy.
    */
   template <typename WeightedGap, typename Pressure>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto lagrangeMultiplierEnergyFromIntegral( const WeightedGap& weighted_gap,
-                                                                                     const Pressure& pressure ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto lagrangeMultiplierEnergy( const WeightedGap& weighted_gap,
+                                                                         const Pressure& pressure ) const
   {
     return dot( pressure, weighted_gap );
   }
@@ -136,19 +98,21 @@ struct EnergyMortarNodal {
 /** @brief Primal pair energy, activation, and quadrature status. */
 using EnergyMortarEnergyValue = PairEnergyValue;
 
-/** @brief Quadrature-point Energy Mortar pair energy definition for a given pair quadrature rule. */
-template <typename QuadratureRule>
-using EnergyMortarEnergy = PairEnergyDefinition<QuadratureRule, EnergyMortarPenalty>;
+/**
+ * @brief Quadrature-point Energy Mortar energy with a selected gap definition.
+ * @tparam QuadratureRule Pair quadrature generator.
+ * @tparam GapDefinition Geometric or offset gap type; defaults to the unshifted geometric gap.
+ */
+template <typename QuadratureRule, typename GapDefinition = OpposingNormalGap>
+using EnergyMortarEnergy = PairEnergyDefinition<QuadratureRule, EnergyMortarPenalty<GapDefinition>>;
 
-/** @brief Nodal Energy Mortar pair definition for a given pair quadrature rule. */
-template <typename QuadratureRule>
-using EnergyMortarNodalEnergy = NodalPairDefinition<QuadratureRule, EnergyMortarNodal>;
-
-/** @brief Nodal Energy Mortar penalty state energy definition. */
-using NodalPenaltyEnergy = NodalPenaltyStateEnergy<EnergyMortarNodal>;
-
-/** @brief Nodal Energy Mortar Lagrange multiplier state energy definition. */
-using NodalLagrangeMultiplierEnergy = NodalLagrangeMultiplierStateEnergy<EnergyMortarNodal>;
+/**
+ * @brief Nodal Energy Mortar integrals with a selected gap definition.
+ * @tparam QuadratureRule Pair quadrature generator.
+ * @tparam GapDefinition Geometric or offset gap type; defaults to the unshifted geometric gap.
+ */
+template <typename QuadratureRule, typename GapDefinition = OpposingNormalGap>
+using EnergyMortarNodalEnergy = NodalPairDefinition<QuadratureRule, EnergyMortarNodal<GapDefinition>>;
 
 }  // namespace tribol
 #endif  // SRC_TRIBOL_PHYSICS_ENERGYMORTARENERGY_HPP_

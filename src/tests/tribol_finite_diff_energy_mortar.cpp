@@ -28,9 +28,9 @@ using LinearEdgeBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
 
 namespace {
 using TestRule = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>;
-using TestNodalEnergy = EnergyMortarNodalEnergy<TestRule>;
+using TestNodalEnergy = EnergyMortarNodalEnergy<TestRule, OffsetGap<OpposingNormalGap>>;
 using PairCoordinates = TestNodalEnergy::Coordinates;
-using TestEnergy = EnergyMortarEnergy<TestRule>;
+using TestEnergy = EnergyMortarEnergy<TestRule, OffsetGap<OpposingNormalGap>>;
 using TestEnergyEvaluator = EnergyPairEvaluator<TestEnergy>;
 
 /**
@@ -74,7 +74,7 @@ void expectZeroNodalResponse( const NodalDefinition& definition, typename NodalD
     EXPECT_EQ( hessians[entry], 0.0 );
   }
   const auto weighted = definition.withWeights( MdArray<RealT, NodalDefinition::node_count>{ 2.0, -3.0 } );
-  const auto weighted_eval = EnergyPairEvaluator<NodalDefinition>::evaluate( coordinates, weighted );
+  const auto weighted_eval = EnergyPairEvaluator<std::decay_t<decltype( weighted )>>::evaluate( coordinates, weighted );
   EXPECT_EQ( weighted_eval.energy, 0.0 );
   for ( IndexT entry = 0; entry < weighted_eval.residual.size(); ++entry )
     EXPECT_EQ( weighted_eval.residual[entry], 0.0 );
@@ -97,7 +97,7 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
   MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
   const auto coordinates = gatherCoordinates( mesh1.getView(), mesh2.getView() );
 
-  const TestEnergy definition{ TestRule{}, 3.0, 0.0 };
+  const TestEnergy definition{ TestRule{}, 3.0, EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, 0.0 } } };
   const auto primal = definition.evaluate( coordinates.view() );
   ASSERT_EQ( primal.quadrature_result.status, QuadratureStatus::Success );
   EXPECT_FALSE( primal.has_active_points );
@@ -122,7 +122,7 @@ TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
   MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
   const auto coordinates = gatherCoordinates( mesh1.getView(), mesh2.getView() );
 
-  const TestEnergy definition{ TestRule{}, 3.0, 0.0 };
+  const TestEnergy definition{ TestRule{}, 3.0, EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, 0.0 } } };
   const auto primal = definition.evaluate( coordinates.view() );
   ASSERT_EQ( primal.quadrature_result.status, QuadratureStatus::Success );
   EXPECT_TRUE( primal.has_active_points );
@@ -149,11 +149,13 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
   const auto coordinates = gatherCoordinates( mesh1.getView(), mesh2.getView() );
 
   const TestRule quadrature_rule{};
-  const TestNodalEnergy without_residual_def( quadrature_rule, 0.0 );
+  const TestNodalEnergy without_residual_def( quadrature_rule,
+                                              EnergyMortarNodal{ OffsetGap{ OpposingNormalGap{}, 0.0 } } );
   const auto without_residual = without_residual_def.values( coordinates.view() );
 
   constexpr RealT residual_gap = 0.15;
-  const TestNodalEnergy with_residual_def( quadrature_rule, residual_gap );
+  const TestNodalEnergy with_residual_def( quadrature_rule,
+                                           EnergyMortarNodal{ OffsetGap{ OpposingNormalGap{}, residual_gap } } );
   const auto with_residual = with_residual_def.values( coordinates.view() );
 
   // The residual gap shifts the gap integral without changing the projected overlap geometry.
@@ -179,7 +181,7 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
   MeshData mesh2( 1, 1, 2, conn2, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
   const auto coordinates = gatherCoordinates( mesh1.getView(), mesh2.getView() );
 
-  const TestEnergy without_residual{ TestRule{}, 3.0, 0.0 };
+  const TestEnergy without_residual{ TestRule{}, 3.0, EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, 0.0 } } };
   const auto inactive = without_residual.evaluate( coordinates.view() );
   ASSERT_EQ( inactive.quadrature_result.status, QuadratureStatus::Success );
   EXPECT_FALSE( inactive.has_active_points );
@@ -191,7 +193,7 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
   for ( IndexT entry = 0; entry < inactive_derivatives.jacobian.size(); ++entry )
     EXPECT_EQ( inactive_derivatives.jacobian[entry], 0.0 );
 
-  const TestEnergy with_residual{ TestRule{}, 3.0, 0.15 };
+  const TestEnergy with_residual{ TestRule{}, 3.0, EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, 0.15 } } };
   const auto active = with_residual.evaluate( coordinates.view() );
   ASSERT_EQ( active.quadrature_result.status, QuadratureStatus::Success );
   EXPECT_TRUE( active.has_active_points );
@@ -212,7 +214,7 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
 {
   PairCoordinates coordinates{ 1.0, 0.0, 0.0, 0.0, 0.2, -0.1, 0.8, -0.1 };
   const auto baseline = coordinates;
-  const TestEnergy definition{ TestRule{}, 3.0, GetParam() };
+  const TestEnergy definition{ TestRule{}, 3.0, EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, GetParam() } } };
   const auto analytical = TestEnergyEvaluator::evaluate( coordinates.view(), definition );
   ASSERT_GT( analytical.energy, 0.0 );
   constexpr IndexT dofs = PairCoordinates::size();
@@ -257,8 +259,10 @@ TEST( EnergyMortarCoordinates, disjoint_projected_intervals_have_zero_contributi
   MeshData mesh2( 1, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
   const auto coordinates = gatherCoordinates( mesh1.getView(), mesh2.getView() );
   const TestRule quadrature_rule;
-  expectZeroNodalResponse( TestNodalEnergy{ quadrature_rule, 0.0 }, coordinates.view() );
-  const TestEnergy definition{ quadrature_rule, 1.0, 0.0 };
+  expectZeroNodalResponse(
+      TestNodalEnergy{ quadrature_rule, EnergyMortarNodal{ OffsetGap{ OpposingNormalGap{}, 0.0 } } },
+      coordinates.view() );
+  const TestEnergy definition{ quadrature_rule, 1.0, EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, 0.0 } } };
   const auto primal = definition.evaluate( coordinates.view() );
   ASSERT_EQ( primal.quadrature_result.status, QuadratureStatus::Success );
   EXPECT_EQ( primal.quadrature_result.required_point_count, 0 );
@@ -282,8 +286,11 @@ TEST( EnergyMortarCoordinates, cooriented_pairs_have_zero_contribution_without_s
   // A positive residual gap must not turn an excluded pair into an active constraint.
   for ( const RealT residual_gap : { 0.0, 0.15 } ) {
     SCOPED_TRACE( residual_gap );
-    expectZeroNodalResponse( TestNodalEnergy{ quadrature_rule, residual_gap }, coordinates.view() );
-    const TestEnergy definition{ quadrature_rule, 1.0, residual_gap };
+    expectZeroNodalResponse(
+        TestNodalEnergy{ quadrature_rule, EnergyMortarNodal{ OffsetGap{ OpposingNormalGap{}, residual_gap } } },
+        coordinates.view() );
+    const TestEnergy definition{ quadrature_rule, 1.0,
+                                 EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, residual_gap } } };
     const auto primal = definition.evaluate( coordinates.view() );
     ASSERT_EQ( primal.quadrature_result.status, QuadratureStatus::Success );
     EXPECT_EQ( primal.quadrature_result.required_point_count, 0 );
@@ -313,24 +320,26 @@ TEST( EnergyMortarCoordinates, rejects_degenerate_geometry_before_consuming_quad
         MeshData mesh2( 1, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
         const auto coordinates = gatherCoordinates( mesh1.getView(), mesh2.getView() );
 
-        using NodalDefinition = EnergyMortarNodalEnergy<QuadratureRule>;
-        const NodalDefinition nodal_definition{ quadrature_rule, 0.0,
-                                                MdArray<RealT, NodalDefinition::node_count>{ 1.0, -2.0 } };
+        using NodalDefinition = EnergyMortarNodalEnergy<QuadratureRule, OffsetGap<OpposingNormalGap>>;
+        const NodalDefinition nodal_definition{ quadrature_rule,
+                                                EnergyMortarNodal{ OffsetGap{ OpposingNormalGap{}, 0.0 } } };
         const auto nodal_primal = nodal_definition.evaluate( coordinates.view() );
         EXPECT_EQ( nodal_primal.quadrature_result.status, QuadratureStatus::InvalidGeometry );
         EXPECT_EQ( nodal_primal.quadrature_result.required_point_count, 0 );
         EXPECT_FALSE( nodal_primal.has_active_points );
         EXPECT_THROW( nodal_definition.values( coordinates.view() ), std::invalid_argument );
-        EXPECT_THROW( nodal_definition.energy( coordinates.view() ), std::invalid_argument );
+        EXPECT_THROW( nodal_definition.withWeights( {} ).energy( coordinates.view() ), std::invalid_argument );
         EXPECT_THROW( VectorPairEvaluator<NodalDefinition>::evaluateGradients( coordinates.view(), nodal_definition ),
                       std::invalid_argument );
         EXPECT_THROW( VectorPairEvaluator<NodalDefinition>::evaluateHessians( coordinates.view(), nodal_definition ),
                       std::invalid_argument );
-        EXPECT_THROW( EnergyPairEvaluator<NodalDefinition>::evaluate( coordinates.view(), nodal_definition ),
+        EXPECT_THROW( EnergyPairEvaluator<std::decay_t<decltype( nodal_definition.withWeights( {} ) )>>::evaluate(
+                          coordinates.view(), nodal_definition.withWeights( {} ) ),
                       std::invalid_argument );
 
-        using Definition = EnergyMortarEnergy<QuadratureRule>;
-        const Definition definition{ quadrature_rule, 1.0, 0.0 };
+        using Definition = EnergyMortarEnergy<QuadratureRule, OffsetGap<OpposingNormalGap>>;
+        const Definition definition{ quadrature_rule, 1.0,
+                                     EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, 0.0 } } };
         const auto primal = definition.evaluate( coordinates.view() );
         EXPECT_EQ( primal.quadrature_result.status, QuadratureStatus::InvalidGeometry );
         EXPECT_EQ( primal.quadrature_result.required_point_count, 0 );
@@ -360,7 +369,7 @@ TEST( EnergyMortarGap, calculates_normal_distance_for_short_valid_edges )
   MeshData mesh2( 1, 1, 2, connectivity, EDGE, LINEAR_LAGRANGE, x2, y2, nullptr, MemorySpace::Host );
   const auto coordinates = gatherCoordinates( mesh1.getView(), mesh2.getView() );
   const TestRule quadrature_rule{};
-  const TestNodalEnergy nodal_definition( quadrature_rule, 0.0 );
+  const TestNodalEnergy nodal_definition( quadrature_rule, EnergyMortarNodal{ OffsetGap{ OpposingNormalGap{}, 0.0 } } );
   const auto response = nodal_definition.values( coordinates.view() );
   for ( int node = 0; node < LinearEdgeBasis::node_count; ++node ) {
     const RealT area = response[node + LinearEdgeBasis::node_count];
@@ -380,7 +389,7 @@ template <int Count>
 void checkSelectedRuleDerivatives( RealT residual_gap, const PairCoordinates& initial_coordinates )
 {
   using QuadratureRule = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<Count>>;
-  using NodalDefinition = EnergyMortarNodalEnergy<QuadratureRule>;
+  using NodalDefinition = EnergyMortarNodalEnergy<QuadratureRule, OffsetGap<OpposingNormalGap>>;
   constexpr IndexT node_count = NodalDefinition::node_count;
   constexpr IndexT value_count = NodalDefinition::value_count;
   constexpr IndexT dofs = NodalDefinition::dof_count;
@@ -390,7 +399,8 @@ void checkSelectedRuleDerivatives( RealT residual_gap, const PairCoordinates& in
   SCOPED_TRACE( testing::Message() << "points=" << Count << ", residual_gap=" << residual_gap );
   auto coordinates = initial_coordinates;
   const QuadratureRule quadrature_rule{ SmoothedProjectedEdgeMapping{ 0.2 } };
-  const NodalDefinition nodal_definition( quadrature_rule, residual_gap );
+  const NodalDefinition nodal_definition( quadrature_rule,
+                                          EnergyMortarNodal{ OffsetGap{ OpposingNormalGap{}, residual_gap } } );
   const auto original = nodal_definition.values( coordinates.view() );
   const auto quantities =
       VectorPairEvaluator<NodalDefinition>::evaluateGradients( coordinates.view(), nodal_definition, original.view() );
@@ -447,7 +457,8 @@ void checkSelectedRuleDerivatives( RealT residual_gap, const PairCoordinates& in
   // EnergyPairEvaluator must match both finite differences and the pressure-weighted sum of nodal gap derivatives.
   const MdArray<RealT, node_count> pressure{ -2.5, 1.75 };
   const auto lm_pair_def = nodal_definition.withWeights( pressure );
-  const auto lm_pair_eval = EnergyPairEvaluator<NodalDefinition>::evaluate( coordinates.view(), lm_pair_def );
+  const auto lm_pair_eval =
+      EnergyPairEvaluator<std::decay_t<decltype( lm_pair_def )>>::evaluate( coordinates.view(), lm_pair_def );
   EXPECT_NEAR( lm_pair_eval.energy, dot( pressure, MdSpan<const RealT, node_count>{ original.data(), node_count } ),
                1.0e-14 );
   for ( IndexT row = 0; row < dofs; ++row ) {
@@ -463,7 +474,8 @@ void checkSelectedRuleDerivatives( RealT residual_gap, const PairCoordinates& in
   // Differentiating with both nodal gap and tributary-area weights must match the combined weighted Hessians.
   const MdArray<RealT, node_count> area_weight{ -0.4, -0.9 };
   const auto weighted_def = nodal_definition.withWeights( pressure, area_weight );
-  const auto weighted_eval = EnergyPairEvaluator<NodalDefinition>::evaluate( coordinates.view(), weighted_def );
+  const auto weighted_eval =
+      EnergyPairEvaluator<std::decay_t<decltype( weighted_def )>>::evaluate( coordinates.view(), weighted_def );
   for ( IndexT row = 0; row < dofs; ++row ) {
     for ( IndexT col = 0; col < dofs; ++col ) {
       const RealT expected_hess = pressure[0] * hessians( 0, row, col ) + pressure[1] * hessians( 1, row, col ) +
@@ -473,8 +485,9 @@ void checkSelectedRuleDerivatives( RealT residual_gap, const PairCoordinates& in
   }
 
   // Penalty gradients and Hessians must use the same selected rule, including its geometry-dependent weights.
-  using Definition = EnergyMortarEnergy<QuadratureRule>;
-  const Definition definition{ quadrature_rule, 7.0, residual_gap };
+  using Definition = EnergyMortarEnergy<QuadratureRule, OffsetGap<OpposingNormalGap>>;
+  const Definition definition{ quadrature_rule, 7.0,
+                               EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, residual_gap } } };
   const auto primal = definition.evaluate( coordinates.view() );
   ASSERT_EQ( primal.quadrature_result.status, QuadratureStatus::Success );
   if ( !primal.has_active_points ) return;
@@ -513,8 +526,9 @@ TEST( NodalEnergyDefinitionsCheck, DerivativesMatchFiniteDifference )
 {
   MdArray<RealT, 2> state{ -0.12, 0.45 };
   const auto baseline = state;
-  const NodalPenaltyEnergy penalty_def{ 25.0, 0.0 };
-  const auto penalty_eval = EnergyPairEvaluator<NodalPenaltyEnergy>::evaluate( state.view(), penalty_def );
+  const auto penalty_expression = EnergyMortarNodal{}.penaltyEnergy( nodal_weighted_gap, nodal_area, 25.0 );
+  auto penalty_def = penalty_expression.atNode( 0, 1.0e-14 );
+  const auto penalty_eval = EnergyPairEvaluator<decltype( penalty_def )>::evaluate( state.view(), penalty_def );
   EXPECT_NEAR( penalty_eval.residual[0], 25.0 * ( -0.12 / 0.45 ), 1.0e-14 );
   EXPECT_NEAR( penalty_eval.energy, 0.5 * penalty_eval.residual[0] * state[0], 1.0e-14 );
 
@@ -522,9 +536,9 @@ TEST( NodalEnergyDefinitionsCheck, DerivativesMatchFiniteDifference )
   constexpr RealT tol = 1.0e-5;
   for ( IndexT col = 0; col < 2; ++col ) {
     state[col] = baseline[col] + step;
-    const auto plus = EnergyPairEvaluator<NodalPenaltyEnergy>::evaluate( state.view(), penalty_def );
+    const auto plus = EnergyPairEvaluator<decltype( penalty_def )>::evaluate( state.view(), penalty_def );
     state[col] = baseline[col] - step;
-    const auto minus = EnergyPairEvaluator<NodalPenaltyEnergy>::evaluate( state.view(), penalty_def );
+    const auto minus = EnergyPairEvaluator<decltype( penalty_def )>::evaluate( state.view(), penalty_def );
     state[col] = baseline[col];
     EXPECT_NEAR( penalty_eval.residual[col], ( plus.energy - minus.energy ) / ( 2.0 * step ), tol );
     for ( IndexT row = 0; row < 2; ++row ) {
@@ -533,8 +547,11 @@ TEST( NodalEnergyDefinitionsCheck, DerivativesMatchFiniteDifference )
     }
   }
 
-  const NodalLagrangeMultiplierEnergy lm_def{ -3.5, 0.0 };
-  const auto lm_eval = EnergyPairEvaluator<NodalLagrangeMultiplierEnergy>::evaluate( state.view(), lm_def );
+  const RealT pressure[]{ -3.5 };
+  const auto lm_expression =
+      EnergyMortarNodal{}.lagrangeMultiplierEnergy( nodal_weighted_gap, IndependentNodalField{ { pressure, 1 } } );
+  auto lm_def = lm_expression.atNode( 0, 1.0e-14 );
+  const auto lm_eval = EnergyPairEvaluator<decltype( lm_def )>::evaluate( state.view(), lm_def );
   EXPECT_DOUBLE_EQ( lm_eval.energy, -3.5 * state[0] );
   EXPECT_DOUBLE_EQ( lm_eval.residual[0], -3.5 );
   EXPECT_DOUBLE_EQ( lm_eval.residual[1], 0.0 );

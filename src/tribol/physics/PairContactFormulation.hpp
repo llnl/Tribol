@@ -19,7 +19,7 @@
 #include "tribol/physics/PenaltyStiffness.hpp"
 #include "tribol/search/CoarseSearch.hpp"
 #include "tribol/search/RefinedSearch.hpp"
-#include "tribol/mesh/MfemData.hpp"
+#include "tribol/mesh/MfemContactAssembly.hpp"
 
 namespace tribol {
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
@@ -28,28 +28,34 @@ namespace tribol {
  * @brief Energy Mortar defaults: energy derivatives and current registered constant penalties.
  * @tparam QuadratureRule Smoothed projected-edge pair rule.
  * @tparam PenaltyStiffness Combination of registered mesh constants; defaults to their arithmetic mean.
+ * @tparam GapDefinition Owned geometric or offset gap; the factory selects the offset wrapper.
  */
-template <typename QuadratureRule, typename PenaltyStiffness = AveragePenaltyStiffness>
+template <typename QuadratureRule, typename PenaltyStiffness = AveragePenaltyStiffness,
+          typename GapDefinition = OffsetGap<OpposingNormalGap>>
 using EnergyMortarPairMethod =
-    EnergyPairMethod<EnergyMortarEnergy<QuadratureRule>, RegisteredPenaltyInputs<PenaltyStiffness>>;
+    EnergyPairMethod<EnergyMortarEnergy<QuadratureRule, GapDefinition>, RegisteredPenaltyInputs<PenaltyStiffness>>;
 
 /**
  * @brief Nodal Energy Mortar defaults: nodal gap/area integrals, nodal energy derivatives, and registered penalties.
  * @tparam QuadratureRule Smoothed projected-edge pair rule.
  * @tparam PenaltyStiffness Combination of registered mesh constants; defaults to their arithmetic mean.
+ * @tparam GapDefinition Owned geometric or offset gap; the factory selects the offset wrapper.
  */
-template <typename QuadratureRule, typename PenaltyStiffness = AveragePenaltyStiffness>
+template <typename QuadratureRule, typename PenaltyStiffness = AveragePenaltyStiffness,
+          typename GapDefinition = OffsetGap<OpposingNormalGap>>
 using EnergyMortarNodalPairMethod =
-    NodalPairMethod<EnergyMortarNodalEnergy<QuadratureRule>, RegisteredPenaltyInputs<PenaltyStiffness>>;
+    NodalPairMethod<EnergyMortarNodalEnergy<QuadratureRule, GapDefinition>, RegisteredPenaltyInputs<PenaltyStiffness>>;
 
 /**
  * @brief Common Plane defaults: residual derivatives and current scaled mesh penalties.
  * @tparam BaseQuadratureRule Gauss rule on the common-line interval.
  * @tparam PenaltyStiffness Combination of scaled mesh penalties; defaults to springs in series.
+ * @tparam GapDefinition Owned geometric or offset gap; the factory selects the offset wrapper.
  */
-template <typename BaseQuadratureRule, typename PenaltyStiffness = SeriesPenaltyStiffness>
+template <typename BaseQuadratureRule, typename PenaltyStiffness = SeriesPenaltyStiffness,
+          typename GapDefinition = OffsetGap<CommonPlaneGap>>
 using CommonPlanePairMethod =
-    ForcePairMethod<CommonPlaneForce<BaseQuadratureRule>, ScaledMeshPenaltyInputs<PenaltyStiffness>>;
+    ForcePairMethod<CommonPlaneForce<BaseQuadratureRule, GapDefinition>, ScaledMeshPenaltyInputs<PenaltyStiffness>>;
 
 /**
  * @brief Search current surfaces and assemble element-pair or nodal residuals and Jacobians on MFEM true DOFs.
@@ -109,9 +115,7 @@ class PairContactFormulation : public ContactFormulation {
   using Domain = ContactDomain<typename PairMethod::FirstGeometry,
                                typename PairMethod::SecondGeometry>;  ///< Borrowed current pairs and mesh views.
 
-  MfemMeshData& mesh_data_;                        ///< Borrowed displacement and decomposition data.
-  MfemSubmeshData* submesh_data_{ nullptr };       ///< Borrowed dual submesh data for nodal methods.
-  MfemJacobianData& jacobian_data_;                ///< Borrowed Jacobian transfer.
+  MfemContactAssemblyContext assembly_context_;    ///< Borrowed displacement and optional dual transfer data.
   std::unique_ptr<CoarseSearch> coarse_search_;    ///< Owned spatial search.
   std::unique_ptr<RefinedSearch> refined_search_;  ///< Owned pair acceptance checks.
   PairMethod method_;                              ///< Owned method configuration.

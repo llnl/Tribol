@@ -20,12 +20,6 @@
 namespace tribol {
 #ifdef BUILD_REDECOMP
 
-/** @brief Fixed scalar parameters passed to an energy or force definition for the current request. */
-struct PairDefinitionParameters {
-  RealT penalty;       ///< Combined penalty stiffness.
-  RealT residual_gap;  ///< Geometry-independent gap offset.
-};
-
 /**
  * @brief Read registered MFEM constant penalties on every request, with a fallback stiffness when absent.
  * @tparam PenaltyStiffness Callable combining the two registered constants; no mesh scales are applied.
@@ -50,22 +44,21 @@ class RegisteredPenaltyInputs {
   bool isEnabled() const noexcept { return enabled_; }
 
   /**
-   * @brief Read current registered constants and pass the supplied gap offset through unchanged.
+   * @brief Read and combine current registered constant penalties.
    * @param mesh_data Registered constants, which can change between requests.
    * @param mesh1 Current first mesh, unused by this input provider.
    * @param mesh2 Current second mesh, unused by this input provider.
-   * @param residual_gap Fixed gap offset; no additional validation is applied here.
-   * @return Combined constants, or fallback stiffness 1000.0 if either constant is absent, and the supplied gap offset.
+   * @return Combined stiffness, or fallback stiffness 1000.0 if either constant is absent.
    * @throws std::invalid_argument Penalty enforcement has not been configured; no parameters are returned.
    */
-  PairDefinitionParameters prepare( const MfemMeshData& mesh_data, [[maybe_unused]] MeshData::Viewer mesh1,
-                                    [[maybe_unused]] MeshData::Viewer mesh2, RealT residual_gap ) const
+  RealT prepare( const MfemMeshData& mesh_data, [[maybe_unused]] MeshData::Viewer mesh1,
+                 [[maybe_unused]] MeshData::Viewer mesh2 ) const
   {
     if ( !enabled_ ) throw std::invalid_argument( "Registered penalty inputs require configured penalty enforcement." );
     constexpr RealT default_penalty = 1000.0;
     const auto* penalty1 = mesh_data.GetMesh1KinematicConstantPenalty();
     const auto* penalty2 = mesh_data.GetMesh2KinematicConstantPenalty();
-    return { penalty1 && penalty2 ? combination_( *penalty1, *penalty2 ) : default_penalty, residual_gap };
+    return penalty1 && penalty2 ? combination_( *penalty1, *penalty2 ) : default_penalty;
   }
 
  private:
@@ -84,25 +77,21 @@ class ScaledMeshPenaltyInputs {
   explicit ScaledMeshPenaltyInputs( PenaltyStiffness combination = {} ) : combination_( std::move( combination ) ) {}
 
   /**
-   * @brief Combine current positive finite scaled penalties after checking the fixed gap offset.
+   * @brief Validate and combine current positive finite scaled penalties.
    * @param mesh_data MFEM parent data, unused by this input provider.
    * @param mesh1 First mesh with current constant penalty and scale.
    * @param mesh2 Second mesh with current constant penalty and scale.
-   * @param residual_gap Nonnegative finite offset subtracted from the geometric gap.
-   * @return Combined scaled stiffness and gap offset.
-   * @throws std::invalid_argument A scaled penalty or gap offset is invalid; no parameters are returned.
+   * @return Combined scaled stiffness.
+   * @throws std::invalid_argument A scaled penalty is invalid; no stiffness is returned.
    */
-  PairDefinitionParameters prepare( [[maybe_unused]] const MfemMeshData& mesh_data, MeshData::Viewer mesh1,
-                                    MeshData::Viewer mesh2, RealT residual_gap ) const
+  RealT prepare( [[maybe_unused]] const MfemMeshData& mesh_data, MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
   {
     const RealT penalty1 = mesh1.getElementData().m_penalty_stiffness * mesh1.getElementData().m_penalty_scale;
     const RealT penalty2 = mesh2.getElementData().m_penalty_stiffness * mesh2.getElementData().m_penalty_scale;
-    if ( !std::isfinite( penalty1 ) || !std::isfinite( penalty2 ) || penalty1 <= 0.0 || penalty2 <= 0.0 ||
-         !std::isfinite( residual_gap ) || residual_gap < 0.0 ) {
-      throw std::invalid_argument(
-          "Scaled mesh inputs require positive finite penalties and a nonnegative finite gap offset." );
+    if ( !std::isfinite( penalty1 ) || !std::isfinite( penalty2 ) || penalty1 <= 0.0 || penalty2 <= 0.0 ) {
+      throw std::invalid_argument( "Scaled mesh inputs require positive finite penalties." );
     }
-    return { combination_( penalty1, penalty2 ), residual_gap };
+    return combination_( penalty1, penalty2 );
   }
 
  private:

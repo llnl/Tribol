@@ -6,9 +6,10 @@
 /**
  * @file
  * @brief Check local energy/residual definitions, pair integration, and derivative interfaces independently of MFEM
- * assembly. Portable tests check pair integration and Energy Mortar energy/activation on every enabled backend. Host
- * Enzyme tests use analytical gradients, Hessians, and nonsymmetric Jacobians. A specialized evaluator is also
- * exercised without Enzyme.
+ * assembly. Portable tests check pair integration, geometric and offset gaps, and Energy Mortar energy/activation on
+ * every enabled backend. Named
+ * nodal outputs are also checked with reordered and repeated integral calls. Host Enzyme tests use analytical
+ * gradients, Hessians, and nonsymmetric Jacobians. A specialized evaluator is also exercised without Enzyme.
  */
 #include "gtest/gtest.h"
 #include "axom/slic/core/SimpleLogger.hpp"
@@ -17,6 +18,7 @@
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/physics/PairEvaluation.hpp"
 #include "tribol/physics/EnergyMortarEnergy.hpp"
+#include "tribol/physics/CommonPlane.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
 #include "tribol/integ/PairIntegral.hpp"
@@ -83,7 +85,7 @@ namespace {
 using namespace tribol;
 constexpr RealT tolerance = 1.0e-12;  ///< Roundoff allowance for analytical comparisons.
 
-/** @brief Run portable primal energy checks using backend-accessible storage. */
+/** @brief Run portable primal definition checks using backend-accessible storage. */
 class PairDefinitionTest : public tribol::detail::ExecutionTest {
  protected:
   /** @brief Check exact parallel-edge energy, activation, and geometry failure. @tparam Count Gauss point count. */
@@ -103,11 +105,12 @@ class PairDefinitionTest : public tribol::detail::ExecutionTest {
     const auto input = cases.view();
     const auto output = results.view();
     forAllExec( GetParam(), cases.size(), [=] TRIBOL_HOST_DEVICE( IndexT i ) {
-      const MdArray<RealT, EnergyMortarEnergy<Rule>::dof_count> coordinates{
+      const MdArray<RealT, EnergyMortarEnergy<Rule, OffsetGap<OpposingNormalGap>>::dof_count> coordinates{
           0.0, 0.0, 2.0, 0.0, 2.0, input[i].height, 0.0, input[i].height };
       // Disable endpoint smoothing so the expected integration length is exactly 2.0.
-      const EnergyMortarEnergy<Rule> definition{ Rule{ SmoothedProjectedEdgeMapping{ 0.0 } }, 4.0,
-                                                 input[i].residual_gap };
+      const EnergyMortarEnergy<Rule, OffsetGap<OpposingNormalGap>> definition{
+          Rule{ SmoothedProjectedEdgeMapping{ 0.0 } }, 4.0,
+          EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, input[i].residual_gap } } };
       output[i] = definition.evaluate( coordinates.view() );
     } );
     const ArrayT<Case, 1, MemorySpace::Host> host_cases( cases );
@@ -123,8 +126,12 @@ class PairDefinitionTest : public tribol::detail::ExecutionTest {
     const auto failed_output = failed.view();
     forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
       // The first edge has coincident endpoints; a failure must be returned before calculating its unit normal.
-      const MdArray<RealT, EnergyMortarEnergy<Rule>::dof_count> coordinates{ 0.0, 0.0, 0.0, 0.0, 2.0, 0.1, 0.0, 0.1 };
-      failed_output[0] = EnergyMortarEnergy<Rule>{ Rule{}, 4.0, 0.0 }.evaluate( coordinates.view() );
+      const MdArray<RealT, EnergyMortarEnergy<Rule, OffsetGap<OpposingNormalGap>>::dof_count> coordinates{
+          0.0, 0.0, 0.0, 0.0, 2.0, 0.1, 0.0, 0.1 };
+      failed_output[0] =
+          EnergyMortarEnergy<Rule, OffsetGap<OpposingNormalGap>>{
+              Rule{}, 4.0, EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, 0.0 } } }
+              .evaluate( coordinates.view() );
     } );
     const ArrayT<EnergyMortarEnergyValue, 1, MemorySpace::Host> invalid( failed );
     EXPECT_EQ( invalid[0].quadrature_result.status, QuadratureStatus::InvalidGeometry );
@@ -133,6 +140,132 @@ class PairDefinitionTest : public tribol::detail::ExecutionTest {
     EXPECT_FALSE( invalid[0].has_active_points );
   }
 };
+
+/** @brief Calculate area before gap to check that named outputs do not depend on integral call order. */
+struct AreaFirstNodalIntegrals {
+  static constexpr IndexT node_count = BasisFunction<EDGE, LINEAR_LAGRANGE>::node_count;  ///< Dual element nodes.
+  /**
+   * @brief Integrate area first, gap second, and area again using the same local quadrature.
+   * @tparam IntegrationRule Bound pair quadrature context.
+   * @param rule Current geometry and quadrature.
+   * @return Named gap and area arrays, independent of evaluation order or repeated integral calls.
+   */
+  template <typename IntegrationRule>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE NodalPairIntegrals<node_count> integrals( const IntegrationRule& rule ) const
+  {
+    const auto area = integral( nodal_basis, rule );
+    const auto gap = integral( nodal_basis * OpposingNormalGap{}, rule );
+    (void)integral( nodal_basis, rule );
+    return { gap, area };
+  }
+};
+
+// Named gap/area outputs must survive reordered and repeated integrals; each node has gap -0.1 and area 1.0.
+TEST_P( PairDefinitionTest, keeps_named_integrals_when_evaluation_order_changes )
+{
+  using Rule = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>;
+  using Definition = NodalPairDefinition<Rule, AreaFirstNodalIntegrals>;
+  ArrayT<typename Definition::PrimalResult> results( 1, 1, allocatorId() );
+  const auto output = results.view();
+  forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
+    const Definition definition{ Rule{ SmoothedProjectedEdgeMapping{ 0.0 } } };
+    const MdArray<RealT, Definition::dof_count> coordinates{ 0.0, 0.0, 2.0, 0.0, 2.0, 0.1, 0.0, 0.1 };
+    output[0] = definition.evaluate( coordinates.view() );
+  } );
+  const ArrayT<typename Definition::PrimalResult, 1, MemorySpace::Host> host( results );
+  EXPECT_EQ( host[0].quadrature_result.status, QuadratureStatus::Success );
+  EXPECT_TRUE( host[0].has_active_points );
+  for ( IndexT node = 0; node < Definition::node_count; ++node ) {
+    EXPECT_NEAR( host[0].value[node], -0.1, tolerance );
+    EXPECT_NEAR( host[0].value[Definition::node_count + node], 1.0, tolerance );
+  }
+}
+
+// The base gaps use current normals; wrapping either gap subtracts exactly the configured offset.
+TEST_P( PairDefinitionTest, separates_geometric_gaps_from_their_offsets )
+{
+  struct Case {
+    MdArray<RealT, 4> coordinates1;  ///< First edge endpoints.
+    MdArray<RealT, 4> coordinates2;  ///< Second edge endpoints, with opposing orientation.
+    RealT opposing_gap;              ///< Expected midpoint gap using normal2 and the alignment correction.
+    RealT common_gap;                ///< Expected midpoint separation along the common normal.
+    RealT offset;                    ///< Fixed offset applied to both gap definitions.
+  };
+  struct Result {
+    RealT opposing;          ///< Unshifted opposing-normal gap.
+    RealT common;            ///< Unshifted common-plane gap.
+    RealT prepared_common;   ///< Common-plane gap reusing a prepared frame.
+    RealT shifted_opposing;  ///< Opposing-normal gap after subtraction of the offset.
+    RealT shifted_common;    ///< Common-plane gap after subtraction of the offset.
+    RealT prepared_shifted;  ///< Shifted common-plane gap reusing the frame.
+  };
+  // The first two cases are parallel edges separated by 0.1, then translated and rotated together.
+  // In the oblique case the midpoint separation is 0.4 and normal2 = (1,5)/sqrt(26).
+  const auto cases = copyToExecutionSpace<Case>(
+      { { MdArray<RealT, 4>{ 0.0, 0.0, 2.0, 0.0 }, MdArray<RealT, 4>{ 2.0, 0.1, 0.0, 0.1 }, -0.1, -0.1, 0.05 },
+        { MdArray<RealT, 4>{ 4.0, -3.0, 4.0, -1.0 }, MdArray<RealT, 4>{ 3.9, -1.0, 3.9, -3.0 }, -0.1, -0.1, 0.0 },
+        { MdArray<RealT, 4>{ 0.0, 0.0, 2.0, 0.0 }, MdArray<RealT, 4>{ 2.0, 0.2, 0.0, 0.6 }, -0.4 * 25.0 / 26.0,
+          -0.4 * std::sqrt( 0.5 * ( 1.0 + 5.0 / std::sqrt( 26.0 ) ) ), 0.05 } } );
+  ArrayT<Result> results( cases.size(), cases.size(), allocatorId() );
+  const auto input = cases.view();
+  const auto output = results.view();
+  forAllExec( GetParam(), cases.size(), [=] TRIBOL_HOST_DEVICE( IndexT i ) {
+    const LinearEdgeGeometry geometry1( { input[i].coordinates1.data(), LinearEdgeGeometry::Coords::size() } );
+    const LinearEdgeGeometry geometry2( { input[i].coordinates2.data(), LinearEdgeGeometry::Coords::size() } );
+    const MdArray<RealT, 1> midpoint{ 0.0 };
+    const PairQuadraturePoint<LinearEdgeGeometry, LinearEdgeGeometry> point{ geometry1, geometry2, midpoint.view(),
+                                                                             midpoint.view() };
+    const auto frame = CommonPlaneEdgeMapping::makeFrame( geometry1, geometry2 );
+    const OffsetGap shifted_opposing{ OpposingNormalGap{}, input[i].offset };
+    const OffsetGap shifted_common{ CommonPlaneGap{}, input[i].offset };
+    output[i] = { OpposingNormalGap{}( point ), CommonPlaneGap{}( point ), CommonPlaneGap{}( point, frame ),
+                  shifted_opposing( point ),    shifted_common( point ),   shifted_common( point, frame ) };
+  } );
+  const ArrayT<Case, 1, MemorySpace::Host> host_cases( cases );
+  const ArrayT<Result, 1, MemorySpace::Host> host( results );
+  for ( IndexT i = 0; i < host.size(); ++i ) {
+    SCOPED_TRACE( i );
+    EXPECT_NEAR( host[i].opposing, host_cases[i].opposing_gap, tolerance );
+    EXPECT_NEAR( host[i].common, host_cases[i].common_gap, tolerance );
+    EXPECT_NEAR( host[i].prepared_common, host_cases[i].common_gap, tolerance );
+    EXPECT_NEAR( host[i].shifted_opposing, host_cases[i].opposing_gap - host_cases[i].offset, tolerance );
+    EXPECT_NEAR( host[i].shifted_common, host_cases[i].common_gap - host_cases[i].offset, tolerance );
+    EXPECT_NEAR( host[i].prepared_shifted, host_cases[i].common_gap - host_cases[i].offset, tolerance );
+  }
+}
+
+#ifdef TRIBOL_USE_ENZYME
+// Removing the zero-offset wrapper must preserve both methods' coordinate derivatives, including their current normals.
+TEST( GapDefinitions, unshifted_and_zero_offset_definitions_have_equal_derivatives )
+{
+  using BaseRule = EdgeQuadratureRuleGenerator<3>;
+  using EnergyRule = PairQuadratureRule<SmoothedProjectedEdgeMapping, BaseRule>;
+  const MdArray<RealT, PairIntegrationRule<EnergyRule>::dof_count> coordinates{ 0.0, 0.0,  2.0, 0.1,
+                                                                                1.8, 0.35, 0.2, 0.1 };
+  const EnergyMortarEnergy<EnergyRule> unshifted_energy{ EnergyRule{}, 4.0 };
+  const EnergyMortarEnergy<EnergyRule, OffsetGap<OpposingNormalGap>> shifted_energy{
+      EnergyRule{}, 4.0, EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, 0.0 } } };
+  const auto energy1 =
+      EnergyPairEvaluator<decltype( unshifted_energy )>::evaluate( coordinates.view(), unshifted_energy );
+  const auto energy2 = EnergyPairEvaluator<decltype( shifted_energy )>::evaluate( coordinates.view(), shifted_energy );
+  const CommonPlaneForce<BaseRule> unshifted_force{ CommonPlaneQuadratureRule<BaseRule>{}, 4.0 };
+  const CommonPlaneForce<BaseRule, OffsetGap<CommonPlaneGap>> shifted_force{
+      CommonPlaneQuadratureRule<BaseRule>{}, 4.0, CommonPlaneResidual{ OffsetGap{ CommonPlaneGap{}, 0.0 } } };
+  const auto force1 = ForcePairEvaluator<decltype( unshifted_force )>::evaluate( coordinates.view(), unshifted_force );
+  const auto force2 = ForcePairEvaluator<decltype( shifted_force )>::evaluate( coordinates.view(), shifted_force );
+  EXPECT_GT( energy1.energy, 0.0 );
+  EXPECT_LT( force1.residual[1], 0.0 );
+  EXPECT_NEAR( energy1.energy, energy2.energy, tolerance );
+  for ( IndexT row = 0; row < coordinates.size(); ++row ) {
+    EXPECT_NEAR( energy1.residual[row], energy2.residual[row], tolerance );
+    EXPECT_NEAR( force1.residual[row], force2.residual[row], tolerance );
+    for ( IndexT col = 0; col < coordinates.size(); ++col ) {
+      EXPECT_NEAR( energy1.jacobian( row, col ), energy2.jacobian( row, col ), tolerance );
+      EXPECT_NEAR( force1.jacobian( row, col ), force2.jacobian( row, col ), tolerance );
+    }
+  }
+}
+#endif
 
 // All rule counts must preserve penalty energy, residual-gap shifts, opening, and zero-gap activation.
 TEST_P( PairDefinitionTest, computes_energy_from_current_geometry )

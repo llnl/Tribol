@@ -133,7 +133,8 @@ TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
         auto refined = std::make_unique<ProjectedEdgeSearch>( scheme().getExecutionMode(), false );
         return std::make_unique<PairContactFormulation<Method>>(
             *scheme().getMfemMeshData(), *scheme().getMfemJacobianData(), std::move( coarse ), std::move( refined ),
-            Method{ CommonPlaneQuadratureRule<BaseRule>{}, 0.0, ScaledMeshPenaltyInputs<AveragePenaltyStiffness>{} } );
+            Method{ CommonPlaneQuadratureRule<BaseRule>{}, CommonPlaneResidual{ OffsetGap{ CommonPlaneGap{}, 0.0 } },
+                    ScaledMeshPenaltyInputs<AveragePenaltyStiffness>{} } );
       } );
   auto result = alternate->computeNodalForces( scheme().getMesh1().getView(), scheme().getMesh2().getView() );
   ASSERT_NE( result.force, nullptr );

@@ -8,7 +8,10 @@
 
 #include "Physics.hpp"
 #include "tribol/physics/PenaltyStiffness.hpp"
+#include "tribol/physics/PairDefinition.hpp"
 #include "tribol/geom/CommonPlaneEdgeMapping.hpp"
+#include "tribol/geom/CommonPlaneGap.hpp"
+#include "tribol/geom/OffsetGap.hpp"
 #include "tribol/integ/PairIntegral.hpp"
 #include "tribol/integ/PairQuadratureRule.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
@@ -21,15 +24,7 @@ template <typename BaseRule>
 using CommonPlaneQuadratureRule = PairQuadratureRule<CommonPlaneEdgeMapping, BaseRule>;
 
 /** @brief Residual and generation status for a pair of linear two-dimensional edges. */
-struct CommonPlaneResidualData {
-  static constexpr int dimension = LinearEdgeGeometry::spatial_dimension;             ///< Physical components.
-  static constexpr int nodes_per_element = LinearEdgeGeometry::vertex_count;          ///< Nodes on each edge.
-  static constexpr int pair_size = 2;                                                 ///< Elements in a contact pair.
-  static constexpr int coordinate_count = dimension * nodes_per_element * pair_size;  ///< Pair coordinate DOFs.
-  MdArray<RealT, coordinate_count> residual{};  ///< Node-major contact residual, first element then second.
-  QuadratureResult quadrature_result{};  ///< Status and initialized quadrature count; discard residual on failure.
-  bool has_active_points{ false };       ///< Whether any gap is nonpositive, including exactly zero.
-};
+using CommonPlaneResidualData = PairResidualValue<2 * LinearEdgeGeometry::Coords::size()>;
 
 /** @brief Pair residual and its derivative in node-major pair-coordinate order. */
 struct CommonPlanePairData : CommonPlaneResidualData {
@@ -37,121 +32,103 @@ struct CommonPlanePairData : CommonPlaneResidualData {
 };
 
 /**
- * @brief Integrate penalty tractions directly; no derivative of an energy is used.
- * @tparam BaseRule Reference rule on the common-line interval.
- * @param coordinates1 First element's current endpoints.
- * @param coordinates2 Second element's current endpoints.
- * @param quadrature_rule Configured pair generator; not retained.
- * @param penalty Positive effective stiffness per unit overlap length.
- * @param residual_gap Gap offset subtracted before activation.
- * @return Pair residual and status. Failed quadrature returns zero residual that must be discarded; valid empty rules
- * return a successful zero residual. Nonpositive gaps use the active branch, including at zero pressure.
+ * @brief Define Common Plane by integrating nodal tractions using an owned gap definition.
+ * @tparam GapDefinition Gap callable accepting a pair point and its current common-plane frame.
  */
-template <typename BaseRule>
-TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE CommonPlaneResidualData computeCommonPlaneResidual(
-    LinearEdgeGeometry::Coords coordinates1, LinearEdgeGeometry::Coords coordinates2,
-    const CommonPlaneQuadratureRule<BaseRule>& quadrature_rule, RealT penalty, RealT residual_gap )
-{
-  using Residual = MdArray<RealT, CommonPlaneResidualData::coordinate_count>;
-  using Basis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
-  const auto integral = integratePair(
-      coordinates1, coordinates2, quadrature_rule, [&]( const auto& point ) -> QuadraturePointContribution<Residual> {
-        const auto frame = CommonPlaneEdgeMapping::makeFrame( point.geometry1, point.geometry2 );
-        const RealT gap =
-            LinearEdgeGeometry::Vector( point.position2(), point.position1() ).dot( frame.normal ) - residual_gap;
-        if ( gap > 0.0 ) return {};
-        const RealT pressure = penalty * gap;
-        const auto basis1 = point.template evalBasis1<EDGE, LINEAR_LAGRANGE>();
-        const auto basis2 = point.template evalBasis2<EDGE, LINEAR_LAGRANGE>();
-        Residual integrand{};
-        for ( int node = 0; node < Basis::node_count; ++node ) {
-          for ( int component = 0; component < CommonPlaneResidualData::dimension; ++component ) {
-            const RealT traction = pressure * frame.normal[component];
-            integrand[node * CommonPlaneResidualData::dimension + component] = basis1[node] * traction;
-            integrand[( node + Basis::node_count ) * CommonPlaneResidualData::dimension + component] =
-                -basis2[node] * traction;
+template <typename GapDefinition = CommonPlaneGap>
+struct CommonPlaneResidual {
+  GapDefinition gap{};  ///< Owned gap configuration; current geometry is supplied during evaluation.
+  /**
+   * @brief Integrate penalty traction using the shared pair integration context.
+   * @tparam IntegrationRule Current common-line pair rule.
+   * @param integration_rule Current geometry and generated quadrature.
+   * @param penalty Fixed effective stiffness.
+   * @return Pair residual; failed or empty quadrature returns zero. The compressive branch includes zero gap.
+   */
+  template <typename IntegrationRule>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto operator()( const IntegrationRule& integration_rule,
+                                                           RealT penalty ) const
+  {
+    using Residual = MdArray<RealT, CommonPlaneResidualData::coordinate_count>;
+    using Basis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
+    // Capture fixed inputs by value to keep the configured offset in Enzyme's geometry derivatives.
+    return integral(
+        [gap = gap, penalty]( const auto& point ) -> QuadraturePointContribution<Residual> {
+          const auto frame = CommonPlaneEdgeMapping::makeFrame( point.geometry1, point.geometry2 );
+          const RealT normal_gap = gap( point, frame );
+          if ( normal_gap > 0.0 ) return {};
+          const RealT pressure = penalty * normal_gap;
+          const auto basis1 = point.template evalBasis1<EDGE, LINEAR_LAGRANGE>();
+          const auto basis2 = point.template evalBasis2<EDGE, LINEAR_LAGRANGE>();
+          Residual integrand{};
+          for ( int node = 0; node < Basis::node_count; ++node ) {
+            for ( int component = 0; component < LinearEdgeGeometry::spatial_dimension; ++component ) {
+              const RealT traction = pressure * frame.normal[component];
+              integrand[node * LinearEdgeGeometry::spatial_dimension + component] = basis1[node] * traction;
+              integrand[( node + Basis::node_count ) * LinearEdgeGeometry::spatial_dimension + component] =
+                  -basis2[node] * traction;
+            }
           }
-        }
-        return { integrand, true };
-      } );
-  return { integral.value, integral.quadrature_result, integral.has_active_points };
-}
+          return { integrand, true };
+        },
+        integration_rule );
+  }
+};
 
 /**
- * @brief Define Common Plane through its local residual, independently of derivative calculation.
+ * @brief Common Plane residual expression with the shared pair derivative interface.
  * @tparam BaseRule Gauss rule on the common-line interval.
+ * @tparam GapDefinition Geometric or offset gap type; defaults to the unshifted common-plane gap.
  */
-template <typename BaseRule>
-class CommonPlaneForce {
- public:
-  using Quadrature = CommonPlaneQuadratureRule<BaseRule>;  ///< Pair quadrature configuration.
-  using PrimalResult = CommonPlaneResidualData;            ///< Primal residual, activation, and quadrature status.
-  static constexpr IndexT dof_count = CommonPlaneResidualData::coordinate_count;  ///< Pair coordinate count.
+template <typename BaseRule, typename GapDefinition = CommonPlaneGap>
+using CommonPlaneForce =
+    PairResidualDefinition<CommonPlaneQuadratureRule<BaseRule>, CommonPlaneResidual<GapDefinition>>;
 
-  /**
-   * @brief Copy the pair rule and fixed penalty inputs.
-   * @param quadrature_rule Common-line pair quadrature generator.
-   * @param penalty Effective positive spring stiffness.
-   * @param residual_gap Gap offset held fixed during differentiation.
-   */
-  TRIBOL_HOST_DEVICE CommonPlaneForce( CommonPlaneQuadratureRule<BaseRule> quadrature_rule, RealT penalty,
-                                       RealT residual_gap )
-      : quadrature_rule_( quadrature_rule ), penalty_( penalty ), residual_gap_( residual_gap )
-  {
+/**
+ * @brief Evaluate Common Plane tractions from separate element coordinate arrays.
+ * @tparam BaseRule Gauss rule on the common-line interval.
+ * @tparam GapDefinition Geometric or offset common-plane gap type.
+ * @param coordinates1 First element endpoints.
+ * @param coordinates2 Second element endpoints.
+ * @param quadrature_rule Pair generator.
+ * @param penalty Fixed effective stiffness.
+ * @param gap Owned gap definition; defaults to unshifted common-plane separation.
+ * @return Residual and generation status. Failed/empty rules return zero; zero gap remains active.
+ */
+template <typename BaseRule, typename GapDefinition = CommonPlaneGap>
+TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE CommonPlaneResidualData computeCommonPlaneResidual(
+    LinearEdgeGeometry::Coords coordinates1, LinearEdgeGeometry::Coords coordinates2,
+    const CommonPlaneQuadratureRule<BaseRule>& quadrature_rule, RealT penalty, GapDefinition gap = {} )
+{
+  constexpr IndexT first_dofs = LinearEdgeGeometry::Coords::size();
+  MdArray<RealT, CommonPlaneResidualData::coordinate_count> coordinates;
+  for ( IndexT i = 0; i < first_dofs; ++i ) {
+    coordinates[i] = coordinates1[i];
+    coordinates[first_dofs + i] = coordinates2[i];
   }
-
-  /**
-   * @brief Calculate residual, activation, and quadrature status from the current geometry.
-   * @param coordinates Endpoints ordered by element, node, and spatial component.
-   * @return Primal residual and status; failed quadrature must be discarded, and valid empty rules return zeros.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE CommonPlaneResidualData
-  evaluate( MdSpan<const RealT, dof_count> coordinates ) const
-  {
-    constexpr IndexT edge_dofs = dof_count / CommonPlaneResidualData::pair_size;
-    return computeCommonPlaneResidual( { coordinates.data(), edge_dofs }, { coordinates.data() + edge_dofs, edge_dofs },
-                                       quadrature_rule_, penalty_, residual_gap_ );
-  }
-
-  /**
-   * @brief Return the residual consumed by a force pair evaluator.
-   * @param coordinates Current pair coordinates.
-   * @return Node-major residual, including zero for valid empty or inactive rules.
-   * @throws std::invalid_argument Pair geometry is invalid.
-   * @throws std::length_error Quadrature capacity is insufficient.
-   */
-  TRIBOL_ENZYME_INLINE MdArray<RealT, dof_count> residual( MdSpan<const RealT, dof_count> coordinates ) const
-  {
-    const auto value = evaluate( coordinates );
-    if ( value.quadrature_result.status != QuadratureStatus::Success )
-      reportQuadratureFailure( value.quadrature_result.status );
-    return value.residual;
-  }
-
- private:
-  CommonPlaneQuadratureRule<BaseRule> quadrature_rule_;  ///< Owned common-line quadrature configuration.
-  RealT penalty_;                                        ///< Inactive effective spring stiffness.
-  RealT residual_gap_;                                   ///< Inactive gap offset.
-};
+  return CommonPlaneForce<BaseRule, GapDefinition>{ quadrature_rule, penalty, CommonPlaneResidual{ gap } }.evaluate(
+      coordinates.view() );
+}
 
 #ifdef TRIBOL_USE_ENZYME
 /**
  * @brief Evaluate a pair residual and differentiate it with respect to both current edges using Enzyme.
  * @tparam BaseRule Reference Gauss rule.
+ * @tparam GapDefinition Geometric or offset common-plane gap type.
  * @param coordinates1 First current edge endpoints.
  * @param coordinates2 Second current edge endpoints.
  * @param quadrature_rule Configured generator; not retained.
  * @param penalty Positive effective stiffness per unit length.
- * @param residual_gap Gap offset subtracted before activation.
+ * @param gap Owned gap definition; its geometry and finite-configuration preconditions apply.
  * @return Residual and generally nonsymmetric Jacobian; valid zero-point rules give zeros.
  * @throws std::invalid_argument Geometry or penalty parameters are invalid.
  * @throws std::length_error Quadrature storage is insufficient.
  */
-template <typename BaseRule>
+template <typename BaseRule, typename GapDefinition = CommonPlaneGap>
 CommonPlanePairData computeCommonPlanePair( LinearEdgeGeometry::Coords coordinates1,
                                             LinearEdgeGeometry::Coords coordinates2,
                                             const CommonPlaneQuadratureRule<BaseRule>& quadrature_rule, RealT penalty,
-                                            RealT residual_gap );
+                                            GapDefinition gap = {} );
 #endif
 
 /*!

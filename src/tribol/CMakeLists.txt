@@ -27,6 +27,9 @@ set(tribol_headers
     geom/GeomUtilities.hpp
     geom/Hyperplane.hpp
     geom/LinearEdgeGeometry.hpp
+    geom/OffsetGap.hpp
+    geom/OpposingNormalGap.hpp
+    geom/CommonPlaneGap.hpp
     geom/NodalNormal.hpp
     geom/SmoothedProjectedEdgeMapping.hpp
      geom/CommonPlaneEdgeMapping.hpp
@@ -64,6 +67,7 @@ set(tribol_headers
     physics/EnergyMortarEnergy.hpp
     physics/PenaltyStiffness.hpp
     physics/PairEvaluation.hpp
+    physics/PairDefinition.hpp
     physics/PairMethod.hpp
     physics/PairMethodInputs.hpp
     physics/PairContactFormulation.hpp

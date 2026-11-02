@@ -16,9 +16,42 @@
 #include "tribol/mesh/MfemPairAssembler.hpp"
 #include "tribol/physics/PairMethod.hpp"
 #include <utility>
+#include <functional>
+#include <optional>
 
 namespace tribol {
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
+/**
+ * @brief Borrow displacement and optional dual transfer data for a contact calculation.
+ *
+ * No geometry or calculated fields are retained. Referenced MFEM data must outlive this context and its evaluation.
+ */
+struct MfemContactAssemblyContext {
+  const MfemMeshData& mesh_data;          ///< Borrowed displacement and decomposition data.
+  const MfemJacobianData& jacobian_data;  ///< Borrowed coordinate and optional dual Jacobian transfers.
+  std::optional<std::reference_wrapper<const MfemSubmeshData>> submesh_data;  ///< Borrowed dual data for nodal methods.
+  /**
+   * @brief Borrow parent displacement transfers.
+   * @param mesh Displacement data.
+   * @param jacobian Coordinate Jacobian transfer.
+   */
+  MfemContactAssemblyContext( const MfemMeshData& mesh, const MfemJacobianData& jacobian )
+      : mesh_data( mesh ), jacobian_data( jacobian )
+  {
+  }
+  /**
+   * @brief Borrow parent and dual transfers.
+   * @param mesh Displacement data.
+   * @param submesh Dual pressure/gap data.
+   * @param jacobian Coordinate and dual Jacobian transfer.
+   */
+  MfemContactAssemblyContext( const MfemMeshData& mesh, const MfemSubmeshData& submesh,
+                              const MfemJacobianData& jacobian )
+      : mesh_data( mesh ), jacobian_data( jacobian ), submesh_data( std::cref( submesh ) )
+  {
+  }
+};
+
 namespace detail {
 /**
  * @brief Evaluate nodal integrals and gradients on each accepted pair and assemble them onto the dual submesh.
@@ -133,7 +166,7 @@ ContactFormulationResult assembleNodalContactGaps(
  * Nodal integrals are assembled before activation and outer energy derivatives are evaluated. Weighted pair Hessians
  * regenerate quadrature inside differentiation. Neither the domain nor this function retains calculated fields.
  * @tparam PairMethod Nodal method providing quantity derivatives, weighted-energy derivatives, and enforcement inputs.
- * Definition::Physics provides penaltyEnergyFromIntegrals() and lagrangeMultiplierEnergyFromIntegral() to construct
+ * Definition::Physics provides penaltyEnergy() and lagrangeMultiplierEnergy() to construct
  * the deferred outer energy from named fields.
  * @param domain Geometry-approved pairs and current host mesh views.
  * @param definition Prepared nodal integral definition.
@@ -157,11 +190,11 @@ ContactFormulationResult assembleNodalContactForces(
   const bool use_penalty = method.usesPenalty();
   auto quantities = detail::assembleNodalQuantities<PairMethod>( definition, domain, use_penalty, assembler );
 
-  using NodalPhysics = typename Definition::Physics;
+  const auto& physics = definition.physics();
   MfemNodalDerivativeData derivatives;
   if ( use_penalty ) {
-    const auto parameters = method.preparePenalty( mesh_data, domain.mesh1(), domain.mesh2() );
-    const auto energy = NodalPhysics{}.penaltyEnergyFromIntegrals( nodal_weighted_gap, nodal_area, parameters.penalty );
+    const RealT penalty = method.preparePenalty( mesh_data, domain.mesh1(), domain.mesh2() );
+    const auto energy = physics.penaltyEnergy( nodal_weighted_gap, nodal_area, penalty );
     derivatives = evaluateNodalEnergy( energy, quantities, assembler, PairMethod::area_tolerance );
   } else {
     const auto lm_vec = assembler.getSubmeshPressureTrueDofs();
@@ -169,7 +202,7 @@ ContactFormulationResult assembleNodalContactForces(
       throw std::invalid_argument( "Lagrange multiplier vector size must match the dual submesh true-DOF count." );
     }
     const IndependentNodalField pressure{ { lm_vec.get().GetData(), lm_vec.size() } };
-    const auto energy = NodalPhysics{}.lagrangeMultiplierEnergyFromIntegral( nodal_weighted_gap, pressure );
+    const auto energy = physics.lagrangeMultiplierEnergy( nodal_weighted_gap, pressure );
     derivatives = evaluateNodalEnergy( energy, quantities, assembler, PairMethod::area_tolerance );
   }
 
@@ -179,12 +212,14 @@ ContactFormulationResult assembleNodalContactForces(
                                    : mfem::GridFunction{};
   domain.forEachPair( [&]( InterfacePair pair, auto coordinates ) {
     const auto conn1 = domain.mesh1().getConnectivity()( pair.element_id1_ );
-    const MdArray<RealT, node_count> gap_weights{ redecomp_d_gap( conn1[0] ), redecomp_d_gap( conn1[1] ) };
-    if ( use_penalty && gap_weights[0] == 0.0 && gap_weights[1] == 0.0 ) return;
-    const MdArray<RealT, node_count> area_weights =
-        derivatives.has_area_derivatives
-            ? MdArray<RealT, node_count>{ redecomp_d_area( conn1[0] ), redecomp_d_area( conn1[1] ) }
-            : MdArray<RealT, node_count>{};
+    MdArray<RealT, node_count> gap_weights{}, area_weights{};
+    bool has_weights = false;
+    for ( IndexT node = 0; node < node_count; ++node ) {
+      gap_weights[node] = redecomp_d_gap( conn1[node] );
+      if ( derivatives.has_area_derivatives ) area_weights[node] = redecomp_d_area( conn1[node] );
+      has_weights = has_weights || gap_weights[node] != 0.0 || area_weights[node] != 0.0;
+    }
+    if ( !has_weights ) return;
     const auto weighted_definition = definition.withWeights( gap_weights, area_weights );
     const auto pair_derivatives = PairMethod::differentiateWeightedEnergy( coordinates, weighted_definition );
     assembler.addPairHessian( pair, { pair_derivatives.jacobian.data(), { pair_dofs, pair_dofs } } );
@@ -207,6 +242,38 @@ ContactFormulationResult assembleNodalContactForces(
   result.df_dx.reset( df_dx.release() );
   return result;
 }
+/**
+ * @brief Evaluate a prepared local definition over a domain using its parent-only or nodal assembly requirements.
+ *
+ * Search and definition preparation remain with the caller. This entry point constructs per-call assembly storage,
+ * delegates pair or nodal evaluation, and returns owned outputs without retaining the domain or expression.
+ * @tparam PairMethod Energy, residual, or nodal method with a prepared Definition.
+ * @param domain Geometry-approved pairs and current host mesh views.
+ * @param definition Prepared local integral expression and inactive parameters.
+ * @param method Method configuration and derivative selection.
+ * @param context Borrowed displacement and optional dual transfer data.
+ * @return Calculated contact outputs. Availability, signs, and energy reductions follow the selected method.
+ * @throws std::invalid_argument Nodal transfer data, method inputs, or quadrature geometry are invalid.
+ * @throws std::length_error Quadrature capacity or assembly storage is insufficient.
+ */
+template <typename PairMethod>
+ContactFormulationResult evaluateContactForces(
+    const ContactDomain<typename PairMethod::FirstGeometry, typename PairMethod::SecondGeometry>& domain,
+    const typename PairMethod::Definition& definition, const PairMethod& method,
+    const MfemContactAssemblyContext& context )
+{
+  if constexpr ( PairMethod::is_nodal ) {
+    if ( !context.submesh_data ) throw std::invalid_argument( "Nodal pair contact requires dual submesh data." );
+    MfemNodalAssembler assembler( context.mesh_data, context.submesh_data->get(), context.jacobian_data, domain.mesh1(),
+                                  domain.mesh2(), domain.size() );
+    return assembleNodalContactForces<PairMethod>( domain, definition, method, context.mesh_data, assembler );
+  } else {
+    MfemPairAssembler assembler( context.mesh_data, context.jacobian_data, domain.mesh1(), domain.mesh2(),
+                                 domain.size() );
+    return assemblePairContact<PairMethod>( domain, definition, assembler );
+  }
+}
+
 #endif
 }  // namespace tribol
 #endif  // SRC_TRIBOL_MESH_MFEMCONTACTASSEMBLY_HPP_

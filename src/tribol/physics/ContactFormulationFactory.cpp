@@ -108,8 +108,10 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
         auto refined = std::make_unique<ProjectedEdgeSearch>( cs->getExecutionMode(), cs->getContactCase() == AUTO );
         return std::make_unique<PairContactFormulation<CommonPlanePairMethod<BaseRule>>>(
             *cs->getMfemMeshData(), *cs->getMfemJacobianData(), std::move( coarse ), std::move( refined ),
-            CommonPlanePairMethod<BaseRule>{ CommonPlaneQuadratureRule<BaseRule>{}, cs->getParameters().residual_gap,
-                                             ScaledMeshPenaltyInputs<>{} } );
+            CommonPlanePairMethod<BaseRule>{
+                CommonPlaneQuadratureRule<BaseRule>{},
+                CommonPlaneResidual{ OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap } },
+                ScaledMeshPenaltyInputs<>{} } );
       } );
 }
 
@@ -131,14 +133,16 @@ std::unique_ptr<ContactFormulation> createEnergyMortarForRule( CouplingScheme* c
     using Method = EnergyMortarPairMethod<QuadratureRule>;
     return std::make_unique<PairContactFormulation<Method>>(
         *cs->getMfemMeshData(), *cs->getMfemJacobianData(), std::move( coarse_search ), std::move( refined_search ),
-        Method{ std::move( quadrature_rule ), residual_gap, RegisteredPenaltyInputs<>{ use_penalty } } );
+        Method{ std::move( quadrature_rule ), EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, residual_gap } },
+                RegisteredPenaltyInputs<>{ use_penalty } } );
   }
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "Nodal Energy Mortar requires pressure/gap data." );
   using Method = EnergyMortarNodalPairMethod<QuadratureRule>;
   return std::make_unique<PairContactFormulation<Method>>(
       *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( coarse_search ),
       std::move( refined_search ),
-      Method{ std::move( quadrature_rule ), residual_gap, RegisteredPenaltyInputs<>{ use_penalty } } );
+      Method{ std::move( quadrature_rule ), EnergyMortarNodal{ OffsetGap{ OpposingNormalGap{}, residual_gap } },
+              RegisteredPenaltyInputs<>{ use_penalty } } );
 }
 
 std::unique_ptr<ContactFormulation> createEnergyMortar( CouplingScheme* cs )

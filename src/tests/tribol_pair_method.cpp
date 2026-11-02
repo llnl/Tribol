@@ -56,14 +56,13 @@ class PairMethodTest : public testing::Test {
    * @brief Read parameters from current data, without retaining mesh views between requests.
    * @tparam Provider Registered or scaled-mesh penalty input provider.
    * @param provider Configured reader.
-   * @param gap Fixed offset supplied to this request.
-   * @return Current combined penalty and gap offset.
+   * @return Current combined penalty stiffness.
    */
   template <typename Provider>
-  PairDefinitionParameters read( const Provider& provider, RealT gap = residual_gap )
+  RealT read( const Provider& provider )
   {
-    return provider.prepare( *scheme().getMfemMeshData(), scheme().getMesh1().getView(), scheme().getMesh2().getView(),
-                             gap );
+    return provider.prepare( *scheme().getMfemMeshData(), scheme().getMesh1().getView(),
+                             scheme().getMesh2().getView() );
   }
   std::unique_ptr<mfem::ParMesh> mesh_;               ///< Parent mesh borrowed by the coupling scheme.
   std::unique_ptr<mfem::H1_FECollection> fec_;        ///< Linear coordinate basis.
@@ -76,36 +75,33 @@ TEST_F( PairMethodTest, reads_current_registered_and_scaled_penalties )
 {
   const RegisteredPenaltyInputs<> registered{ true };
   const ScaledMeshPenaltyInputs<> scaled{};
-  EXPECT_EQ( read( registered ).penalty, 4.0 );
-  EXPECT_EQ( read( scaled ).penalty, 1.5 );
+  EXPECT_EQ( read( registered ), 4.0 );
+  EXPECT_EQ( read( scaled ), 1.5 );
   setPenaltyScale( 0, 2.0 );
   setPenaltyScale( 1, 3.0 );
-  EXPECT_EQ( read( registered ).penalty, 4.0 );
+  EXPECT_EQ( read( registered ), 4.0 );
   // Mesh stiffnesses become 4 and 18 after scaling; their series stiffness is 72/22.
-  EXPECT_NEAR( read( scaled ).penalty, 72.0 / 22.0, tolerance );
+  EXPECT_NEAR( read( scaled ), 72.0 / 22.0, tolerance );
   scheme().getMfemMeshData()->SetMesh1KinematicConstantPenalty( 4.0 );
   scheme().getMfemMeshData()->SetMesh2KinematicConstantPenalty( 12.0 );
-  EXPECT_EQ( read( registered ).penalty, 8.0 );
-  EXPECT_NEAR( read( scaled ).penalty, 72.0 / 22.0, tolerance );
-  EXPECT_EQ( read( registered ).residual_gap, residual_gap );
-  EXPECT_EQ( read( scaled ).residual_gap, residual_gap );
+  EXPECT_EQ( read( registered ), 8.0 );
+  EXPECT_NEAR( read( scaled ), 72.0 / 22.0, tolerance );
 }
 
 // Removing registered constants must use the fallback rather than retaining the previous combined stiffness.
 TEST_F( PairMethodTest, uses_fallback_and_rejects_unconfigured_penalty )
 {
   const RegisteredPenaltyInputs<> registered{ true };
-  EXPECT_EQ( read( registered ).penalty, 4.0 );
+  EXPECT_EQ( read( registered ), 4.0 );
   scheme().getMfemMeshData()->ClearAllPenaltyData();
   constexpr RealT fallback_penalty = 1000.0;
-  EXPECT_EQ( read( registered ).penalty, fallback_penalty );
-  EXPECT_EQ( read( registered ).residual_gap, residual_gap );
+  EXPECT_EQ( read( registered ), fallback_penalty );
   const RegisteredPenaltyInputs<> disabled{ false };
   EXPECT_THROW( read( disabled ), std::invalid_argument );
 }
 
-// Scaled mesh inputs must reject nonpositive/nonfinite penalties and negative/nonfinite gap offsets.
-TEST_F( PairMethodTest, rejects_invalid_scaled_inputs )
+// Scaled mesh inputs must reject nonpositive and nonfinite penalties.
+TEST_F( PairMethodTest, rejects_invalid_scaled_penalties )
 {
   const ScaledMeshPenaltyInputs<> scaled{};
   constexpr RealT infinity = std::numeric_limits<RealT>::infinity();
@@ -115,8 +111,6 @@ TEST_F( PairMethodTest, rejects_invalid_scaled_inputs )
     EXPECT_THROW( read( scaled ), std::invalid_argument );
   }
   scheme().getMesh1().getElementData().m_penalty_stiffness = 2.0;
-  for ( const RealT gap : std::array<RealT, 3>{ -0.1, infinity, nan } )
-    EXPECT_THROW( read( scaled, gap ), std::invalid_argument );
 }
 
 // Either physics definition must accept either input source, with explicit quadrature and a forwarded gap offset.
@@ -124,11 +118,15 @@ TEST_F( PairMethodTest, prepares_energy_and_force_independently_of_the_penalty_i
 {
   setPenaltyScale( 0, 2.0 );
   setPenaltyScale( 1, 3.0 );
-  using Energy = EnergyPairMethod<EnergyMortarEnergy<EnergyRule>, ScaledMeshPenaltyInputs<AveragePenaltyStiffness>>;
-  using Force = ForcePairMethod<CommonPlaneForce<BaseRule>, RegisteredPenaltyInputs<SeriesPenaltyStiffness>>;
-  const Energy energy{ EnergyRule{ SmoothedProjectedEdgeMapping{ 0.0 } }, residual_gap,
+  using Energy = EnergyPairMethod<EnergyMortarEnergy<EnergyRule, OffsetGap<OpposingNormalGap>>,
+                                  ScaledMeshPenaltyInputs<AveragePenaltyStiffness>>;
+  using Force = ForcePairMethod<CommonPlaneForce<BaseRule, OffsetGap<CommonPlaneGap>>,
+                                RegisteredPenaltyInputs<SeriesPenaltyStiffness>>;
+  const Energy energy{ EnergyRule{ SmoothedProjectedEdgeMapping{ 0.0 } },
+                       EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, residual_gap } },
                        ScaledMeshPenaltyInputs<AveragePenaltyStiffness>{} };
-  const Force force{ CommonPlaneQuadratureRule<BaseRule>{}, residual_gap,
+  const Force force{ CommonPlaneQuadratureRule<BaseRule>{},
+                     CommonPlaneResidual{ OffsetGap{ CommonPlaneGap{}, residual_gap } },
                      RegisteredPenaltyInputs<SeriesPenaltyStiffness>{ true } };
   const auto definition1 =
       energy.prepare( *scheme().getMfemMeshData(), scheme().getMesh1().getView(), scheme().getMesh2().getView() );
@@ -162,7 +160,7 @@ TEST_F( PairMethodTest, prepares_energy_and_force_independently_of_the_penalty_i
 TEST_F( PairMethodTest, rejects_incompatible_coordinate_layouts )
 {
   const ForcePairMethod<CommonPlaneForce<BaseRule>, ScaledMeshPenaltyInputs<>> method{
-      CommonPlaneQuadratureRule<BaseRule>{}, residual_gap, ScaledMeshPenaltyInputs<>{} };
+      CommonPlaneQuadratureRule<BaseRule>{}, CommonPlaneResidual{}, ScaledMeshPenaltyInputs<>{} };
   const IndexT connectivity[]{ 0, 1, 2 };
   const RealT x[]{ 0.0, 0.5, 1.0 }, y[]{ 0.0, 0.0, 0.0 };
   MeshData quadratic( 2, 1, 3, connectivity, EDGE, QUADRATIC_LAGRANGE, x, y, nullptr, MemorySpace::Host );

@@ -39,10 +39,11 @@ through the average of the edge midpoints. Both edges are projected onto the lin
 integrated using physical tangent coordinates. Points are mapped back onto both edges along the common normal.
 Weights measure length on the common line, without another edge-Jacobian factor.
 
-At each point, the signed gap is ``dot(point1 - point2, normal) - residual_gap``. A nonpositive gap activates penalty
-pressure ``penalty * gap``. The effective penalty combines both mesh spring stiffnesses, including their penalty
-scales, in series. Basis-weighted pressure times the common normal contributes with opposite signs to the two
-residuals. At exactly zero gap, pressure vanishes but the compressive-side tangent remains active.
+At each point, ``CommonPlaneGap`` calculates ``dot(point1 - point2, normal)``. The factory wraps it in ``OffsetGap`` to
+subtract the configured ``residual_gap``. ``CommonPlaneResidual`` owns that gap object. A nonpositive gap activates
+penalty pressure ``penalty * gap``. The effective penalty combines both mesh spring stiffnesses, including their penalty
+scales, in series. Basis-weighted pressure times the common normal contributes with opposite signs to the two residuals.
+At exactly zero gap, pressure vanishes but the compressive-side tangent remains active.
 
 Enzyme differentiates the direct residual, including the normals, overlap bounds, mapped points, and physical weights.
 The method does not derive forces from an energy. Unlike legacy Common Plane's uniform pair pressure, pressure and
@@ -57,9 +58,11 @@ nonopposing normals produce successful zero-point rules; invalid geometry and in
 whose output is discarded and reported before residual evaluation.
 
 Common Plane, quadrature-point Energy Mortar, and nodal Energy Mortar share ``PairContactFormulation<PairMethod>`` for
-search, coordinate collection, and MFEM assembly. ``CommonPlanePairMethod`` defaults to ``SeriesPenaltyStiffness`` and
-selects ``ForcePairEvaluator``. ``EnergyMortarPairMethod`` and ``EnergyMortarNodalPairMethod`` default to
-``AveragePenaltyStiffness``. These method names are aliases for generic force, energy, and nodal adapters and
-independent input providers. Any of these methods accepts the other stiffness combination as its second template
-argument. Common Plane and quadrature-point Energy Mortar use displacement-only Jacobian transfer without pressure/gap
-fields; nodal Energy Mortar uses dual submesh fields and ``MfemNodalAssembler``.
+search and contact requests. ``CommonPlaneForce`` is a ``PairResidualDefinition`` whose functor integrates nodal
+tractions through the same ``PairIntegrationRule`` used by energy definitions. The shared ``evaluateContactForces()``
+entry point creates the required MFEM assembler from borrowed transfer data. ``CommonPlanePairMethod`` defaults to
+``SeriesPenaltyStiffness`` and selects ``ForcePairEvaluator``. ``EnergyMortarPairMethod`` and
+``EnergyMortarNodalPairMethod`` default to ``AveragePenaltyStiffness``. These method names are aliases for generic
+force, energy, and nodal adapters and independent input providers. Any of these methods accepts the other stiffness
+combination as its second template argument. Common Plane and quadrature-point Energy Mortar use displacement-only
+Jacobian transfer without pressure/gap fields; nodal Energy Mortar uses dual submesh fields and ``MfemNodalAssembler``.

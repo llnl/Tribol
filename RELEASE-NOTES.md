@@ -8,6 +8,13 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added unshifted `OpposingNormalGap` and `CommonPlaneGap` definitions and a value-owned `OffsetGap` wrapper. Energy
+  Mortar and Common Plane functors own their gap configuration. Shared pair definitions, methods, and penalty-input
+  providers no longer pass or retain a residual-gap scalar; penalty providers return only stiffness. The factory
+  applies the scheme setting to both the gap wrapper and search reach. Local Common Plane helpers accept gap objects.
+- Added `PairDefinition.hpp` for shared energy, residual, and named nodal-integral definitions. Energy Mortar and
+  Common Plane use the same local pair integration context. `PairContactFormulation` calls one force-evaluation
+  entry point with borrowed parent and optional dual transfer data.
 - Added deferred nodal energy expressions with named weighted-gap and tributary-area inputs, clamping, area
   normalization, contractions, and independent LM fields. Nodal Energy Mortar uses Enzyme to evaluate their outer
   first and second derivatives before the existing coordinate chain-rule assembly. Reciprocal-area energies return
@@ -92,16 +99,21 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- `NodalPairDefinition` now returns named integrals through its physics functor and binds Hessian weights with a
+  separate `WeightedNodalPairDefinition`. Positional integral-recording and nodal-state wrappers were removed;
+  outer energies use `NodalEnergyExpression::atNode()`. `CommonPlaneForce` is now a shared `PairResidualDefinition`;
+  coordinate count remains available on its primal result, while dimension and basis counts come from geometry/basis
+  traits.
 - `EnergyMortarPairMethod`, `EnergyMortarNodalPairMethod`, and `CommonPlanePairMethod` are aliases selecting a physics
   definition, derivative adapter (`EnergyPairMethod`, `NodalPairMethod`, or `ForcePairMethod`), and input provider.
-  Constructors take an explicit pair rule, gap offset, and input-provider object.
+  Constructors take an explicit pair rule, owned physics object, and input-provider object.
   `EnergyMortarEnergyValue::has_active_points` replaces `has_active_qp`, matching force primal results. Physics and
   evaluator specialization interfaces are unchanged.
 - Common Plane, quadrature-point Energy Mortar, and nodal Energy Mortar share `PairContactFormulation<PairMethod>` for
   search, coordinate gathering, and MFEM residual/Jacobian assembly, removing the standalone `EnergyMortarCalculator` and
-  `EnergyMortarAdapter` classes. `EnergyMortarNodalEnergy` defines the pair Lagrange-multiplier energy through
-  `dot(pressure, integratePair(coordinates, rule, nodal_basis * gap))` and nodal weighted-gap/tributary-area integrals
-  through `integratePair()`. Pair-based Energy Mortar does not allocate MFEM pressure/gap fields. Switching locations
+  `EnergyMortarAdapter` classes. `EnergyMortarNodalEnergy` supplies named gap and area integrals; a separate weighted
+  scalar contraction supplies the inner coordinate Hessian. Pair-based Energy Mortar does not allocate MFEM
+  pressure/gap fields. Switching locations
   rebuilds the required parent-only or dual transfers, initializes them on an existing decomposition, and clears
   cached outputs. Views into pressure/gap fields must not survive a location change.
 - MFEM mesh re-registration refreshes coupling-scheme pointers before direct formulation calls.
@@ -109,7 +121,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobian array views to MFEM assembly without copying them into another result type.
 - Common Plane and quadrature-point Energy Mortar share host MFEM assembly of pair residuals and Jacobians through
   `MfemPairAssembler`. Nodal Energy Mortar defines nodal penalty and Lagrange-multiplier energies through
-  `NodalPenaltyEnergy` and `NodalLagrangeMultiplierEnergy`, differentiates them with `EnergyPairEvaluator`, and uses
+  named `NodalEnergyExpression` inputs, differentiates them with `EnergyPairEvaluator`, and uses
   `MfemNodalAssembler` to accumulate nodal gap and area integrals, transfer dual gradients, and assemble the chain-rule
   residual and Jacobian on parent displacement true DOFs. Local numerical array views use element/node/component DOF
   order and residual-row, coordinate-column Jacobians. Both assemblers handle MFEM ordering and transfers independently

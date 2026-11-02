@@ -197,12 +197,14 @@ TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
           return std::make_unique<PairContactFormulation<Method>>(
               *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), std::move( coarse ),
               std::move( refined ),
-              Method{ std::move( rule ), 0.0, RegisteredPenaltyInputs<SeriesPenaltyStiffness>{ true } } );
+              Method{ std::move( rule ), EnergyMortarNodal{ OffsetGap{ OpposingNormalGap{}, 0.0 } },
+                      RegisteredPenaltyInputs<SeriesPenaltyStiffness>{ true } } );
         }
         using Method = EnergyMortarPairMethod<decltype( rule ), SeriesPenaltyStiffness>;
         return std::make_unique<PairContactFormulation<Method>>(
             *cs.getMfemMeshData(), *cs.getMfemJacobianData(), std::move( coarse ), std::move( refined ),
-            Method{ std::move( rule ), 0.0, RegisteredPenaltyInputs<SeriesPenaltyStiffness>{ true } } );
+            Method{ std::move( rule ), EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, 0.0 } },
+                    RegisteredPenaltyInputs<SeriesPenaltyStiffness>{ true } } );
       } );
   auto result = alternate->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView() );
   ASSERT_NE( result.force, nullptr );
