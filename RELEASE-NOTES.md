@@ -8,6 +8,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added `NodalEnergyEvaluator` to allow custom assembled-field energy partials. Enzyme remains the default;
+  analytical evaluators and sparse chain-rule assembly can also be used without Enzyme.
 - Added sparse differentiable nodal-field bindings with indexed expression variables. Coordinate residuals and Jacobians
   combine nodewise energy partials with sparse field Jacobians and a shared weighted field-Hessian operation. Nodal
   Energy Mortar uses this chain rule for penalty and LM energies without storing a Hessian for every field entry.

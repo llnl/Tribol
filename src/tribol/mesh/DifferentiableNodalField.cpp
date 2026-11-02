@@ -78,8 +78,12 @@ shared::ParSparseMat DifferentiableNodalFields::assembleJacobian( const NodalEne
                                                                 field_space_.GetTrueDofOffsets(), partial.get() );
     const auto& left = fields_[indices.first].jacobian;
     const auto& right = fields_[indices.second].jacobian;
-    jacobian += shared::ParSparseMat::rap( left, diagonal, right );
-    if ( indices.first != indices.second ) jacobian += shared::ParSparseMat::rap( right, diagonal, left );
+    if ( indices.first == indices.second ) {
+      jacobian += shared::ParSparseMat::rap( diagonal, left );
+    } else {
+      jacobian += shared::ParSparseMat::rap( left, diagonal, right );
+      jacobian += shared::ParSparseMat::rap( right, diagonal, left );
+    }
   }
   return jacobian;
 }

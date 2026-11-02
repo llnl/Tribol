@@ -8,7 +8,8 @@
  * @brief Check sparse nodal-field chain rules on one and two MPI ranks, without contact geometry.
  * Three nonlinear/linear fields give an analytical coordinate residual and Hessian requiring both chain-rule terms.
  * Enzyme builds also differentiate the outer expression; other builds supply the same analytical partials.
- * Repeated assembly checks that weighted curvature does not accumulate. Contact tests cover MFEM field transfers.
+ * Repeated assembly checks that weighted curvature does not accumulate. A custom outer evaluator supplies analytical
+ * partials with and without Enzyme. Contact tests cover MFEM field transfers.
  */
 #include <cmath>
 #include "gtest/gtest.h"
@@ -16,6 +17,45 @@
 #include "shared/mesh/MeshBuilder.hpp"
 #include "tribol/mesh/DifferentiableNodalField.hpp"
 #include "tribol/mesh/MfemNodalEnergy.hpp"
+
+namespace tribol {
+/** @brief Test expression E = sum(q_0²), with an analytical evaluator independent of Enzyme. */
+using SquaredFieldTestEnergy = decltype( sum( NodalFieldVariable<0>{}, NodalFieldVariable<0>{} ) );
+
+/** @brief Supply analytical partials through the public nodal-energy customization point. */
+template <>
+class NodalEnergyEvaluator<SquaredFieldTestEnergy> {
+ public:
+  inline static int evaluations = 0;  ///< Number of calls on this MPI rank, used to verify evaluator selection.
+  /**
+   * @brief Evaluate E = sum(q_0²), dE/dq_0 = 2q_0, and d²E/dq_0² = 2 directly.
+   * @param energy Squared-field expression, with no inactive coefficients to read.
+   * @param fields Bound values on the scalar field space.
+   * @param area_tolerance Validated support threshold, unused without reciprocal-area operations.
+   * @return Owned analytical partials and globally summed energy.
+   */
+  static NodalEnergyDerivatives evaluate( [[maybe_unused]] const SquaredFieldTestEnergy& energy,
+                                          const DifferentiableNodalFields& fields,
+                                          [[maybe_unused]] RealT area_tolerance )
+  {
+    ++evaluations;
+    NodalEnergyDerivatives result;
+    auto gradient = fields.makeVector();
+    auto hessian = fields.makeVector();
+    RealT local_energy = 0.0;
+    for ( int node = 0; node < gradient.size(); ++node ) {
+      const RealT value = fields[0].values[node];
+      local_energy += value * value;
+      gradient[node] = 2.0 * value;
+      hessian[node] = 2.0;
+    }
+    result.gradient.emplace( 0, std::move( gradient ) );
+    result.hessian.emplace( std::pair{ 0, 0 }, std::move( hessian ) );
+    MPI_Allreduce( &local_energy, &result.energy, 1, MPI_DOUBLE, MPI_SUM, fields.fieldSpace().GetComm() );
+    return result;
+  }
+};
+}  // namespace tribol
 
 namespace {
 using namespace tribol;
@@ -61,6 +101,21 @@ class NodalFieldTest : public testing::Test {
     return { { values_[0], jacobians_[0] }, { values_[1], jacobians_[1] }, { values_[2], jacobians_[2] } };
   }
 
+  /**
+   * @brief Form weighted field curvature; only q_0 = u² is nonlinear in the coordinate variable.
+   * @param weights Outer energy gradient keyed by field index; absent entries mean zero.
+   * @return Owned weighted coordinate Hessian.
+   */
+  shared::ParSparseMat weightedHessian( const NodalEnergyGradient& weights ) const
+  {
+    shared::ParVector diagonal( fes_.get() );
+    diagonal.fill( 0.0 );
+    if ( const auto weight = weights.find( 0 ); weight != weights.end() ) {
+      for ( int node = 0; node < diagonal.size(); ++node ) diagonal[node] = 2.0 * weight->second[node];
+    }
+    return makeDiagonal( diagonal.get() );
+  }
+
   static constexpr IndexT field_count = 3;             ///< Independent assembled variables in the outer energy.
   std::unique_ptr<mfem::ParMesh> mesh_;                ///< Distributed mesh defining true-DOF partitions.
   std::unique_ptr<mfem::H1_FECollection> fec_;         ///< Scalar linear basis.
@@ -75,16 +130,11 @@ class NodalFieldTest : public testing::Test {
 TEST_F( NodalFieldTest, assembles_both_chain_rule_terms_for_three_fields )
 {
   int hessian_calls = 0;
-  const DifferentiableNodalFields fields_with_derivatives(
-      *fes_, *fes_, fields(), [&]( const NodalEnergyGradient& weights ) {
-        ++hessian_calls;
-        shared::ParVector diagonal( fes_.get() );
-        diagonal.fill( 0.0 );
-        if ( const auto weight = weights.find( 0 ); weight != weights.end() ) {
-          for ( int node = 0; node < diagonal.size(); ++node ) diagonal[node] = 2.0 * weight->second[node];
-        }
-        return makeDiagonal( diagonal.get() );
-      } );
+  const DifferentiableNodalFields fields_with_derivatives( *fes_, *fes_, fields(),
+                                                           [&]( const NodalEnergyGradient& weights ) {
+                                                             ++hessian_calls;
+                                                             return weightedHessian( weights );
+                                                           } );
 #ifdef TRIBOL_USE_ENZYME
   const auto energy = sum( NodalFieldVariable<0>{}, NodalFieldVariable<1>{}, NodalFieldVariable<2>{} );
   auto derivatives = evaluateNodalEnergy( energy, fields_with_derivatives, 0.0 );
@@ -136,6 +186,38 @@ TEST_F( NodalFieldTest, rejects_missing_curvature_and_invalid_partials )
   for ( int node = 0; node < zero.size(); ++node ) EXPECT_EQ( zero[node], 0.0 );
   derivatives.gradient.emplace( field_count, bound.makeVector() );
   EXPECT_THROW( bound.assembleForce( derivatives ), std::invalid_argument );
+}
+
+// Analytical outer partials and field derivatives must assemble the full derivative of E(q(u)) = u^4 without Enzyme.
+TEST_F( NodalFieldTest, selects_custom_energy_derivatives_and_applies_coordinate_chain_rules )
+{
+  using Evaluator = NodalEnergyEvaluator<SquaredFieldTestEnergy>;
+  Evaluator::evaluations = 0;
+  const DifferentiableNodalFields bound(
+      *fes_, *fes_, fields(), [&]( const NodalEnergyGradient& weights ) { return weightedHessian( weights ); } );
+  const auto energy = sum( NodalFieldVariable<0>{}, NodalFieldVariable<0>{} );
+  const auto derivatives = evaluateNodalEnergy( energy, bound, 0.0 );
+  EXPECT_EQ( Evaluator::evaluations, 1 );
+  EXPECT_EQ( derivatives.gradient.size(), 1 );
+  EXPECT_EQ( derivatives.hessian.size(), 1 );
+  const auto force = bound.assembleForce( derivatives );
+  const auto jacobian = bound.assembleJacobian( derivatives );
+  shared::ParVector direction( fes_.get() );
+  direction.fill( 1.0 );
+  const auto action = jacobian * direction;
+  RealT local_energy = 0.0, expected_energy = 0.0;
+  for ( int node = 0; node < u_.size(); ++node ) {
+    const RealT u = u_[node];
+    local_energy += u * u * u * u;
+    EXPECT_NEAR( force[node], 4.0 * u * u * u, tolerance );
+    EXPECT_NEAR( action[node], 12.0 * u * u, tolerance );
+  }
+  MPI_Allreduce( &local_energy, &expected_energy, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
+  EXPECT_NEAR( derivatives.energy, expected_energy, tolerance );
+
+  // Invalid inputs must be rejected before invoking a custom implementation.
+  EXPECT_THROW( evaluateNodalEnergy( energy, bound, -1.0 ), std::invalid_argument );
+  EXPECT_EQ( Evaluator::evaluations, 1 );
 }
 
 #ifdef TRIBOL_USE_ENZYME

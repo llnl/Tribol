@@ -102,10 +102,93 @@ displacement/multiplier derivative block is assembled separately from the weight
 
 ``EnergyMortarNodal::penaltyEnergy()`` and ``lagrangeMultiplierEnergy()`` share each formula
 between numerical arrays and assembled-field expressions. The portable expression definitions and node energy
-evaluations require neither MFEM nor Enzyme. The MFEM evaluator requires both and retains no expressions or borrowed
-inputs in returned derivative data. The nodal contact implementation assembles weighted gap and tributary area on its
+evaluations require neither MFEM nor Enzyme. The default MFEM evaluator uses Enzyme; custom evaluators can run without
+Enzyme. Returned derivative data retains no expressions or borrowed inputs. The nodal contact implementation assembles weighted gap and tributary area on its
 dual space. Other fields can use the same expression evaluator and sparse chain rules with their own value, Jacobian,
 and weighted-Hessian calculation.
+
+Custom nodal derivatives
+-------------------------
+
+``evaluateNodalEnergy()`` calls ``NodalEnergyEvaluator<Expression>::evaluate()`` after checking field availability,
+independent coefficient lengths, and the area tolerance. Its default implementation uses Enzyme. Specialize this
+public class for the complete ``NodalEnergyExpression`` type to provide analytical or other energy partials, including
+in builds without Enzyme. No specialization of internal expression types is needed. For example:
+
+.. code-block:: cpp
+
+   using SquaredFieldEnergy = decltype(tribol::sum(tribol::nodal_weighted_gap, tribol::nodal_weighted_gap));
+
+   namespace tribol {
+   template <>
+   class NodalEnergyEvaluator<SquaredFieldEnergy> {
+   public:
+     static NodalEnergyDerivatives evaluate(const SquaredFieldEnergy& energy,
+                                           const DifferentiableNodalFields& fields,
+                                           RealT area_tolerance);
+   };
+   }
+
+For this expression, fill ``gradient[0]`` with ``2 * fields[0].values``, ``hessian[{0, 0}]`` with ``2.0``, and sum the
+squared values across the field communicator for the energy. Returned vectors own their data on the field true-DOF
+space. Only the upper triangle of second partials is supplied; missing gradient or Hessian entries mean zero.
+A specialization must account for its expression's runtime coefficients, scaling, activation, and support checks.
+All ranks must call collectively with matching field partitions. The nodal-field test provides a complete analytical
+example and checks the resulting coordinate residual and Jacobian with and without Enzyme.
+
+Custom derivatives can enter at three levels without replacing the coordinate chain rule:
+
+* ``DifferentiableNodalField`` accepts a supplied sparse coordinate Jacobian, and the bound collection accepts a
+  weighted coordinate-Hessian operation. Either may use analytical calculations or another derivative implementation.
+* ``NodalEnergyEvaluator`` supplies partials with respect to assembled fields; its default is Enzyme.
+* ``EnergyPairEvaluator``, ``ForcePairEvaluator``, and ``VectorPairEvaluator`` can be specialized for local definitions,
+  including the pair derivatives used to construct fields and their weighted curvature.
+
+The field collection combines these derivative sources using the same coordinate chain rule. This support does not
+change which contact formulations are enabled in a build without Enzyme.
+
+Benchmarking nodal-field overhead
+---------------------------------
+
+Enable ``TRIBOL_ENABLE_BENCHMARKS`` in a Release build configured with Enzyme, MFEM/Redecomp, and MPI. For an existing
+build in ``build-release``:
+
+.. code-block:: sh
+
+   cmake -S . -B build-release -DTRIBOL_ENABLE_BENCHMARKS=ON
+   cmake --build build-release --target tribol_nodal_field_benchmark
+   OMP_NUM_THREADS=1 build-release/benchmarks/tribol_nodal_field_benchmark -n 64 -a 1.0
+   OMP_NUM_THREADS=1 mpiexec -n 2 build-release/benchmarks/tribol_nodal_field_benchmark -n 64 -a 1.0
+
+The benchmark compares the indexed-field implementation with an explicit gap/area reference using the same penalty
+and LM expressions and Enzyme evaluators. The reference allocates a separate pressure vector and uses a two-component
+state for both methods. Indexed fields allocate only referenced partials and differentiate a one-component LM state.
+Both paths use the two-argument ``RAP`` for diagonal outer-Hessian terms and the general call for mixed terms.
+
+Manufactured values, neighboring-node sparse Jacobians, and nonzero diagonal coordinate curvature exercise both
+chain-rule terms without contact geometry. Energy, residual, and a nonconstant Jacobian action must agree before timing.
+Three calculations are reported separately: ``partials`` evaluates outer energy derivatives, ``chain_rule`` assembles
+residual and Jacobian from precomputed partials, and ``combined`` evaluates both, including indexed-field binding.
+All timed calculations include result allocation and destruction. Input preparation, search, quadrature generation,
+geometry differentiation, and mesh transfers are excluded, so these are field-interface measurements rather than
+end-to-end contact timings.
+
+``-n`` sets the number of elements along each side of a square scalar-field mesh. ``-a 1.0`` uses only compressed nodes;
+``-a 0.5`` uses a repeating pattern of compressed and open nodes. The explicit penalty inputs have positive gaps and
+their Jacobian rows zeroed before timing. Indexed fields retain raw values and apply activation in the energy expression.
+Comparing both active fractions helps distinguish interface overhead from costs of retaining open Jacobian rows.
+
+CSV output gives the global true-DOF count, rank count, input settings, median and range in microseconds per calculation,
+and the generic/explicit median ratio; ratios above one mean the indexed-field calculation took longer. Each sample uses
+its slowest rank's duration. Timing order alternates between implementations; MPI barriers and timing reductions are
+outside the measured block. ``-i``, ``-r``, and ``-w`` control iterations per sample, an odd number of samples, and warmup
+calls. Use ``--help`` for option descriptions and repeat with several mesh sizes before interpreting a timing difference.
+
+The benchmark and sparse chain-rule assembly run on the host. Primal field expressions can run in device kernels,
+but the current Enzyme evaluators have host-only entry points. ``DifferentiableNodalFields`` uses host containers and
+a host callback, and the shared MFEM vector/matrix wrappers explicitly use host memory. GPU derivative evaluation would
+need device-callable derivative kernels and device-accessible field views; GPU assembly would also need compatible
+sparse algebra and transfer operations. Adding host/device annotations alone does not enable either path.
 
 Geometric gaps and configured offsets
 ---------------------------------------

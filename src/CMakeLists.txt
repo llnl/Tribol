@@ -40,6 +40,10 @@ if ( TRIBOL_ENABLE_TESTS )
   add_subdirectory(tests)
 endif()
 
+if ( TRIBOL_ENABLE_BENCHMARKS )
+  add_subdirectory(benchmarks)
+endif()
+
 #------------------------------------------------------------------------------
 # add tribol's and redecomp's examples
 #------------------------------------------------------------------------------

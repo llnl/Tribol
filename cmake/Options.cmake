@@ -12,6 +12,7 @@ cmake_dependent_option(TRIBOL_USE_OPENMP "Enables Tribol with OpenMP support" ON
 cmake_dependent_option(TRIBOL_ENABLE_TESTS "Enables Tribol Tests" ON "ENABLE_TESTS" OFF)
 cmake_dependent_option(TRIBOL_ENABLE_EXAMPLES "Enables Tribol Examples" ON "ENABLE_EXAMPLES" OFF)
 cmake_dependent_option(TRIBOL_ENABLE_DOCS "Enables Tribol Docs" ON "ENABLE_DOCS" OFF)
+option(TRIBOL_ENABLE_BENCHMARKS "Enables Tribol developer benchmarks" OFF)
 
 if(TRIBOL_USE_GPU_MPI AND NOT (TRIBOL_USE_CUDA OR TRIBOL_USE_HIP))
     message(FATAL_ERROR "TRIBOL_USE_GPU_MPI requires either TRIBOL_USE_CUDA or TRIBOL_USE_HIP")
