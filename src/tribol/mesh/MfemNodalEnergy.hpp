@@ -5,68 +5,64 @@
 
 /**
  * @file
- * @brief Differentiate nodal energies after assembling gap and area integrals on dual true degrees of freedom.
+ * @brief Differentiate nodal energies with respect to assembled field values on true degrees of freedom.
  */
 #ifndef SRC_TRIBOL_MESH_MFEMNODALENERGY_HPP_
 #define SRC_TRIBOL_MESH_MFEMNODALENERGY_HPP_
 
 #include "tribol/integ/NodalIntegralExpressions.hpp"
-#include "tribol/mesh/MfemNodalAssembler.hpp"
+#include "tribol/mesh/DifferentiableNodalField.hpp"
 #include "tribol/physics/PairEvaluation.hpp"
 
 namespace tribol {
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
 /**
- * @brief Use Enzyme to evaluate a nodal energy expression and its first and second assembled-integral derivatives.
+ * @brief Use Enzyme to evaluate a nodewise energy and its partial derivatives with respect to assembled fields.
  *
- * Values and coordinate Jacobians remain in quantities. The returned partial derivatives supply both the outer
- * chain-rule products and the weights for pair coordinate Hessians in MfemNodalAssembler. This function does not
- * generate quadrature or assemble the displacement residual and Jacobian. Energy is summed across the MPI communicator.
+ * Field indices identify variables; repeated expression references share the same differentiation input. Only
+ * referenced first partials and upper-triangle second partials are allocated. The bound fields subsequently apply
+ * coordinate chain rules, including their weighted coordinate Hessians. No geometry is generated here.
  * @tparam Field Contracted nodal field expression.
- * @param energy Deferred energy, including its complete scalar scaling and any borrowed independent fields.
- * @param quantities Assembled weighted-gap and area values in local dual true-DOF order.
- * @param assembler Allocates derivative vectors on the corresponding dual space.
- * @param area_tolerance Finite nonnegative support threshold for reciprocal-area energies; unsupported nodes return
- * zero energy and zero first and second partial derivatives.
- * @return Owned nodal partial derivatives and global energy; borrowed expressions and inputs are not retained.
- * @throws std::invalid_argument Local field lengths or the area tolerance are invalid.
- * @pre All ranks call collectively with integral vectors on the assembler's dual space and matching field partitions.
+ * @param energy Deferred energy, including scaling and borrowed independent coefficients.
+ * @param fields Bound values and coordinate Jacobians in expression-variable order.
+ * @param area_tolerance Finite nonnegative support threshold for reciprocal-area expressions; unsupported nodes have
+ * zero energy and partial derivatives.
+ * @return Owned nodewise partials and globally summed energy. Inputs and expressions are not retained.
+ * @throws std::invalid_argument Referenced fields, independent field lengths, or area tolerance are invalid.
+ * @pre All ranks call collectively with matching expression dependencies and field MPI partitions.
  */
 template <typename Field>
-MfemNodalDerivativeData evaluateNodalEnergy( const NodalEnergyExpression<Field>& energy,
-                                             const MfemNodalQuantityData& quantities,
-                                             const MfemNodalAssembler& assembler, RealT area_tolerance )
+NodalEnergyDerivatives evaluateNodalEnergy( const NodalEnergyExpression<Field>& energy,
+                                            const DifferentiableNodalFields& fields, RealT area_tolerance )
 {
   using Expression = NodalEnergyExpression<Field>;
-  const int num_dofs = quantities.weighted_gap.size();
-  if ( quantities.area.size() != num_dofs || !std::isfinite( area_tolerance ) || area_tolerance < 0.0 ) {
+  if ( fields.size() < Expression::field_count || !std::isfinite( area_tolerance ) || area_tolerance < 0.0 ) {
     throw std::invalid_argument(
-        "Nodal integrals must have matching lengths and a finite nonnegative area tolerance." );
+        "Nodal energy requires its referenced fields and a finite nonnegative area tolerance." );
   }
+  const int num_dofs = fields.fieldSpace().GetTrueVSize();
   energy.validateSize( num_dofs );
-  auto data = assembler.makeDerivativeData( Expression::has_area_derivatives, Expression::has_outer_hessian );
-  if ( data.pressure.size() != num_dofs ) {
-    throw std::invalid_argument( "Nodal integrals must match the assembler's local dual true-DOF count." );
-  }
-  constexpr IndexT gap = static_cast<IndexT>( NodalIntegralQuantity::WeightedGap );
-  constexpr IndexT area = static_cast<IndexT>( NodalIntegralQuantity::Area );
-  RealT local_energy = 0.0;
-  for ( int node = 0; node < num_dofs; ++node ) {
-    const MdArray<RealT, nodal_integral_count> state{ quantities.weighted_gap[node], quantities.area[node] };
-    auto definition = energy.atNode( node, area_tolerance );
-    const auto evaluated = EnergyPairEvaluator<decltype( definition )>::evaluate( state.view(), definition );
-    local_energy += evaluated.energy;
-    data.pressure[node] = data.d_energy_d_gap[node] = evaluated.residual[gap];
-    if constexpr ( Expression::has_area_derivatives ) data.d_energy_d_area[node] = evaluated.residual[area];
+  NodalEnergyDerivatives data;
+  for ( IndexT i = 0; i < Expression::field_count; ++i ) {
+    if ( !Expression::dependsOn( i ) ) continue;
+    data.gradient.emplace( i, fields.makeVector() );
     if constexpr ( Expression::has_outer_hessian ) {
-      data.d2_energy_dg2[node] = evaluated.jacobian( gap, gap );
-      if constexpr ( Expression::has_area_derivatives ) {
-        data.d2_energy_dg_da[node] = evaluated.jacobian( gap, area );
-        data.d2_energy_da2[node] = evaluated.jacobian( area, area );
+      for ( IndexT j = i; j < Expression::field_count; ++j ) {
+        if ( Expression::dependsOn( j ) ) data.hessian.emplace( std::pair{ i, j }, fields.makeVector() );
       }
     }
   }
-  MPI_Allreduce( &local_energy, &data.energy, 1, MPI_DOUBLE, MPI_SUM, quantities.weighted_gap.get().GetComm() );
+  RealT local_energy = 0.0;
+  for ( int node = 0; node < num_dofs; ++node ) {
+    auto definition = energy.atNode( node, area_tolerance );
+    MdArray<RealT, decltype( definition )::dof_count> state{};
+    for ( const auto& [index, partial] : data.gradient ) state[index] = fields[index].values[node];
+    const auto evaluated = EnergyPairEvaluator<decltype( definition )>::evaluate( state.view(), definition );
+    local_energy += evaluated.energy;
+    for ( auto& [index, partial] : data.gradient ) partial[node] = evaluated.residual[index];
+    for ( auto& [indices, partial] : data.hessian ) partial[node] = evaluated.jacobian( indices.first, indices.second );
+  }
+  MPI_Allreduce( &local_energy, &data.energy, 1, MPI_DOUBLE, MPI_SUM, fields.fieldSpace().GetComm() );
   return data;
 }
 #endif

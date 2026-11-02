@@ -24,6 +24,7 @@ set( tribol_tests
      tribol_hex_mesh.cpp
      tribol_pair_quadrature.cpp
      tribol_pair_evaluation.cpp
+     tribol_pair_traction.cpp
      tribol_contact_domain.cpp
      tribol_nodal_integral.cpp
      tribol_penalty_stiffness.cpp
@@ -175,6 +176,7 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
       tribol_mfem_common_plane.cpp
       tribol_mfem_mortar_lm.cpp
       tribol_mfem_jacobian.cpp
+      tribol_nodal_field.cpp
       tribol_mfem_pair_assembler.cpp
       tribol_pair_method.cpp
       tribol_proximity_check.cpp
@@ -215,6 +217,9 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
   blt_add_test( NAME tribol_pair_method
                 COMMAND tribol_pair_method_test
                 NUM_MPI_TASKS 1 )
+
+  blt_add_test(NAME tribol_nodal_field
+               COMMAND tribol_nodal_field_test)
 
   blt_add_test(NAME tribol_mfem_pair_assembler
                COMMAND tribol_mfem_pair_assembler_test)

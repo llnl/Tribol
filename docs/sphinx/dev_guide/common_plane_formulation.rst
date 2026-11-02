@@ -42,7 +42,8 @@ Weights measure length on the common line, without another edge-Jacobian factor.
 At each point, ``CommonPlaneGap`` calculates ``dot(point1 - point2, normal)``. The factory wraps it in ``OffsetGap`` to
 subtract the configured ``residual_gap``. ``CommonPlaneResidual`` owns that gap object. A nonpositive gap activates
 penalty pressure ``penalty * gap``. The effective penalty combines both mesh spring stiffnesses, including their penalty
-scales, in series. Basis-weighted pressure times the common normal contributes with opposite signs to the two residuals.
+scales, in series. ``pairTraction()`` weights pressure times the common normal by both bases and forms the two residual
+blocks with opposite signs.
 At exactly zero gap, pressure vanishes but the compressive-side tangent remains active.
 
 Enzyme differentiates the direct residual, including the normals, overlap bounds, mapped points, and physical weights.

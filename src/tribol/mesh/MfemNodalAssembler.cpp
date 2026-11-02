@@ -37,14 +37,19 @@ MfemNodalAssembler::MfemNodalAssembler( const MfemMeshData& mesh_data, const Mfe
       dimension_( mesh1.spatialDimension() ),
       nodes1_( mesh1.numberOfNodesPerElement() ),
       redecomp_gap_( const_cast<mfem::FiniteElementSpace*>( submesh_data.GetRedecompGap().FESpace() ) ),
-      redecomp_area_( const_cast<mfem::FiniteElementSpace*>( submesh_data.GetRedecompGap().FESpace() ) ),
-      pair_assembler_( mesh_data, jacobian_data, mesh1, mesh2, pair_capacity )
+      redecomp_area_( const_cast<mfem::FiniteElementSpace*>( submesh_data.GetRedecompGap().FESpace() ) )
 {
-  if ( redecomp_gap_.FESpace()->GetVDim() != 1 ) {
-    throw std::invalid_argument( "Nodal assembly requires a scalar Redecomp dual space." );
+  if ( pair_capacity < 0 || dimension_ <= 0 || mesh2.spatialDimension() != dimension_ ||
+       mesh_data.GetRedecompResponse().FESpace()->GetVDim() != dimension_ || nodes1_ <= 0 ||
+       mesh2.numberOfNodesPerElement() <= 0 || redecomp_gap_.FESpace()->GetVDim() != 1 ) {
+    throw std::invalid_argument(
+        "Nodal assembly requires matching dimensions, positive node counts, and a scalar dual space." );
   }
   const IndexT dofs1 = checkedProduct( nodes1_, dimension_ );
   const IndexT dofs2 = checkedProduct( mesh2.numberOfNodesPerElement(), dimension_ );
+  if ( dofs1 > std::numeric_limits<IndexT>::max() - dofs2 ) {
+    throw std::length_error( "Pair DOF count exceeds the supported index range." );
+  }
   dof_offsets_ = MdArray<IndexT, 3>{ 0, dofs1, dofs1 + dofs2 };
 
   const bool use_lor = ( mesh_data.GetLORMesh() != nullptr );
@@ -70,7 +75,6 @@ MfemNodalAssembler::MfemNodalAssembler( const MfemMeshData& mesh_data, const Mfe
 
   const IndexT max_column_dofs = std::max( dofs1, dofs2 );
   gradient_block_.resize( checkedProduct( nodes1_, max_column_dofs ) );
-  pair_jacobian_ = ArrayT<RealT, 2, MemorySpace::Host>( dof_offsets_[2], dof_offsets_[2] );
   redecomp_gap_ = 0.0;
   redecomp_area_ = 0.0;
 }
@@ -183,115 +187,11 @@ shared::ParSparseMat MfemNodalAssembler::makeSubmeshDiagonalMatrix( const mfem::
                                                submesh_fes.GetTrueDofOffsets(), diagonal_true_dofs );
 }
 
-void MfemNodalAssembler::addPairHessian( InterfacePair pair, ArrayViewT<const RealT, 2> pair_hessian )
+DifferentiableNodalFields MfemNodalAssembler::bindFields(
+    std::vector<DifferentiableNodalField> fields, DifferentiableNodalFields::WeightedHessian weighted_hessian ) const
 {
-  pair_assembler_.addPairJacobian( pair, pair_hessian );
-}
-
-void MfemNodalAssembler::addPairHessians( InterfacePair pair, ArrayViewT<const RealT> gap_weights,
-                                          ArrayViewT<const RealT, 3> gap_hessians, ArrayViewT<const RealT> area_weights,
-                                          ArrayViewT<const RealT, 3> area_hessians )
-{
-  const IndexT pair_dofs = dof_offsets_[2];
-  const bool include_area = area_weights.size() > 0;
-  if ( gap_weights.size() != nodes1_ || gap_hessians.shape()[0] != nodes1_ || gap_hessians.shape()[1] != pair_dofs ||
-       gap_hessians.shape()[2] != pair_dofs ||
-       ( include_area && ( area_weights.size() != nodes1_ || area_hessians.shape()[0] != nodes1_ ||
-                           area_hessians.shape()[1] != pair_dofs || area_hessians.shape()[2] != pair_dofs ) ) ) {
-    throw std::invalid_argument(
-        "Nodal Hessian weights and arrays must match mesh1's node count and the pair displacement DOFs." );
-  }
-
-  pair_jacobian_.fill( 0.0 );
-  for ( IndexT node = 0; node < nodes1_; ++node ) {
-    const RealT gap_weight = gap_weights[node];
-    for ( IndexT row = 0; row < pair_dofs; ++row ) {
-      for ( IndexT column = 0; column < pair_dofs; ++column ) {
-        pair_jacobian_( row, column ) += gap_weight * gap_hessians( node, row, column );
-      }
-    }
-  }
-  if ( include_area ) {
-    for ( IndexT node = 0; node < nodes1_; ++node ) {
-      const RealT area_weight = area_weights[node];
-      for ( IndexT row = 0; row < pair_dofs; ++row ) {
-        for ( IndexT column = 0; column < pair_dofs; ++column ) {
-          pair_jacobian_( row, column ) += area_weight * area_hessians( node, row, column );
-        }
-      }
-    }
-  }
-  pair_assembler_.addPairJacobian( pair, pair_jacobian_.view() );
-}
-
-shared::ParSparseMat MfemNodalAssembler::assembleHessians() const { return pair_assembler_.assembleJacobian(); }
-
-MfemNodalDerivativeData MfemNodalAssembler::makeDerivativeData( bool has_area_derivatives,
-                                                                bool has_outer_hessian ) const
-{
-  auto* submesh_fes = const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() );
-  MfemNodalDerivativeData data;
-  data.has_area_derivatives = has_area_derivatives;
-  data.has_outer_hessian = has_outer_hessian;
-  data.pressure = shared::ParVector( submesh_fes );
-  data.pressure.fill( 0.0 );
-  data.d_energy_d_gap = shared::ParVector( submesh_fes );
-  data.d_energy_d_gap.fill( 0.0 );
-  if ( has_area_derivatives ) {
-    data.d_energy_d_area = shared::ParVector( submesh_fes );
-    data.d_energy_d_area.fill( 0.0 );
-  }
-  if ( has_outer_hessian ) {
-    data.d2_energy_dg2 = shared::ParVector( submesh_fes );
-    data.d2_energy_dg2.fill( 0.0 );
-    if ( has_area_derivatives ) {
-      data.d2_energy_dg_da = shared::ParVector( submesh_fes );
-      data.d2_energy_dg_da.fill( 0.0 );
-      data.d2_energy_da2 = shared::ParVector( submesh_fes );
-      data.d2_energy_da2.fill( 0.0 );
-    }
-  }
-  return data;
-}
-
-shared::ParVector MfemNodalAssembler::assembleForce( const MfemNodalQuantityData& quantities,
-                                                     const MfemNodalDerivativeData& derivatives ) const
-{
-  const int dual_size = submesh_data_.GetSubmeshFESpace().GetTrueVSize();
-  if ( derivatives.d_energy_d_gap.size() != dual_size ||
-       ( derivatives.has_area_derivatives && derivatives.d_energy_d_area.size() != dual_size ) ) {
-    throw std::invalid_argument( "Nodal first-derivative vector lengths must match the dual submesh true-DOF count." );
-  }
-  auto force = derivatives.d_energy_d_gap * quantities.weighted_gap_jacobian;
-  if ( derivatives.has_area_derivatives ) {
-    force += derivatives.d_energy_d_area * quantities.area_jacobian;
-  }
-  return force;
-}
-
-shared::ParSparseMat MfemNodalAssembler::assembleJacobian( const MfemNodalQuantityData& quantities,
-                                                           const MfemNodalDerivativeData& derivatives ) const
-{
-  const int dual_size = submesh_data_.GetSubmeshFESpace().GetTrueVSize();
-  if ( derivatives.has_outer_hessian &&
-       ( derivatives.d2_energy_dg2.size() != dual_size ||
-         ( derivatives.has_area_derivatives &&
-           ( derivatives.d2_energy_dg_da.size() != dual_size || derivatives.d2_energy_da2.size() != dual_size ) ) ) ) {
-    throw std::invalid_argument( "Nodal second-derivative vector lengths must match the dual submesh true-DOF count." );
-  }
-  auto df_dx = assembleHessians();
-  if ( derivatives.has_outer_hessian ) {
-    auto d2_dg2_diag = makeSubmeshDiagonalMatrix( derivatives.d2_energy_dg2.get() );
-    df_dx += shared::ParSparseMat::rap( d2_dg2_diag, quantities.weighted_gap_jacobian );
-    if ( derivatives.has_area_derivatives ) {
-      auto d2_dg_da_diag = makeSubmeshDiagonalMatrix( derivatives.d2_energy_dg_da.get() );
-      auto d2_da2_diag = makeSubmeshDiagonalMatrix( derivatives.d2_energy_da2.get() );
-      df_dx += shared::ParSparseMat::rap( quantities.weighted_gap_jacobian, d2_dg_da_diag, quantities.area_jacobian );
-      df_dx += shared::ParSparseMat::rap( quantities.area_jacobian, d2_dg_da_diag, quantities.weighted_gap_jacobian );
-      df_dx += shared::ParSparseMat::rap( d2_da2_diag, quantities.area_jacobian );
-    }
-  }
-  return df_dx;
+  return { submesh_data_.GetSubmeshFESpace(), *mesh_data_.GetParentCoords().ParFESpace(), std::move( fields ),
+           std::move( weighted_hessian ) };
 }
 
 }  // namespace tribol

@@ -551,10 +551,10 @@ TEST( NodalEnergyDefinitionsCheck, DerivativesMatchFiniteDifference )
   const auto lm_expression =
       EnergyMortarNodal{}.lagrangeMultiplierEnergy( nodal_weighted_gap, IndependentNodalField{ { pressure, 1 } } );
   auto lm_def = lm_expression.atNode( 0, 1.0e-14 );
-  const auto lm_eval = EnergyPairEvaluator<decltype( lm_def )>::evaluate( state.view(), lm_def );
+  const MdArray<RealT, decltype( lm_def )::dof_count> lm_state{ state[0] };
+  const auto lm_eval = EnergyPairEvaluator<decltype( lm_def )>::evaluate( lm_state.view(), lm_def );
   EXPECT_DOUBLE_EQ( lm_eval.energy, -3.5 * state[0] );
   EXPECT_DOUBLE_EQ( lm_eval.residual[0], -3.5 );
-  EXPECT_DOUBLE_EQ( lm_eval.residual[1], 0.0 );
   for ( IndexT entry = 0; entry < lm_eval.jacobian.size(); ++entry ) {
     EXPECT_DOUBLE_EQ( lm_eval.jacobian[entry], 0.0 );
   }

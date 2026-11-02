@@ -68,19 +68,34 @@ TEST_P( NodalIntegralTest, contracts_independent_pressure_with_gap )
   const auto coefficients = copyToExecutionSpace<RealT>( { -3.0, 2.0 } );
   const IndependentNodalField pressure{ coefficients.view() };
   const auto energy = dot( pressure, nodal_weighted_gap );
-  static_assert( !decltype( energy )::has_area_derivatives );
+  static_assert( !decltype( energy )::dependsOn( 1 ) );
   static_assert( !decltype( energy )::has_outer_hessian );
   EXPECT_NO_THROW( energy.validateSize( coefficients.size() ) );
   EXPECT_THROW( energy.validateSize( coefficients.size() + 1 ), std::invalid_argument );
   ArrayT<RealT> results( coefficients.size(), coefficients.size(), allocatorId() );
   const auto output = results.view();
   forAllExec( GetParam(), coefficients.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) {
-    const MdArray<RealT, nodal_integral_count> state{ 0.2, 0.0 };
+    const MdArray<RealT, 1> state{ 0.2 };
     output[node] = energy.atNode( node, area_tolerance ).energy( state.view() );
   } );
   const ArrayT<RealT, 1, MemorySpace::Host> host( results );
   EXPECT_NEAR( host[0], -0.6, tolerance );
   EXPECT_NEAR( host[1], 0.4, tolerance );
+}
+
+// Three fields use distinct indices without assigning gap or area meanings to them.
+TEST_P( NodalIntegralTest, evaluates_three_indexed_fields )
+{
+  const auto input = copyToExecutionSpace<MdArray<RealT, 3>>( { MdArray<RealT, 3>{ 2.0, 3.0, 4.0 } } );
+  ArrayT<RealT> results( input.size(), input.size(), allocatorId() );
+  const auto states = input.view();
+  const auto output = results.view();
+  forAllExec( GetParam(), input.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) {
+    const auto energy = sum( NodalFieldVariable<0>{}, NodalFieldVariable<1>{}, NodalFieldVariable<2>{} );
+    output[node] = energy.atNode( node, area_tolerance ).energy( states[node].view() );
+  } );
+  const ArrayT<RealT, 1, MemorySpace::Host> host( results );
+  EXPECT_NEAR( host[0], 24.0, tolerance );
 }
 
 INSTANTIATE_TEST_SUITE_P( EnabledBackends, NodalIntegralTest, detail::enabledExecutionModes() );
@@ -91,7 +106,7 @@ TEST( NodalIntegralDerivatives, penalty_partials_match_analytical_values_and_fin
 {
   const auto g = min( nodal_weighted_gap, 0.0 );
   const auto expression = 0.5 * penalty * sum( g, g, 1.0 / nodal_area );
-  static_assert( decltype( expression )::has_area_derivatives );
+  static_assert( decltype( expression )::dependsOn( 1 ) );
   static_assert( decltype( expression )::has_outer_hessian );
   auto definition = expression.atNode( 0, area_tolerance );
   MdArray<RealT, nodal_integral_count> state{ -0.2, 0.5 };
@@ -150,11 +165,10 @@ TEST( NodalIntegralDerivatives, reads_current_multiplier_values_without_differen
   const IndependentNodalField pressure{ { coefficients, 2 } };
   const auto expression = dot( pressure, nodal_weighted_gap );
   auto definition = expression.atNode( 1, area_tolerance );
-  const MdArray<RealT, nodal_integral_count> state{ -0.2, 0.0 };
+  const MdArray<RealT, 1> state{ -0.2 };
   auto evaluated = EnergyPairEvaluator<decltype( definition )>::evaluate( state.view(), definition );
   EXPECT_NEAR( evaluated.energy, -0.4, tolerance );
   EXPECT_EQ( evaluated.residual[0], 2.0 );
-  EXPECT_EQ( evaluated.residual[1], 0.0 );
   for ( IndexT i = 0; i < evaluated.jacobian.size(); ++i ) EXPECT_EQ( evaluated.jacobian[i], 0.0 );
   coefficients[1] = 4.0;
   evaluated = EnergyPairEvaluator<decltype( definition )>::evaluate( state.view(), definition );

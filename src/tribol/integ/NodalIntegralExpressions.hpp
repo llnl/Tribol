@@ -5,7 +5,7 @@
 
 /**
  * @file
- * @brief Build nodal energies from named assembled gap and area integrals without allocating field storage.
+ * @brief Build nodal energies from indexed assembled fields without allocating field storage.
  */
 #ifndef SRC_TRIBOL_INTEG_NODALINTEGRALEXPRESSIONS_HPP_
 #define SRC_TRIBOL_INTEG_NODALINTEGRALEXPRESSIONS_HPP_
@@ -32,44 +32,50 @@ struct NodalFieldExpressionTag {};
 namespace detail {
 /**
  * @brief Describe dependencies needed for nodal energy derivative storage and area normalization.
- * @tparam UsesArea Whether the field depends on the assembled tributary area.
  * @tparam NeedsArea Whether a reciprocal requires a nonzero tributary area.
  * @tparam Affine Whether each smooth branch is affine in the assembled state.
  * @tparam Depends Whether the field depends on the assembled state rather than fixed inputs.
  */
-template <bool UsesArea, bool NeedsArea, bool Affine, bool Depends>
+template <bool NeedsArea, bool Affine, bool Depends>
 struct NodalFieldProperties : NodalFieldExpressionTag {
-  static constexpr bool uses_area = UsesArea;            ///< Whether area partial derivatives are needed.
   static constexpr bool needs_nonzero_area = NeedsArea;  ///< Whether area normalization needs a support check.
   static constexpr bool is_affine = Affine;              ///< Whether smooth branches have zero Hessian.
-  static constexpr bool depends_on_state = Depends;      ///< Whether gap or area is an active input.
+  static constexpr bool depends_on_state = Depends;      ///< Whether an assembled field is an active input.
 };
 }  // namespace detail
 
 /**
- * @brief Refer to one named assembled integral, whose values and coordinate derivatives belong to the assembly context.
+ * @brief Select an assembled field by index without owning its values or coordinate derivatives.
  *
- * This value owns no vectors or matrices. It selects the corresponding component when evaluated at a node, so repeated
- * references share the same differentiation variable. Integral evaluation order does not affect its identity.
- * @tparam Quantity Weighted gap or tributary area.
+ * Repeated references select the same differentiation variable. Evaluation order does not affect field identity.
+ * @tparam Index Nonnegative field index in the bound field collection.
  */
-template <NodalIntegralQuantity Quantity>
-struct NodalIntegralField : detail::NodalFieldProperties<Quantity == NodalIntegralQuantity::Area, false, true, true> {
-  static_assert( Quantity != NodalIntegralQuantity::Count );
+template <IndexT Index>
+struct NodalFieldVariable : detail::NodalFieldProperties<false, true, true> {
+  static_assert( Index >= 0 );
+  static constexpr IndexT field_count = Index + 1;  ///< Minimum number of fields needed to evaluate this variable.
+  /** @brief Check field dependence. @param index Field index. @return Whether this variable selects the field. */
+  TRIBOL_HOST_DEVICE static constexpr bool dependsOn( IndexT index ) { return index == Index; }
   /**
-   * @brief Read this integral from one assembled nodal state.
-   * @param state Named quantities in NodalIntegralQuantity order.
-   * @param node Local true-DOF index, unused for an assembled state component.
-   * @return Assembled integral value.
+   * @brief Read this field from one assembled nodal state.
+   * @tparam StateSize Number of active field components.
+   * @param state Assembled values in field-index order.
+   * @param node Local true DOF, unused for a state component.
+   * @return Assembled field value.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( MdSpan<const RealT, nodal_integral_count> state,
+  template <IndexT StateSize>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( MdSpan<const RealT, StateSize> state,
                                                        [[maybe_unused]] IndexT node ) const
   {
-    return state[static_cast<IndexT>( Quantity )];
+    static_assert( StateSize >= field_count );
+    return state[Index];
   }
-  /** @brief Accept any field length. @param count Number of local dual true DOFs. */
+  /** @brief Accept any field length. @param count Number of local field true DOFs. */
   void validateSize( [[maybe_unused]] IndexT count ) const {}
 };
+/** @brief Select a named mortar integral. @tparam Quantity Weighted gap or tributary area. */
+template <NodalIntegralQuantity Quantity>
+using NodalIntegralField = NodalFieldVariable<static_cast<IndexT>( Quantity )>;
 /** @brief Symbolic weighted gap integral on the assembled dual submesh. */
 inline constexpr NodalIntegralField<NodalIntegralQuantity::WeightedGap> nodal_weighted_gap{};
 /** @brief Symbolic tributary area integral on the assembled dual submesh. */
@@ -81,17 +87,22 @@ inline constexpr NodalIntegralField<NodalIntegralQuantity::Area> nodal_area{};
  * Values are held fixed during coordinate differentiation. The array must remain accessible and unchanged while the
  * expression is evaluated. Matching the assembled field's DOF ordering and MPI partition is a caller precondition.
  */
-struct IndependentNodalField : detail::NodalFieldProperties<false, false, true, false> {
+struct IndependentNodalField : detail::NodalFieldProperties<false, true, false> {
+  static constexpr IndexT field_count = 0;  ///< No active fields are required.
+  /** @brief Check field dependence. @param index Field index, unused. @return False for fixed coefficients. */
+  TRIBOL_HOST_DEVICE static constexpr bool dependsOn( [[maybe_unused]] IndexT index ) { return false; }
   ArrayViewT<const RealT> values;  ///< Borrowed fixed nodal values; no view is retained by an assembled result.
   /** @brief Borrow independent coefficients. @param coefficients Fixed values in local dual true-DOF order. */
   TRIBOL_HOST_DEVICE explicit IndependentNodalField( ArrayViewT<const RealT> coefficients ) : values( coefficients ) {}
   /**
    * @brief Read a fixed field value at a node.
+   * @tparam StateSize Number of active field components.
    * @param state Active assembled state, unused by an independent field.
    * @param node Valid local true-DOF index.
    * @return Fixed coefficient for this node.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( [[maybe_unused]] MdSpan<const RealT, nodal_integral_count> state,
+  template <IndexT StateSize>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( [[maybe_unused]] MdSpan<const RealT, StateSize> state,
                                                        IndexT node ) const
   {
     return values[node];
@@ -114,14 +125,17 @@ namespace detail {
  * @tparam Field Nodal field expression.
  */
 template <typename Field>
-struct ScaledNodalField
-    : NodalFieldProperties<Field::uses_area, Field::needs_nonzero_area, Field::is_affine, Field::depends_on_state> {
+struct ScaledNodalField : NodalFieldProperties<Field::needs_nonzero_area, Field::is_affine, Field::depends_on_state> {
+  static constexpr IndexT field_count = Field::field_count;  ///< Required bound field count.
+  /** @brief Check field dependence. @param index Field index. @return Underlying field dependence. */
+  TRIBOL_HOST_DEVICE static constexpr bool dependsOn( IndexT index ) { return Field::dependsOn( index ); }
   Field field;  ///< Owned expression, potentially borrowing a fixed field.
   RealT scale;  ///< Inactive scalar multiplier.
-  /** @brief Evaluate the scaled field. @param state Active nodal integrals. @param node Local true DOF.
+  /** @brief Evaluate the scaled field. @tparam StateSize Active field count. @param state Active nodal integrals.
+   * @param node Local true DOF.
    * @return Scaled value. */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( MdSpan<const RealT, nodal_integral_count> state,
-                                                       IndexT node ) const
+  template <IndexT StateSize>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( MdSpan<const RealT, StateSize> state, IndexT node ) const
   {
     return scale * field.value( state, node );
   }
@@ -135,17 +149,24 @@ struct ScaledNodalField
  * @tparam Right Second nodal field.
  */
 template <typename Left, typename Right>
-struct ProductNodalField
-    : NodalFieldProperties<Left::uses_area || Right::uses_area, Left::needs_nonzero_area || Right::needs_nonzero_area,
-                           Left::is_affine && Right::is_affine &&
-                               !( Left::depends_on_state && Right::depends_on_state ),
-                           Left::depends_on_state || Right::depends_on_state> {
+struct ProductNodalField : NodalFieldProperties<Left::needs_nonzero_area || Right::needs_nonzero_area,
+                                                Left::is_affine && Right::is_affine &&
+                                                    !( Left::depends_on_state && Right::depends_on_state ),
+                                                Left::depends_on_state || Right::depends_on_state> {
+  static constexpr IndexT field_count = Left::field_count > Right::field_count ? Left::field_count : Right::field_count;
+  ///< Required bound field count.
+  /** @brief Check field dependence. @param index Field index. @return Whether either factor uses the field. */
+  TRIBOL_HOST_DEVICE static constexpr bool dependsOn( IndexT index )
+  {
+    return Left::dependsOn( index ) || Right::dependsOn( index );
+  }
   Left left;    ///< First owned expression.
   Right right;  ///< Second owned expression.
-  /** @brief Evaluate the field product. @param state Active nodal integrals. @param node Local true DOF.
+  /** @brief Evaluate the field product. @tparam StateSize Active field count. @param state Active nodal integrals.
+   * @param node Local true DOF.
    * @return Product at the node. */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( MdSpan<const RealT, nodal_integral_count> state,
-                                                       IndexT node ) const
+  template <IndexT StateSize>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( MdSpan<const RealT, StateSize> state, IndexT node ) const
   {
     return left.value( state, node ) * right.value( state, node );
   }
@@ -162,18 +183,21 @@ struct ProductNodalField
  * @tparam Field Underlying nodal expression.
  */
 template <typename Field>
-struct ClampedNodalField
-    : NodalFieldProperties<Field::uses_area, Field::needs_nonzero_area, Field::is_affine, Field::depends_on_state> {
+struct ClampedNodalField : NodalFieldProperties<Field::needs_nonzero_area, Field::is_affine, Field::depends_on_state> {
+  static constexpr IndexT field_count = Field::field_count;  ///< Required bound field count.
+  /** @brief Check field dependence. @param index Field index. @return Underlying field dependence. */
+  TRIBOL_HOST_DEVICE static constexpr bool dependsOn( IndexT index ) { return Field::dependsOn( index ); }
   Field field;        ///< Field being clamped.
   RealT upper_bound;  ///< Inactive maximum value.
   /**
    * @brief Retain the underlying branch at equality, including the compressive tangent at zero gap.
+   * @tparam StateSize Number of active field components.
    * @param state Active nodal integrals.
    * @param node Local true DOF.
    * @return The field value at or below the bound, otherwise the bound.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( MdSpan<const RealT, nodal_integral_count> state,
-                                                       IndexT node ) const
+  template <IndexT StateSize>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( MdSpan<const RealT, StateSize> state, IndexT node ) const
   {
     const RealT v = field.value( state, node );
     return v > upper_bound ? upper_bound : v;
@@ -183,15 +207,23 @@ struct ClampedNodalField
 };
 
 /** @brief Divide a fixed numerator by the assembled tributary area. */
-struct ReciprocalNodalArea : NodalFieldProperties<true, true, false, true> {
+struct ReciprocalNodalArea : NodalFieldProperties<true, false, true> {
+  static constexpr IndexT field_count = static_cast<IndexT>( NodalIntegralQuantity::Area ) + 1;  ///< Includes area.
+  /** @brief Check field dependence. @param index Field index. @return Whether the field is tributary area. */
+  TRIBOL_HOST_DEVICE static constexpr bool dependsOn( IndexT index )
+  {
+    return index == static_cast<IndexT>( NodalIntegralQuantity::Area );
+  }
   RealT numerator;  ///< Inactive numerator.
   /**
    * @brief Evaluate the quotient on a node with supported area.
+   * @tparam StateSize Number of active field components.
    * @param state Active nodal integrals; nonzero area is required.
    * @param node Local true DOF, unused.
    * @return Numerator divided by area; NodalEnergyAtNode checks support before this is called.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( MdSpan<const RealT, nodal_integral_count> state,
+  template <IndexT StateSize>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( MdSpan<const RealT, StateSize> state,
                                                        [[maybe_unused]] IndexT node ) const
   {
     return numerator / state[static_cast<IndexT>( NodalIntegralQuantity::Area )];
@@ -206,9 +238,9 @@ struct ReciprocalNodalArea : NodalFieldProperties<true, true, false, true> {
  */
 template <typename Field>
 struct NodalEnergyAtNode {
-  static constexpr IndexT dof_count = nodal_integral_count;  ///< Weighted-gap and area variables.
-  Field field;                                               ///< Inactive expression and borrowed fixed coefficients.
-  IndexT node;                                               ///< Local dual true DOF supplying fixed coefficients.
+  static constexpr IndexT dof_count = Field::field_count > 0 ? Field::field_count : 1;  ///< Active state width.
+  Field field;           ///< Inactive expression and borrowed fixed coefficients.
+  IndexT node;           ///< Local dual true DOF supplying fixed coefficients.
   RealT area_tolerance;  ///< Maximum unsupported area magnitude for reciprocal-area expressions.
   /**
    * @brief Evaluate one node's energy, returning zero for unsupported reciprocal-area nodes before dividing.
@@ -231,8 +263,10 @@ struct NodalEnergyAtNode {
  */
 template <typename Field>
 struct NodalEnergyExpression {
-  static constexpr bool has_area_derivatives = Field::uses_area;  ///< Whether area participates in the energy.
-  static constexpr bool has_outer_hessian = !Field::is_affine;    ///< Whether smooth branches can have second partials.
+  static constexpr IndexT field_count = Field::field_count;  ///< Minimum required bound field count.
+  /** @brief Check field dependence. @param index Field index. @return Whether the expression uses the field. */
+  static constexpr bool dependsOn( IndexT index ) { return Field::dependsOn( index ); }
+  static constexpr bool has_outer_hessian = !Field::is_affine;  ///< Whether smooth branches can have second partials.
   Field field;  ///< Owned expression; independent coefficient arrays remain borrowed.
   /**
    * @brief Bind a local node without generating geometry or allocating storage.
@@ -354,7 +388,7 @@ TRIBOL_HOST_DEVICE constexpr auto dot( const Left& left, const Right& right )
  * @tparam Field Contracted field type.
  * @param scale Inactive scalar multiplier.
  * @param energy Energy expression.
- * @return Deferred scaled energy; gap and pressure output fields are not scaled as assembled results.
+ * @return Deferred scaled energy, including scaling of its first and second derivatives.
  */
 template <typename Field>
 TRIBOL_HOST_DEVICE constexpr auto operator*( RealT scale, const NodalEnergyExpression<Field>& energy )

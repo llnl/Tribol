@@ -5,7 +5,7 @@
 
 /**
  * @file
- * @brief Assemble nodal mortar integrals, dual-to-displacement Jacobians, and weighted pair Hessians on MFEM spaces.
+ * @brief Assemble nodal mortar integrals and their coordinate Jacobians on MFEM spaces.
  */
 #ifndef SRC_TRIBOL_MESH_MFEMNODALASSEMBLER_HPP_
 #define SRC_TRIBOL_MESH_MFEMNODALASSEMBLER_HPP_
@@ -17,7 +17,7 @@
 #include "tribol/common/MdArray.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MfemData.hpp"
-#include "tribol/mesh/MfemPairAssembler.hpp"
+#include "tribol/mesh/DifferentiableNodalField.hpp"
 
 namespace tribol {
 
@@ -31,23 +31,7 @@ struct MfemNodalQuantityData {
 };
 
 /**
- * @brief Nodal energy values, pressures, and partial derivatives with respect to (weighted_gap, area) on dual submesh
- * true degrees of freedom.
- */
-struct MfemNodalDerivativeData {
-  RealT energy = 0.0;                 ///< Global contact energy summed across all MPI ranks.
-  shared::ParVector pressure;         ///< Nodal pressure or Lagrange multiplier on dual submesh true DOFs.
-  shared::ParVector d_energy_d_gap;   ///< First partial derivative dE/d(g_tilde) on dual submesh true DOFs.
-  shared::ParVector d_energy_d_area;  ///< First partial derivative dE/dA on dual submesh true DOFs.
-  shared::ParVector d2_energy_dg2;    ///< Second partial derivative d^2E/d(g_tilde)^2 on dual submesh true DOFs.
-  shared::ParVector d2_energy_dg_da;  ///< Mixed partial derivative d^2E/(d(g_tilde) dA) on dual submesh true DOFs.
-  shared::ParVector d2_energy_da2;    ///< Second partial derivative d^2E/dA^2 on dual submesh true DOFs.
-  bool has_area_derivatives = false;  ///< Whether dE/dA or second partials with respect to area are active.
-  bool has_outer_hessian = false;     ///< Whether second partials of nodal energy are active.
-};
-
-/**
- * @brief Accumulate nodal gap/area integrals, their gradients, and weighted pair Hessians across MFEM transfer spaces.
+ * @brief Accumulate nodal gap/area integrals and their gradients across MFEM transfer spaces.
  *
  * Mesh1 is the non-mortar integration side whose nodes carry scalar dual degrees of freedom; mesh2 is the mortar side.
  * This host-only assembler owns scratch storage for one calculation and copies each pair's contributions. Mesh
@@ -57,7 +41,7 @@ struct MfemNodalDerivativeData {
 class MfemNodalAssembler {
  public:
   /**
-   * @brief Prepare Redecomp nodal fields and reserve gradient and Hessian block storage for the supplied pairs.
+   * @brief Prepare Redecomp nodal fields and reserve gradient block storage for the supplied pairs.
    * @param mesh_data Current MFEM displacement mesh and transfer data; not owned.
    * @param submesh_data Current MFEM dual submesh and transfer data; not owned.
    * @param jacobian_data Current Jacobian transfer data; not owned.
@@ -114,61 +98,14 @@ class MfemNodalAssembler {
   shared::ParSparseMat makeSubmeshDiagonalMatrix( const mfem::Vector& diagonal_true_dofs ) const;
 
   /**
-   * @brief Add one pair's already-weighted coordinate Hessian directly to the parent displacement Jacobian.
-   * @param pair Valid element IDs in the supplied meshes.
-   * @param pair_hessian Row-major matrix [pair_row][pair_col] in pair DOF order.
-   * @throws std::invalid_argument Matrix dimensions do not match the pair DOF count.
+   * @brief Bind assembled fields to the dual and coordinate spaces for generic energy chain rules.
+   * @param fields Borrowed values and coordinate Jacobians; their order identifies expression variables.
+   * @param weighted_hessian Optional grouped coordinate-Hessian operation; required for Jacobian assembly.
+   * @return Binding borrowing fields and spaces for this calculation only.
+   * @throws std::invalid_argument Field dimensions do not match the dual and coordinate spaces.
    */
-  void addPairHessian( InterfacePair pair, ArrayViewT<const RealT, 2> pair_hessian );
-
-  /**
-   * @brief Add one pair's node-weighted gap and area coordinate Hessians to the parent displacement Jacobian.
-   * @param pair Valid element IDs in the supplied meshes.
-   * @param gap_weights Scalar weights for each node of mesh1's element.
-   * @param gap_hessians Row-major array [mesh1_node][pair_row][pair_col] in pair DOF order.
-   * @param area_weights Optional scalar weights for each node of mesh1's element; pass empty view to skip area terms.
-   * @param area_hessians Optional row-major array [mesh1_node][pair_row][pair_col] in pair DOF order.
-   * @throws std::invalid_argument Array dimensions do not match mesh1's node count or the pair DOF count.
-   */
-  void addPairHessians( InterfacePair pair, ArrayViewT<const RealT> gap_weights,
-                        ArrayViewT<const RealT, 3> gap_hessians, ArrayViewT<const RealT> area_weights = {},
-                        ArrayViewT<const RealT, 3> area_hessians = {} );
-
-  /**
-   * @brief Return the assembled weighted-Hessian contribution on parent displacement true DOFs.
-   * @return Owned parent true-DOF sparse matrix; zero pairs produce an allocated zero matrix.
-   */
-  shared::ParSparseMat assembleHessians() const;
-
-  /**
-   * @brief Allocate and zero-initialize nodal derivative vectors on the dual submesh true-DOF space.
-   * @param has_area_derivatives Allocate dE/dA and area second-partial vectors when true.
-   * @param has_outer_hessian Allocate second-partial vectors when true.
-   * @return Initialized nodal derivative storage on dual submesh true DOFs.
-   */
-  MfemNodalDerivativeData makeDerivativeData( bool has_area_derivatives, bool has_outer_hessian ) const;
-
-  /**
-   * @brief Assemble the parent displacement residual via the nodal chain rule:
-   * (dE/dg_tilde) * d(g_tilde)/dx + (dE/dA) * dA/dx.
-   * @param quantities Assembled nodal integrals and coordinate Jacobians.
-   * @param derivatives Nodal energy partial derivatives on dual submesh true DOFs.
-   * @return Owned residual vector on parent displacement true DOFs.
-   * @throws std::invalid_argument Vector lengths do not match the dual submesh true-DOF count.
-   */
-  shared::ParVector assembleForce( const MfemNodalQuantityData& quantities,
-                                   const MfemNodalDerivativeData& derivatives ) const;
-
-  /**
-   * @brief Assemble the full parent displacement Jacobian by combining the inner weighted pair Hessians with the outer
-   * quadratic forms of the nodal energy Hessian.
-   * @param quantities Assembled nodal integrals and coordinate Jacobians.
-   * @param derivatives Nodal energy partial derivatives on dual submesh true DOFs.
-   * @return Owned Jacobian matrix on parent displacement true DOFs.
-   * @throws std::invalid_argument Vector lengths do not match the dual submesh true-DOF count.
-   */
-  shared::ParSparseMat assembleJacobian( const MfemNodalQuantityData& quantities,
-                                         const MfemNodalDerivativeData& derivatives ) const;
+  DifferentiableNodalFields bindFields( std::vector<DifferentiableNodalField> fields,
+                                        DifferentiableNodalFields::WeightedHessian weighted_hessian = {} ) const;
 
  private:
   /**
@@ -199,8 +136,6 @@ class MfemNodalAssembler {
   std::vector<PackedPairJacobianContribs> gap_gradient_contributions_;   ///< Packed (mesh1, mesh1/2) gap gradients.
   std::vector<PackedPairJacobianContribs> area_gradient_contributions_;  ///< Packed (mesh1, mesh1/2) area gradients.
   Array1D<RealT, MemorySpace::Host> gradient_block_;                     ///< Reused column-major gradient block.
-  ArrayT<RealT, 2, MemorySpace::Host> pair_jacobian_;  ///< Reused pair matrix for weighted nodal Hessians.
-  MfemPairAssembler pair_assembler_;                   ///< Assembles weighted pair Hessians on parent true DOFs.
 };
 
 }  // namespace tribol

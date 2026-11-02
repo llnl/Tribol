@@ -258,6 +258,8 @@ TEST_F( MfemPairAssemblerTest, assembles_nodal_quantities_dual_transfers_and_wei
   const IndexT pair_count = mesh1.numberOfElements() * mesh2.numberOfElements();
   MfemNodalAssembler assembler( mesh_data, dual_data, *cs.getMfemJacobianData(), mesh1, mesh2, pair_count );
 
+  MfemPairAssembler hessian_assembler( mesh_data, *cs.getMfemJacobianData(), mesh1, mesh2, pair_count );
+
   const auto pressure_true = assembler.getSubmeshPressureTrueDofs();
   for ( int i = 0; i < pressure_true.size(); ++i ) {
     EXPECT_NEAR( pressure_true[i], 2.5, tolerance );
@@ -313,10 +315,14 @@ TEST_F( MfemPairAssemblerTest, assembles_nodal_quantities_dual_transfers_and_wei
       assembler.addPairQuantities(
           { element1, element2 }, { gaps.data(), nodes_per_edge }, { areas.data(), nodes_per_edge },
           { gap_grads.data(), { nodes_per_edge, pair_dofs } }, { area_grads.data(), { nodes_per_edge, pair_dofs } } );
-      assembler.addPairHessians( { element1, element2 }, { gap_weights.data(), nodes_per_edge },
-                                 { gap_hessians.data(), { nodes_per_edge, pair_dofs, pair_dofs } },
-                                 { area_weights.data(), nodes_per_edge },
-                                 { area_hessians.data(), { nodes_per_edge, pair_dofs, pair_dofs } } );
+      MdArray<RealT, pair_dofs, pair_dofs> weighted_hessian{};
+      for ( int node = 0; node < nodes_per_edge; ++node )
+        for ( int row = 0; row < pair_dofs; ++row )
+          for ( int column = 0; column < pair_dofs; ++column )
+            weighted_hessian( row, column ) += gap_weights[node] * gap_hessians( node, row, column ) +
+                                               area_weights[node] * area_hessians( node, row, column );
+      hessian_assembler.addPairJacobian( { element1, element2 },
+                                         { weighted_hessian.data(), { pair_dofs, pair_dofs } } );
     }
   }
 
@@ -377,7 +383,7 @@ TEST_F( MfemPairAssemblerTest, assembles_nodal_quantities_dual_transfers_and_wei
       reference_assembler.addPairJacobian( { element1, element2 }, { jacobian.data(), { pair_dofs, pair_dofs } } );
     }
   }
-  const auto hessian_mat = assembler.assembleHessians();
+  const auto hessian_mat = hessian_assembler.assembleJacobian();
   const auto reference_mat = reference_assembler.assembleJacobian();
   mfem::Vector hessian_action( fes_->GetTrueVSize() ), reference_action( fes_->GetTrueVSize() );
   hessian_mat->Mult( parent_ones, hessian_action );
@@ -386,21 +392,27 @@ TEST_F( MfemPairAssemblerTest, assembles_nodal_quantities_dual_transfers_and_wei
   EXPECT_LT( norm( hessian_action ), tolerance );
 
   // Verify chain-rule residual and outer-Hessian assembly from prescribed nodal derivatives.
-  auto derivatives = assembler.makeDerivativeData( true, true );
-  derivatives.d_energy_d_gap.fill( 3.0 );
-  derivatives.d_energy_d_area.fill( -1.5 );
-  derivatives.d2_energy_dg2.fill( 4.0 );
-  derivatives.d2_energy_dg_da.fill( -0.5 );
-  derivatives.d2_energy_da2.fill( 2.0 );
+  const auto fields = assembler.bindFields(
+      { { unclamped.weighted_gap, unclamped.weighted_gap_jacobian }, { unclamped.area, unclamped.area_jacobian } },
+      [&]( const NodalEnergyGradient& ) { return hessian_assembler.assembleJacobian(); } );
+  NodalEnergyDerivatives derivatives;
+  for ( IndexT i = 0; i < fields.size(); ++i ) derivatives.gradient.emplace( i, fields.makeVector() );
+  for ( const auto index : { std::pair{ 0, 0 }, std::pair{ 0, 1 }, std::pair{ 1, 1 } } )
+    derivatives.hessian.emplace( index, fields.makeVector() );
+  derivatives.gradient.at( 0 ).fill( 3.0 );
+  derivatives.gradient.at( 1 ).fill( -1.5 );
+  derivatives.hessian.at( { 0, 0 } ).fill( 4.0 );
+  derivatives.hessian.at( { 0, 1 } ).fill( -0.5 );
+  derivatives.hessian.at( { 1, 1 } ).fill( 2.0 );
 
-  const auto chain_force = assembler.assembleForce( unclamped, derivatives );
-  const auto expected_force = ( derivatives.d_energy_d_gap * unclamped.weighted_gap_jacobian ) +
-                              ( derivatives.d_energy_d_area * unclamped.area_jacobian );
+  const auto chain_force = fields.assembleForce( derivatives );
+  const auto expected_force = ( derivatives.gradient.at( 0 ) * unclamped.weighted_gap_jacobian ) +
+                              ( derivatives.gradient.at( 1 ) * unclamped.area_jacobian );
   auto force_diff = chain_force.get();
   force_diff -= expected_force.get();
   EXPECT_LT( norm( force_diff ), tolerance );
 
-  const auto full_jacobian = assembler.assembleJacobian( unclamped, derivatives );
+  const auto full_jacobian = fields.assembleJacobian( derivatives );
   mfem::Vector full_action( fes_->GetTrueVSize() );
   full_jacobian->Mult( parent_ones, full_action );
   // Action of (dg^T * 4 * dg + dg^T * (-0.5) * dA + dA^T * (-0.5) * dg + dA^T * 2 * dA) * 1 on parent_ones:
@@ -442,31 +454,32 @@ TEST_F( MfemPairAssemblerTest, differentiates_assembled_nodal_integrals_before_c
     }
   }
   const auto quantities = assembler.assembleQuantities( false );
+  const auto fields = assembler.bindFields( { { quantities.weighted_gap, quantities.weighted_gap_jacobian },
+                                              { quantities.area, quantities.area_jacobian } } );
   constexpr RealT stiffness = 4.0;           // Pressure is -0.4 for assembled gap/area ratio -0.1.
   constexpr RealT area_tolerance = 1.0e-14;  // Match the formulation's support threshold.
   const auto g = min( nodal_weighted_gap, 0.0 );
   const auto energy = 0.5 * stiffness * sum( g, g, 1.0 / nodal_area );
-  const auto derivatives = evaluateNodalEnergy( energy, quantities, assembler, area_tolerance );
-  EXPECT_TRUE( derivatives.has_area_derivatives );
-  EXPECT_TRUE( derivatives.has_outer_hessian );
+  const auto derivatives = evaluateNodalEnergy( energy, fields, area_tolerance );
+  EXPECT_EQ( derivatives.gradient.size(), 2 );
+  EXPECT_EQ( derivatives.hessian.size(), 3 );
   RealT local_expected_energy = 0.0;
   for ( int node = 0; node < quantities.area.size(); ++node ) {
     const RealT area = quantities.area[node];
     if ( area > area_tolerance ) {
       EXPECT_NEAR( quantities.weighted_gap[node] / area, -0.1, tolerance );
       local_expected_energy += 0.02 * area;
-      EXPECT_NEAR( derivatives.pressure[node], -0.4, tolerance );
-      EXPECT_NEAR( derivatives.d_energy_d_gap[node], -0.4, tolerance );
-      EXPECT_NEAR( derivatives.d_energy_d_area[node], -0.02, tolerance );
-      EXPECT_NEAR( derivatives.d2_energy_dg2[node], stiffness / area, tolerance );
-      EXPECT_NEAR( derivatives.d2_energy_dg_da[node], 0.4 / area, tolerance );
-      EXPECT_NEAR( derivatives.d2_energy_da2[node], 0.04 / area, tolerance );
+      EXPECT_NEAR( derivatives.gradient.at( 0 )[node], -0.4, tolerance );
+      EXPECT_NEAR( derivatives.gradient.at( 1 )[node], -0.02, tolerance );
+      EXPECT_NEAR( derivatives.hessian.at( { 0, 0 } )[node], stiffness / area, tolerance );
+      EXPECT_NEAR( derivatives.hessian.at( { 0, 1 } )[node], 0.4 / area, tolerance );
+      EXPECT_NEAR( derivatives.hessian.at( { 1, 1 } )[node], 0.04 / area, tolerance );
     } else {
-      EXPECT_EQ( derivatives.pressure[node], 0.0 );
-      EXPECT_EQ( derivatives.d_energy_d_area[node], 0.0 );
-      EXPECT_EQ( derivatives.d2_energy_dg2[node], 0.0 );
-      EXPECT_EQ( derivatives.d2_energy_dg_da[node], 0.0 );
-      EXPECT_EQ( derivatives.d2_energy_da2[node], 0.0 );
+      EXPECT_EQ( derivatives.gradient.at( 0 )[node], 0.0 );
+      EXPECT_EQ( derivatives.gradient.at( 1 )[node], 0.0 );
+      EXPECT_EQ( derivatives.hessian.at( { 0, 0 } )[node], 0.0 );
+      EXPECT_EQ( derivatives.hessian.at( { 0, 1 } )[node], 0.0 );
+      EXPECT_EQ( derivatives.hessian.at( { 1, 1 } )[node], 0.0 );
     }
   }
   RealT expected_energy = 0.0;
@@ -477,14 +490,15 @@ TEST_F( MfemPairAssemblerTest, differentiates_assembled_nodal_integrals_before_c
   const auto coefficients = assembler.getSubmeshPressureTrueDofs();
   const IndependentNodalField pressure{ { coefficients.get().GetData(), coefficients.size() } };
   const auto lm_energy = dot( pressure, nodal_weighted_gap );
-  const auto lm_derivatives = evaluateNodalEnergy( lm_energy, quantities, assembler, area_tolerance );
-  EXPECT_FALSE( lm_derivatives.has_area_derivatives );
-  EXPECT_FALSE( lm_derivatives.has_outer_hessian );
-  for ( int node = 0; node < quantities.area.size(); ++node ) EXPECT_EQ( lm_derivatives.pressure[node], -3.0 );
-  EXPECT_THROW( evaluateNodalEnergy( energy, quantities, assembler, -1.0 ), std::invalid_argument );
+  const auto lm_derivatives = evaluateNodalEnergy( lm_energy, fields, area_tolerance );
+  EXPECT_EQ( lm_derivatives.gradient.size(), 1 );
+  EXPECT_FALSE( lm_derivatives.gradient.contains( 1 ) );
+  EXPECT_TRUE( lm_derivatives.hessian.empty() );
+  for ( int node = 0; node < quantities.area.size(); ++node ) EXPECT_EQ( lm_derivatives.gradient.at( 0 )[node], -3.0 );
+  EXPECT_THROW( evaluateNodalEnergy( energy, fields, -1.0 ), std::invalid_argument );
   const ArrayT<RealT> wrong_size( coefficients.size() + 1, coefficients.size() + 1 );
   const auto invalid = dot( IndependentNodalField{ wrong_size.view() }, nodal_weighted_gap );
-  EXPECT_THROW( evaluateNodalEnergy( invalid, quantities, assembler, area_tolerance ), std::invalid_argument );
+  EXPECT_THROW( evaluateNodalEnergy( invalid, fields, area_tolerance ), std::invalid_argument );
 }
 #endif
 

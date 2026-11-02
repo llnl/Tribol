@@ -58,7 +58,6 @@ namespace detail {
  * @tparam PairMethod Nodal pair method type.
  * @param definition Prepared nodal integral definition.
  * @param domain Current mesh views and geometry-approved pairs.
- * @param use_penalty Whether nodal penalty enforcement is active (clamping positive weighted gaps).
  * @param[in,out] assembler Nodal assembler accumulating quantities and gradients.
  * @return Assembled nodal weighted gaps, areas, normalized gaps, and coordinate Jacobians.
  */
@@ -66,7 +65,7 @@ template <typename PairMethod>
 MfemNodalQuantityData assembleNodalQuantities(
     const typename PairMethod::Definition& definition,
     const ContactDomain<typename PairMethod::FirstGeometry, typename PairMethod::SecondGeometry>& domain,
-    bool use_penalty, MfemNodalAssembler& assembler )
+    MfemNodalAssembler& assembler )
 {
   using Definition = typename PairMethod::Definition;
   constexpr IndexT node_count = Definition::node_count;
@@ -82,17 +81,28 @@ MfemNodalQuantityData assembleNodalQuantities(
                                  { derivatives.gradients.data(), { node_count, pair_dofs } },
                                  { derivatives.gradients.data() + node_count * pair_dofs, { node_count, pair_dofs } } );
   } );
-  return assembler.assembleQuantities( use_penalty, PairMethod::area_tolerance );
+  return assembler.assembleQuantities( false, PairMethod::area_tolerance );
 }
 
 /**
  * @brief Move the selected nodal gap vector and weighted-gap Jacobian into a ContactFormulationResult.
  * @param[in,out] quantities Assembled nodal quantities whose gap and Jacobian pointers are transferred.
- * @param use_penalty If true, return the area-normalized nodal gap; otherwise return the weighted nodal gap.
+ * @param use_penalty If true, clamp positive gaps and their Jacobian rows, then return normalized gaps; otherwise
+ * return weighted nodal gaps.
  * @return Result owning gap and dg_dx.
  */
 inline ContactFormulationResult takeGapResult( MfemNodalQuantityData& quantities, bool use_penalty )
 {
+  if ( use_penalty ) {
+    mfem::Array<int> open_nodes;
+    for ( int node = 0; node < quantities.weighted_gap.size(); ++node ) {
+      if ( quantities.weighted_gap[node] > 0.0 ) {
+        quantities.normalized_gap[node] = 0.0;
+        open_nodes.Append( node );
+      }
+    }
+    quantities.weighted_gap_jacobian.eliminateRows( open_nodes );
+  }
   ContactFormulationResult result;
   result.gap.reset( use_penalty ? quantities.normalized_gap.release() : quantities.weighted_gap.release() );
   result.dg_dx.reset( quantities.weighted_gap_jacobian.release() );
@@ -156,7 +166,7 @@ ContactFormulationResult assembleNodalContactGaps(
     const typename PairMethod::Definition& definition, bool use_penalty, MfemNodalAssembler& assembler )
 {
   static_assert( PairMethod::is_nodal );
-  auto quantities = detail::assembleNodalQuantities<PairMethod>( definition, domain, use_penalty, assembler );
+  auto quantities = detail::assembleNodalQuantities<PairMethod>( definition, domain, assembler );
   return detail::takeGapResult( quantities, use_penalty );
 }
 
@@ -171,7 +181,7 @@ ContactFormulationResult assembleNodalContactGaps(
  * @param domain Geometry-approved pairs and current host mesh views.
  * @param definition Prepared nodal integral definition.
  * @param method Fixed configuration selecting penalty or Lagrange multiplier enforcement.
- * @param mesh_data Current registered penalties, read only for penalty enforcement.
+ * @param context Current displacement and Jacobian transfers, including registered penalties.
  * @param[in,out] assembler Empty nodal assembler sized for the domain's pair count.
  * @return Owned gaps, pressure, residual, Jacobians, and globally summed energy. LM results also include df_dp.
  * @throws std::invalid_argument Quadrature geometry, penalty inputs, or multiplier vector dimensions are invalid.
@@ -180,22 +190,57 @@ ContactFormulationResult assembleNodalContactGaps(
 template <typename PairMethod>
 ContactFormulationResult assembleNodalContactForces(
     const ContactDomain<typename PairMethod::FirstGeometry, typename PairMethod::SecondGeometry>& domain,
-    const typename PairMethod::Definition& definition, const PairMethod& method, const MfemMeshData& mesh_data,
-    MfemNodalAssembler& assembler )
+    const typename PairMethod::Definition& definition, const PairMethod& method,
+    const MfemContactAssemblyContext& context, MfemNodalAssembler& assembler )
 {
   static_assert( PairMethod::is_nodal );
   using Definition = typename PairMethod::Definition;
   constexpr IndexT node_count = Definition::node_count;
   constexpr IndexT pair_dofs = Definition::dof_count;
   const bool use_penalty = method.usesPenalty();
-  auto quantities = detail::assembleNodalQuantities<PairMethod>( definition, domain, use_penalty, assembler );
+  auto quantities = detail::assembleNodalQuantities<PairMethod>( definition, domain, assembler );
 
+  // The field Hessians share a pair pass. Each request starts fresh so repeated chain-rule assembly cannot add
+  // contributions left over from an earlier set of weights.
+  auto weighted_hessian = [&]( const NodalEnergyGradient& weights ) {
+    constexpr IndexT gap = static_cast<IndexT>( NodalIntegralQuantity::WeightedGap );
+    constexpr IndexT area = static_cast<IndexT>( NodalIntegralQuantity::Area );
+    const auto transfer = [&]( IndexT index ) -> mfem::GridFunction {
+      const auto entry = weights.find( index );
+      if ( entry == weights.end() ) return {};
+      return assembler.transferToRedecomp( entry->second.get() );
+    };
+    const auto redecomp_gap_weights = transfer( gap );
+    const auto redecomp_area_weights = transfer( area );
+    const bool has_gap_weights = weights.contains( gap );
+    const bool has_area_weights = weights.contains( area );
+    MfemPairAssembler hessians( context.mesh_data, context.jacobian_data, domain.mesh1(), domain.mesh2(),
+                                domain.size() );
+    domain.forEachPair( [&]( InterfacePair pair, auto coordinates ) {
+      const auto conn1 = domain.mesh1().getConnectivity()( pair.element_id1_ );
+      MdArray<RealT, node_count> gap_weights{}, area_weights{};
+      bool has_weights = false;
+      for ( IndexT node = 0; node < node_count; ++node ) {
+        if ( has_gap_weights ) gap_weights[node] = redecomp_gap_weights( conn1[node] );
+        if ( has_area_weights ) area_weights[node] = redecomp_area_weights( conn1[node] );
+        has_weights = has_weights || gap_weights[node] != 0.0 || area_weights[node] != 0.0;
+      }
+      if ( !has_weights ) return;
+      const auto weighted_definition = definition.withWeights( gap_weights, area_weights );
+      const auto pair_derivatives = PairMethod::differentiateWeightedEnergy( coordinates, weighted_definition );
+      hessians.addPairJacobian( pair, { pair_derivatives.jacobian.data(), { pair_dofs, pair_dofs } } );
+    } );
+    return hessians.assembleJacobian();
+  };
+  const auto fields = assembler.bindFields(
+      { { quantities.weighted_gap, quantities.weighted_gap_jacobian }, { quantities.area, quantities.area_jacobian } },
+      std::ref( weighted_hessian ) );
   const auto& physics = definition.physics();
-  MfemNodalDerivativeData derivatives;
+  NodalEnergyDerivatives derivatives;
   if ( use_penalty ) {
-    const RealT penalty = method.preparePenalty( mesh_data, domain.mesh1(), domain.mesh2() );
+    const RealT penalty = method.preparePenalty( context.mesh_data, domain.mesh1(), domain.mesh2() );
     const auto energy = physics.penaltyEnergy( nodal_weighted_gap, nodal_area, penalty );
-    derivatives = evaluateNodalEnergy( energy, quantities, assembler, PairMethod::area_tolerance );
+    derivatives = evaluateNodalEnergy( energy, fields, PairMethod::area_tolerance );
   } else {
     const auto lm_vec = assembler.getSubmeshPressureTrueDofs();
     if ( lm_vec.size() != quantities.weighted_gap.size() ) {
@@ -203,30 +248,12 @@ ContactFormulationResult assembleNodalContactForces(
     }
     const IndependentNodalField pressure{ { lm_vec.get().GetData(), lm_vec.size() } };
     const auto energy = physics.lagrangeMultiplierEnergy( nodal_weighted_gap, pressure );
-    derivatives = evaluateNodalEnergy( energy, quantities, assembler, PairMethod::area_tolerance );
+    derivatives = evaluateNodalEnergy( energy, fields, PairMethod::area_tolerance );
   }
 
-  const auto redecomp_d_gap = assembler.transferToRedecomp( derivatives.d_energy_d_gap.get() );
-  const auto redecomp_d_area = derivatives.has_area_derivatives
-                                   ? assembler.transferToRedecomp( derivatives.d_energy_d_area.get() )
-                                   : mfem::GridFunction{};
-  domain.forEachPair( [&]( InterfacePair pair, auto coordinates ) {
-    const auto conn1 = domain.mesh1().getConnectivity()( pair.element_id1_ );
-    MdArray<RealT, node_count> gap_weights{}, area_weights{};
-    bool has_weights = false;
-    for ( IndexT node = 0; node < node_count; ++node ) {
-      gap_weights[node] = redecomp_d_gap( conn1[node] );
-      if ( derivatives.has_area_derivatives ) area_weights[node] = redecomp_d_area( conn1[node] );
-      has_weights = has_weights || gap_weights[node] != 0.0 || area_weights[node] != 0.0;
-    }
-    if ( !has_weights ) return;
-    const auto weighted_definition = definition.withWeights( gap_weights, area_weights );
-    const auto pair_derivatives = PairMethod::differentiateWeightedEnergy( coordinates, weighted_definition );
-    assembler.addPairHessian( pair, { pair_derivatives.jacobian.data(), { pair_dofs, pair_dofs } } );
-  } );
-
-  auto force_vec = assembler.assembleForce( quantities, derivatives );
-  auto df_dx = assembler.assembleJacobian( quantities, derivatives );
+  auto force_vec = fields.assembleForce( derivatives );
+  auto df_dx = fields.assembleJacobian( derivatives );
+  auto pressure = std::move( derivatives.gradient.at( static_cast<IndexT>( NodalIntegralQuantity::WeightedGap ) ) );
 
   ContactFormulationResult result;
   if ( !use_penalty ) {
@@ -237,7 +264,7 @@ ContactFormulationResult assembleNodalContactForces(
   result.gap = std::move( gaps.gap );
   result.dg_dx = std::move( gaps.dg_dx );
   result.energy = derivatives.energy;
-  result.pressure.reset( derivatives.pressure.release() );
+  result.pressure.reset( pressure.release() );
   result.force.reset( force_vec.release() );
   result.df_dx.reset( df_dx.release() );
   return result;
@@ -266,7 +293,7 @@ ContactFormulationResult evaluateContactForces(
     if ( !context.submesh_data ) throw std::invalid_argument( "Nodal pair contact requires dual submesh data." );
     MfemNodalAssembler assembler( context.mesh_data, context.submesh_data->get(), context.jacobian_data, domain.mesh1(),
                                   domain.mesh2(), domain.size() );
-    return assembleNodalContactForces<PairMethod>( domain, definition, method, context.mesh_data, assembler );
+    return assembleNodalContactForces<PairMethod>( domain, definition, method, context, assembler );
   } else {
     MfemPairAssembler assembler( context.mesh_data, context.jacobian_data, domain.mesh1(), domain.mesh2(),
                                  domain.size() );

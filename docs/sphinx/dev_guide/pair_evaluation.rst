@@ -50,13 +50,38 @@ For example, construct a penalty energy before evaluating its derivatives:
 
    const auto g = min(tribol::nodal_weighted_gap, 0.0);
    const auto energy = 0.5 * penalty * sum(g, g, 1.0 / tribol::nodal_area);
-   auto partials = tribol::evaluateNodalEnergy(energy, quantities, assembler, area_tolerance);
+   // quantities owns the assembled vectors and sparse coordinate Jacobians.
+   auto fields = assembler.bindFields(
+       {{quantities.weighted_gap, quantities.weighted_gap_jacobian},
+        {quantities.area, quantities.area_jacobian}}, weighted_hessian);
+   auto partials = tribol::evaluateNodalEnergy(energy, fields, area_tolerance);
+   auto residual = fields.assembleForce(partials);
+   auto jacobian = fields.assembleJacobian(partials);
 
 ``sum()`` and ``dot()`` build energy expressions. Multiplication by a scalar scales the expression before evaluation,
 so the energy and both derivative orders include the multiplier. ``evaluateNodalEnergy()`` uses Enzyme to calculate
-first and second partials with respect to the assembled gap and area, then sums energy across the MPI communicator.
-The existing nodal assembler combines those partials with integral coordinate Jacobians and weighted pair Hessians.
-Quadrature generation remains inside the differentiated pair definition.
+first and second partials with respect to referenced field values, then sums energy across the MPI communicator.
+``NodalFieldVariable<Index>`` selects any bound field; the named gap and area expressions select indices zero and one.
+Only referenced partials are allocated, and affine energies need no outer Hessian vectors.
+
+``DifferentiableNodalField`` borrows a value vector and sparse coordinate Jacobian. ``DifferentiableNodalFields`` binds
+these views to their field and coordinate spaces, plus a shared ``weighted_hessian`` operation. Given first partials
+indexed by field, this operation returns their weighted sum of field coordinate Hessians. Fields calculated together
+can share a pair pass; the nodal contact implementation does this for gap and area. Each call starts with empty pair
+assembly storage, so changing weights or repeating assembly cannot retain previous contributions.
+
+The bound collection applies both coordinate chain-rule terms, for field values ``q`` and coordinate Jacobians ``J``:
+
+.. math::
+
+   r = J^T E_q, \qquad K = J^T E_{qq} J + \sum_i (E_q)_i H(q_i).
+
+No coordinate Hessian is stored for every global field entry. Nodewise outer Hessian coefficients multiply sparse
+coordinate Jacobians, while weighted inner curvature is assembled on demand. Requesting a Jacobian without a
+weighted-Hessian operation throws rather than omitting that term. This sparse chain-rule layer works without Enzyme;
+Enzyme supplies local geometry derivatives and outer energy partials in the contact implementation. Quadrature remains
+inside the differentiated pair definition. Bindings and expressions must not outlive their borrowed vectors, matrices,
+spaces, or callback references; returned residuals and Jacobians own their data.
 
 Clamping is evaluated after pair contributions have been assembled across shared nodes and ranks. At zero gap, the
 unclamped branch is retained so the compressive-side tangent remains available. An expression containing reciprocal
@@ -78,8 +103,9 @@ displacement/multiplier derivative block is assembled separately from the weight
 ``EnergyMortarNodal::penaltyEnergy()`` and ``lagrangeMultiplierEnergy()`` share each formula
 between numerical arrays and assembled-field expressions. The portable expression definitions and node energy
 evaluations require neither MFEM nor Enzyme. The MFEM evaluator requires both and retains no expressions or borrowed
-inputs in returned derivative data. The current field set is weighted gap and tributary area on the existing dual
-space; pair traversal and integral differentiation still use the prepared nodal definition.
+inputs in returned derivative data. The nodal contact implementation assembles weighted gap and tributary area on its
+dual space. Other fields can use the same expression evaluator and sparse chain rules with their own value, Jacobian,
+and weighted-Hessian calculation.
 
 Geometric gaps and configured offsets
 ---------------------------------------
@@ -198,6 +224,11 @@ is skipped when quadrature generation fails or produces zero points.
 ``PairResidualDefinition`` both construct a local ``PairIntegrationRule`` and call their functor with
 ``(integration_rule, penalty)``. ``EnergyMortarPenalty`` returns an energy through ``integral()``, while
 ``CommonPlaneResidual`` returns an integral of nodal tractions in separate mesh1 and mesh2 residual blocks.
+``pairTraction(basis1, basis2, traction)`` constructs those blocks from fixed-size basis arrays or views and an
+``axom::primal::Vector``. It applies positive traction to mesh1 and negative traction to mesh2, returning an owning
+``MdArray`` in element/node/component order. The basis node counts may differ, and the vector determines the spatial
+dimension. Traction calculation, activation, and quadrature weights remain with the caller. The helper runs on host
+and device and retains no inputs.
 ``EnergyMortarEnergy`` and ``CommonPlaneForce`` select these shared wrappers. Failed quadrature is checked before the
 functor runs. At zero gap, the compressive branch remains active so its tangent is calculated even though pressure is
 zero.

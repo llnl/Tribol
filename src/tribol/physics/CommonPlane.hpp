@@ -13,6 +13,7 @@
 #include "tribol/geom/CommonPlaneGap.hpp"
 #include "tribol/geom/OffsetGap.hpp"
 #include "tribol/integ/PairIntegral.hpp"
+#include "tribol/integ/PairTraction.hpp"
 #include "tribol/integ/PairQuadratureRule.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
 #include "tribol/integ/BasisFunction.hpp"
@@ -50,7 +51,6 @@ struct CommonPlaneResidual {
                                                            RealT penalty ) const
   {
     using Residual = MdArray<RealT, CommonPlaneResidualData::coordinate_count>;
-    using Basis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
     // Capture fixed inputs by value to keep the configured offset in Enzyme's geometry derivatives.
     return integral(
         [gap = gap, penalty]( const auto& point ) -> QuadraturePointContribution<Residual> {
@@ -60,16 +60,7 @@ struct CommonPlaneResidual {
           const RealT pressure = penalty * normal_gap;
           const auto basis1 = point.template evalBasis1<EDGE, LINEAR_LAGRANGE>();
           const auto basis2 = point.template evalBasis2<EDGE, LINEAR_LAGRANGE>();
-          Residual integrand{};
-          for ( int node = 0; node < Basis::node_count; ++node ) {
-            for ( int component = 0; component < LinearEdgeGeometry::spatial_dimension; ++component ) {
-              const RealT traction = pressure * frame.normal[component];
-              integrand[node * LinearEdgeGeometry::spatial_dimension + component] = basis1[node] * traction;
-              integrand[( node + Basis::node_count ) * LinearEdgeGeometry::spatial_dimension + component] =
-                  -basis2[node] * traction;
-            }
-          }
-          return { integrand, true };
+          return { pairTraction( basis1, basis2, pressure * frame.normal ), true };
         },
         integration_rule );
   }

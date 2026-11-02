@@ -8,6 +8,12 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added sparse differentiable nodal-field bindings with indexed expression variables. Coordinate residuals and Jacobians
+  combine nodewise energy partials with sparse field Jacobians and a shared weighted field-Hessian operation. Nodal
+  Energy Mortar uses this chain rule for penalty and LM energies without storing a Hessian for every field entry.
+- Added host/device `pairTraction()` to weight a traction by two bases and form signed local residual blocks in
+  element/node/component order. It supports different node counts and spatial dimensions. Common Plane uses this
+  helper while retaining its existing gap, activation, force sign, and quadrature behavior.
 - Added unshifted `OpposingNormalGap` and `CommonPlaneGap` definitions and a value-owned `OffsetGap` wrapper. Energy
   Mortar and Common Plane functors own their gap configuration. Shared pair definitions, methods, and penalty-input
   providers no longer pass or retain a residual-gap scalar; penalty providers return only stiffness. The factory

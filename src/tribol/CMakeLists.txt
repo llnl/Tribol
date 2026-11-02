@@ -39,6 +39,7 @@ set(tribol_headers
     integ/FE.hpp
     integ/Integration.hpp
     integ/PairIntegral.hpp
+    integ/PairTraction.hpp
     integ/ContactDomain.hpp
     integ/NodalIntegralExpressions.hpp
     integ/PairQuadratureRule.hpp
@@ -54,6 +55,7 @@ set(tribol_headers
     mesh/MeshData.hpp
     mesh/MethodCouplingData.hpp
     mesh/MfemData.hpp
+    mesh/DifferentiableNodalField.hpp
     mesh/MfemNodalAssembler.hpp
     mesh/MfemContactAssembly.hpp
     mesh/MfemNodalEnergy.hpp
@@ -109,6 +111,7 @@ set(tribol_sources
     mesh/MeshData.cpp
     mesh/MethodCouplingData.cpp
     mesh/MfemData.cpp
+    mesh/DifferentiableNodalField.cpp
     mesh/MfemNodalAssembler.cpp
     mesh/MfemPairAssembler.cpp
 
