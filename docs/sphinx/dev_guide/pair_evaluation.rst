@@ -35,6 +35,52 @@ pair count. ``PairContactFormulation`` prepares the definition, searches for pai
 and calls the matching entry point. Existing activation, normalization, and result availability are preserved.
 Independent pair energies remain local sums; nodal energies are summed across the MPI communicator.
 
+Assembled nodal energy expressions
+-----------------------------------
+
+``NodalIntegralExpressions.hpp`` represents the existing assembled weighted gap and tributary area with
+``nodal_weighted_gap`` and ``nodal_area``. These select named components of each nodal state rather than assigning
+meaning by integral call order. The assembly context owns the distributed values and coordinate Jacobians;
+expressions own only their operations and fixed configuration. Repeated references to a field use the same
+differentiation variable.
+
+For example, construct a penalty energy before evaluating its derivatives:
+
+.. code-block:: cpp
+
+   const auto g = min(tribol::nodal_weighted_gap, 0.0);
+   const auto energy = 0.5 * penalty * sum(g, g, 1.0 / tribol::nodal_area);
+   auto partials = tribol::evaluateNodalEnergy(energy, quantities, assembler, area_tolerance);
+
+``sum()`` and ``dot()`` build energy expressions. Multiplication by a scalar scales the expression before evaluation,
+so the energy and both derivative orders include the multiplier. ``evaluateNodalEnergy()`` uses Enzyme to calculate
+first and second partials with respect to the assembled gap and area, then sums energy across the MPI communicator.
+The existing nodal assembler combines those partials with integral coordinate Jacobians and weighted pair Hessians.
+Quadrature generation remains inside the differentiated pair definition.
+
+Clamping is evaluated after pair contributions have been assembled across shared nodes and ranks. At zero gap, the
+unclamped branch is retained so the compressive-side tangent remains available. An expression containing reciprocal
+area returns zero energy and zero first and second derivatives when the area magnitude is at or below
+``area_tolerance``. The support check precedes division, including when both gap and area are zero.
+
+For LM energy, borrow fixed multiplier values in the same local dual true-DOF order:
+
+.. code-block:: cpp
+
+   const tribol::IndependentNodalField pressure{{values, count}};
+   const auto energy = dot(pressure, tribol::nodal_weighted_gap);
+
+Coefficient values remain fixed during coordinate differentiation and are read on every evaluation. The borrowed
+array must remain accessible, unchanged, and in the same DOF order and MPI partition as the assembled integrals.
+Evaluation checks its local length. LM expressions require neither area partials nor an outer Hessian; their existing
+displacement/multiplier derivative block is assembled separately from the weighted-gap coordinate Jacobian.
+
+``EnergyMortarNodal::penaltyEnergyFromIntegrals()`` and ``lagrangeMultiplierEnergyFromIntegral()`` share each formula
+between numerical arrays and assembled-field expressions. The portable expression definitions and node energy
+evaluations require neither MFEM nor Enzyme. The MFEM evaluator requires both and retains no expressions or borrowed
+inputs in returned derivative data. The current field set is weighted gap and tributary area on the existing dual
+space; pair traversal and integral differentiation still use the prepared nodal definition.
+
 Definition interfaces
 ---------------------
 

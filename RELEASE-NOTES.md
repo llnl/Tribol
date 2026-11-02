@@ -8,6 +8,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added deferred nodal energy expressions with named weighted-gap and tributary-area inputs, clamping, area
+  normalization, contractions, and independent LM fields. Nodal Energy Mortar uses Enzyme to evaluate their outer
+  first and second derivatives before the existing coordinate chain-rule assembly. Reciprocal-area energies return
+  zero energy and derivatives at nodes whose area magnitude is at or below the configured support tolerance.
 - Added host-only `ContactDomain` traversal and MFEM assembly entry points for independent pair contributions, nodal
   gaps, and nodal forces. `PairContactFormulation` delegates its assembly loops to these functions. Domains borrow
   current mesh views and supplied pairs without caching quadrature; geometry-dependent quadrature remains inside

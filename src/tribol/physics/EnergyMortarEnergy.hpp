@@ -76,8 +76,26 @@ struct EnergyMortarNodal {
                                                                RealT residual_gap ) const
   {
     const auto gap = OpposingNormalGap{ residual_gap };
-    const auto g_tilde = min( integral( nodal_basis * gap, integration_rule ), 0.0 );
-    return 0.5 * penalty * sum( g_tilde, g_tilde, 1.0 / integral( nodal_basis, integration_rule ) );
+    const auto weighted_gap = integral( nodal_basis * gap, integration_rule );
+    const auto area = integral( nodal_basis, integration_rule );
+    return penaltyEnergyFromIntegrals( weighted_gap, area, penalty );
+  }
+
+  /**
+   * @brief Define nodal penalty energy using either numerical arrays or named assembled integral expressions.
+   * @tparam WeightedGap Nodal weighted-gap array or expression.
+   * @tparam Area Nodal tributary-area array or expression.
+   * @param weighted_gap Gap integrals before nodal activation.
+   * @param area Corresponding tributary-area integrals.
+   * @param penalty Fixed penalty stiffness.
+   * @return Numerical energy for arrays, or a deferred energy for expressions.
+   */
+  template <typename WeightedGap, typename Area>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto penaltyEnergyFromIntegrals( const WeightedGap& weighted_gap,
+                                                                           const Area& area, RealT penalty ) const
+  {
+    const auto g_tilde = min( weighted_gap, 0.0 );
+    return 0.5 * penalty * sum( g_tilde, g_tilde, 1.0 / area );
   }
 
   /**
@@ -96,7 +114,22 @@ struct EnergyMortarNodal {
   {
     const auto gap = OpposingNormalGap{ residual_gap };
     const auto g_tilde = integral( nodal_basis * gap, integration_rule );
-    return dot( pressure, g_tilde );
+    return lagrangeMultiplierEnergyFromIntegral( g_tilde, pressure );
+  }
+
+  /**
+   * @brief Contract fixed pressure with either a numerical weighted gap or its assembled integral expression.
+   * @tparam WeightedGap Nodal weighted-gap array or expression.
+   * @tparam Pressure Independent nodal pressure array or field expression.
+   * @param weighted_gap Assembled gap integrals.
+   * @param pressure Fixed Lagrange multiplier values in matching DOF order.
+   * @return Numerical or deferred nodal energy.
+   */
+  template <typename WeightedGap, typename Pressure>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto lagrangeMultiplierEnergyFromIntegral( const WeightedGap& weighted_gap,
+                                                                                     const Pressure& pressure ) const
+  {
+    return dot( pressure, weighted_gap );
   }
 };
 

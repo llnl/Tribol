@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "tribol/integ/BasisFunction.hpp"
+#include "tribol/integ/NodalIntegralExpressions.hpp"
 #include "tribol/integ/PairQuadratureRule.hpp"
 
 namespace tribol {
@@ -409,7 +410,8 @@ struct ProductPointIntegrand : PairPointIntegrandTag {
  */
 template <typename Integrand>
   requires( !std::is_arithmetic_v<std::remove_cvref_t<Integrand>> &&
-            !detail::is_md_array_v<std::remove_cvref_t<Integrand>> )
+            !detail::is_md_array_v<std::remove_cvref_t<Integrand>> &&
+            !std::derived_from<std::remove_cvref_t<Integrand>, NodalFieldExpressionTag> )
 TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE constexpr detail::ClampedPointIntegrand<std::remove_cvref_t<Integrand>> min(
     Integrand&& integrand, RealT upper_bound )
 {

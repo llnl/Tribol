@@ -12,56 +12,14 @@
 
 #include "tribol/integ/ContactDomain.hpp"
 #include "tribol/mesh/MfemNodalAssembler.hpp"
+#include "tribol/mesh/MfemNodalEnergy.hpp"
 #include "tribol/mesh/MfemPairAssembler.hpp"
 #include "tribol/physics/PairMethod.hpp"
-#include <type_traits>
 #include <utility>
 
 namespace tribol {
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
 namespace detail {
-/**
- * @brief Evaluate nodal energy, pressure, and Enzyme partial derivatives with respect to (weighted_gap, area) at each
- * dual submesh true degree of freedom.
- * @tparam NodeDefinitionFactory Callable taking a dual true-DOF index and returning a two-DOF nodal energy definition.
- * @param assembler Nodal assembler providing dual true-DOF vector allocation.
- * @param quantities Assembled nodal weighted gaps and tributary areas on dual submesh true DOFs.
- * @param has_area_derivatives Whether the nodal definition depends on tributary area.
- * @param has_outer_hessian Whether second partial derivatives of nodal energy are nonzero.
- * @param make_node_definition Factory returning the nodal energy definition for a given dual true DOF.
- * @return Nodal energy, pressure, and first/second partial derivatives on dual submesh true DOFs.
- */
-template <typename NodeDefinitionFactory>
-MfemNodalDerivativeData evaluateNodalDerivatives( const MfemNodalAssembler& assembler,
-                                                  const MfemNodalQuantityData& quantities, bool has_area_derivatives,
-                                                  bool has_outer_hessian, NodeDefinitionFactory&& make_node_definition )
-{
-  auto data = assembler.makeDerivativeData( has_area_derivatives, has_outer_hessian );
-  const int num_dofs = quantities.weighted_gap.size();
-  RealT local_energy = 0.0;
-  for ( int i = 0; i < num_dofs; ++i ) {
-    const MdArray<RealT, 2> nodal_state{ quantities.weighted_gap[i], quantities.area[i] };
-    const auto definition = make_node_definition( i );
-    using Definition = std::decay_t<decltype( definition )>;
-    const auto evaluated = EnergyPairEvaluator<Definition>::evaluate( nodal_state.view(), definition );
-    local_energy += evaluated.energy;
-    data.pressure[i] = evaluated.residual[0];
-    data.d_energy_d_gap[i] = evaluated.residual[0];
-    if ( has_area_derivatives ) {
-      data.d_energy_d_area[i] = evaluated.residual[1];
-    }
-    if ( has_outer_hessian ) {
-      data.d2_energy_dg2[i] = evaluated.jacobian( 0, 0 );
-      if ( has_area_derivatives ) {
-        data.d2_energy_dg_da[i] = evaluated.jacobian( 0, 1 );
-        data.d2_energy_da2[i] = evaluated.jacobian( 1, 1 );
-      }
-    }
-  }
-  MPI_Allreduce( &local_energy, &data.energy, 1, MPI_DOUBLE, MPI_SUM, quantities.weighted_gap.get().GetComm() );
-  return data;
-}
-
 /**
  * @brief Evaluate nodal integrals and gradients on each accepted pair and assemble them onto the dual submesh.
  * @tparam PairMethod Nodal pair method type.
@@ -175,6 +133,8 @@ ContactFormulationResult assembleNodalContactGaps(
  * Nodal integrals are assembled before activation and outer energy derivatives are evaluated. Weighted pair Hessians
  * regenerate quadrature inside differentiation. Neither the domain nor this function retains calculated fields.
  * @tparam PairMethod Nodal method providing quantity derivatives, weighted-energy derivatives, and enforcement inputs.
+ * Definition::Physics provides penaltyEnergyFromIntegrals() and lagrangeMultiplierEnergyFromIntegral() to construct
+ * the deferred outer energy from named fields.
  * @param domain Geometry-approved pairs and current host mesh views.
  * @param definition Prepared nodal integral definition.
  * @param method Fixed configuration selecting penalty or Lagrange multiplier enforcement.
@@ -201,17 +161,16 @@ ContactFormulationResult assembleNodalContactForces(
   MfemNodalDerivativeData derivatives;
   if ( use_penalty ) {
     const auto parameters = method.preparePenalty( mesh_data, domain.mesh1(), domain.mesh2() );
-    const NodalPenaltyStateEnergy<NodalPhysics> penalty_energy{ parameters.penalty, parameters.residual_gap };
-    derivatives =
-        detail::evaluateNodalDerivatives( assembler, quantities, true, true, [&]( int ) { return penalty_energy; } );
+    const auto energy = NodalPhysics{}.penaltyEnergyFromIntegrals( nodal_weighted_gap, nodal_area, parameters.penalty );
+    derivatives = evaluateNodalEnergy( energy, quantities, assembler, PairMethod::area_tolerance );
   } else {
     const auto lm_vec = assembler.getSubmeshPressureTrueDofs();
     if ( lm_vec.size() != quantities.weighted_gap.size() ) {
       throw std::invalid_argument( "Lagrange multiplier vector size must match the dual submesh true-DOF count." );
     }
-    derivatives = detail::evaluateNodalDerivatives( assembler, quantities, false, false, [&]( int node ) {
-      return NodalLagrangeMultiplierStateEnergy<NodalPhysics>{ lm_vec[node], 0.0 };
-    } );
+    const IndependentNodalField pressure{ { lm_vec.get().GetData(), lm_vec.size() } };
+    const auto energy = NodalPhysics{}.lagrangeMultiplierEnergyFromIntegral( nodal_weighted_gap, pressure );
+    derivatives = evaluateNodalEnergy( energy, quantities, assembler, PairMethod::area_tolerance );
   }
 
   const auto redecomp_d_gap = assembler.transferToRedecomp( derivatives.d_energy_d_gap.get() );

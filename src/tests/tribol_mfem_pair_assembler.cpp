@@ -8,7 +8,8 @@
  * @brief Check host MFEM pair and nodal assembly with prescribed residuals, nodal quantities, and nonsymmetric
  * Jacobians, without contact physics. Nonmatching two- and three-edge surfaces exercise shared nodes, dual submesh
  * transfers, positive-gap clamping, and all matrix blocks. Tests run on one and two ranks, with contact data on rank
- * zero. Physics and Enzyme derivatives are checked by the formulation tests.
+ * zero. Nodal expression tests check Enzyme partials after shared-node assembly; formulation tests check the full
+ * coordinate derivatives.
  */
 #include <cmath>
 #include "gtest/gtest.h"
@@ -18,6 +19,7 @@
 #include "tribol/interface/mfem_tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/mesh/MfemNodalAssembler.hpp"
+#include "tribol/mesh/MfemNodalEnergy.hpp"
 #include "tribol/mesh/MfemPairAssembler.hpp"
 
 namespace {
@@ -77,6 +79,20 @@ class MfemPairAssemblerTest : public testing::Test {
   CouplingScheme& scheme() { return CouplingSchemeManager::getInstance().at( 0 ); }
   /** @brief Compute a global vector norm. @param v Local entries. @return Distributed Euclidean norm. */
   RealT norm( const mfem::Vector& v ) { return std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, v, v ) ); }
+
+  /** @brief Prepare a scalar dual submesh and refresh the displacement/dual Jacobian transfer. */
+  void enableDualTransfers()
+  {
+    auto& cs = scheme();
+    auto& mesh_data = *cs.getMfemMeshData();
+    auto submesh_data =
+        std::make_unique<MfemSubmeshData>( mesh_data.GetSubmesh(), mesh_data.GetLORMesh(),
+                                           std::make_unique<mfem::H1_FECollection>( 1, dimension ), 1, false );
+    submesh_data->UpdateMfemSubmeshData( mesh_data.GetRedecompMesh(), true );
+    cs.setMfemSubmeshData( std::move( submesh_data ) );
+    cs.setMfemJacobianData( std::make_unique<MfemJacobianData>( mesh_data, *cs.getMfemSubmeshData() ) );
+    cs.getMfemJacobianData()->UpdateJacobianXfer();
+  }
 
   std::unique_ptr<mfem::ParMesh> mesh_;               ///< Parent patch mesh.
   std::unique_ptr<mfem::H1_FECollection> fec_;        ///< Linear coordinate basis.
@@ -232,13 +248,7 @@ TEST_F( MfemPairAssemblerTest, assembles_nodal_quantities_dual_transfers_and_wei
 {
   auto& cs = scheme();
   auto& mesh_data = *cs.getMfemMeshData();
-  auto submesh_data =
-      std::make_unique<MfemSubmeshData>( mesh_data.GetSubmesh(), mesh_data.GetLORMesh(),
-                                         std::make_unique<mfem::H1_FECollection>( 1, dimension ), 1, false );
-  submesh_data->UpdateMfemSubmeshData( mesh_data.GetRedecompMesh(), true );
-  cs.setMfemSubmeshData( std::move( submesh_data ) );
-  cs.setMfemJacobianData( std::make_unique<MfemJacobianData>( mesh_data, *cs.getMfemSubmeshData() ) );
-  cs.getMfemJacobianData()->UpdateJacobianXfer();
+  enableDualTransfers();
 
   auto& dual_data = *cs.getMfemSubmeshData();
   auto& dual_fes = dual_data.GetSubmeshFESpace();
@@ -407,6 +417,77 @@ TEST_F( MfemPairAssemblerTest, assembles_nodal_quantities_dual_transfers_and_wei
   full_action -= expected_full_action;
   EXPECT_LT( norm( full_action ), tolerance );
 }
+#ifdef TRIBOL_USE_ENZYME
+// A shared node receives positive and negative pair contributions. Activation must use their assembled sum, and
+// Enzyme partials must supply the gap/area cross terms needed by the displacement Jacobian.
+TEST_F( MfemPairAssemblerTest, differentiates_assembled_nodal_integrals_before_coordinate_chain_rule )
+{
+  enableDualTransfers();
+  auto& cs = scheme();
+  auto& mesh_data = *cs.getMfemMeshData();
+  auto& dual_data = *cs.getMfemSubmeshData();
+  dual_data.GetSubmeshPressure() = -3.0;
+  const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
+  const IndexT pair_count = mesh1.numberOfElements() * mesh2.numberOfElements();
+  MfemNodalAssembler assembler( mesh_data, dual_data, *cs.getMfemJacobianData(), mesh1, mesh2, pair_count );
+  for ( IndexT element1 = 0; element1 < mesh1.numberOfElements(); ++element1 ) {
+    for ( IndexT element2 = 0; element2 < mesh2.numberOfElements(); ++element2 ) {
+      // The three mesh2 edges give +0.1, -0.2, -0.2 per mesh1 element node, with total area 3.0.
+      const RealT gap = element2 == 0 ? 0.1 : -0.2;
+      const MdArray<RealT, nodes_per_edge> gaps{ gap, gap }, areas{ 1.0, 1.0 };
+      const MdArray<RealT, nodes_per_edge, pair_dofs> gradients{};
+      assembler.addPairQuantities(
+          { element1, element2 }, { gaps.data(), nodes_per_edge }, { areas.data(), nodes_per_edge },
+          { gradients.data(), { nodes_per_edge, pair_dofs } }, { gradients.data(), { nodes_per_edge, pair_dofs } } );
+    }
+  }
+  const auto quantities = assembler.assembleQuantities( false );
+  constexpr RealT stiffness = 4.0;           // Pressure is -0.4 for assembled gap/area ratio -0.1.
+  constexpr RealT area_tolerance = 1.0e-14;  // Match the formulation's support threshold.
+  const auto g = min( nodal_weighted_gap, 0.0 );
+  const auto energy = 0.5 * stiffness * sum( g, g, 1.0 / nodal_area );
+  const auto derivatives = evaluateNodalEnergy( energy, quantities, assembler, area_tolerance );
+  EXPECT_TRUE( derivatives.has_area_derivatives );
+  EXPECT_TRUE( derivatives.has_outer_hessian );
+  RealT local_expected_energy = 0.0;
+  for ( int node = 0; node < quantities.area.size(); ++node ) {
+    const RealT area = quantities.area[node];
+    if ( area > area_tolerance ) {
+      EXPECT_NEAR( quantities.weighted_gap[node] / area, -0.1, tolerance );
+      local_expected_energy += 0.02 * area;
+      EXPECT_NEAR( derivatives.pressure[node], -0.4, tolerance );
+      EXPECT_NEAR( derivatives.d_energy_d_gap[node], -0.4, tolerance );
+      EXPECT_NEAR( derivatives.d_energy_d_area[node], -0.02, tolerance );
+      EXPECT_NEAR( derivatives.d2_energy_dg2[node], stiffness / area, tolerance );
+      EXPECT_NEAR( derivatives.d2_energy_dg_da[node], 0.4 / area, tolerance );
+      EXPECT_NEAR( derivatives.d2_energy_da2[node], 0.04 / area, tolerance );
+    } else {
+      EXPECT_EQ( derivatives.pressure[node], 0.0 );
+      EXPECT_EQ( derivatives.d_energy_d_area[node], 0.0 );
+      EXPECT_EQ( derivatives.d2_energy_dg2[node], 0.0 );
+      EXPECT_EQ( derivatives.d2_energy_dg_da[node], 0.0 );
+      EXPECT_EQ( derivatives.d2_energy_da2[node], 0.0 );
+    }
+  }
+  RealT expected_energy = 0.0;
+  MPI_Allreduce( &local_expected_energy, &expected_energy, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
+  EXPECT_GT( expected_energy, 0.0 );
+  EXPECT_NEAR( derivatives.energy, expected_energy, tolerance );
+
+  const auto coefficients = assembler.getSubmeshPressureTrueDofs();
+  const IndependentNodalField pressure{ { coefficients.get().GetData(), coefficients.size() } };
+  const auto lm_energy = dot( pressure, nodal_weighted_gap );
+  const auto lm_derivatives = evaluateNodalEnergy( lm_energy, quantities, assembler, area_tolerance );
+  EXPECT_FALSE( lm_derivatives.has_area_derivatives );
+  EXPECT_FALSE( lm_derivatives.has_outer_hessian );
+  for ( int node = 0; node < quantities.area.size(); ++node ) EXPECT_EQ( lm_derivatives.pressure[node], -3.0 );
+  EXPECT_THROW( evaluateNodalEnergy( energy, quantities, assembler, -1.0 ), std::invalid_argument );
+  const ArrayT<RealT> wrong_size( coefficients.size() + 1, coefficients.size() + 1 );
+  const auto invalid = dot( IndependentNodalField{ wrong_size.view() }, nodal_weighted_gap );
+  EXPECT_THROW( evaluateNodalEnergy( invalid, quantities, assembler, area_tolerance ), std::invalid_argument );
+}
+#endif
+
 }  // namespace
 
 /**
