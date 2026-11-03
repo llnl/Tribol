@@ -7,8 +7,9 @@
  * @file
  * @brief Check named assembled-integral expressions independently of MFEM and pair geometry.
  * Portable tests evaluate penalty and LM energies on every enabled backend, including repeated fields, reordered
- * products, fixed coefficients, activation, and unsupported areas. Host Enzyme tests check outer gradients and Hessians
- * analytically and by finite differences. MFEM formulation tests cover coordinate derivatives and multi-rank assembly.
+ * products, general arithmetic, fixed coefficients, activation, and unsupported areas. Operator AD runs on each
+ * backend. Host Enzyme tests check outer gradients and Hessians analytically and by finite differences. MFEM
+ * formulation tests cover coordinate derivatives and multi-rank assembly.
  */
 #include <array>
 #include "ExecutionTest.hpp"
@@ -72,15 +73,18 @@ TEST_P( NodalIntegralTest, contracts_independent_pressure_with_gap )
   static_assert( !decltype( energy )::has_outer_hessian );
   EXPECT_NO_THROW( energy.validateSize( coefficients.size() ) );
   EXPECT_THROW( energy.validateSize( coefficients.size() + 1 ), std::invalid_argument );
-  ArrayT<RealT> results( coefficients.size(), coefficients.size(), allocatorId() );
+  ArrayT<SecondOrderScalar<1>> results( coefficients.size(), coefficients.size(), allocatorId() );
   const auto output = results.view();
   forAllExec( GetParam(), coefficients.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) {
-    const MdArray<RealT, 1> state{ 0.2 };
+    const MdArray<SecondOrderScalar<1>, 1> state{ SecondOrderScalar<1>::variable( 0.2, 0 ) };
     output[node] = energy.atNode( node, area_tolerance ).energy( state.view() );
   } );
-  const ArrayT<RealT, 1, MemorySpace::Host> host( results );
-  EXPECT_NEAR( host[0], -0.6, tolerance );
-  EXPECT_NEAR( host[1], 0.4, tolerance );
+  const ArrayT<SecondOrderScalar<1>, 1, MemorySpace::Host> host( results );
+  EXPECT_NEAR( host[0].value, -0.6, tolerance );
+  EXPECT_NEAR( host[1].value, 0.4, tolerance );
+  EXPECT_EQ( host[0].gradient[0], -3.0 );
+  EXPECT_EQ( host[1].gradient[0], 2.0 );
+  for ( const auto& value : host ) EXPECT_EQ( value.hessian( 0, 0 ), 0.0 );
 }
 
 // Three fields use distinct indices without assigning gap or area meanings to them.
@@ -96,6 +100,74 @@ TEST_P( NodalIntegralTest, evaluates_three_indexed_fields )
   } );
   const ArrayT<RealT, 1, MemorySpace::Host> host( results );
   EXPECT_NEAR( host[0], 24.0, tolerance );
+}
+
+// General field quotients and scalar constants must propagate derivatives through the complete nodal expression.
+TEST_P( NodalIntegralTest, differentiates_general_nodal_arithmetic )
+{
+  using Scalar = SecondOrderScalar<2>;
+  ArrayT<Scalar> results( 1, 1, allocatorId() );
+  const auto output = results.view();
+  const auto a = NodalFieldVariable<0>{};
+  const auto b = NodalFieldVariable<1>{};
+  const auto expression = sum( ( a + b ) / ( a - b ) + a / 2.0 + ( 2.0 - b ) - 1.0 + 2.0 / ( a + b ) );
+  forAllExec( GetParam(), results.size(), [=] TRIBOL_HOST_DEVICE( IndexT i ) {
+    const MdArray<Scalar, 2> state{ Scalar::variable( 3.0, 0 ), Scalar::variable( 1.0, 1 ) };
+    output[i] = expression.atNode( i, area_tolerance ).energy( state.view() );
+  } );
+  const ArrayT<Scalar, 1, MemorySpace::Host> host( results );
+  // At a=3, b=1, E=(a+b)/(a-b) + a/2 + (2-b) - 1 + 2/(a+b).
+  EXPECT_NEAR( host[0].value, 4.0, tolerance );
+  EXPECT_NEAR( host[0].gradient[0], -0.125, tolerance );
+  EXPECT_NEAR( host[0].gradient[1], 0.375, tolerance );
+  EXPECT_NEAR( host[0].hessian( 0, 0 ), 0.5625, tolerance );
+  EXPECT_NEAR( host[0].hessian( 0, 1 ), -0.9375, tolerance );
+  EXPECT_NEAR( host[0].hessian( 1, 0 ), -0.9375, tolerance );
+  EXPECT_NEAR( host[0].hessian( 1, 1 ), 1.5625, tolerance );
+#ifdef TRIBOL_USE_ENZYME
+  auto definition = expression.atNode( 0, area_tolerance );
+  const MdArray<RealT, 2> state{ 3.0, 1.0 };
+  const auto enzyme = EnergyPairEvaluator<decltype( definition )>::evaluate( state.view(), definition );
+  EXPECT_NEAR( host[0].value, enzyme.energy, tolerance );
+  for ( IndexT i = 0; i < Scalar::variable_count; ++i ) {
+    EXPECT_NEAR( host[0].gradient[i], enzyme.residual[i], tolerance );
+    for ( IndexT j = 0; j < Scalar::variable_count; ++j )
+      EXPECT_NEAR( host[0].hessian( i, j ), enzyme.jacobian( i, j ), tolerance );
+  }
+#endif
+}
+
+// Operator AD must retain the compressive tangent at equality and avoid division on unsupported area.
+TEST_P( NodalIntegralTest, preserves_activation_and_area_support_with_operator_ad )
+{
+  using Scalar = SecondOrderScalar<2>;
+  struct Case {
+    RealT gap;            ///< Weighted gap.
+    RealT area;           ///< Tributary area.
+    RealT gap_curvature;  ///< Expected second derivative with respect to weighted gap.
+  };
+  const auto cases = copyToExecutionSpace<Case>(
+      { { 0.0, 0.5, 8.0 }, { 0.2, 0.5, 0.0 }, { -0.2, 0.0, 0.0 }, { 0.0, 0.0, 0.0 }, { -0.2, area_tolerance, 0.0 } } );
+  ArrayT<Scalar> results( cases.size(), cases.size(), allocatorId() );
+  const auto input = cases.view();
+  const auto output = results.view();
+  forAllExec( GetParam(), cases.size(), [=] TRIBOL_HOST_DEVICE( IndexT i ) {
+    const auto g = min( nodal_weighted_gap, 0.0 );
+    const auto expression = 0.5 * penalty * sum( g, g, 1.0 / nodal_area );
+    const MdArray<Scalar, 2> state{ Scalar::variable( input[i].gap, 0 ), Scalar::variable( input[i].area, 1 ) };
+    output[i] = expression.atNode( i, area_tolerance ).energy( state.view() );
+  } );
+  const ArrayT<Case, 1, MemorySpace::Host> expected( cases );
+  const ArrayT<Scalar, 1, MemorySpace::Host> host( results );
+  for ( IndexT i = 0; i < host.size(); ++i ) {
+    SCOPED_TRACE( i );
+    EXPECT_EQ( host[i].value, 0.0 );
+    for ( IndexT j = 0; j < Scalar::variable_count; ++j ) EXPECT_EQ( host[i].gradient[j], 0.0 );
+    EXPECT_NEAR( host[i].hessian( 0, 0 ), expected[i].gap_curvature, tolerance );
+    EXPECT_EQ( host[i].hessian( 0, 1 ), 0.0 );
+    EXPECT_EQ( host[i].hessian( 1, 0 ), 0.0 );
+    EXPECT_EQ( host[i].hessian( 1, 1 ), 0.0 );
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P( EnabledBackends, NodalIntegralTest, detail::enabledExecutionModes() );

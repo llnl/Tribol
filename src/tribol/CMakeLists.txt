@@ -20,6 +20,7 @@ set(tribol_headers
     common/LoopExec.hpp
     common/MdArray.hpp
     common/MdSpan.hpp
+    common/SecondOrderScalar.hpp
     common/Parameters.hpp
 
     geom/CompGeom.hpp

@@ -27,6 +27,7 @@ set( tribol_tests
      tribol_pair_traction.cpp
      tribol_contact_domain.cpp
      tribol_nodal_integral.cpp
+     tribol_second_order_scalar.cpp
      tribol_penalty_stiffness.cpp
      tribol_common_plane_formulation.cpp
      tribol_refined_search.cpp

@@ -15,6 +15,7 @@
 #include <stdexcept>
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/MdArray.hpp"
+#include "tribol/common/SecondOrderScalar.hpp"
 
 namespace tribol {
 /** @brief Identify the assembled integral occupying each component of a node's differentiation state. */
@@ -58,14 +59,15 @@ struct NodalFieldVariable : detail::NodalFieldProperties<false, true, true> {
   TRIBOL_HOST_DEVICE static constexpr bool dependsOn( IndexT index ) { return index == Index; }
   /**
    * @brief Read this field from one assembled nodal state.
+   * @tparam Scalar Value type, including SecondOrderScalar.
    * @tparam StateSize Number of active field components.
    * @param state Assembled values in field-index order.
    * @param node Local true DOF, unused for a state component.
    * @return Assembled field value.
    */
-  template <IndexT StateSize>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( MdSpan<const RealT, StateSize> state,
-                                                       [[maybe_unused]] IndexT node ) const
+  template <typename Scalar, IndexT StateSize>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Scalar value( MdSpan<const Scalar, StateSize> state,
+                                                        [[maybe_unused]] IndexT node ) const
   {
     static_assert( StateSize >= field_count );
     return state[Index];
@@ -96,16 +98,17 @@ struct IndependentNodalField : detail::NodalFieldProperties<false, true, false> 
   TRIBOL_HOST_DEVICE explicit IndependentNodalField( ArrayViewT<const RealT> coefficients ) : values( coefficients ) {}
   /**
    * @brief Read a fixed field value at a node.
+   * @tparam Scalar Value type, including SecondOrderScalar.
    * @tparam StateSize Number of active field components.
    * @param state Active assembled state, unused by an independent field.
    * @param node Valid local true-DOF index.
    * @return Fixed coefficient for this node.
    */
-  template <IndexT StateSize>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( [[maybe_unused]] MdSpan<const RealT, StateSize> state,
-                                                       IndexT node ) const
+  template <typename Scalar, IndexT StateSize>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Scalar value( [[maybe_unused]] MdSpan<const Scalar, StateSize> state,
+                                                        IndexT node ) const
   {
-    return values[node];
+    return Scalar( values[node] );
   }
   /**
    * @brief Require one coefficient per local dual true DOF.
@@ -131,11 +134,12 @@ struct ScaledNodalField : NodalFieldProperties<Field::needs_nonzero_area, Field:
   TRIBOL_HOST_DEVICE static constexpr bool dependsOn( IndexT index ) { return Field::dependsOn( index ); }
   Field field;  ///< Owned expression, potentially borrowing a fixed field.
   RealT scale;  ///< Inactive scalar multiplier.
-  /** @brief Evaluate the scaled field. @tparam StateSize Active field count. @param state Active nodal integrals.
+  /** @brief Evaluate the scaled field. @tparam Scalar Value type, including SecondOrderScalar.
+   * @tparam StateSize Active field count. @param state Active nodal integrals.
    * @param node Local true DOF.
    * @return Scaled value. */
-  template <IndexT StateSize>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( MdSpan<const RealT, StateSize> state, IndexT node ) const
+  template <typename Scalar, IndexT StateSize>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Scalar value( MdSpan<const Scalar, StateSize> state, IndexT node ) const
   {
     return scale * field.value( state, node );
   }
@@ -143,39 +147,87 @@ struct ScaledNodalField : NodalFieldProperties<Field::needs_nonzero_area, Field:
   void validateSize( IndexT count ) const { field.validateSize( count ); }
 };
 
+/** @brief Select pointwise arithmetic for a pair of nodal expressions. */
+enum class NodalBinaryOperation
+{
+  Add,       ///< Sum.
+  Subtract,  ///< Difference.
+  Multiply,  ///< Product.
+  Divide     ///< Quotient with a nonzero denominator.
+};
+
 /**
- * @brief Multiply two nodal fields at the same node.
- * @tparam Left First nodal field.
- * @tparam Right Second nodal field.
+ * @brief Combine two nodal fields without allocating values or coordinate derivatives.
+ * @tparam Left First expression.
+ * @tparam Right Second expression.
+ * @tparam Operation Arithmetic to evaluate at each node.
  */
-template <typename Left, typename Right>
-struct ProductNodalField : NodalFieldProperties<Left::needs_nonzero_area || Right::needs_nonzero_area,
-                                                Left::is_affine && Right::is_affine &&
-                                                    !( Left::depends_on_state && Right::depends_on_state ),
-                                                Left::depends_on_state || Right::depends_on_state> {
+template <typename Left, typename Right, NodalBinaryOperation Operation>
+struct BinaryNodalField : NodalFieldProperties<Left::needs_nonzero_area || Right::needs_nonzero_area,
+                                               Operation == NodalBinaryOperation::Divide
+                                                   ? ( Left::is_affine && !Right::depends_on_state )
+                                                   : ( Left::is_affine&& Right::is_affine &&
+                                                       ( Operation != NodalBinaryOperation::Multiply ||
+                                                         !( Left::depends_on_state && Right::depends_on_state ) ) ),
+                                               Left::depends_on_state || Right::depends_on_state> {
   static constexpr IndexT field_count = Left::field_count > Right::field_count ? Left::field_count : Right::field_count;
   ///< Required bound field count.
-  /** @brief Check field dependence. @param index Field index. @return Whether either factor uses the field. */
+  /** @brief Check field dependence. @param index Field index. @return Whether either operand uses the field. */
   TRIBOL_HOST_DEVICE static constexpr bool dependsOn( IndexT index )
   {
     return Left::dependsOn( index ) || Right::dependsOn( index );
   }
   Left left;    ///< First owned expression.
   Right right;  ///< Second owned expression.
-  /** @brief Evaluate the field product. @tparam StateSize Active field count. @param state Active nodal integrals.
+  /**
+   * @brief Evaluate pointwise arithmetic, propagating derivatives when Scalar is an AD type.
+   * @tparam Scalar Value type.
+   * @tparam StateSize Number of state components.
+   * @param state Assembled field values.
    * @param node Local true DOF.
-   * @return Product at the node. */
-  template <IndexT StateSize>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( MdSpan<const RealT, StateSize> state, IndexT node ) const
+   * @return Result. Division requires a nonzero denominator; zero division has invalid, nonfinite results.
+   */
+  template <typename Scalar, IndexT StateSize>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Scalar value( MdSpan<const Scalar, StateSize> state, IndexT node ) const
   {
-    return left.value( state, node ) * right.value( state, node );
+    const auto a = left.value( state, node );
+    const auto b = right.value( state, node );
+    if constexpr ( Operation == NodalBinaryOperation::Add )
+      return a + b;
+    else if constexpr ( Operation == NodalBinaryOperation::Subtract )
+      return a - b;
+    else if constexpr ( Operation == NodalBinaryOperation::Multiply )
+      return a * b;
+    else
+      return a / b;
   }
-  /** @brief Validate both fields. @param count Local dual true-DOF count. */
+  /** @brief Validate both fields. @param count Local field true-DOF count. */
   void validateSize( IndexT count ) const
   {
     left.validateSize( count );
     right.validateSize( count );
   }
+};
+/** @brief Multiply two expressions. @tparam Left First field. @tparam Right Second field. */
+template <typename Left, typename Right>
+using ProductNodalField = BinaryNodalField<Left, Right, NodalBinaryOperation::Multiply>;
+
+/** @brief Represent a fixed scalar in pointwise nodal arithmetic. */
+struct ConstantNodalField : NodalFieldProperties<false, true, false> {
+  static constexpr IndexT field_count = 0;  ///< No active fields required.
+  RealT constant;                           ///< Inactive scalar value.
+  /** @brief Check field dependence. @param index Unused field index. @return False for a constant. */
+  TRIBOL_HOST_DEVICE static constexpr bool dependsOn( [[maybe_unused]] IndexT index ) { return false; }
+  /** @brief Read a constant. @tparam Scalar Value type. @tparam StateSize State width.
+   * @param state Unused active state. @param node Unused local true DOF. @return Constant with zero derivatives. */
+  template <typename Scalar, IndexT StateSize>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Scalar value( [[maybe_unused]] MdSpan<const Scalar, StateSize> state,
+                                                        [[maybe_unused]] IndexT node ) const
+  {
+    return Scalar( constant );
+  }
+  /** @brief Accept any field length. @param count Local true-DOF count, unused. */
+  void validateSize( [[maybe_unused]] IndexT count ) const {}
 };
 
 /**
@@ -191,16 +243,17 @@ struct ClampedNodalField : NodalFieldProperties<Field::needs_nonzero_area, Field
   RealT upper_bound;  ///< Inactive maximum value.
   /**
    * @brief Retain the underlying branch at equality, including the compressive tangent at zero gap.
+   * @tparam Scalar Value type, including SecondOrderScalar.
    * @tparam StateSize Number of active field components.
    * @param state Active nodal integrals.
    * @param node Local true DOF.
    * @return The field value at or below the bound, otherwise the bound.
    */
-  template <IndexT StateSize>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( MdSpan<const RealT, StateSize> state, IndexT node ) const
+  template <typename Scalar, IndexT StateSize>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Scalar value( MdSpan<const Scalar, StateSize> state, IndexT node ) const
   {
-    const RealT v = field.value( state, node );
-    return v > upper_bound ? upper_bound : v;
+    const auto v = field.value( state, node );
+    return v > upper_bound ? Scalar( upper_bound ) : v;
   }
   /** @brief Validate the underlying field. @param count Local dual true-DOF count. */
   void validateSize( IndexT count ) const { field.validateSize( count ); }
@@ -217,14 +270,15 @@ struct ReciprocalNodalArea : NodalFieldProperties<true, false, true> {
   RealT numerator;  ///< Inactive numerator.
   /**
    * @brief Evaluate the quotient on a node with supported area.
+   * @tparam Scalar Value type, including SecondOrderScalar.
    * @tparam StateSize Number of active field components.
    * @param state Active nodal integrals; nonzero area is required.
    * @param node Local true DOF, unused.
    * @return Numerator divided by area; NodalEnergyAtNode checks support before this is called.
    */
-  template <IndexT StateSize>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT value( MdSpan<const RealT, StateSize> state,
-                                                       [[maybe_unused]] IndexT node ) const
+  template <typename Scalar, IndexT StateSize>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Scalar value( MdSpan<const Scalar, StateSize> state,
+                                                        [[maybe_unused]] IndexT node ) const
   {
     return numerator / state[static_cast<IndexT>( NodalIntegralQuantity::Area )];
   }
@@ -249,10 +303,25 @@ struct NodalEnergyAtNode {
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT energy( MdSpan<const RealT, dof_count> state ) const
   {
+    return this->template energy<const RealT>( state );
+  }
+  /**
+   * @brief Evaluate with real or AD values, checking reciprocal-area support before division.
+   * @tparam Scalar State value type, optionally const-qualified.
+   * @param state Assembled field values or seeded AD variables.
+   * @return Energy with automatic first and second derivatives for an AD state. Unsupported area returns zero
+   * value and derivatives, as in the real-valued entry point.
+   */
+  template <typename Scalar>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto energy( MdSpan<Scalar, dof_count> state ) const
+  {
+    using Value = std::remove_const_t<Scalar>;
+    const MdSpan<const Value, dof_count> values{ state.data(), dof_count };
     if constexpr ( Field::needs_nonzero_area ) {
-      if ( std::abs( state[static_cast<IndexT>( NodalIntegralQuantity::Area )] ) <= area_tolerance ) return 0.0;
+      if ( std::abs( primalValue( values[static_cast<IndexT>( NodalIntegralQuantity::Area )] ) ) <= area_tolerance )
+        return Value( 0.0 );
     }
-    return field.value( state, node );
+    return field.value( values, node );
   }
 };
 }  // namespace detail
@@ -323,6 +392,105 @@ template <typename Left, typename Right>
 TRIBOL_HOST_DEVICE constexpr auto operator*( const Left& left, const Right& right )
 {
   return detail::ProductNodalField<Left, Right>{ {}, left, right };
+}
+
+/**
+ * @brief Form the pointwise sum of two fields; division requires a nonzero denominator.
+ * @tparam Left First expression. @tparam Right Second expression.
+ * @param left First operand. @param right Second operand. @return Deferred sum.
+ */
+template <typename Left, typename Right>
+  requires( std::derived_from<Left, NodalFieldExpressionTag> && std::derived_from<Right, NodalFieldExpressionTag> )
+TRIBOL_HOST_DEVICE constexpr auto operator+( const Left& left, const Right& right )
+{
+  return detail::BinaryNodalField<Left, Right, detail::NodalBinaryOperation::Add>{ {}, left, right };
+}
+/** @brief Combine a field with a constant. @tparam Field Nodal expression.
+ * @param field First operand. @param scalar Second operand. @return Deferred sum. */
+template <typename Field>
+  requires std::derived_from<Field, NodalFieldExpressionTag>
+TRIBOL_HOST_DEVICE constexpr auto operator+( const Field& field, RealT scalar )
+{
+  return field + detail::ConstantNodalField{ {}, scalar };
+}
+/** @brief Combine a constant with a field. @tparam Field Nodal expression.
+ * @param scalar First operand. @param field Second operand. @return Deferred sum. */
+template <typename Field>
+  requires std::derived_from<Field, NodalFieldExpressionTag>
+TRIBOL_HOST_DEVICE constexpr auto operator+( RealT scalar, const Field& field )
+{
+  return detail::ConstantNodalField{ {}, scalar } + field;
+}
+
+/**
+ * @brief Form the pointwise difference of two fields; division requires a nonzero denominator.
+ * @tparam Left First expression. @tparam Right Second expression.
+ * @param left First operand. @param right Second operand. @return Deferred difference.
+ */
+template <typename Left, typename Right>
+  requires( std::derived_from<Left, NodalFieldExpressionTag> && std::derived_from<Right, NodalFieldExpressionTag> )
+TRIBOL_HOST_DEVICE constexpr auto operator-( const Left& left, const Right& right )
+{
+  return detail::BinaryNodalField<Left, Right, detail::NodalBinaryOperation::Subtract>{ {}, left, right };
+}
+/** @brief Combine a field with a constant. @tparam Field Nodal expression.
+ * @param field First operand. @param scalar Second operand. @return Deferred difference. */
+template <typename Field>
+  requires std::derived_from<Field, NodalFieldExpressionTag>
+TRIBOL_HOST_DEVICE constexpr auto operator-( const Field& field, RealT scalar )
+{
+  return field - detail::ConstantNodalField{ {}, scalar };
+}
+/** @brief Combine a constant with a field. @tparam Field Nodal expression.
+ * @param scalar First operand. @param field Second operand. @return Deferred difference. */
+template <typename Field>
+  requires std::derived_from<Field, NodalFieldExpressionTag>
+TRIBOL_HOST_DEVICE constexpr auto operator-( RealT scalar, const Field& field )
+{
+  return detail::ConstantNodalField{ {}, scalar } - field;
+}
+
+/**
+ * @brief Form the pointwise quotient of two fields; division requires a nonzero denominator.
+ * @tparam Left First expression. @tparam Right Second expression.
+ * @param left First operand. @param right Second operand. @return Deferred quotient.
+ */
+template <typename Left, typename Right>
+  requires( std::derived_from<Left, NodalFieldExpressionTag> && std::derived_from<Right, NodalFieldExpressionTag> )
+TRIBOL_HOST_DEVICE constexpr auto operator/( const Left& left, const Right& right )
+{
+  return detail::BinaryNodalField<Left, Right, detail::NodalBinaryOperation::Divide>{ {}, left, right };
+}
+/** @brief Combine a field with a constant. @tparam Field Nodal expression.
+ * @param field First operand. @param scalar Second operand. @return Deferred quotient. */
+template <typename Field>
+  requires std::derived_from<Field, NodalFieldExpressionTag>
+TRIBOL_HOST_DEVICE constexpr auto operator/( const Field& field, RealT scalar )
+{
+  return field / detail::ConstantNodalField{ {}, scalar };
+}
+/** @brief Combine a constant with a field. @tparam Field Nodal expression.
+ * @param scalar First operand. @param field Second operand. @return Deferred quotient. */
+template <typename Field>
+  requires std::derived_from<Field, NodalFieldExpressionTag>
+TRIBOL_HOST_DEVICE constexpr auto operator/( RealT scalar, const Field& field )
+{
+  return detail::ConstantNodalField{ {}, scalar } / field;
+}
+
+/** @brief Negate a field. @tparam Field Nodal expression. @param field Operand. @return Deferred negative field. */
+template <typename Field>
+  requires std::derived_from<Field, NodalFieldExpressionTag>
+TRIBOL_HOST_DEVICE constexpr auto operator-( const Field& field )
+{
+  return -1.0 * field;
+}
+/** @brief Preserve a field. @tparam Field Nodal expression. @param field Operand. @return Field copy. */
+template <typename Field>
+  requires std::derived_from<Field, NodalFieldExpressionTag>
+TRIBOL_HOST_DEVICE constexpr auto operator+( const Field& field )
+{
+  return field;
 }
 
 /**

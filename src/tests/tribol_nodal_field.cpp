@@ -7,7 +7,8 @@
  * @file
  * @brief Check sparse nodal-field chain rules on one and two MPI ranks, without contact geometry.
  * Three nonlinear/linear fields give an analytical coordinate residual and Hessian requiring both chain-rule terms.
- * Enzyme builds also differentiate the outer expression; other builds supply the same analytical partials.
+ * Enzyme builds differentiate the outer expression with Enzyme; other builds use operator AD. Both are checked
+ * against analytical results, and general arithmetic is checked against finite differences.
  * Repeated assembly checks that weighted curvature does not accumulate. A custom outer evaluator supplies analytical
  * partials with and without Enzyme. Contact tests cover MFEM field transfers.
  */
@@ -135,22 +136,18 @@ TEST_F( NodalFieldTest, assembles_both_chain_rule_terms_for_three_fields )
                                                              ++hessian_calls;
                                                              return weightedHessian( weights );
                                                            } );
-#ifdef TRIBOL_USE_ENZYME
   const auto energy = sum( NodalFieldVariable<0>{}, NodalFieldVariable<1>{}, NodalFieldVariable<2>{} );
   auto derivatives = evaluateNodalEnergy( energy, fields_with_derivatives, 0.0 );
-#else
-  NodalEnergyDerivatives derivatives;
-  for ( IndexT i = 0; i < field_count; ++i ) {
-    auto partial = fields_with_derivatives.makeVector();
+#ifdef TRIBOL_USE_ENZYME
+  const auto forward =
+      ForwardNodalEnergyEvaluator<decltype( energy )>::evaluate( energy, fields_with_derivatives, 0.0 );
+  EXPECT_NEAR( derivatives.energy, forward.energy, tolerance );
+  for ( const auto& [index, partial] : derivatives.gradient )
     for ( int node = 0; node < partial.size(); ++node )
-      partial[node] = values_[( i + 1 ) % field_count][node] * values_[( i + 2 ) % field_count][node];
-    derivatives.gradient.emplace( i, std::move( partial ) );
-    for ( IndexT j = i; j < field_count; ++j ) {
-      auto second = fields_with_derivatives.makeVector();
-      if ( i != j ) second.get() = values_[field_count - i - j].get();
-      derivatives.hessian.emplace( std::pair{ i, j }, std::move( second ) );
-    }
-  }
+      EXPECT_NEAR( partial[node], forward.gradient.at( index )[node], tolerance );
+  for ( const auto& [indices, partial] : derivatives.hessian )
+    for ( int node = 0; node < partial.size(); ++node )
+      EXPECT_NEAR( partial[node], forward.hessian.at( indices )[node], tolerance );
 #endif
   const auto force = fields_with_derivatives.assembleForce( derivatives );
   const auto jacobian = fields_with_derivatives.assembleJacobian( derivatives );
@@ -174,6 +171,47 @@ TEST_F( NodalFieldTest, assembles_both_chain_rule_terms_for_three_fields )
   const auto changed_action = changed * direction;
   for ( int node = 0; node < u_.size(); ++node ) EXPECT_NEAR( changed_action[node], 2.0, tolerance );
   EXPECT_EQ( hessian_calls, 3 );
+}
+
+// General nodal arithmetic must give the coordinate gradient and Hessian of the composed energy, including field
+// curvature.
+TEST_F( NodalFieldTest, assembles_general_arithmetic_with_operator_derivatives )
+{
+  const DifferentiableNodalFields bound(
+      *fes_, *fes_, fields(), [&]( const NodalEnergyGradient& weights ) { return weightedHessian( weights ); } );
+  const auto a = NodalFieldVariable<0>{};
+  const auto b = NodalFieldVariable<1>{};
+  const auto c = NodalFieldVariable<2>{};
+  const auto energy = sum( ( a + b ) * ( c - 0.25 ) / ( b + 2.0 ) + 1.0 / ( a + 1.0 ) - 0.5 * b );
+  const auto derivatives = ForwardNodalEnergyEvaluator<decltype( energy )>::evaluate( energy, bound, 0.0 );
+  const auto force = bound.assembleForce( derivatives );
+  const auto jacobian = bound.assembleJacobian( derivatives );
+  shared::ParVector direction( fes_.get() );
+  direction.fill( 1.0 );
+  const auto action = jacobian * direction;
+  const auto reference_energy = []( RealT u ) {
+    const RealT q0 = u * u, q1 = 2.0 * u + 1.0, q2 = 3.0 * u - 2.0;
+    return ( q0 + q1 ) * ( q2 - 0.25 ) / ( q1 + 2.0 ) + 1.0 / ( q0 + 1.0 ) - 0.5 * q1;
+  };
+  constexpr RealT step = 1.0e-4;  // Resolve smooth curvature without excessive cancellation in second differences.
+  constexpr RealT difference_tolerance = 1.0e-6;  // Central differences include truncation and roundoff errors.
+  for ( int node = 0; node < u_.size(); ++node ) {
+    const RealT u = u_[node];
+    const RealT center = reference_energy( u );
+    const RealT plus = reference_energy( u + step ), minus = reference_energy( u - step );
+    EXPECT_NEAR( force[node], ( plus - minus ) / ( 2.0 * step ), difference_tolerance );
+    EXPECT_NEAR( action[node], ( plus - 2.0 * center + minus ) / ( step * step ), difference_tolerance );
+  }
+#ifdef TRIBOL_USE_ENZYME
+  const auto enzyme = evaluateNodalEnergy( energy, bound, 0.0 );
+  EXPECT_NEAR( derivatives.energy, enzyme.energy, tolerance );
+  for ( const auto& [index, partial] : derivatives.gradient )
+    for ( int node = 0; node < partial.size(); ++node )
+      EXPECT_NEAR( partial[node], enzyme.gradient.at( index )[node], tolerance );
+  for ( const auto& [indices, partial] : derivatives.hessian )
+    for ( int node = 0; node < partial.size(); ++node )
+      EXPECT_NEAR( partial[node], enzyme.hessian.at( indices )[node], tolerance );
+#endif
 }
 
 // A Jacobian request must fail if field curvature is unavailable; a value binding can still assemble a residual.
@@ -220,7 +258,6 @@ TEST_F( NodalFieldTest, selects_custom_energy_derivatives_and_applies_coordinate
   EXPECT_EQ( Evaluator::evaluations, 1 );
 }
 
-#ifdef TRIBOL_USE_ENZYME
 // A field's index identifies its variable even when earlier fields are unused; independent inputs need no partials.
 TEST_F( NodalFieldTest, allocates_partials_only_for_referenced_fields )
 {
@@ -243,7 +280,6 @@ TEST_F( NodalFieldTest, allocates_partials_only_for_referenced_fields )
   MPI_Allreduce( &local_energy, &expected_energy, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
   EXPECT_NEAR( constant.energy, expected_energy, tolerance );
 }
-#endif
 }  // namespace
 
 /** @brief Run sparse field tests with MPI initialized. @param argc Argument count. @param argv Arguments.

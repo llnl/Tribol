@@ -22,63 +22,121 @@ namespace tribol {
  * Specialize this class for an expression to supply analytical or other derivatives. Its static evaluate() returns
  * NodalEnergyDerivatives with globally summed energy, first partials keyed by field index, and the upper triangle of
  * nodewise second partials. Missing entries mean zero. Returned vectors own their data on the bound field space.
- * The default implementation uses Enzyme; specializations also work in builds without Enzyme.
- * Use evaluateNodalEnergy() to apply input validation before calling the selected implementation.
+ * The default uses Enzyme when enabled and operator-based forward AD otherwise. Specializations override either
+ * default. Use evaluateNodalEnergy() to apply input validation before calling the selected implementation.
  * @tparam Expression Deferred NodalEnergyExpression type identifying the calculation.
  */
 template <typename Expression>
 class NodalEnergyEvaluator;
 
-#ifdef TRIBOL_USE_ENZYME
+namespace detail {
 /**
- * @brief Default assembled-field energy derivatives using Enzyme at each node.
+ * @brief Allocate field partials and evaluate each node using the selected local derivative implementation.
+ * @tparam UseEnzyme Use Enzyme when true, operator-based forward differentiation otherwise.
+ * @tparam Expression Deferred nodal energy.
+ * @param energy Expression and inactive configuration.
+ * @param fields Bound values and field-space metadata.
+ * @param area_tolerance Validated support threshold.
+ * @return Owned partials and globally summed energy; inputs must have passed evaluateNodalEnergy() validation.
+ */
+template <bool UseEnzyme, typename Expression>
+NodalEnergyDerivatives evaluateNodalPartials( const Expression& energy, const DifferentiableNodalFields& fields,
+                                              RealT area_tolerance )
+{
+  const int num_dofs = fields.fieldSpace().GetTrueVSize();
+  NodalEnergyDerivatives data;
+  for ( IndexT i = 0; i < Expression::field_count; ++i ) {
+    if ( !Expression::dependsOn( i ) ) continue;
+    data.gradient.emplace( i, fields.makeVector() );
+    if constexpr ( Expression::has_outer_hessian ) {
+      for ( IndexT j = i; j < Expression::field_count; ++j ) {
+        if ( Expression::dependsOn( j ) ) data.hessian.emplace( std::pair{ i, j }, fields.makeVector() );
+      }
+    }
+  }
+  RealT local_energy = 0.0;
+  for ( int node = 0; node < num_dofs; ++node ) {
+    auto definition = energy.atNode( node, area_tolerance );
+    MdArray<RealT, decltype( definition )::dof_count> state{};
+    for ( const auto& [index, partial] : data.gradient ) state[index] = fields[index].values[node];
+    const auto evaluated = [&] {
+      if constexpr ( UseEnzyme ) {
+        return EnergyPairEvaluator<decltype( definition )>::evaluate( state.view(), definition );
+      } else {
+        constexpr IndexT count = decltype( definition )::dof_count;
+        using Scalar = SecondOrderScalar<count>;
+        MdArray<Scalar, count> active{};
+        for ( IndexT i = 0; i < count; ++i ) active[i] = Scalar::variable( state[i], i );
+        const auto value = definition.energy( active.view() );
+        PairEnergyDerivatives<count> result{};
+        result.energy = value.value;
+        result.residual = value.gradient;
+        result.jacobian = value.hessian;
+        return result;
+      }
+    }();
+    local_energy += evaluated.energy;
+    for ( auto& [index, partial] : data.gradient ) partial[node] = evaluated.residual[index];
+    for ( auto& [indices, partial] : data.hessian ) partial[node] = evaluated.jacobian( indices.first, indices.second );
+  }
+  MPI_Allreduce( &local_energy, &data.energy, 1, MPI_DOUBLE, MPI_SUM, fields.fieldSpace().GetComm() );
+  return data;
+}
+}  // namespace detail
+
+/**
+ * @brief Supply nodal energy partials through SecondOrderScalar arithmetic, independently of Enzyme.
+ *
+ * A NodalEnergyEvaluator specialization can inherit this class to choose forward differentiation in an Enzyme build.
+ * @tparam Expression Deferred expression supporting real and SecondOrderScalar evaluation.
+ */
+template <typename Expression>
+class ForwardNodalEnergyEvaluator {
+ public:
+  /**
+   * @brief Propagate values, gradients, and Hessians through overloaded arithmetic at each node.
+   * @param energy Deferred expression and inactive coefficients.
+   * @param fields Bound field values and coordinate Jacobians.
+   * @param area_tolerance Reciprocal-area support threshold.
+   * @return Owned partials and globally summed energy.
+   * @pre Inputs have been validated by evaluateNodalEnergy().
+   */
+  static NodalEnergyDerivatives evaluate( const Expression& energy, const DifferentiableNodalFields& fields,
+                                          RealT area_tolerance )
+  {
+    return detail::evaluateNodalPartials<false>( energy, fields, area_tolerance );
+  }
+};
+
+/**
+ * @brief Default nodal energy partials using Enzyme when enabled and operator-based forward AD otherwise.
  * @tparam Expression Deferred expression identifying referenced fields and outer Hessian requirements.
  */
 template <typename Expression>
 class NodalEnergyEvaluator {
  public:
   /**
-   * @brief Differentiate referenced values and sum energy across the field communicator without generating geometry.
-   * @param energy Deferred expression, including scaling and borrowed independent coefficients.
-   * @param fields Bound values and coordinate Jacobians in expression-variable order.
-   * @param area_tolerance Support threshold for reciprocal-area expressions; unsupported nodes have zero energy and
-   * partials.
-   * @return Owned first partials, upper-triangle second partials, and globally summed energy.
+   * @brief Evaluate first and second field partials without generating geometry or retaining input views.
+   * @param energy Deferred expression and inactive coefficients.
+   * @param fields Bound field values and coordinate Jacobians.
+   * @param area_tolerance Reciprocal-area support threshold.
+   * @return Owned partials and globally summed energy.
    * @pre Inputs have been validated by evaluateNodalEnergy().
    */
   static NodalEnergyDerivatives evaluate( const Expression& energy, const DifferentiableNodalFields& fields,
                                           RealT area_tolerance )
   {
-    const int num_dofs = fields.fieldSpace().GetTrueVSize();
-    NodalEnergyDerivatives data;
-    for ( IndexT i = 0; i < Expression::field_count; ++i ) {
-      if ( !Expression::dependsOn( i ) ) continue;
-      data.gradient.emplace( i, fields.makeVector() );
-      if constexpr ( Expression::has_outer_hessian ) {
-        for ( IndexT j = i; j < Expression::field_count; ++j ) {
-          if ( Expression::dependsOn( j ) ) data.hessian.emplace( std::pair{ i, j }, fields.makeVector() );
-        }
-      }
-    }
-    RealT local_energy = 0.0;
-    for ( int node = 0; node < num_dofs; ++node ) {
-      auto definition = energy.atNode( node, area_tolerance );
-      MdArray<RealT, decltype( definition )::dof_count> state{};
-      for ( const auto& [index, partial] : data.gradient ) state[index] = fields[index].values[node];
-      const auto evaluated = EnergyPairEvaluator<decltype( definition )>::evaluate( state.view(), definition );
-      local_energy += evaluated.energy;
-      for ( auto& [index, partial] : data.gradient ) partial[node] = evaluated.residual[index];
-      for ( auto& [indices, partial] : data.hessian )
-        partial[node] = evaluated.jacobian( indices.first, indices.second );
-    }
-    MPI_Allreduce( &local_energy, &data.energy, 1, MPI_DOUBLE, MPI_SUM, fields.fieldSpace().GetComm() );
-    return data;
+#ifdef TRIBOL_USE_ENZYME
+    return detail::evaluateNodalPartials<true>( energy, fields, area_tolerance );
+#else
+    return ForwardNodalEnergyEvaluator<Expression>::evaluate( energy, fields, area_tolerance );
+#endif
   }
 };
-#endif  // TRIBOL_USE_ENZYME
 
 /**
- * @brief Evaluate nodal energy partials using Enzyme by default or a NodalEnergyEvaluator specialization.
+ * @brief Evaluate nodal energy partials using the default derivative implementation or a NodalEnergyEvaluator
+ * specialization.
  *
  * Field indices identify variables; repeated expression references share the same input. The bound fields apply
  * coordinate chain rules using the returned partials. Neither expressions nor input views are retained in results.
@@ -90,7 +148,6 @@ class NodalEnergyEvaluator {
  * @throws std::invalid_argument Referenced fields, independent field lengths, or area tolerance are invalid.
  * Exceptions from a custom evaluator propagate to the caller.
  * @pre All ranks call collectively with matching expression dependencies and field MPI partitions.
- * Without Enzyme, a matching evaluator specialization must be provided.
  */
 template <typename Field>
 NodalEnergyDerivatives evaluateNodalEnergy( const NodalEnergyExpression<Field>& energy,

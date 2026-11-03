@@ -8,6 +8,9 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added host/device `SecondOrderScalar` arithmetic with automatic gradients and Hessians, and general nodal field
+  addition, subtraction, multiplication, and division. Nodal energies use operator AD when Enzyme is unavailable;
+  Enzyme remains the default when enabled, and custom evaluator specializations are preserved.
 - Added `NodalEnergyEvaluator` to allow custom assembled-field energy partials. Enzyme remains the default;
   analytical evaluators and sparse chain-rule assembly can also be used without Enzyme.
 - Added sparse differentiable nodal-field bindings with indexed expression variables. Coordinate residuals and Jacobians

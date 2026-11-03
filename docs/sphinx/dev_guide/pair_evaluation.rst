@@ -58,8 +58,22 @@ For example, construct a penalty energy before evaluating its derivatives:
    auto residual = fields.assembleForce(partials);
    auto jacobian = fields.assembleJacobian(partials);
 
-``sum()`` and ``dot()`` build energy expressions. Multiplication by a scalar scales the expression before evaluation,
-so the energy and both derivative orders include the multiplier. ``evaluateNodalEnergy()`` uses Enzyme to calculate
+Fields support pointwise ``+``, ``-``, ``*``, and ``/``, including scalar constants on either side and unary signs.
+``sum()`` and ``dot()`` reduce field expressions to energy. For example:
+
+.. code-block:: cpp
+
+   const auto g = min(tribol::nodal_weighted_gap, 0.0);
+   const auto normalized_pressure = penalty * g * (1.0 / tribol::nodal_area);
+   const auto energy = 0.5 * sum(normalized_pressure * g);
+
+General division requires a nonzero denominator; it does not clamp or regularize it. The named
+``1.0 / nodal_area`` form retains its reciprocal-area support check, including zero energy and derivatives when the
+area magnitude is at or below the configured tolerance.
+
+Multiplication by a scalar scales the expression before evaluation,
+so the energy and both derivative orders include the multiplier. ``evaluateNodalEnergy()`` uses Enzyme when enabled,
+and operator-based forward differentiation otherwise, to calculate
 first and second partials with respect to referenced field values, then sums energy across the MPI communicator.
 ``NodalFieldVariable<Index>`` selects any bound field; the named gap and area expressions select indices zero and one.
 Only referenced partials are allocated, and affine energies need no outer Hessian vectors.
@@ -102,18 +116,48 @@ displacement/multiplier derivative block is assembled separately from the weight
 
 ``EnergyMortarNodal::penaltyEnergy()`` and ``lagrangeMultiplierEnergy()`` share each formula
 between numerical arrays and assembled-field expressions. The portable expression definitions and node energy
-evaluations require neither MFEM nor Enzyme. The default MFEM evaluator uses Enzyme; custom evaluators can run without
-Enzyme. Returned derivative data retains no expressions or borrowed inputs. The nodal contact implementation assembles weighted gap and tributary area on its
+evaluations require neither MFEM nor Enzyme. The default MFEM evaluator uses Enzyme when enabled and operator AD
+otherwise. Returned derivative data retains no expressions or borrowed inputs. The nodal contact implementation assembles weighted gap and tributary area on its
 dual space. Other fields can use the same expression evaluator and sparse chain rules with their own value, Jacobian,
 and weighted-Hessian calculation.
+
+Operator-based scalar derivatives
+---------------------------------
+
+``SecondOrderScalar<NumVariables>`` is a host/device scalar AD type. It owns a ``value``, ``gradient``, and ``hessian`` in
+fixed-size ``MdArray`` storage. Arithmetic propagates derivatives immediately using sum, product, and quotient rules;
+constants have zero derivatives. For example:
+
+.. code-block:: cpp
+
+   using Scalar = tribol::SecondOrderScalar<2>;
+   const auto x = Scalar::variable(3.0, 0);
+   const auto y = Scalar::variable(1.0, 1);
+   const auto result = (x * y + 2.0) / (x - y);
+   // result.value, result.gradient[i], and result.hessian(i, j) contain both derivative orders.
+
+Unary signs, compound assignment, comparisons, and ``min``/``max`` are also supported. Comparisons inspect primal values;
+``min``/``max`` retain the first operand at equality, including its derivatives. Division by zero follows floating-point
+arithmetic and gives invalid, nonfinite derivatives. No numerical support threshold is introduced by the scalar type.
+
+Nodal expressions accept either real or AD values. A node binding's ``energy(real_state)`` supplies the existing real
+entry point for Enzyme; ``energy(ad_state)`` evaluates the same operations with AD scalars. Thus the general field
+arithmetic builds deferred expressions, and the forward evaluator propagates derivatives by running those expressions
+over seeded ``SecondOrderScalar`` values.
+
+``ForwardNodalEnergyEvaluator<Expression>`` seeds the node's field slots, evaluates the expression, and returns its
+energy and field partials. These use the existing sparse coordinate chain rule, including weighted field Hessians.
+Only the node's field slots are differentiation variables in the scalar AD type; global coordinate Hessians are not
+stored per entry. The automatic default selects this evaluator when Enzyme is unavailable. In an Enzyme build, a
+``NodalEnergyEvaluator`` specialization can inherit ``ForwardNodalEnergyEvaluator`` to select it for an expression.
+Custom field expressions must accept the scalar AD type when using the forward evaluator.
 
 Custom nodal derivatives
 -------------------------
 
 ``evaluateNodalEnergy()`` calls ``NodalEnergyEvaluator<Expression>::evaluate()`` after checking field availability,
-independent coefficient lengths, and the area tolerance. Its default implementation uses Enzyme. Specialize this
-public class for the complete ``NodalEnergyExpression`` type to provide analytical or other energy partials, including
-in builds without Enzyme. No specialization of internal expression types is needed. For example:
+independent coefficient lengths, and the area tolerance. Its default uses Enzyme when enabled and operator AD otherwise. Specialize this
+public class for the complete ``NodalEnergyExpression`` type to provide analytical or other energy partials. No specialization of internal expression types is needed. For example:
 
 .. code-block:: cpp
 
@@ -140,7 +184,8 @@ Custom derivatives can enter at three levels without replacing the coordinate ch
 
 * ``DifferentiableNodalField`` accepts a supplied sparse coordinate Jacobian, and the bound collection accepts a
   weighted coordinate-Hessian operation. Either may use analytical calculations or another derivative implementation.
-* ``NodalEnergyEvaluator`` supplies partials with respect to assembled fields; its default is Enzyme.
+* ``NodalEnergyEvaluator`` supplies partials with respect to assembled fields; its default is Enzyme when enabled,
+  otherwise operator AD.
 * ``EnergyPairEvaluator``, ``ForcePairEvaluator``, and ``VectorPairEvaluator`` can be specialized for local definitions,
   including the pair derivatives used to construct fields and their weighted curvature.
 
@@ -184,8 +229,8 @@ its slowest rank's duration. Timing order alternates between implementations; MP
 outside the measured block. ``-i``, ``-r``, and ``-w`` control iterations per sample, an odd number of samples, and warmup
 calls. Use ``--help`` for option descriptions and repeat with several mesh sizes before interpreting a timing difference.
 
-The benchmark and sparse chain-rule assembly run on the host. Primal field expressions can run in device kernels,
-but the current Enzyme evaluators have host-only entry points. ``DifferentiableNodalFields`` uses host containers and
+The benchmark and sparse chain-rule assembly run on the host. Primal field expressions and operator-based scalar AD
+can run in device kernels, but the current Enzyme evaluators have host-only entry points. ``DifferentiableNodalFields`` uses host containers and
 a host callback, and the shared MFEM vector/matrix wrappers explicitly use host memory. GPU derivative evaluation would
 need device-callable derivative kernels and device-accessible field views; GPU assembly would also need compatible
 sparse algebra and transfer operations. Adding host/device annotations alone does not enable either path.
