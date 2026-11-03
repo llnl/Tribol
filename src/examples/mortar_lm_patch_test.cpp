@@ -71,16 +71,19 @@ int main( int argc, char** argv )
   ////////////////////////////////
 
   // initialize
+  int rank = 0;
 #ifdef TRIBOL_USE_MPI
   MPI_Init( &argc, &argv );
+  MPI_Comm_rank( MPI_COMM_WORLD, &rank );
 #endif
-  tribol::CommT problem_comm = TRIBOL_COMM_WORLD;
 
 #ifdef TRIBOL_USE_UMPIRE
   umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
 #endif
 
-  initialize_logger( problem_comm );
+  // initialize logger
+  axom::slic::SimpleLogger logger;
+  axom::slic::setIsRoot( rank == 0 );
 
   // parse command line arguments. This is
   Arguments args;
@@ -262,9 +265,6 @@ int main( int argc, char** argv )
   tribol::finalize();
 
   SLIC_INFO( "Example has run successfully." );
-
-  axom::slic::flushStreams();
-  finalize_logger();
 
 #ifdef TRIBOL_USE_MPI
   MPI_Finalize();
