@@ -15,8 +15,8 @@
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/geom/CompGeom.hpp"
 
-#define _USE_MATH_DEFINES
 #include <cmath>  // std::abs, std::cos, std::sin
+#include <numbers>
 
 // Axom includes
 #include "axom/slic.hpp"
@@ -30,7 +30,6 @@
 #include "gtest/gtest.h"
 
 // c++ includes
-#include <cmath>  // std::abs, std::cos, std::sin
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -436,10 +435,10 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_1 )
 
   // compute length of interpen portion and the overlap centroid for gap calc.
   RealT hypotenuse = 0.5;
-  RealT overlap_gap_point = 0.5 * hypotenuse * std::cos( 0.5 * theta_y * M_PI / 180 );
+  RealT overlap_gap_point = 0.5 * hypotenuse * std::cos( 0.5 * theta_y * std::numbers::pi_v<RealT> / 180 );
 
   // compute and check the gap
-  RealT gap_computed = -2. * overlap_gap_point * std::tan( 0.5 * theta_y * M_PI / 180 );
+  RealT gap_computed = -2. * overlap_gap_point * std::tan( 0.5 * theta_y * std::numbers::pi_v<RealT> / 180 );
   EXPECT_NEAR( plane.m_gap, gap_computed, 1.e-5 );
 
   // check the overlap area
@@ -494,7 +493,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_2 )
   z[3] = 0.;
 
   // coordinates for face 2
-  RealT fortyfive = 45 * M_PI / 180;
+  RealT fortyfive = 45 * std::numbers::pi_v<RealT> / 180;
   x[4] = 1.0 / 3.0;
   y[4] = 0.25;
   z[4] = -0.25;
@@ -623,7 +622,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3 )
   // rotate 45 degrees about the y-axis
   RealT x_shift = x[4];
   RealT z_shift = z[4];
-  RealT fortyfive = 45 * M_PI / 180;
+  RealT fortyfive = 45 * std::numbers::pi_v<RealT> / 180;
   for ( int i = numVerts; i < lengthNodalData; ++i ) {
     x[i] = x[i] - x_shift;
     z[i] = z[i] - z_shift;
@@ -736,7 +735,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3_warped )
   // rotate face 2 45 degrees about the y-axis
   RealT x_shift = x[4];
   RealT z_shift = z[4];
-  RealT fortyfive = 45 * M_PI / 180;
+  RealT fortyfive = 45 * std::numbers::pi_v<RealT> / 180;
   for ( int i = numVerts; i < lengthNodalData; ++i ) {
     x[i] = x[i] - x_shift;
     z[i] = z[i] - z_shift;
@@ -847,7 +846,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_4 )
   // rotate 45 degrees about the y-axis
   RealT x_shift = x[4];
   RealT z_shift = z[4];
-  RealT fortyfive = 45 * M_PI / 180;
+  RealT fortyfive = 45 * std::numbers::pi_v<RealT> / 180;
   for ( int i = numVerts; i < lengthNodalData; ++i ) {
     x[i] = x[i] - x_shift;
     z[i] = z[i] - z_shift;
@@ -941,8 +940,8 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_5 )
   z[3] = 0.;
 
   // coordinates for face 2
-  RealT thirty = 30 * M_PI / 180;
-  RealT fortyfive = 45 * M_PI / 180;
+  RealT thirty = 30 * std::numbers::pi_v<RealT> / 180;
+  RealT fortyfive = 45 * std::numbers::pi_v<RealT> / 180;
   x[4] = 1.0 / 3.0;
   y[4] = 0.5;
   z[4] = -0.25;
@@ -1059,7 +1058,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_6 )
   z[3] = 0.;
 
   // coordinates for face 2
-  RealT thirty = 30 * M_PI / 180;
+  RealT thirty = 30 * std::numbers::pi_v<RealT> / 180;
   x[4] = 0.;
   y[4] = 0.;
   z[4] = -0.45;
@@ -1174,7 +1173,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_7 )
 
   // coordinates for face 2
   RealT epsilon = 1.e-15;
-  RealT thirty = 30 * M_PI / 180;
+  RealT thirty = 30 * std::numbers::pi_v<RealT> / 180;
   x[4] = 0.;
   y[4] = 0.;
   z[4] = -0.45;
@@ -1384,7 +1383,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_9 )
   EXPECT_EQ( tribol::Area2DPolygon( &x[4], &y[4], numVerts ), 0.375 );
 
   // rotate second face 30 degrees about the y-axis
-  RealT thirty = 30 * M_PI / 180;
+  RealT thirty = 30 * std::numbers::pi_v<RealT> / 180;
   for ( int i = numVerts; i < lengthNodalData; ++i ) {
     x[i] = x[i];
     z[i] = z[i];
@@ -1473,8 +1472,8 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_10 )
   z[3] = 0.;
 
   // coordinates for face 2
-  RealT thirty = 30 * M_PI / 180;
-  RealT fortyfive = 45 * M_PI / 180;
+  RealT thirty = 30 * std::numbers::pi_v<RealT> / 180;
+  RealT fortyfive = 45 * std::numbers::pi_v<RealT> / 180;
   RealT third = 1.0 / 3.0;
   // shift the x-coord so when we lower second face it is still within
   // full coverage of the first face when projected to common plane
@@ -1915,7 +1914,7 @@ TEST_F( CompGeomTest, single_mortar_check_2 )
   auto& comp_geom = couplingScheme->getCompGeom();
   auto& plane = comp_geom.getMortarPlane( 0 );
 
-  EXPECT_NEAR( plane.m_area, std::cos( 45. * M_PI / 180. ), 1.e-8 );
+  EXPECT_NEAR( plane.m_area, std::cos( 45. * std::numbers::pi_v<RealT> / 180. ), 1.e-8 );
 
   tribol::finalize();
 }
