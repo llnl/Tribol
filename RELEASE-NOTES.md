@@ -8,6 +8,13 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added `ContactFormulationResult::makeADEnergy()` and `makeADResidual()` to export owned global AD snapshots of
+  assembled contact outputs. Quadrature-point Energy Mortar supplies energy, gradient, and Hessian; Common Plane
+  supplies a residual and Jacobian. Second residual derivatives require an explicit weighted-curvature callback.
+- Added distributed `ADVector`, `ADMatrix`, and `ADScalar` arithmetic over Hypre vector/matrix wrappers, with supplied
+  field derivatives, active matrix actions, and sparse coordinate chain rules. Nodal Energy Mortar now evaluates its
+  energy through these global operators. Grouped gap/area curvature retains one pair pass. Standalone arithmetic also
+  supports custom derivatives without Enzyme; scalar-expression evaluators remain available separately.
 - Added host/device `SecondOrderScalar` arithmetic with automatic gradients and Hessians, and general nodal field
   addition, subtraction, multiplication, and division. Nodal energies use operator AD when Enzyme is unavailable;
   Enzyme remains the default when enabled, and custom evaluator specializations are preserved.
@@ -110,6 +117,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Quadrature-point Energy Mortar now returns globally summed energy, matching nodal Energy Mortar. Callers must not
+  sum that returned value again across MPI ranks.
 - `NodalPairDefinition` now returns named integrals through its physics functor and binds Hessian weights with a
   separate `WeightedNodalPairDefinition`. Positional integral-recording and nodal-state wrappers were removed;
   outer energies use `NodalEnergyExpression::atNode()`. `CommonPlaneForce` is now a shared `PairResidualDefinition`;

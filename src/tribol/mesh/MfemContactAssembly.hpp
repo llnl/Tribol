@@ -12,7 +12,7 @@
 
 #include "tribol/integ/ContactDomain.hpp"
 #include "tribol/mesh/MfemNodalAssembler.hpp"
-#include "tribol/mesh/MfemNodalEnergy.hpp"
+#include "tribol/mesh/GlobalAD.hpp"
 #include "tribol/mesh/MfemPairAssembler.hpp"
 #include "tribol/physics/PairMethod.hpp"
 #include <utility>
@@ -118,7 +118,7 @@ inline ContactFormulationResult takeGapResult( MfemNodalQuantityData& quantities
  * @param domain Geometry-approved pairs and current host mesh views; borrowed only during this call.
  * @param definition Prepared pair definition with fixed configuration.
  * @param[in,out] assembler Empty parent assembler sized for the domain's pair count.
- * @return Owned residual and Jacobian, with the local pair energy sum for energy-defined methods.
+ * @return Owned residual and Jacobian, with the globally summed pair energy for energy-defined methods.
  * Empty or inactive domains produce allocated zero residuals and Jacobians.
  * @throws std::invalid_argument A pair has invalid quadrature geometry.
  * @throws std::length_error A pair exceeds its quadrature capacity.
@@ -144,7 +144,11 @@ ContactFormulationResult assemblePairContact(
                        { derivatives.jacobian.data(), { pair_dofs, pair_dofs } } );
   } );
   auto result = assembler.assemble();
-  if constexpr ( PairMethod::has_energy ) result.energy = energy;
+  if constexpr ( PairMethod::has_energy ) {
+    RealT global_energy = 0.0;
+    MPI_Allreduce( &energy, &global_energy, 1, MPI_DOUBLE, MPI_SUM, result.force->GetComm() );
+    result.energy = global_energy;
+  }
   return result;
 }
 
@@ -235,25 +239,24 @@ ContactFormulationResult assembleNodalContactForces(
   const auto fields = assembler.bindFields(
       { { quantities.weighted_gap, quantities.weighted_gap_jacobian }, { quantities.area, quantities.area_jacobian } },
       std::ref( weighted_hessian ) );
+  const auto variables = makeADFields( fields );
+  const auto& gap = variables[static_cast<IndexT>( NodalIntegralQuantity::WeightedGap )];
+  const auto& area = variables[static_cast<IndexT>( NodalIntegralQuantity::Area )];
   const auto& physics = definition.physics();
-  NodalEnergyDerivatives derivatives;
-  if ( use_penalty ) {
-    const RealT penalty = method.preparePenalty( context.mesh_data, domain.mesh1(), domain.mesh2() );
-    const auto energy = physics.penaltyEnergy( nodal_weighted_gap, nodal_area, penalty );
-    derivatives = evaluateNodalEnergy( energy, fields, PairMethod::area_tolerance );
-  } else {
-    const auto lm_vec = assembler.getSubmeshPressureTrueDofs();
-    if ( lm_vec.size() != quantities.weighted_gap.size() ) {
-      throw std::invalid_argument( "Lagrange multiplier vector size must match the dual submesh true-DOF count." );
+  const auto energy = [&] {
+    if ( use_penalty ) {
+      const RealT penalty = method.preparePenalty( context.mesh_data, domain.mesh1(), domain.mesh2() );
+      if constexpr ( requires { physics.penaltyEnergy( gap, area, penalty, PairMethod::area_tolerance ); } )
+        return physics.penaltyEnergy( gap, area, penalty, PairMethod::area_tolerance );
+      else
+        return physics.penaltyEnergy( gap, area, penalty );
     }
-    const IndependentNodalField pressure{ { lm_vec.get().GetData(), lm_vec.size() } };
-    const auto energy = physics.lagrangeMultiplierEnergy( nodal_weighted_gap, pressure );
-    derivatives = evaluateNodalEnergy( energy, fields, PairMethod::area_tolerance );
-  }
-
-  auto force_vec = fields.assembleForce( derivatives );
-  auto df_dx = fields.assembleJacobian( derivatives );
-  auto pressure = std::move( derivatives.gradient.at( static_cast<IndexT>( NodalIntegralQuantity::WeightedGap ) ) );
+    auto lm_vec = assembler.getSubmeshPressureTrueDofs();
+    const auto pressure = ADVector::constant( fields.fieldSpace(), fields.coordinateSpace(), std::move( lm_vec ) );
+    return physics.lagrangeMultiplierEnergy( gap, pressure );
+  }();
+  auto derivatives = energy.differentiate();
+  auto pressure = derivatives.hasPartial( gap ) ? derivatives.releasePartial( gap ) : fields.makeVector();
 
   ContactFormulationResult result;
   if ( !use_penalty ) {
@@ -263,10 +266,10 @@ ContactFormulationResult assembleNodalContactForces(
   auto gaps = detail::takeGapResult( quantities, use_penalty );
   result.gap = std::move( gaps.gap );
   result.dg_dx = std::move( gaps.dg_dx );
-  result.energy = derivatives.energy;
+  result.energy = derivatives.value;
   result.pressure.reset( pressure.release() );
-  result.force.reset( force_vec.release() );
-  result.df_dx.reset( df_dx.release() );
+  result.force.reset( derivatives.gradient.release() );
+  result.df_dx.reset( derivatives.hessian.release() );
   return result;
 }
 /**

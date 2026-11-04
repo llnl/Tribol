@@ -20,3 +20,4 @@ procedures.
    git_aliases
    common_plane_formulation
    pair_evaluation
+   global_ad

@@ -8,7 +8,8 @@
  * @brief Compare indexed nodal-field differentiation and assembly with explicit gap/area calculations.
  *
  * Manufactured gap/area values and sparse coordinate Jacobians isolate field-interface costs from search, quadrature,
- * and MFEM mesh transfers. Jacobians couple neighboring DOFs through mass/diffusion matrices; a supplied diagonal
+ * and MFEM mesh transfers. A distributed-operator path is compared against the same explicit reference.
+ * Jacobians couple neighboring DOFs through mass/diffusion matrices; a supplied diagonal
  * coordinate curvature exercises the inner Hessian term. Both implementations use Enzyme, the same weighted curvature,
  * and the same sparse matrix operations. Penalty reference inputs are clamped before timing, including Jacobian rows.
  * Numerical agreement is required before timing. Timings include allocations and destruction, use the slowest rank,
@@ -26,6 +27,7 @@
 #include <vector>
 #include "axom/slic/core/SimpleLogger.hpp"
 #include "tribol/mesh/MfemNodalEnergy.hpp"
+#include "tribol/mesh/GlobalAD.hpp"
 #include "tribol/physics/EnergyMortarEnergy.hpp"
 
 namespace {
@@ -380,6 +382,21 @@ void benchmarkEnergy( const char* method, const Expression& energy, const Fields
   };
   checkAgreement( assembleExplicit<UsePenalty>( fields, explicit_partials ),
                   assemble_generic( bound, generic_partials ), fields );
+  const auto global_calculation = [&] {
+    const auto inputs = fields.bind();
+    const auto variables = makeADFields( inputs );
+    const auto energy = [&] {
+      if constexpr ( UsePenalty )
+        return EnergyMortarNodal{}.penaltyEnergy( variables[0], variables[1], penalty, area_tolerance );
+      else {
+        const auto pressure = ADVector::constant( fields.space, fields.space, fields.multipliers );
+        return EnergyMortarNodal{}.lagrangeMultiplierEnergy( variables[0], pressure );
+      }
+    }();
+    auto result = energy.differentiate();
+    return CoordinateResult{ result.value, std::move( result.gradient ), std::move( result.hessian ) };
+  };
+  checkAgreement( assembleExplicit<UsePenalty>( fields, explicit_partials ), global_calculation(), fields );
   compare(
       method, "partials", options, fields, [&] { checksum += evaluateExplicit<UsePenalty>( energy, fields ).energy; },
       [&] { checksum += evaluateNodalEnergy( energy, bound, area_tolerance ).energy; } );
@@ -396,6 +413,12 @@ void benchmarkEnergy( const char* method, const Expression& energy, const Fields
         const auto inputs = fields.bind();
         checksum += assemble_generic( inputs, evaluateNodalEnergy( energy, inputs, area_tolerance ) ).energy;
       } );
+  compare(
+      method, "global_combined", options, fields,
+      [&] {
+        checksum += assembleExplicit<UsePenalty>( fields, evaluateExplicit<UsePenalty>( energy, fields ) ).energy;
+      },
+      [&] { checksum += global_calculation().energy; } );
 }
 }  // namespace
 

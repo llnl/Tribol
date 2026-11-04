@@ -76,6 +76,16 @@ class DifferentiableNodalFields {
   const DifferentiableNodalField& operator[]( IndexT index ) const { return fields_.at( index ); }
   /** @brief Read field-space metadata. @return Borrowed scalar field space. */
   const mfem::ParFiniteElementSpace& fieldSpace() const { return field_space_; }
+  /** @brief Read coordinate-space metadata. @return Borrowed independent-coordinate space. */
+  const mfem::ParFiniteElementSpace& coordinateSpace() const { return coordinate_space_; }
+  /**
+   * @brief Apply the shared field-curvature operation without outer energy products.
+   * @param weights First partials keyed by field index; absent fields have zero weight.
+   * @return Owned weighted coordinate Hessian.
+   * @throws std::logic_error The curvature operation is absent.
+   * @throws std::invalid_argument A weight or returned matrix has incompatible dimensions.
+   */
+  shared::ParSparseMat weightedCoordinateHessian( const NodalEnergyGradient& weights ) const;
   /** @brief Allocate a zero field true-DOF vector. @return Owned zero vector. */
   shared::ParVector makeVector() const;
 

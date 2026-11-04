@@ -56,6 +56,7 @@ set(tribol_headers
     mesh/MeshData.hpp
     mesh/MethodCouplingData.hpp
     mesh/MfemData.hpp
+    mesh/GlobalAD.hpp
     mesh/DifferentiableNodalField.hpp
     mesh/MfemNodalAssembler.hpp
     mesh/MfemContactAssembly.hpp
@@ -112,12 +113,14 @@ set(tribol_sources
     mesh/MeshData.cpp
     mesh/MethodCouplingData.cpp
     mesh/MfemData.cpp
+    mesh/GlobalAD.cpp
     mesh/DifferentiableNodalField.cpp
     mesh/MfemNodalAssembler.cpp
     mesh/MfemPairAssembler.cpp
 
     physics/AlignedMortar.cpp
     physics/CommonPlane.cpp
+    physics/ContactFormulation.cpp
     physics/ContactFormulationFactory.cpp
     physics/Mortar.cpp
     physics/PairContactFormulation.cpp

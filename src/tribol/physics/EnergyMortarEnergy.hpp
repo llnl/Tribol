@@ -14,6 +14,7 @@
 #include "tribol/geom/OffsetGap.hpp"
 #include "tribol/integ/PairIntegral.hpp"
 #include "tribol/physics/PairDefinition.hpp"
+#include "tribol/mesh/GlobalAD.hpp"
 
 namespace tribol {
 
@@ -78,6 +79,33 @@ struct EnergyMortarNodal {
     const auto g_tilde = min( weighted_gap, 0.0 );
     return 0.5 * penalty * sum( g_tilde, g_tilde, 1.0 / area );
   }
+
+#ifdef BUILD_REDECOMP
+  /**
+   * @brief Define nodal penalty energy directly on distributed AD vectors.
+   * @param weighted_gap Unclamped assembled gap with supplied coordinate derivatives.
+   * @param area Assembled tributary area with supplied coordinate derivatives.
+   * @param penalty Fixed penalty stiffness.
+   * @param area_tolerance Unsupported area magnitude; reciprocal values and derivatives are zero there.
+   * @return Global energy whose coordinate gradient and Hessian follow distributed operator rules.
+   */
+  ADScalar penaltyEnergy( const ADVector& weighted_gap, const ADVector& area, RealT penalty,
+                          RealT area_tolerance = 1.0e-14 ) const
+  {
+    const auto g = min( weighted_gap, 0.0 );
+    return 0.5 * penalty * sum( g, g, reciprocal( area, area_tolerance ) );
+  }
+  /**
+   * @brief Contract distributed multipliers and weighted gaps on the host.
+   * @param weighted_gap Assembled gap AD vector.
+   * @param pressure Pressure AD vector; LM multipliers are held fixed during coordinate differentiation.
+   * @return Global energy and its distributed derivative calculation.
+   */
+  ADScalar lagrangeMultiplierEnergy( const ADVector& weighted_gap, const ADVector& pressure ) const
+  {
+    return dot( pressure, weighted_gap );
+  }
+#endif
 
   /**
    * @brief Contract fixed pressure with either a numerical weighted gap or its assembled integral expression.

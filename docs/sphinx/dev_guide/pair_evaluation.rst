@@ -33,10 +33,16 @@ calculating derivatives. Definitions generate quadrature from current coordinate
 the domain supplies coordinates rather than cached points or weights. Assembly storage is sized from the supplied
 pair count. ``PairContactFormulation`` prepares the definition, searches for pairs, creates the domain and assembler,
 and calls the matching entry point. Existing activation, normalization, and result availability are preserved.
-Independent pair energies remain local sums; nodal energies are summed across the MPI communicator.
+Both independent pair and nodal energies are summed across the MPI communicator. Returned results can export their
+assembled energy or residual as global AD primitives through ``makeADEnergy()`` or ``makeADResidual()``; see
+:doc:`global_ad` for derivative availability and snapshot ownership.
 
-Assembled nodal energy expressions
+Scalar nodal energy expressions
 -----------------------------------
+
+The nodal contact formulation uses distributed vector/matrix arithmetic described in :doc:`global_ad`.
+The scalar-expression API below remains available for evaluating local energy partials with Enzyme, operator AD,
+or a custom evaluator. It can be used independently of the global arithmetic path.
 
 ``NodalIntegralExpressions.hpp`` represents the existing assembled weighted gap and tributary area with
 ``nodal_weighted_gap`` and ``nodal_area``. These select named components of each nodal state rather than assigning
@@ -212,8 +218,11 @@ Both paths use the two-argument ``RAP`` for diagonal outer-Hessian terms and the
 
 Manufactured values, neighboring-node sparse Jacobians, and nonzero diagonal coordinate curvature exercise both
 chain-rule terms without contact geometry. Energy, residual, and a nonconstant Jacobian action must agree before timing.
-Three calculations are reported separately: ``partials`` evaluates outer energy derivatives, ``chain_rule`` assembles
-residual and Jacobian from precomputed partials, and ``combined`` evaluates both, including indexed-field binding.
+Four calculations are reported separately: ``partials`` evaluates scalar-expression energy derivatives, ``chain_rule``
+assembles residual and Jacobian from precomputed partials, and ``combined`` evaluates both, including indexed-field
+binding. ``global_combined`` compares the same explicit reference with distributed AD operators, including field
+binding, global arithmetic, and both derivative orders. The generic timing columns describe the indexed implementation
+in the first three rows and the global implementation in ``global_combined`` rows.
 All timed calculations include result allocation and destruction. Input preparation, search, quadrature generation,
 geometry differentiation, and mesh transfers are excluded, so these are field-interface measurements rather than
 end-to-end contact timings.

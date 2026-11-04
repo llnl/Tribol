@@ -8,7 +8,7 @@
  * @brief Tests factory selection and changes to Energy Mortar quadrature order for both enforcement locations.
  * Direct gap and force calls check returned outputs and repeated calculations without a decomposition refresh.
  * One- and two-rank runs also check parent-only storage, switching locations, and changed penalties; decomposition
- * onto one rank covers a contact rank with no elements.
+ * onto one rank covers a contact rank with no elements. Exported AD energies check global values and derivatives.
  * Local quadrature accuracy is checked in tribol_pair_quadrature; gap and force derivatives have separate tests.
  */
 #include <gtest/gtest.h>
@@ -315,7 +315,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, uses_updated_penalties_without_redec
   EXPECT_NEAR( *updated.energy, 2.0 * energy, 1.0e-11 );
 }
 
-// Assembled force and Jacobian must match directional finite differences when both gap and tributary area vary.
+// Exported AD energy gradients and Hessians must match finite differences as gap, area, and edge length vary.
 TEST_P( EnergyMortarQuadratureSettingsTest, assembled_force_and_jacobian_match_directional_finite_difference )
 {
   tribol::setResidualGap( 0, 1.2 );
@@ -336,25 +336,24 @@ TEST_P( EnergyMortarQuadratureSettingsTest, assembled_force_and_jacobian_match_d
     tribol::updateMfemParallelDecomposition( 1, true );
     auto& cs = tribol::CouplingSchemeManager::getInstance().at( 0 );
     auto out = cs.getContactFormulation()->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView() );
-    if ( std::get<0>( GetParam() ) == tribol::EnforcementLocation::QuadraturePoint ) {
-      tribol::RealT global_energy = 0.0;
-      MPI_Allreduce( &*out.energy, &global_energy, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
-      out.energy = global_energy;
-    }
     return out;
   };
 
   const auto base = evaluate_at( 0.0 );
+  const auto derivatives = ( 2.0 * base.makeADEnergy( *fes_ ) ).differentiate();
+  EXPECT_NEAR( derivatives.value, 2.0 * *base.energy, 1.0e-12 );
   constexpr tribol::RealT step = 1.0e-6;
   const auto plus = evaluate_at( step );
   const auto minus = evaluate_at( -step );
 
-  const tribol::RealT directional_force = mfem::InnerProduct( MPI_COMM_WORLD, *base.force, direction_true );
+  const tribol::RealT directional_force =
+      0.5 * mfem::InnerProduct( MPI_COMM_WORLD, derivatives.gradient.get(), direction_true );
   const tribol::RealT fd_energy = ( *plus.energy - *minus.energy ) / ( 2.0 * step );
   EXPECT_NEAR( directional_force, fd_energy, 1.0e-5 );
 
   mfem::Vector jv( fes_.get()->GetTrueVSize() );
-  base.df_dx->Mult( direction_true, jv );
+  derivatives.hessian.get().Mult( direction_true, jv );
+  jv *= 0.5;
   mfem::Vector fd_force( *plus.force );
   fd_force -= *minus.force;
   fd_force *= 1.0 / ( 2.0 * step );

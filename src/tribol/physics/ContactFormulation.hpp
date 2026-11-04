@@ -17,6 +17,7 @@
 #include <stdexcept>
 #ifdef BUILD_REDECOMP
 #include "mfem.hpp"
+#include "tribol/mesh/GlobalAD.hpp"
 #endif
 
 namespace tribol {
@@ -29,7 +30,7 @@ namespace tribol {
  * formulation; the associated MFEM spaces and MPI communicator must remain alive.
  */
 struct ContactFormulationResult {
-  std::optional<RealT> energy;     ///< Contact energy, when the method defines one.
+  std::optional<RealT> energy;     ///< Globally summed contact energy, when the method defines one.
   std::optional<RealT> time_step;  ///< Maximum allowable timestep, when calculated.
 #ifdef BUILD_REDECOMP
   std::unique_ptr<mfem::HypreParVector> force;     ///< Contact residual on parent displacement true DOFs.
@@ -38,6 +39,27 @@ struct ContactFormulationResult {
   std::unique_ptr<mfem::HypreParMatrix> df_dx;     ///< Derivative of the contact residual with respect to coordinates.
   std::unique_ptr<mfem::HypreParMatrix> dg_dx;     ///< Derivative of weighted nodal gaps with respect to coordinates.
   std::unique_ptr<mfem::HypreParMatrix> df_dp;     ///< Derivative of the contact residual with respect to LM values.
+
+  /**
+   * @brief Copy the energy and its assembled coordinate derivatives into a global AD scalar.
+   * @param coordinates Parent coordinate space; must outlive the returned calculation.
+   * @return Owned energy, gradient, and Hessian snapshots, usable after this result is changed or destroyed.
+   * @throws std::logic_error Energy, force, or df_dx was not calculated.
+   * @throws std::invalid_argument Derivative dimensions do not match the supplied space.
+   */
+  ADScalar makeADEnergy( const mfem::ParFiniteElementSpace& coordinates ) const;
+
+  /**
+   * @brief Copy the residual and its coordinate Jacobian into a global AD vector.
+   * @param coordinates Parent coordinate and residual space; must outlive the returned calculation.
+   * @param curvature Optional weighted second coordinate derivative of the residual. Captures must outlive use.
+   * @return Owned value and Jacobian snapshots. Without curvature, first derivatives remain available but second
+   * derivative requests throw std::logic_error; residual curvature is not assumed to be zero.
+   * @throws std::logic_error Force or df_dx was not calculated.
+   * @throws std::invalid_argument Dimensions do not match the supplied space.
+   */
+  ADVector makeADResidual( const mfem::ParFiniteElementSpace& coordinates,
+                           ADVector::WeightedHessian curvature = {} ) const;
 #endif
 };
 

@@ -177,6 +177,7 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
       tribol_mfem_common_plane.cpp
       tribol_mfem_mortar_lm.cpp
       tribol_mfem_jacobian.cpp
+      tribol_global_ad.cpp
       tribol_nodal_field.cpp
       tribol_mfem_pair_assembler.cpp
       tribol_pair_method.cpp
@@ -218,6 +219,9 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
   blt_add_test( NAME tribol_pair_method
                 COMMAND tribol_pair_method_test
                 NUM_MPI_TASKS 1 )
+
+  blt_add_test(NAME tribol_global_ad
+               COMMAND tribol_global_ad_test)
 
   blt_add_test(NAME tribol_nodal_field
                COMMAND tribol_nodal_field_test)

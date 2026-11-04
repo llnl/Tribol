@@ -58,21 +58,26 @@ shared::ParVector DifferentiableNodalFields::assembleForce( const NodalEnergyDer
   return zero;
 }
 
-shared::ParSparseMat DifferentiableNodalFields::assembleJacobian( const NodalEnergyDerivatives& derivatives ) const
+shared::ParSparseMat DifferentiableNodalFields::weightedCoordinateHessian( const NodalEnergyGradient& weights ) const
 {
   if ( !weighted_hessian_ )
     throw std::logic_error( "Coordinate assembly requires a weighted field Hessian operation." );
-  for ( const auto& [index, partial] : derivatives.gradient ) validatePartial( index, partial );
+  for ( const auto& [index, partial] : weights ) validatePartial( index, partial );
+  auto matrix = weighted_hessian_( weights );
+  if ( matrix.height() != coordinate_space_.GetTrueVSize() || matrix.width() != coordinate_space_.GetTrueVSize() )
+    throw std::invalid_argument( "Weighted field Hessian must use coordinate true DOFs." );
+  return matrix;
+}
+
+shared::ParSparseMat DifferentiableNodalFields::assembleJacobian( const NodalEnergyDerivatives& derivatives ) const
+{
   for ( const auto& [indices, partial] : derivatives.hessian ) {
     validatePartial( indices.first, partial );
     validatePartial( indices.second, partial );
     if ( indices.first > indices.second )
       throw std::invalid_argument( "Supply only the outer Hessian's upper triangle." );
   }
-  auto jacobian = weighted_hessian_( derivatives.gradient );
-  if ( jacobian.height() != coordinate_space_.GetTrueVSize() || jacobian.width() != coordinate_space_.GetTrueVSize() ) {
-    throw std::invalid_argument( "Weighted field Hessian must use coordinate true DOFs." );
-  }
+  auto jacobian = weightedCoordinateHessian( derivatives.gradient );
   for ( const auto& [indices, partial] : derivatives.hessian ) {
     const auto diagonal = shared::ParSparseMat::diagonalMatrix( field_space_.GetComm(), field_space_.GlobalTrueVSize(),
                                                                 field_space_.GetTrueDofOffsets(), partial.get() );

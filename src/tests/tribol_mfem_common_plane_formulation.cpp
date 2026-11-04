@@ -7,7 +7,8 @@
  * @file
  * @brief Check explicit MFEM Common Plane selection, nonmatching constant-traction patches, and parent Jacobians.
  * The same tests run on one and two ranks; decomposition onto rank zero exercises a rank without contact elements.
- * Direct calls also check output availability and validity after destroying the formulation.
+ * Direct calls check output availability and validity after destroying the formulation. Exported AD residuals check
+ * first derivatives and reject second-derivative requests without curvature.
  * Local quadrature and full pair derivatives are checked in tribol_common_plane_formulation.
  */
 #include <cmath>
@@ -181,7 +182,7 @@ TEST_P( MfemCommonPlaneTest, returns_owned_outputs_without_retaining_results )
   EXPECT_TRUE( std::isfinite( norm( action ) ) );
 }
 
-// Parent Jacobians must differentiate assembled forces through nonmatching pair maps and MPI transfers.
+// Exported AD residuals preserve coordinate derivatives through nonmatching pair maps and MPI transfers.
 TEST_P( MfemCommonPlaneTest, assembled_jacobian_matches_finite_difference )
 {
   // Shift only the upper body so projection endpoints do not coincide. Rotating either edge under perturbation
@@ -198,8 +199,19 @@ TEST_P( MfemCommonPlaneTest, assembled_jacobian_matches_finite_difference )
     if ( upper_nodes[node] ) ( *coords_ )[node] += 0.13;
   enable();
   evaluate();
+  const auto& outputs = scheme().getContactFormulationResult();
+  const auto residual = outputs.makeADResidual( *fes_ );
+  EXPECT_THROW( outputs.makeADEnergy( *fes_ ), std::logic_error );
+  EXPECT_THROW( sum( residual ).hessian(), std::logic_error );
   auto jacobian = getMfemDfDx( 0 );
   ASSERT_NE( jacobian, nullptr );
+  const auto differentiated = ( 2.0 * residual ).jacobian();
+  const auto gradient = sum( residual ).gradient();
+  mfem::Vector ones( fes_->GetTrueVSize() ), transpose_action( fes_->GetTrueVSize() );
+  ones = 1.0;
+  jacobian->MultTranspose( ones, transpose_action );
+  transpose_action -= gradient.get();
+  EXPECT_LT( norm( transpose_action ), 1.0e-12 );
   const mfem::ParGridFunction original( *coords_ );
   mfem::VectorFunctionCoefficient coefficient( 2, []( const mfem::Vector& x, mfem::Vector& v ) {
     v.SetSize( 2 );
@@ -211,7 +223,8 @@ TEST_P( MfemCommonPlaneTest, assembled_jacobian_matches_finite_difference )
   mfem::Vector true_direction;
   direction.GetTrueDofs( true_direction );
   mfem::Vector predicted( true_direction.Size() );
-  jacobian->Mult( true_direction, predicted );
+  differentiated.get().Mult( true_direction, predicted );
+  predicted *= 0.5;
   constexpr RealT step = 1.0e-6;
   *coords_ = original;
   coords_->Add( step, direction );
