@@ -37,39 +37,29 @@ EnergyMortarAdapter<EnforcementLocation, QuadratureRule>::EnergyMortarAdapter(
   params_.residual_gap = residual_gap;
 
   evaluator_ = std::make_unique<EnergyMortarCalculator<QuadratureRule>>( params_, quadrature_rule_ );
-
-  this->init( this );
-}
-
-template <typename Adapter>
-void Nodal<Adapter>::init( Adapter* adapter )
-{
-  // Allocate the (pressure) true-dof vector early so host code can set it via tribol::getMfemContactPressure() after
-  // the formulation is created. In penalty mode this is overwritten in updateNodalForces(); in LM mode it is treated as
-  // the Lagrange multiplier vector (lambda).
-  pressure_vec_ =
-      shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
-  pressure_vec_.fill( 0.0 );
 }
 
 template <template <typename> class EnforcementLocation, typename QuadratureRule>
-void EnergyMortarAdapter<EnforcementLocation, QuadratureRule>::findCandidatePairs( MeshData::Viewer mesh1,
-                                                                                   MeshData::Viewer mesh2 )
+ArrayT<InterfacePair> EnergyMortarAdapter<EnforcementLocation, QuadratureRule>::findCandidatePairs(
+    MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
 {
   const auto candidates = coarse_search_->findCandidatePairs( mesh1, mesh2 );
-  pairs_ = refined_search_->filterCandidatePairs( candidates, mesh1, mesh2 );
+  return refined_search_->filterCandidatePairs( candidates, mesh1, mesh2 );
 }
 
 template <typename Adapter>
-void Nodal<Adapter>::updateNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 )
+typename Nodal<Adapter>::NodalData Nodal<Adapter>::computeNodalData( MeshData::Viewer mesh1,
+                                                                     MeshData::Viewer mesh2 ) const
 {
-  auto* adapter = static_cast<Adapter*>( this );
-  adapter->findCandidatePairs( mesh1, mesh2 );
+  const auto* adapter = static_cast<const Adapter*>( this );
+  NodalData data;
+  data.pairs = adapter->findCandidatePairs( mesh1, mesh2 );
 
   // NOTE: user should have called updateMfemParallelDecomposition() with updated coords before calling this
 
   // Tribol level data structures for storing gap, area, and derivatives
-  auto& redecomp_gap = adapter->submesh_data_.GetRedecompGap();
+  mfem::GridFunction redecomp_gap( adapter->submesh_data_.GetRedecompGap().FESpace() );
+  redecomp_gap = 0.0;
   mfem::GridFunction redecomp_area( redecomp_gap.FESpace() );
   redecomp_area = 0.0;
 
@@ -92,15 +82,15 @@ void Nodal<Adapter>::updateNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer m
   PackedPairJacobianContribs dA_lm_m( pressure_surface_fes, displacement_surface_fes, pressure_redecomp_fes,
                                       displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
 
-  dg_lm_nm.reserve( adapter->pairs_.size(), 8 );
-  dg_lm_m.reserve( adapter->pairs_.size(), 8 );
-  dA_lm_nm.reserve( adapter->pairs_.size(), 8 );
-  dA_lm_m.reserve( adapter->pairs_.size(), 8 );
+  dg_lm_nm.reserve( data.pairs.size(), 8 );
+  dg_lm_m.reserve( data.pairs.size(), 8 );
+  dA_lm_nm.reserve( data.pairs.size(), 8 );
+  dA_lm_m.reserve( data.pairs.size(), 8 );
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
   // Compute local contributions
-  for ( const auto& pair : adapter->pairs_ ) {
+  for ( const auto& pair : data.pairs ) {
     const auto elem1 = static_cast<int>( pair.element_id1_ );
     const auto elem2 = static_cast<int>( pair.element_id2_ );
 
@@ -155,19 +145,19 @@ void Nodal<Adapter>::updateNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer m
   // Move gap and area to submesh level vectors
   mfem::ParLinearForm g_tilde_linear_form(
       const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
-  adapter->submesh_data_.GetSubmeshGap( g_tilde_linear_form );
+  adapter->submesh_data_.GetPressureTransfer().RedecompToSubmesh( redecomp_gap, g_tilde_linear_form );
   auto& P_submesh = *adapter->submesh_data_.GetSubmeshFESpace().GetProlongationMatrix();
-  adapter->g_tilde_vec_ =
+  data.g_tilde_vec =
       shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
-  adapter->g_tilde_vec_.fill( 0.0 );
-  P_submesh.MultTranspose( g_tilde_linear_form, adapter->g_tilde_vec_.get() );
+  data.g_tilde_vec.fill( 0.0 );
+  P_submesh.MultTranspose( g_tilde_linear_form, data.g_tilde_vec.get() );
 
   mfem::Array<int> rows_to_elim;
   if ( !adapter->tied_contact_ && adapter->use_penalty_ ) {
-    rows_to_elim.Reserve( adapter->g_tilde_vec_.size() );
-    for ( int i{ 0 }; i < adapter->g_tilde_vec_.size(); ++i ) {
-      if ( adapter->g_tilde_vec_[i] > 0.0 ) {
-        adapter->g_tilde_vec_[i] = 0.0;
+    rows_to_elim.Reserve( data.g_tilde_vec.size() );
+    for ( int i{ 0 }; i < data.g_tilde_vec.size(); ++i ) {
+      if ( data.g_tilde_vec[i] > 0.0 ) {
+        data.g_tilde_vec[i] = 0.0;
         rows_to_elim.push_back( i );
       }
     }
@@ -176,134 +166,161 @@ void Nodal<Adapter>::updateNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer m
   mfem::ParLinearForm A_linear_form(
       const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
   adapter->submesh_data_.GetPressureTransfer().RedecompToSubmesh( redecomp_area, A_linear_form );
-  adapter->A_vec_ =
+  data.A_vec =
       shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
-  adapter->A_vec_.fill( 0.0 );
-  P_submesh.MultTranspose( A_linear_form, adapter->A_vec_.get() );
+  data.A_vec.fill( 0.0 );
+  P_submesh.MultTranspose( A_linear_form, data.A_vec.get() );
 
-  adapter->gap_vec_ = adapter->g_tilde_vec_.divide( adapter->A_vec_, adapter->area_tol_ );
+  data.gap_vec = data.g_tilde_vec.divide( data.A_vec, adapter->area_tol_ );
 
   // Move gap and area derivatives to (pressure true-dof rows, displacement true-dof cols)
   std::vector<PackedPairJacobianContribs> dg_contribs;
   dg_contribs.reserve( 2 );
   dg_contribs.push_back( std::move( dg_lm_nm ) );
   dg_contribs.push_back( std::move( dg_lm_m ) );
-  adapter->dg_tilde_dx_ = adapter->jac_data_.GetMfemJacobian(
+  data.dg_tilde_dx = adapter->jac_data_.GetMfemJacobian(
       &adapter->submesh_data_.GetSubmeshFESpace(), adapter->mesh_data_.GetParentCoords().ParFESpace(), dg_contribs );
   if ( !adapter->tied_contact_ && adapter->use_penalty_ ) {
     // technically, we should do this on all the vectors/matrices below, but it looks like the mutliplication operators
     // below will zero them out anyway
-    adapter->dg_tilde_dx_.eliminateRows( rows_to_elim );
+    data.dg_tilde_dx.eliminateRows( rows_to_elim );
   }
 
   std::vector<PackedPairJacobianContribs> dA_contribs;
   dA_contribs.reserve( 2 );
   dA_contribs.push_back( std::move( dA_lm_nm ) );
   dA_contribs.push_back( std::move( dA_lm_m ) );
-  adapter->dA_dx_ = adapter->jac_data_.GetMfemJacobian(
-      &adapter->submesh_data_.GetSubmeshFESpace(), adapter->mesh_data_.GetParentCoords().ParFESpace(), dA_contribs );
+  data.dA_dx = adapter->jac_data_.GetMfemJacobian( &adapter->submesh_data_.GetSubmeshFESpace(),
+                                                   adapter->mesh_data_.GetParentCoords().ParFESpace(), dA_contribs );
+  return data;
 }
 
 template <typename Adapter>
-void Nodal<Adapter>::updateNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 )
+ContactFormulationResult Nodal<Adapter>::takeGapResult( NodalData& data ) const
 {
-  auto* adapter = static_cast<Adapter*>( this );
-  updateNodalGaps( mesh1, mesh2 );
+  const auto* adapter = static_cast<const Adapter*>( this );
+  ContactFormulationResult result;
+  result.gap.reset( adapter->use_penalty_ ? data.gap_vec.release() : data.g_tilde_vec.release() );
+  result.dg_dx.reset( data.dg_tilde_dx.release() );
+  return result;
+}
+
+template <typename Adapter>
+ContactFormulationResult Nodal<Adapter>::computeNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
+{
+  auto data = computeNodalData( mesh1, mesh2 );
+  return takeGapResult( data );
+}
+
+template <typename Adapter>
+ContactFormulationResult Nodal<Adapter>::computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
+{
+  const auto* adapter = static_cast<const Adapter*>( this );
+  auto data = computeNodalData( mesh1, mesh2 );
+  shared::ParVector pressure_vec;
+  shared::ParVector force_vec;
+  shared::ParSparseMat df_dx;
 
   if ( adapter->use_penalty_ ) {
     // Penalty mode: p = k * (g_tilde / A)
-    adapter->pressure_vec_ = adapter->params_.k * adapter->gap_vec_;
+    pressure_vec = adapter->params_.k * data.gap_vec;
   } else {
-    // LM mode: adapter->pressure_vec_ is treated as the Lagrange multiplier vector (lambda)
-    SLIC_ERROR_ROOT_IF( adapter->submesh_data_.GetSubmeshFESpace().GetTrueVSize() != adapter->pressure_vec_.size(),
-                        "LM vector is not initialized. Call tribol::update() once to initialize the formulation." );
-    SLIC_ERROR_ROOT_IF( adapter->pressure_vec_.size() != adapter->g_tilde_vec_.size(),
+    // Read caller-supplied LM values from the current submesh field.
+    pressure_vec =
+        shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
+    adapter->submesh_data_.GetSubmeshPressure().GetTrueDofs( pressure_vec.get() );
+    SLIC_ERROR_ROOT_IF( pressure_vec.size() != data.g_tilde_vec.size(),
                         "LM vector size mismatch with contact dofs (g_tilde)." );
   }
 
-  adapter->energy_ = adapter->pressure_vec_.dot( adapter->g_tilde_vec_ );
+  const RealT energy = pressure_vec.dot( data.g_tilde_vec );
 
   if ( !adapter->use_penalty_ ) {
     // -------------------------------------------------------------------------
     // LM mode: force = G^T * lambda and df/dx = lambda · d^2(g_tilde)/dx^2
     // -------------------------------------------------------------------------
-    adapter->force_vec_ = adapter->pressure_vec_ * adapter->dg_tilde_dx_;
+    force_vec = pressure_vec * data.dg_tilde_dx;
 
     mfem::GridFunction redecomp_lambda( adapter->submesh_data_.GetRedecompGap() );
     mfem::ParGridFunction submesh_lambda(
         const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
-    submesh_lambda.SetFromTrueDofs( adapter->pressure_vec_.get() );
+    submesh_lambda.SetFromTrueDofs( pressure_vec.get() );
     adapter->submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_lambda, redecomp_lambda );
 
-    adapter->df_dx_ = computeDfDxSecondDerivativesLM( adapter, mesh1, mesh2, redecomp_lambda );
-    return;
+    df_dx = computeDfDxSecondDerivativesLM( adapter, mesh1, mesh2, data.pairs.view(), redecomp_lambda );
+  } else {
+    // ---------------------------------------------------------------------------
+    // Penalty mode: force and Jacobian include pressure/area coupling terms
+    // ---------------------------------------------------------------------------
+    auto k_over_a = adapter->params_.k * data.A_vec.inverse( adapter->area_tol_ );
+    auto p_over_a = pressure_vec.divide( data.A_vec, adapter->area_tol_ );
+
+    shared::ParSparseMat dp_dx( data.dg_tilde_dx.get() );
+    dp_dx->ScaleRows( k_over_a.get() );
+    shared::ParSparseMat dp_dx_temp( data.dA_dx.get() );
+    dp_dx_temp->ScaleRows( p_over_a.get() );
+    dp_dx -= dp_dx_temp;
+
+    force_vec = ( pressure_vec * data.dg_tilde_dx ) + ( data.g_tilde_vec * dp_dx );
+
+    // TODO (EBC): Move transfer path-specific logic out of this file
+    mfem::GridFunction redecomp_pressure( adapter->submesh_data_.GetRedecompGap() );
+    mfem::ParGridFunction submesh_pressure(
+        const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
+    submesh_pressure.SetFromTrueDofs( pressure_vec.get() );
+    adapter->submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_pressure, redecomp_pressure );
+
+    mfem::GridFunction redecomp_g_tilde( adapter->submesh_data_.GetRedecompGap() );
+    mfem::ParGridFunction submesh_g_tilde(
+        const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
+    submesh_g_tilde.SetFromTrueDofs( data.g_tilde_vec.get() );
+    adapter->submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_g_tilde, redecomp_g_tilde );
+
+    mfem::GridFunction redecomp_A( adapter->submesh_data_.GetRedecompGap() );
+    mfem::ParGridFunction submesh_A(
+        const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
+    submesh_A.SetFromTrueDofs( data.A_vec.get() );
+    adapter->submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_A, redecomp_A );
+
+    df_dx = computeDfDxSecondDerivativesPenalty( adapter, mesh1, mesh2, data.pairs.view(), redecomp_pressure,
+                                                 redecomp_g_tilde, redecomp_A );
+
+    auto pg2_over_asq = ( 2.0 * pressure_vec )
+                            .multiplyInPlace( data.g_tilde_vec )
+                            .divideInPlace( data.A_vec, adapter->area_tol_ )
+                            .divideInPlace( data.A_vec, adapter->area_tol_ );
+
+    auto& submesh_fes = adapter->submesh_data_.GetSubmeshFESpace();
+    auto p_over_a_diag = shared::ParSparseMat::diagonalMatrix( submesh_fes.GetComm(), submesh_fes.GlobalTrueVSize(),
+                                                               submesh_fes.GetTrueDofOffsets(), p_over_a.get() );
+    auto pg2_over_asq_diag = shared::ParSparseMat::diagonalMatrix(
+        submesh_fes.GetComm(), submesh_fes.GlobalTrueVSize(), submesh_fes.GetTrueDofOffsets(), pg2_over_asq.get() );
+
+    df_dx -= shared::ParSparseMat::rap( data.dg_tilde_dx, p_over_a_diag, data.dA_dx );
+    df_dx -= shared::ParSparseMat::rap( data.dA_dx, p_over_a_diag, data.dg_tilde_dx );
+    df_dx += shared::ParSparseMat::rap( data.dA_dx, pg2_over_asq_diag, data.dg_tilde_dx );
+    df_dx += dp_dx.transpose() * data.dg_tilde_dx;
+    df_dx += data.dg_tilde_dx.transpose() * dp_dx;
   }
-
-  // ---------------------------------------------------------------------------
-  // Penalty mode: force and Jacobian include pressure/area coupling terms
-  // ---------------------------------------------------------------------------
-  auto k_over_a = adapter->params_.k * adapter->A_vec_.inverse( adapter->area_tol_ );
-  auto p_over_a = adapter->pressure_vec_.divide( adapter->A_vec_, adapter->area_tol_ );
-
-  shared::ParSparseMat dp_dx( adapter->dg_tilde_dx_.get() );
-  dp_dx->ScaleRows( k_over_a.get() );
-  shared::ParSparseMat dp_dx_temp( adapter->dA_dx_.get() );
-  dp_dx_temp->ScaleRows( p_over_a.get() );
-  dp_dx -= dp_dx_temp;
-
-  adapter->force_vec_ = ( adapter->pressure_vec_ * adapter->dg_tilde_dx_ ) + ( adapter->g_tilde_vec_ * dp_dx );
-
-  // TODO (EBC): Move transfer path-specific logic out of this file
-  mfem::GridFunction redecomp_pressure( adapter->submesh_data_.GetRedecompGap() );
-  mfem::ParGridFunction submesh_pressure(
-      const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
-  submesh_pressure.SetFromTrueDofs( adapter->pressure_vec_.get() );
-  adapter->submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_pressure, redecomp_pressure );
-
-  mfem::GridFunction redecomp_g_tilde( adapter->submesh_data_.GetRedecompGap() );
-  mfem::ParGridFunction submesh_g_tilde(
-      const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
-  submesh_g_tilde.SetFromTrueDofs( adapter->g_tilde_vec_.get() );
-  adapter->submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_g_tilde, redecomp_g_tilde );
-
-  mfem::GridFunction redecomp_A( adapter->submesh_data_.GetRedecompGap() );
-  mfem::ParGridFunction submesh_A(
-      const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
-  submesh_A.SetFromTrueDofs( adapter->A_vec_.get() );
-  adapter->submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_A, redecomp_A );
-
-  adapter->df_dx_ =
-      computeDfDxSecondDerivativesPenalty( adapter, mesh1, mesh2, redecomp_pressure, redecomp_g_tilde, redecomp_A );
-
-  auto pg2_over_asq = ( 2.0 * adapter->pressure_vec_ )
-                          .multiplyInPlace( adapter->g_tilde_vec_ )
-                          .divideInPlace( adapter->A_vec_, adapter->area_tol_ )
-                          .divideInPlace( adapter->A_vec_, adapter->area_tol_ );
-
-  auto& submesh_fes = adapter->submesh_data_.GetSubmeshFESpace();
-  auto p_over_a_diag = shared::ParSparseMat::diagonalMatrix( submesh_fes.GetComm(), submesh_fes.GlobalTrueVSize(),
-                                                             submesh_fes.GetTrueDofOffsets(), p_over_a.get() );
-  auto pg2_over_asq_diag = shared::ParSparseMat::diagonalMatrix( submesh_fes.GetComm(), submesh_fes.GlobalTrueVSize(),
-                                                                 submesh_fes.GetTrueDofOffsets(), pg2_over_asq.get() );
-
-  adapter->df_dx_ -= shared::ParSparseMat::rap( adapter->dg_tilde_dx_, p_over_a_diag, adapter->dA_dx_ );
-  adapter->df_dx_ -= shared::ParSparseMat::rap( adapter->dA_dx_, p_over_a_diag, adapter->dg_tilde_dx_ );
-  adapter->df_dx_ += shared::ParSparseMat::rap( adapter->dA_dx_, pg2_over_asq_diag, adapter->dg_tilde_dx_ );
-  adapter->df_dx_ += dp_dx.transpose() * adapter->dg_tilde_dx_;
-  adapter->df_dx_ += adapter->dg_tilde_dx_.transpose() * dp_dx;
-}
-
-template <template <typename> class EnforcementLocation, typename QuadratureRule>
-RealT EnergyMortarAdapter<EnforcementLocation, QuadratureRule>::computeTimeStep()
-{
-  SLIC_INFO_ROOT( "computeTimestep() not implemented for EnergyMortar" );
-  // TODO: implement timestep calculation
-  return 1.0;
+  ContactFormulationResult result;
+  if ( !adapter->use_penalty_ ) {
+    auto df_dp = data.dg_tilde_dx.transpose();
+    result.df_dp.reset( df_dp.release() );
+  }
+  auto gaps = takeGapResult( data );
+  result.gap = std::move( gaps.gap );
+  result.dg_dx = std::move( gaps.dg_dx );
+  result.energy = energy;
+  result.pressure.reset( pressure_vec.release() );
+  result.force.reset( force_vec.release() );
+  result.df_dx.reset( df_dx.release() );
+  return result;
 }
 
 template <typename Adapter>
-shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* adapter, MeshData::Viewer mesh1,
+shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( const Adapter* adapter, MeshData::Viewer mesh1,
                                                                      MeshData::Viewer mesh2,
+                                                                     ArrayViewT<const InterfacePair> pairs,
                                                                      const mfem::GridFunction& redecomp_lambda )
 {
   const bool use_lor = ( adapter->mesh_data_.GetLORMesh() != nullptr );
@@ -322,14 +339,14 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* ad
   PackedPairJacobianContribs df_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
                                      displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
 
-  df_nm_nm.reserve( adapter->pairs_.size(), 16 );
-  df_nm_m.reserve( adapter->pairs_.size(), 16 );
-  df_m_nm.reserve( adapter->pairs_.size(), 16 );
-  df_m_m.reserve( adapter->pairs_.size(), 16 );
+  df_nm_nm.reserve( pairs.size(), 16 );
+  df_nm_m.reserve( pairs.size(), 16 );
+  df_m_nm.reserve( pairs.size(), 16 );
+  df_m_m.reserve( pairs.size(), 16 );
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
-  for ( auto& pair : adapter->pairs_ ) {
+  for ( auto& pair : pairs ) {
     const auto elem1 = static_cast<int>( pair.element_id1_ );
     const auto node11 = mesh1.getConnectivity()( elem1, 0 );
     const auto node12 = mesh1.getConnectivity()( elem1, 1 );
@@ -371,11 +388,10 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* ad
 }
 
 template <typename Adapter>
-shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapter* adapter, MeshData::Viewer mesh1,
-                                                                          MeshData::Viewer mesh2,
-                                                                          const mfem::GridFunction& redecomp_pressure,
-                                                                          const mfem::GridFunction& redecomp_g_tilde,
-                                                                          const mfem::GridFunction& redecomp_A )
+shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty(
+    const Adapter* adapter, MeshData::Viewer mesh1, MeshData::Viewer mesh2, ArrayViewT<const InterfacePair> pairs,
+    const mfem::GridFunction& redecomp_pressure, const mfem::GridFunction& redecomp_g_tilde,
+    const mfem::GridFunction& redecomp_A )
 {
   const bool use_lor = ( adapter->mesh_data_.GetLORMesh() != nullptr );
   const auto& displacement_surface_fes =
@@ -393,14 +409,14 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
   PackedPairJacobianContribs df_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
                                      displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
 
-  df_nm_nm.reserve( adapter->pairs_.size(), 16 );
-  df_nm_m.reserve( adapter->pairs_.size(), 16 );
-  df_m_nm.reserve( adapter->pairs_.size(), 16 );
-  df_m_m.reserve( adapter->pairs_.size(), 16 );
+  df_nm_nm.reserve( pairs.size(), 16 );
+  df_nm_m.reserve( pairs.size(), 16 );
+  df_m_nm.reserve( pairs.size(), 16 );
+  df_m_m.reserve( pairs.size(), 16 );
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
-  for ( auto& pair : adapter->pairs_ ) {
+  for ( auto& pair : pairs ) {
     const auto elem1 = static_cast<int>( pair.element_id1_ );
     const auto node11 = mesh1.getConnectivity()( elem1, 0 );
     const auto node12 = mesh1.getConnectivity()( elem1, 1 );
@@ -454,10 +470,12 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
 }
 
 template <typename Adapter>
-void QuadraturePoint<Adapter>::updateNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 )
+ContactFormulationResult QuadraturePoint<Adapter>::computeNodalForces( MeshData::Viewer mesh1,
+                                                                       MeshData::Viewer mesh2 ) const
 {
-  auto* adapter = static_cast<Adapter*>( this );
-  adapter->findCandidatePairs( mesh1, mesh2 );
+  const auto* adapter = static_cast<const Adapter*>( this );
+  const auto pairs = adapter->findCandidatePairs( mesh1, mesh2 );
+  RealT energy = 0.0;
 
   SLIC_ERROR_ROOT_IF( !adapter->use_penalty_,
                       "ENERGY_MORTAR quadrature-point enforcement requires penalty enforcement." );
@@ -478,19 +496,18 @@ void QuadraturePoint<Adapter>::updateNodalForces( MeshData::Viewer mesh1, MeshDa
   PackedPairJacobianContribs df_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
                                      displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
 
-  df_nm_nm.reserve( adapter->pairs_.size(), 16 );
-  df_nm_m.reserve( adapter->pairs_.size(), 16 );
-  df_m_nm.reserve( adapter->pairs_.size(), 16 );
-  df_m_m.reserve( adapter->pairs_.size(), 16 );
+  df_nm_nm.reserve( pairs.size(), 16 );
+  df_nm_m.reserve( pairs.size(), 16 );
+  df_m_nm.reserve( pairs.size(), 16 );
+  df_m_m.reserve( pairs.size(), 16 );
 
   mfem::GridFunction redecomp_force( const_cast<mfem::FiniteElementSpace*>( &displacement_redecomp_fes ) );
   redecomp_force = 0.0;
   const int scalar_size = redecomp_force.FESpace()->GetVSize() / redecomp_force.FESpace()->GetVDim();
-  adapter->energy_ = 0.0;
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
-  for ( const auto& pair : adapter->pairs_ ) {
+  for ( const auto& pair : pairs ) {
     const auto elem1 = static_cast<int>( pair.element_id1_ );
     const auto elem2 = static_cast<int>( pair.element_id2_ );
     const auto qp_data = adapter->evaluator_->compute_quadrature_point_penalty_data( pair, mesh1, mesh2 );
@@ -499,7 +516,7 @@ void QuadraturePoint<Adapter>::updateNodalForces( MeshData::Viewer mesh1, MeshDa
       continue;
     }
 
-    adapter->energy_ += qp_data.energy;
+    energy += qp_data.energy;
 
     auto A_conn = mesh1.getConnectivity()( elem1 );
     auto B_conn = mesh2.getConnectivity()( elem2 );
@@ -531,12 +548,12 @@ void QuadraturePoint<Adapter>::updateNodalForces( MeshData::Viewer mesh1, MeshDa
   }
 
   auto* parent_fes = adapter->mesh_data_.GetParentCoords().ParFESpace();
-  adapter->force_vec_ = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( parent_fes ) );
-  adapter->force_vec_.fill( 0.0 );
+  shared::ParVector force_vec( const_cast<mfem::ParFiniteElementSpace*>( parent_fes ) );
+  force_vec.fill( 0.0 );
   mfem::Vector parent_force( parent_fes->GetVSize() );
   parent_force = 0.0;
   adapter->mesh_data_.GetParentRedecompTransfer().RedecompToParent( redecomp_force, parent_force );
-  parent_fes->GetProlongationMatrix()->MultTranspose( parent_force, adapter->force_vec_.get() );
+  parent_fes->GetProlongationMatrix()->MultTranspose( parent_force, force_vec.get() );
 
   std::vector<PackedPairJacobianContribs> df_contribs;
   df_contribs.reserve( 4 );
@@ -544,24 +561,12 @@ void QuadraturePoint<Adapter>::updateNodalForces( MeshData::Viewer mesh1, MeshDa
   df_contribs.push_back( std::move( df_nm_m ) );
   df_contribs.push_back( std::move( df_m_nm ) );
   df_contribs.push_back( std::move( df_m_m ) );
-  adapter->df_dx_ = adapter->jac_data_.GetMfemJacobian( parent_fes, parent_fes, df_contribs );
-}
-
-template <template <typename> class EnforcementLocation, typename QuadratureRule>
-std::unique_ptr<mfem::HypreParMatrix> EnergyMortarAdapter<EnforcementLocation, QuadratureRule>::getMfemDfDx() const
-{
-  return std::unique_ptr<mfem::HypreParMatrix>( df_dx_.release() );
-}
-
-template <typename Adapter>
-std::unique_ptr<mfem::HypreParMatrix> Nodal<Adapter>::getMfemDfDp() const
-{
-  if ( static_cast<const Adapter*>( this )->use_penalty_ ) {
-    return nullptr;
-  }
-  // LM mode: df/dlambda = (d g_tilde / dx)^T
-  auto df_dlambda = dg_tilde_dx_.transpose();
-  return std::unique_ptr<mfem::HypreParMatrix>( df_dlambda.release() );
+  auto df_dx = adapter->jac_data_.GetMfemJacobian( parent_fes, parent_fes, df_contribs );
+  ContactFormulationResult result;
+  result.energy = energy;
+  result.force.reset( force_vec.release() );
+  result.df_dx.reset( df_dx.release() );
+  return result;
 }
 
 template class EnergyMortarAdapter<Nodal,

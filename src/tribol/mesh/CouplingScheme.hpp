@@ -736,10 +736,7 @@ class CouplingScheme {
    *
    * @param formulation Unique pointer to the formulation
    */
-  void setContactFormulation( std::unique_ptr<ContactFormulation> formulation )
-  {
-    m_formulation = std::move( formulation );
-  }
+  void setContactFormulation( std::unique_ptr<ContactFormulation> formulation );
 
   /**
    * @brief Rebuilds the contact formulation based on the current scheme parameters
@@ -759,6 +756,24 @@ class CouplingScheme {
    * @return ContactFormulation*
    */
   ContactFormulation* getContactFormulation() const { return m_formulation.get(); }
+
+  /** @brief Access outputs from the latest update(). @return Outputs owned by this coupling scheme. */
+  ContactFormulationResult& getContactFormulationResult() { return m_formulation_result; }
+  /** @brief Read outputs from the latest update(). @return Outputs owned by this coupling scheme. */
+  const ContactFormulationResult& getContactFormulationResult() const { return m_formulation_result; }
+
+#ifdef BUILD_REDECOMP
+  /**
+   * @brief Access caller-supplied true-DOF Lagrange multipliers.
+   * @return Mutable input for the next contact calculation.
+   * @throws std::logic_error No LM formulation has initialized this input.
+   */
+  mfem::HypreParVector& getContactMultiplier()
+  {
+    if ( !m_contact_multiplier ) throw std::logic_error( "No contact multiplier input is available." );
+    return *m_contact_multiplier;
+  }
+#endif
 
 #ifdef BUILD_REDECOMP
 
@@ -925,7 +940,7 @@ class CouplingScheme {
 
   ExecutionMode m_given_exec_mode;  ///< User preferred execution mode (set by constructor)
 
-  ExecutionMode m_exec_mode;  ///< Execution mode for kernels (set when init() is called)
+  ExecutionMode m_exec_mode;  ///< Requested mode until init() resolves the execution mode for kernels.
   int m_allocator_id;         ///< Allocator for arrays used in kernels (set when init() is called)
 
   Parameters m_parameters;              ///< Struct holding coupling scheme parameters
@@ -953,7 +968,7 @@ class CouplingScheme {
   std::unique_ptr<MethodData> m_dfdnJacobian;  ///< Store derivative of force w.r.t. normal on element pairs
   std::unique_ptr<MethodData> m_dndxJacobian;  ///< Store derivative of normal w.r.t. nodal coordinates on element pairs
 
-  std::unique_ptr<ContactFormulation> m_formulation;  ///< Polymorphic contact formulation
+  std::unique_ptr<ContactFormulation> m_formulation;  ///< Polymorphic contact formulation.
 
   ArrayT<InterfacePair> m_interface_pairs;  ///< List of interface pairs
 
@@ -969,11 +984,14 @@ class CouplingScheme {
 
 #ifdef BUILD_REDECOMP
 
-  std::unique_ptr<MfemMeshData> m_mfemMeshData;          ///< MFEM mesh data
-  std::unique_ptr<MfemSubmeshData> m_mfemSubmeshData;    ///< MFEM submesh field data
-  std::unique_ptr<MfemJacobianData> m_mfemJacobianData;  ///< MFEM jacobian data
+  std::unique_ptr<MfemMeshData> m_mfemMeshData;                ///< MFEM mesh data
+  std::unique_ptr<MfemSubmeshData> m_mfemSubmeshData;          ///< MFEM submesh field data
+  std::unique_ptr<MfemJacobianData> m_mfemJacobianData;        ///< MFEM jacobian data
+  std::unique_ptr<mfem::HypreParVector> m_contact_multiplier;  ///< Caller-supplied LM values; never an output cache.
 
 #endif /* BUILD_REDECOMP */
+
+  ContactFormulationResult m_formulation_result;  ///< Latest outputs, destroyed before their MFEM spaces.
 
 };  // end class CouplingScheme
 

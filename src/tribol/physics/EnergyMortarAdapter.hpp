@@ -45,37 +45,47 @@ class EnergyMortarAdapter;
 template <typename Adapter>
 class Nodal : public ContactFormulation {
  public:
-  /** @brief Assemble nodal gaps, tributary areas, and their derivatives. */
-  void updateNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) override;
-
-  /** @brief Assemble nodal contact forces and their derivatives. */
-  void updateNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) override;
-
-  const mfem::HypreParVector& getMfemGap() const override
-  {
-    return static_cast<const Adapter*>( this )->use_penalty_ ? gap_vec_.get() : g_tilde_vec_.get();
-  }
-  mfem::HypreParVector& getMfemPressure() override { return pressure_vec_.get(); }
-  std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx() const override
-  {
-    return std::unique_ptr<mfem::HypreParMatrix>( dg_tilde_dx_.release() );
-  }
-  std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const override;
-
- protected:
-  shared::ParVector g_tilde_vec_;             ///< Weighted nodal gap on the dual submesh.
-  shared::ParVector A_vec_;                   ///< Nodal tributary area on the dual submesh.
-  shared::ParVector gap_vec_;                 ///< Area-normalized nodal gap on the dual submesh.
-  mutable shared::ParSparseMat dg_tilde_dx_;  ///< Derivative of weighted gap with respect to parent coordinates.
-  shared::ParSparseMat dA_dx_;                ///< Derivative of tributary area with respect to parent coordinates.
-  shared::ParVector pressure_vec_;            ///< Penalty pressure or Lagrange multiplier on the dual submesh.
+  /**
+   * @brief Calculate nodal gaps and their coordinate derivative.
+   * @param mesh1 Current non-mortar mesh.
+   * @param mesh2 Current mortar mesh.
+   * @return Owned gap and dg_dx; other outputs are absent.
+   */
+  ContactFormulationResult computeNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override;
 
   /**
-   * @brief Allocate and zero the dual submesh field used for penalty pressure or the Lagrange multiplier
-   *
-   * @param adapter ENERGY_MORTAR adapter providing the submesh finite element space
+   * @brief Calculate nodal forces, energy, gaps, pressure, and derivatives.
+   * @param mesh1 Current non-mortar mesh.
+   * @param mesh2 Current mortar mesh.
+   * @return Owned nodal outputs; df_dp is present only for LM enforcement. No timestep is calculated.
    */
-  void init( Adapter* adapter );
+  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override;
+
+ private:
+  /** @brief Intermediate nodal fields owned by one calculation. */
+  struct NodalData {
+    ArrayT<InterfacePair> pairs;       ///< Geometry-approved pairs for the current call.
+    shared::ParVector g_tilde_vec;     ///< Weighted nodal gap on the dual submesh.
+    shared::ParVector A_vec;           ///< Nodal tributary areas.
+    shared::ParVector gap_vec;         ///< Area-normalized nodal gap.
+    shared::ParSparseMat dg_tilde_dx;  ///< Weighted-gap derivative on dual and parent true DOFs.
+    shared::ParSparseMat dA_dx;        ///< Tributary-area derivative on dual and parent true DOFs.
+  };
+
+  /**
+   * @brief Assemble the nodal fields needed by gap or force calculations.
+   * @param mesh1 Current non-mortar mesh.
+   * @param mesh2 Current mortar mesh.
+   * @return Local nodal fields and pairs, discarded after producing the requested outputs.
+   */
+  NodalData computeNodalData( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const;
+
+  /**
+   * @brief Move the requested gap and weighted-gap derivative into the returned outputs.
+   * @param data Intermediate fields whose gap and derivative are transferred.
+   * @return Gap and dg_dx; other outputs are absent.
+   */
+  ContactFormulationResult takeGapResult( NodalData& data ) const;
 
   /**
    * @brief Assemble the LM force Jacobian terms involving second derivatives of the weighted gap
@@ -83,14 +93,16 @@ class Nodal : public ContactFormulation {
    * The weighted-gap Hessians are scaled by the redecomposed Lagrange multiplier field and assembled on the parent
    * displacement true-dofs.
    *
-   * @param adapter ENERGY_MORTAR adapter containing the interface pairs and derivative evaluator
+   * @param adapter ENERGY_MORTAR configuration, transfer data, and derivative evaluator
    * @param mesh1 Current first mesh in Tribol coupling-scheme order
    * @param mesh2 Current second mesh in Tribol coupling-scheme order
+   * @param pairs Geometry-approved pairs for the current calculation.
    * @param redecomp_lambda Lagrange multiplier field on the redecomposed contact mesh
    * @return Assembled parent displacement true-dof matrix
    */
-  static shared::ParSparseMat computeDfDxSecondDerivativesLM( Adapter* adapter, MeshData::Viewer mesh1,
+  static shared::ParSparseMat computeDfDxSecondDerivativesLM( const Adapter* adapter, MeshData::Viewer mesh1,
                                                               MeshData::Viewer mesh2,
+                                                              ArrayViewT<const InterfacePair> pairs,
                                                               const mfem::GridFunction& redecomp_lambda );
 
   /**
@@ -99,16 +111,18 @@ class Nodal : public ContactFormulation {
    * The weighted-gap and tributary-area Hessians are scaled by the redecomposed pressure, weighted gap, and area fields
    * and assembled on the parent displacement true-dofs.
    *
-   * @param adapter ENERGY_MORTAR adapter containing the interface pairs and derivative evaluator
+   * @param adapter ENERGY_MORTAR configuration, transfer data, and derivative evaluator
    * @param mesh1 Current first mesh in Tribol coupling-scheme order
    * @param mesh2 Current second mesh in Tribol coupling-scheme order
+   * @param pairs Geometry-approved pairs for the current calculation.
    * @param redecomp_pressure Penalty pressure field on the redecomposed contact mesh
    * @param redecomp_g_tilde Weighted-gap field on the redecomposed contact mesh
    * @param redecomp_A Tributary-area field on the redecomposed contact mesh
    * @return Assembled parent displacement true-dof matrix
    */
-  static shared::ParSparseMat computeDfDxSecondDerivativesPenalty( Adapter* adapter, MeshData::Viewer mesh1,
+  static shared::ParSparseMat computeDfDxSecondDerivativesPenalty( const Adapter* adapter, MeshData::Viewer mesh1,
                                                                    MeshData::Viewer mesh2,
+                                                                   ArrayViewT<const InterfacePair> pairs,
                                                                    const mfem::GridFunction& redecomp_pressure,
                                                                    const mfem::GridFunction& redecomp_g_tilde,
                                                                    const mfem::GridFunction& redecomp_A );
@@ -122,14 +136,13 @@ class Nodal : public ContactFormulation {
 template <typename Adapter>
 class QuadraturePoint : public ContactFormulation {
  public:
-  /** @brief No-op because this location does not assemble nodal gaps. */
-  void updateNodalGaps( MeshData::Viewer /*mesh1*/, MeshData::Viewer /*mesh2*/ ) override {}
-
-  /** @brief Assemble penalty force and stiffness directly at quadrature points. */
-  void updateNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) override;
-
- protected:
-  void init( Adapter* /*adapter*/ ) {}
+  /**
+   * @brief Calculate penalty force, energy, and stiffness at quadrature points.
+   * @param mesh1 Current non-mortar mesh.
+   * @param mesh2 Current mortar mesh.
+   * @return Owned force, energy, and df_dx; no nodal gap, pressure, or timestep output.
+   */
+  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override;
 };
 
 template <template <typename> class EnforcementLocation, typename QuadratureRule>
@@ -144,7 +157,7 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @param coarse_search Coarse search whose ownership is transferred to this formulation; must be non-null
    * @param refined_search Refined search whose ownership is transferred to this formulation; must be non-null
    * @param k Penalty stiffness
-   * @param quadrature_rule Source quadrature generator owned by this adapter
+   * @param quadrature_rule Quadrature generator owned by this adapter
    * @param enzyme_quadrature If true, differentiate the reference-rule construction with respect to geometry
    * @param use_penalty If true, interpret the dual field as pressure; otherwise interpret it as a Lagrange multiplier
    * vector (LM mode)
@@ -164,57 +177,12 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    */
   virtual ~EnergyMortarAdapter() = default;
 
-  /**
-   * @brief Reports if formulation has a maximum allowable timestep calculation
-   *
-   * @return false
-   */
-  bool hasTimeStepCalculation() override { return false; }
-
-  /**
-   * @brief Compute the allowable timestep for this formulation
-   *
-   * @return Maximum allowable timestep
-   *
-   * @note This is currently a placeholder and returns a constant value.
-   */
-  RealT computeTimeStep() override;
-
-  /**
-   * @brief Get energy stored by contact constraints
-   *
-   * @return Contact energy
-   */
-  RealT getEnergy() const override { return energy_; }
-
-#ifdef BUILD_REDECOMP
-  /**
-   * @brief Return the parent true-dof force vector
-   *
-   * @return Reference to the force vector on the parent mesh true-dofs
-   *
-   * @note Requires updateNodalForces() to be called first.
-   */
-  const mfem::HypreParVector& getMfemForce() const override { return force_vec_.get(); }
-
-  /**
-   * @brief Return df/dx for the assembled contact force
-   *
-   * @return Unique pointer to `mfem::HypreParMatrix` holding df/dx
-   *
-   * @note Requires updateNodalForces() to be called first.
-   * @note Ownership of the internally stored matrix is transferred; repeated calls without recomputing will return
-   * null/empty data.
-   */
-  std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx() const override;
-
-#endif
-
+  /** @brief Allow the selected enforcement location to read method configuration and transfer data. */
   friend EnforcementLocation<EnergyMortarAdapter>;
 
  private:
   /**
-   * @brief Find and store candidate pairs for the current meshes
+   * @brief Find geometry-approved pairs for the current meshes
    *
    * Coarse search finds spatial candidates. Refined search then removes exact self-pairs, optionally removes
    * shared-node pairs, and rejects edges without nondegenerate opposing normals. Quadrature generation determines the
@@ -222,8 +190,9 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    *
    * @param mesh1 Current non-mortar mesh.
    * @param mesh2 Current mortar mesh.
+   * @return Owned accepted pairs in coarse-search order.
    */
-  void findCandidatePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 );
+  ArrayT<InterfacePair> findCandidatePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const;
 
   /**
    * @brief Controls penalty vs. Lagrange multiplier (LM) mode
@@ -278,28 +247,6 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * destroyed
    */
   std::unique_ptr<EnergyMortarCalculator<QuadratureRule>> evaluator_;
-
-  // Stored InterfacePairs
-
-  /**
-   * @brief Interface pairs used for the current update
-   */
-  ArrayT<InterfacePair> pairs_;
-
-  /**
-   * @brief Contact constraint energy associated with the current state
-   */
-  RealT energy_;
-
-  /**
-   * @brief Parent true-dof force vector assembled from contact contributions
-   */
-  shared::ParVector force_vec_;
-
-  /**
-   * @brief Derivative df/dx assembled on parent displacement true-dofs
-   */
-  mutable shared::ParSparseMat df_dx_;
 };
 
 #endif  // TRIBOL_USE_ENZYME

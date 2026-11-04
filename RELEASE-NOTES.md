@@ -8,6 +8,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Contact formulations return caller-owned results through `computeNodalGaps()` and `computeNodalForces()`. MFEM
+  pair and nodal assemblers share the transfer of numerical contact contributions without retaining results.
 - Added `ProjectedEdgeSearch` to reject self-pairs, optionally reject shared-node pairs, and require opposing edge
   normals. Projected overlap is determined during quadrature generation rather than refined search; zero-width
   integration intervals produce no active penalty quadrature points.
