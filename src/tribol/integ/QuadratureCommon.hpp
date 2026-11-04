@@ -25,7 +25,8 @@
 namespace tribol {
 
 /**
- * @brief Bounds on a one-dimensional integration surface in normalized parent coordinates.
+ * @brief Bounds in a one-dimensional integration surface's coordinates, which need not be normalized element
+ * coordinates.
  */
 struct EdgeQuadratureInterval {
   MdArray<RealT, 2> bounds{ -1.0, 1.0 };  ///< Lower and upper bounds; default to the whole reference edge.
@@ -39,6 +40,18 @@ enum class QuadratureStatus
   InsufficientCapacity,  ///< Reported count exceeds capacity; discard partial output.
   InvalidGeometry        ///< Geometry calculation failed; discard output and report zero points.
 };
+
+/**
+ * @brief Throw a quadrature failure outside differentiated calculations.
+ * @param status Failed generation status; must not be Success.
+ * @throws std::length_error The rule requires more point storage.
+ * @throws std::invalid_argument Pair geometry is invalid.
+ */
+[[noreturn, gnu::noinline]]
+#ifdef TRIBOL_USE_ENZYME
+MFEM_ENZYME_INACTIVE
+#endif
+    void reportQuadratureFailure( QuadratureStatus status );
 
 /**
  * @brief Reports the complete point count, even when the supplied storage is too small

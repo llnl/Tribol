@@ -97,18 +97,12 @@ class MfemNodalAssembler {
    */
   shared::ParSparseMat makeSubmeshDiagonalMatrix( const mfem::Vector& diagonal_true_dofs ) const;
 
-  /**
-   * @brief Add one pair's node-weighted gap and area coordinate Hessians to the parent displacement Jacobian.
-   * @param pair Valid element IDs in the supplied meshes.
-   * @param gap_weights Scalar weights for each node of mesh1's element.
-   * @param gap_hessians Row-major array [mesh1_node][pair_row][pair_col] in pair DOF order.
-   * @param area_weights Optional scalar weights for each node of mesh1's element; pass empty view to skip area terms.
-   * @param area_hessians Optional row-major array [mesh1_node][pair_row][pair_col] in pair DOF order.
-   * @throws std::invalid_argument Array dimensions do not match mesh1's node count or the pair DOF count.
-   */
-  void addPairHessians( InterfacePair pair, ArrayViewT<const RealT> gap_weights,
-                        ArrayViewT<const RealT, 3> gap_hessians, ArrayViewT<const RealT> area_weights = {},
-                        ArrayViewT<const RealT, 3> area_hessians = {} );
+  /** @brief Add a pair's already weighted coordinate Hessian. @param pair Element IDs.
+   * @param jacobian Pair Hessian in row-major coordinate order; no symmetry is assumed. */
+  void addPairJacobian( InterfacePair pair, ArrayViewT<const RealT, 2> jacobian )
+  {
+    pair_assembler_.addPairJacobian( pair, jacobian );
+  }
 
   /**
    * @brief Return the assembled weighted-Hessian contribution on parent displacement true DOFs.
@@ -145,8 +139,7 @@ class MfemNodalAssembler {
   std::vector<PackedPairJacobianContribs> gap_gradient_contributions_;   ///< Packed (mesh1, mesh1/2) gap gradients.
   std::vector<PackedPairJacobianContribs> area_gradient_contributions_;  ///< Packed (mesh1, mesh1/2) area gradients.
   Array1D<RealT, MemorySpace::Host> gradient_block_;                     ///< Reused column-major gradient block.
-  ArrayT<RealT, 2, MemorySpace::Host> pair_jacobian_;  ///< Reused pair matrix for weighted nodal Hessians.
-  MfemPairAssembler pair_assembler_;                   ///< Assembles weighted pair Hessians on parent true DOFs.
+  MfemPairAssembler pair_assembler_;  ///< Assembles weighted pair Hessians on parent true DOFs.
 };
 
 }  // namespace tribol

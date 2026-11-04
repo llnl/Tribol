@@ -9,6 +9,7 @@
 # Add single source tests
 #------------------------------------------------------------------------------
 set( tribol_tests
+     tribol_energy_mortar_definition.cpp
      tribol_basis_function.cpp
      tribol_check_tpl.cpp
      tribol_common_plane_penalty.cpp
@@ -279,6 +280,9 @@ if( MFEM_FOUND )
 endif()
 
 if( TRIBOL_USE_ENZYME )
+
+  blt_add_test(NAME tribol_energy_mortar_quadrature_settings_2rank
+      COMMAND tribol_energy_mortar_quadrature_settings_test NUM_MPI_TASKS 2)
 
   set(enzyme_smoke_depends ClangEnzymeFlags gtest)
   blt_add_executable(

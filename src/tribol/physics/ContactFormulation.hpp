@@ -29,7 +29,7 @@ namespace tribol {
  * formulation; the associated MFEM spaces and MPI communicator must remain alive.
  */
 struct ContactFormulationResult {
-  std::optional<RealT> energy;     ///< Contact energy, when the method defines one.
+  std::optional<RealT> energy;     ///< Globally summed contact energy, when the method defines one.
   std::optional<RealT> time_step;  ///< Maximum allowable timestep, when calculated.
 #ifdef BUILD_REDECOMP
   std::unique_ptr<mfem::HypreParVector> force;     ///< Contact residual on parent displacement true DOFs.

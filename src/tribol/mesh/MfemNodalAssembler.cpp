@@ -70,7 +70,6 @@ MfemNodalAssembler::MfemNodalAssembler( const MfemMeshData& mesh_data, const Mfe
 
   const IndexT max_column_dofs = std::max( dofs1, dofs2 );
   gradient_block_.resize( checkedProduct( nodes1_, max_column_dofs ) );
-  pair_jacobian_ = ArrayT<RealT, 2, MemorySpace::Host>( dof_offsets_[2], dof_offsets_[2] );
   redecomp_gap_ = 0.0;
   redecomp_area_ = 0.0;
 }
@@ -181,42 +180,6 @@ shared::ParSparseMat MfemNodalAssembler::makeSubmeshDiagonalMatrix( const mfem::
   }
   return shared::ParSparseMat::diagonalMatrix( submesh_fes.GetComm(), submesh_fes.GlobalTrueVSize(),
                                                submesh_fes.GetTrueDofOffsets(), diagonal_true_dofs );
-}
-
-void MfemNodalAssembler::addPairHessians( InterfacePair pair, ArrayViewT<const RealT> gap_weights,
-                                          ArrayViewT<const RealT, 3> gap_hessians, ArrayViewT<const RealT> area_weights,
-                                          ArrayViewT<const RealT, 3> area_hessians )
-{
-  const IndexT pair_dofs = dof_offsets_[2];
-  const bool include_area = area_weights.size() > 0;
-  if ( gap_weights.size() != nodes1_ || gap_hessians.shape()[0] != nodes1_ || gap_hessians.shape()[1] != pair_dofs ||
-       gap_hessians.shape()[2] != pair_dofs ||
-       ( include_area && ( area_weights.size() != nodes1_ || area_hessians.shape()[0] != nodes1_ ||
-                           area_hessians.shape()[1] != pair_dofs || area_hessians.shape()[2] != pair_dofs ) ) ) {
-    throw std::invalid_argument(
-        "Nodal Hessian weights and arrays must match mesh1's node count and the pair displacement DOFs." );
-  }
-
-  pair_jacobian_.fill( 0.0 );
-  for ( IndexT node = 0; node < nodes1_; ++node ) {
-    const RealT gap_weight = gap_weights[node];
-    for ( IndexT row = 0; row < pair_dofs; ++row ) {
-      for ( IndexT column = 0; column < pair_dofs; ++column ) {
-        pair_jacobian_( row, column ) += gap_weight * gap_hessians( node, row, column );
-      }
-    }
-  }
-  if ( include_area ) {
-    for ( IndexT node = 0; node < nodes1_; ++node ) {
-      const RealT area_weight = area_weights[node];
-      for ( IndexT row = 0; row < pair_dofs; ++row ) {
-        for ( IndexT column = 0; column < pair_dofs; ++column ) {
-          pair_jacobian_( row, column ) += area_weight * area_hessians( node, row, column );
-        }
-      }
-    }
-  }
-  pair_assembler_.addPairJacobian( pair, pair_jacobian_.view() );
 }
 
 shared::ParSparseMat MfemNodalAssembler::assembleHessians() const { return pair_assembler_.assembleJacobian(); }

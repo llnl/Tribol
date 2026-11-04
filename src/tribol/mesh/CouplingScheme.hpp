@@ -928,6 +928,11 @@ class CouplingScheme {
   void computeCommonPlaneTimeStep( RealT& dt );
 
  private:
+#ifdef BUILD_REDECOMP
+  /// Create or replace parent-only or nodal pressure/gap transfer data for the selected Energy Mortar location.
+  /// Existing formulations and cached outputs are released before replacing the data they borrow.
+  void updateEnergyMortarTransferData();
+#endif
   CommT m_problem_comm = TRIBOL_COMM_WORLD;  ///! MPI communicator for the problem
 
   IndexT m_id;  ///< Coupling Scheme id

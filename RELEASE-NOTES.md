@@ -8,6 +8,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Nodal and quadrature-point Energy Mortar share `PairContactFormulation`, with separate method and penalty-input
+  arguments. Pair calculations use direct quadrature loops and local Enzyme derivatives. Nodal penalty assembly
+  uses explicit gap/area partials, returning zero for unsupported area before division. Quadrature-point enforcement
+  needs no pressure/gap field. Contact energy is globally summed for both locations.
 - Contact formulations return caller-owned results through `computeNodalGaps()` and `computeNodalForces()`. MFEM
   pair and nodal assemblers share the transfer of numerical contact contributions without retaining results.
 - Added `ProjectedEdgeSearch` to reject self-pairs, optionally reject shared-node pairs, and require opposing edge
