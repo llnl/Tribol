@@ -33,22 +33,6 @@ struct KernelParams {
   RealT residual_gap;
 };
 
-/**
- * @brief Report a failed rule before any quadrature data is consumed.
- *
- * Keep exception construction outside differentiated functions; the integer status has no derivative.
- * @param status Unsuccessful quadrature generation status.
- * @throws std::invalid_argument The element-pair geometry is invalid.
- * @throws std::length_error The rule requires more output storage.
- */
-[[noreturn, gnu::noinline]] MFEM_ENZYME_INACTIVE void reportQuadratureFailure( QuadratureStatus status )
-{
-  if ( status == QuadratureStatus::InsufficientCapacity ) {
-    throw std::length_error( "Insufficient storage for the pair quadrature rule." );
-  }
-  throw std::invalid_argument( "Cannot generate a quadrature rule for invalid pair geometry." );
-}
-
 TRIBOL_ENZYME_INLINE RealT effective_gap( RealT gap_normal, RealT normal_cosine, RealT residual_gap )
 {
   return gap_normal * normal_cosine - residual_gap;

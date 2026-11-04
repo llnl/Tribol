@@ -7,6 +7,7 @@
 
 // C++ includes
 #include <cmath>
+#include <stdexcept>
 
 // MFEM includes
 #include "mfem.hpp"
@@ -1156,7 +1157,8 @@ void CouplingScheme::setContactFormulation( std::unique_ptr<ContactFormulation> 
   m_formulation = std::move( formulation );
   m_formulation_result = {};
 #ifdef BUILD_REDECOMP
-  if ( m_formulation && m_enforcementMethod == LAGRANGE_MULTIPLIER ) {
+  if ( m_formulation && m_enforcementMethod == LAGRANGE_MULTIPLIER &&
+       m_parameters.enforcement_location == EnforcementLocation::Nodal ) {
     auto* fes = const_cast<mfem::ParFiniteElementSpace*>( &getMfemSubmeshData()->GetSubmeshFESpace() );
     if ( !m_contact_multiplier || m_contact_multiplier->Size() != fes->GetTrueVSize() ) {
       shared::ParVector multiplier( fes );
@@ -1169,6 +1171,49 @@ void CouplingScheme::setContactFormulation( std::unique_ptr<ContactFormulation> 
 #endif
 }
 
+#ifdef BUILD_REDECOMP
+void CouplingScheme::updateEnergyMortarTransferData()
+{
+  const bool nodal = m_parameters.enforcement_location == EnforcementLocation::Nodal;
+  if ( hasMfemJacobianData() && hasMfemSubmeshData() == nodal ) return;
+  auto& mesh_data = *getMfemMeshData();
+  std::unique_ptr<MfemSubmeshData> dual_data;
+  if ( nodal ) {
+    if ( m_contactModel != FRICTIONLESS )
+      throw std::invalid_argument( "Nodal Energy Mortar requires frictionless contact." );
+    const auto* parent_fes = mesh_data.GetParentCoords().ParFESpace();
+    auto pressure_fec = std::make_unique<mfem::H1_FECollection>( parent_fes->FEColl()->GetOrder(),
+                                                                 parent_fes->GetParMesh()->SpaceDimension() );
+    dual_data = std::make_unique<MfemSubmeshData>( mesh_data.GetSubmesh(), mesh_data.GetLORMesh(),
+                                                   std::move( pressure_fec ), 1, isOnDevice( m_exec_mode ) );
+    if ( mesh_data.HasRedecompMesh() ) dual_data->UpdateMfemSubmeshData( mesh_data.GetRedecompMesh(), true );
+  }
+  auto jacobian_data = nodal ? std::make_unique<MfemJacobianData>( mesh_data, *dual_data )
+                             : std::make_unique<MfemJacobianData>( mesh_data );
+  if ( mesh_data.HasRedecompMesh() ) jacobian_data->UpdateJacobianXfer();
+
+  // Release outputs and formulations before the transfer spaces and fields they borrow.
+  setContactFormulation( nullptr );
+  setMfemJacobianData( nullptr );
+  for ( auto* mesh : { &getMesh1(), &getMesh2() } ) {
+    auto& fields = mesh->getNodalFields();
+    fields.m_node_gap = {};
+    fields.m_node_pressure = {};
+    fields.m_is_node_gap_set = false;
+    fields.m_is_node_pressure_set = false;
+  }
+  setMfemSubmeshData( std::move( dual_data ) );
+  setMfemJacobianData( std::move( jacobian_data ) );
+  if ( nodal && mesh_data.HasRedecompMesh() ) {
+    auto& fields = getMesh1().getNodalFields();
+    fields.m_node_gap = { getMfemSubmeshData()->GetRedecompGapPtrs()[0], getMesh1().numberOfNodes() };
+    fields.m_node_pressure = { getMfemSubmeshData()->GetRedecompPressurePtrs()[0], getMesh1().numberOfNodes() };
+    fields.m_is_node_gap_set = true;
+    fields.m_is_node_pressure_set = true;
+  }
+}
+#endif
+
 //------------------------------------------------------------------------------
 void CouplingScheme::updateContactFormulation()
 {
@@ -1177,14 +1222,15 @@ void CouplingScheme::updateContactFormulation()
     // the factory. Setters that change search configuration update its derived values before rebuilding here.
     // Status 2 selects a usable but nonoptimal execution mode, so only status 1 prevents formulation construction.
     if ( !setMeshPointers() || checkExecutionModeData() == 1 ) {
-      SLIC_ERROR_ROOT( "ENERGY_MORTAR formulation configuration requires valid registered meshes." );
+      SLIC_ERROR_ROOT( "Formulation configuration requires valid registered meshes." );
       return;
     }
+#ifdef BUILD_REDECOMP
+    if ( m_contactMethod == ENERGY_MORTAR && hasMfemData() ) updateEnergyMortarTransferData();
+#endif
     this->setContactFormulation( createContactFormulation( this ) );
   } else {
-    SLIC_WARNING_ROOT(
-        "tribol::CouplingScheme::updateContactFormulation(): rebuilding is only supported for ENERGY_MORTAR at this "
-        "time." );
+    SLIC_WARNING_ROOT( "Rebuilding requires ENERGY_MORTAR or an opted-in Common Plane formulation." );
   }
 }
 

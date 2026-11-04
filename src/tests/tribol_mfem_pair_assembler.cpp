@@ -227,8 +227,8 @@ TEST_F( MfemPairAssemblerTest, returns_zero_outputs_for_empty_or_rejected_input 
 }
 
 // Nodal assembly must transfer gaps, areas, and gradients to the dual submesh, clamp positive gaps and eliminate their
-// Jacobian rows when requested, transfer dual true DOFs back to Redecomp, and assemble node-weighted pair Hessians.
-TEST_F( MfemPairAssemblerTest, assembles_nodal_quantities_dual_transfers_and_weighted_hessians )
+// Jacobian rows when requested, transfer dual true DOFs back to Redecomp, and return the correct dual values.
+TEST_F( MfemPairAssemblerTest, assembles_nodal_quantities_and_dual_transfers )
 {
   auto& cs = scheme();
   auto& mesh_data = *cs.getMfemMeshData();
@@ -271,16 +271,14 @@ TEST_F( MfemPairAssemblerTest, assembles_nodal_quantities_dual_transfers_and_wei
       mesh1.getFaceCoords( element1, coords[0].data() );
       mesh2.getFaceCoords( element2, coords[1].data() );
 
-      MdArray<RealT, nodes_per_edge> gaps{}, areas{}, gap_weights{}, area_weights{};
+      MdArray<RealT, nodes_per_edge> gaps{}, areas{};
       MdArray<RealT, nodes_per_edge, pair_dofs> gap_grads{}, area_grads{};
-      MdArray<RealT, nodes_per_edge, pair_dofs, pair_dofs> gap_hessians{}, area_hessians{};
-      MdArray<RealT, pair_dofs> rows{}, columns{};
+      MdArray<RealT, pair_dofs> columns{};
 
       for ( int side = 0; side < pair_size; ++side )
         for ( int node = 0; node < nodes_per_edge; ++node )
           for ( int component = 0; component < dimension; ++component ) {
             const int dof = ( side * nodes_per_edge + node ) * dimension + component;
-            rows[dof] = rowValue( coords[side]( node, 0 ), coords[side]( node, 1 ), component );
             columns[dof] = columnValue( coords[side]( node, 0 ), coords[side]( node, 1 ), component );
           }
 
@@ -288,25 +286,15 @@ TEST_F( MfemPairAssemblerTest, assembles_nodal_quantities_dual_transfers_and_wei
         const RealT x = coords[0]( node, 0 );
         gaps[node] = x - 0.6;
         areas[node] = 1.5 + x;
-        gap_weights[node] = 2.0;
-        area_weights[node] = -0.5;
         for ( int col = 0; col < pair_dofs; ++col ) {
           gap_grads( node, col ) = ( 1.0 + x ) * columns[col];
           area_grads( node, col ) = ( 2.0 + x ) * columns[col];
-          for ( int row = 0; row < pair_dofs; ++row ) {
-            gap_hessians( node, row, col ) = rows[row] * columns[col];
-            area_hessians( node, row, col ) = 2.0 * rows[row] * columns[col];
-          }
         }
       }
 
       assembler.addPairQuantities(
           { element1, element2 }, { gaps.data(), nodes_per_edge }, { areas.data(), nodes_per_edge },
           { gap_grads.data(), { nodes_per_edge, pair_dofs } }, { area_grads.data(), { nodes_per_edge, pair_dofs } } );
-      assembler.addPairHessians( { element1, element2 }, { gap_weights.data(), nodes_per_edge },
-                                 { gap_hessians.data(), { nodes_per_edge, pair_dofs, pair_dofs } },
-                                 { area_weights.data(), nodes_per_edge },
-                                 { area_hessians.data(), { nodes_per_edge, pair_dofs, pair_dofs } } );
     }
   }
 
@@ -344,36 +332,6 @@ TEST_F( MfemPairAssemblerTest, assembles_nodal_quantities_dual_transfers_and_wei
   MPI_Allreduce( &retained_negative_count, &global_negative, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
   EXPECT_GT( global_positive, 0 );
   EXPECT_GT( global_negative, 0 );
-
-  // Each pair's weighted Hessian sum over the two nodes of element1 is 2 * (2.0 * 1.0 + (-0.5) * 2.0) = 2.0 times
-  // rows * columns^T, so the assembled Hessian equals twice the outer-product Jacobian from MfemPairAssembler.
-  MfemPairAssembler reference_assembler( mesh_data, *cs.getMfemJacobianData(), mesh1, mesh2, pair_count );
-  for ( IndexT element1 = 0; element1 < mesh1.numberOfElements(); ++element1 ) {
-    for ( IndexT element2 = 0; element2 < mesh2.numberOfElements(); ++element2 ) {
-      std::array<MdArray<RealT, nodes_per_edge, dimension>, pair_size> coords;
-      mesh1.getFaceCoords( element1, coords[0].data() );
-      mesh2.getFaceCoords( element2, coords[1].data() );
-      MdArray<RealT, pair_dofs> rows{}, columns{};
-      MdArray<RealT, pair_dofs, pair_dofs> jacobian{};
-      for ( int side = 0; side < pair_size; ++side )
-        for ( int node = 0; node < nodes_per_edge; ++node )
-          for ( int component = 0; component < dimension; ++component ) {
-            const int dof = ( side * nodes_per_edge + node ) * dimension + component;
-            rows[dof] = rowValue( coords[side]( node, 0 ), coords[side]( node, 1 ), component );
-            columns[dof] = columnValue( coords[side]( node, 0 ), coords[side]( node, 1 ), component );
-          }
-      for ( int row = 0; row < pair_dofs; ++row )
-        for ( int col = 0; col < pair_dofs; ++col ) jacobian( row, col ) = 2.0 * rows[row] * columns[col];
-      reference_assembler.addPairJacobian( { element1, element2 }, { jacobian.data(), { pair_dofs, pair_dofs } } );
-    }
-  }
-  const auto hessian_mat = assembler.assembleHessians();
-  const auto reference_mat = reference_assembler.assembleJacobian();
-  mfem::Vector hessian_action( fes_->GetTrueVSize() ), reference_action( fes_->GetTrueVSize() );
-  hessian_mat->Mult( parent_ones, hessian_action );
-  reference_mat->Mult( parent_ones, reference_action );
-  hessian_action -= reference_action;
-  EXPECT_LT( norm( hessian_action ), tolerance );
 }
 }  // namespace
 

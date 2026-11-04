@@ -151,9 +151,25 @@ class PairQuadratureRule {
       typename FirstGeometry::Coords element1_coords, typename SecondGeometry::Coords element2_coords,
       IntegrationSurfaceRuleView<IntegrationSurfaceRuleGenerator::coordinate_dimension> integration_surface_rule ) const
   {
+    return mapIntegrationSurfaceRuleToElements( FirstGeometry( element1_coords ), SecondGeometry( element2_coords ),
+                                                integration_surface_rule );
+  }
+
+  /**
+   * @brief Map integration-surface quadrature points to both elements using already prepared element geometry.
+   *
+   * The integration surface and its rule are not recalculated.
+   * @param geometry1 First current element geometry.
+   * @param geometry2 Second current element geometry.
+   * @param integration_surface_rule Quadrature points and weights expressed in the integration surface's coordinates.
+   * @return Local paired quadrature with generation status; invalid geometry has zero points.
+   */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData mapIntegrationSurfaceRuleToElements(
+      const FirstGeometry& geometry1, const SecondGeometry& geometry2,
+      IntegrationSurfaceRuleView<IntegrationSurfaceRuleGenerator::coordinate_dimension> integration_surface_rule ) const
+  {
     QuadratureData output{};
-    output.result = mapping_.mapToElements( FirstGeometry( element1_coords ), SecondGeometry( element2_coords ),
-                                            integration_surface_rule, output.getOutputView() );
+    output.result = mapping_.mapToElements( geometry1, geometry2, integration_surface_rule, output.getOutputView() );
     return output;
   }
 
@@ -168,8 +184,20 @@ class PairQuadratureRule {
   generate( typename FirstGeometry::Coords element1_coords, typename SecondGeometry::Coords element2_coords,
             PairQuadratureView<FirstGeometry::parametric_dimension, SecondGeometry::parametric_dimension> output ) const
   {
-    const FirstGeometry geometry1( element1_coords );
-    const SecondGeometry geometry2( element2_coords );
+    return generate( FirstGeometry( element1_coords ), SecondGeometry( element2_coords ), output );
+  }
+
+  /**
+   * @brief Generate into caller storage using geometry prepared by the pair calculation.
+   * @param geometry1 First current element geometry.
+   * @param geometry2 Second current element geometry.
+   * @param[out] output Paired parametric coordinates and physical weights.
+   * @return Generation status and full count; failed output must not be consumed.
+   */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult
+  generate( const FirstGeometry& geometry1, const SecondGeometry& geometry2,
+            PairQuadratureView<FirstGeometry::parametric_dimension, SecondGeometry::parametric_dimension> output ) const
+  {
     const auto integration_surface_rule =
         integration_surface_rule_generator_.generate( mapping_.makeIntegrationSurface( geometry1, geometry2 ) );
     // Return fields explicitly so Enzyme can identify their integer types.
@@ -190,6 +218,20 @@ class PairQuadratureRule {
   {
     QuadratureData output{};
     output.result = generate( element1_coords, element2_coords, output.getOutputView() );
+    return output;
+  }
+
+  /**
+   * @brief Generate into local storage using already prepared element geometry.
+   * @param geometry1 First current element geometry.
+   * @param geometry2 Second current element geometry.
+   * @return Local paired quadrature; failed output must not be consumed.
+   */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData generate( const FirstGeometry& geometry1,
+                                                                   const SecondGeometry& geometry2 ) const
+  {
+    QuadratureData output{};
+    output.result = generate( geometry1, geometry2, output.getOutputView() );
     return output;
   }
 

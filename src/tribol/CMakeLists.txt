@@ -26,6 +26,8 @@ set(tribol_headers
     geom/ElementNormal.hpp
     geom/GeomUtilities.hpp
     geom/Hyperplane.hpp
+    geom/OpposingNormalGap.hpp
+    geom/OffsetGap.hpp
     geom/LinearEdgeGeometry.hpp
     geom/NodalNormal.hpp
     geom/SmoothedProjectedEdgeMapping.hpp
@@ -55,8 +57,13 @@ set(tribol_headers
     physics/ContactFormulation.hpp
     physics/ContactFormulationFactory.hpp
     physics/Mortar.hpp
+    physics/EnergyMortarEnergy.hpp
+    physics/PairContactFormulation.hpp
+    physics/PairMethod.hpp
+    physics/PairMethodInputs.hpp
+    physics/PairEvaluation.hpp
+    physics/PenaltyStiffness.hpp
     physics/EnergyMortar.hpp
-    physics/EnergyMortarAdapter.hpp
     physics/Physics.hpp
 
     search/CoarseSearch.hpp
@@ -85,6 +92,7 @@ set(tribol_sources
 
     integ/FE.cpp
     integ/Integration.cpp
+    integ/QuadratureCommon.cpp
 
     interface/mfem_tribol.cpp
     interface/simple_tribol.cpp
@@ -101,8 +109,8 @@ set(tribol_sources
     physics/CommonPlane.cpp
     physics/ContactFormulationFactory.cpp
     physics/Mortar.cpp
+    physics/PairContactFormulation.cpp
     physics/EnergyMortar.cpp
-    physics/EnergyMortarAdapter.cpp
     physics/Physics.cpp
      
     search/CoarseSearchFactory.cpp

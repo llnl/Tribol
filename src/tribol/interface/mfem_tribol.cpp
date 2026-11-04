@@ -14,6 +14,8 @@
 
 #include "tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
+#include "tribol/physics/ContactFormulationFactory.hpp"
+#include <stdexcept>
 
 namespace tribol {
 
@@ -300,7 +302,7 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
 
   // Initialize methods that require definition of a submesh. Coupling scheme validity will be checked
   // later, but here some initial data is created/initialized for use with LMs.
-  if ( contact_method == SINGLE_MORTAR || contact_method == ENERGY_MORTAR ) {
+  if ( contact_method == SINGLE_MORTAR ) {
     std::unique_ptr<mfem::FiniteElementCollection> pressure_fec = std::make_unique<mfem::H1_FECollection>(
         current_coords.FESpace()->FEColl()->GetOrder(), mesh.SpaceDimension() );
     int pressure_vdim = 0;
@@ -325,13 +327,11 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
     cs.setMfemSubmeshData( std::make_unique<MfemSubmeshData>( mfem_data->GetSubmesh(), mfem_data->GetLORMesh(),
                                                               std::move( pressure_fec ), pressure_vdim,
                                                               isOnDevice( exec_mode ) ) );
-    // set up matrix transfer if the coupling scheme requires it (note: ENERGY_MORTAR always needs to create matrices,
-    // even when a Jacobian is not needed)
+    // Legacy mortar constructs matrix transfer only when its requested outputs include a Jacobian.
     auto lm_options = cs.getEnforcementOptions().lm_implicit_options;
     if ( ( lm_options.enforcement_option_set &&
            ( lm_options.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ||
-             lm_options.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ) ) ||
-         contact_method == ENERGY_MORTAR ) {
+             lm_options.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ) ) ) {
       // create matrix transfer operator between redecomp and parent/parent-linked boundary submesh
       cs.setMfemJacobianData( std::make_unique<MfemJacobianData>( *mfem_data, *cs.getMfemSubmeshData() ) );
     }
@@ -352,15 +352,21 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the LOR factor." );
+  const bool rebuild_formulation = cs->hasContactFormulation();
+  const auto* previous_lor = cs->getMfemMeshData()->GetLORMesh();
   cs->getMfemMeshData()->SetLORFactor( lor_factor );
+  if ( previous_lor == cs->getMfemMeshData()->GetLORMesh() ) return;
+  cs->setContactFormulation( nullptr );
 
   if ( cs->getMfemSubmeshData() ) {
     cs->getMfemSubmeshData()->SetLORMesh( cs->getMfemMeshData()->GetLORMesh() );
   }
-  if ( cs->hasMfemJacobianData() && cs->getMfemSubmeshData() ) {
-    cs->setMfemJacobianData( std::make_unique<MfemJacobianData>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData() ) );
+  if ( cs->hasMfemJacobianData() ) {
+    cs->setMfemJacobianData( cs->hasMfemSubmeshData() ? std::make_unique<MfemJacobianData>( *cs->getMfemMeshData(),
+                                                                                            *cs->getMfemSubmeshData() )
+                                                      : std::make_unique<MfemJacobianData>( *cs->getMfemMeshData() ) );
   }
-  if ( cs->hasContactFormulation() ) {
+  if ( rebuild_formulation ) {
     cs->updateContactFormulation();
   }
 }
@@ -765,7 +771,9 @@ mfem::HypreParVector& getMfemContactPressure( IndexT cs_id )
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
   SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
-  if ( cs->getEnforcementMethod() == LAGRANGE_MULTIPLIER ) return cs->getContactMultiplier();
+  if ( cs->getEnforcementMethod() == LAGRANGE_MULTIPLIER &&
+       cs->getParameters().enforcement_location == EnforcementLocation::Nodal )
+    return cs->getContactMultiplier();
   const auto& pressure = cs->getContactFormulationResult().pressure;
   if ( !pressure ) throw std::logic_error( "No nodal contact pressure is available." );
   return *pressure;
@@ -802,6 +810,9 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
                     mfem_data->GetElemType(), mfem_data->GetFaceOrder(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2],
                     mfem_data->GetMemorySpace() );
 
+      // Mesh registration replaces MeshData objects; direct formulation calls must use the replacements.
+      cs.setMeshPointers();
+
       auto f_ptrs = mfem_data->GetRedecompResponsePtrs();
       registerNodalResponse( mesh_ids[0], f_ptrs[0], f_ptrs[1], f_ptrs[2] );
       registerNodalResponse( mesh_ids[1], f_ptrs[0], f_ptrs[1], f_ptrs[2] );
@@ -816,7 +827,7 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         registerNodalReferenceCoords( mesh_ids[1], xref_ptrs[0], xref_ptrs[1], xref_ptrs[2] );
       }
       // TODO: consider redesign where a specific method isn't checked and just the enforcement method is checked
-      if ( cs.getEnforcementMethod() == LAGRANGE_MULTIPLIER || cs.getContactMethod() == ENERGY_MORTAR ) {
+      if ( cs.hasMfemSubmeshData() ) {
         SLIC_ERROR_ROOT_IF( cs.getContactModel() != FRICTIONLESS, "Only frictionless contact is supported." );
         SLIC_ERROR_ROOT_IF( cs.getContactMethod() != SINGLE_MORTAR && cs.getContactMethod() != ENERGY_MORTAR,
                             "Only single mortar or ENERGY_MORTAR contact is supported." );
@@ -830,10 +841,9 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         registerMortarGaps( nonmortar_mesh_id, g_ptrs[0] );
         auto p_ptrs = submesh_data->GetRedecompPressurePtrs();
         registerMortarPressures( nonmortar_mesh_id, p_ptrs[0] );
-        if ( ( cs.hasMfemJacobianData() || cs.getContactMethod() == ENERGY_MORTAR ) && new_redecomp ) {
-          // updates Jacobian transfer operator for new redecomp mesh
-          cs.getMfemJacobianData()->UpdateJacobianXfer();
-        }
+      }
+      if ( cs.hasMfemJacobianData() && new_redecomp ) {
+        cs.getMfemJacobianData()->UpdateJacobianXfer();
       }
       auto& penalty_opts = cs.getEnforcementOptions().penalty_options;
       if ( penalty_opts.kinematic_calc_set ) {
