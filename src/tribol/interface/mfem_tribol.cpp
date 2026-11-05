@@ -342,6 +342,40 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
   }
 }
 
+void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled )
+{
+  auto* cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  if ( !cs || cs->getContactMethod() != COMMON_PLANE || !cs->hasMfemData() ) {
+    throw std::invalid_argument( "Register an MFEM COMMON_PLANE scheme before selecting its formulation." );
+  }
+  if ( !enabled ) {
+    if ( cs->getParameters().use_common_plane_formulation ) {
+      cs->setContactFormulation( nullptr );
+      cs->setMfemJacobianData( nullptr );
+      cs->getParameters().use_common_plane_formulation = false;
+      // Mesh re-registration can change pair indices while the formulation is active. Search again before using
+      // legacy pair arrays, including schemes that previously fixed their binning.
+      cs->setFixedBinning( false );
+      cs->setBinned( false );
+    }
+    return;
+  }
+  detail::validateCommonPlaneFormulation( *cs );
+  if ( cs->getParameters().use_common_plane_formulation ) return;
+  auto jacobian = std::make_unique<MfemJacobianData>( *cs->getMfemMeshData() );
+  cs->setMfemJacobianData( std::move( jacobian ) );
+  cs->getParameters().use_common_plane_formulation = true;
+  try {
+    cs->updateContactFormulation();
+    cs->getMfemJacobianData()->UpdateJacobianXfer();
+  } catch ( ... ) {
+    cs->setContactFormulation( nullptr );
+    cs->getParameters().use_common_plane_formulation = false;
+    cs->setMfemJacobianData( nullptr );
+    throw;
+  }
+}
+
 void setMfemLORFactor( IndexT cs_id, int lor_factor )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -352,6 +386,9 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the LOR factor." );
+  if ( cs->getParameters().use_common_plane_formulation && lor_factor > 1 ) {
+    throw std::invalid_argument( "Common Plane does not support LOR subdivision." );
+  }
   const bool rebuild_formulation = cs->hasContactFormulation();
   const auto* previous_lor = cs->getMfemMeshData()->GetLORMesh();
   cs->getMfemMeshData()->SetLORFactor( lor_factor );

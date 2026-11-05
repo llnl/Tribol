@@ -1036,6 +1036,7 @@ void CouplingScheme::performBinning()
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
   if ( m_formulation ) {
+    if ( m_parameters.use_common_plane_formulation ) detail::validateCommonPlaneFormulation( *this );
     // The formulation performs the search and gap calculations needed to compute forces from the current mesh data.
 #ifdef BUILD_REDECOMP
     if ( m_contact_multiplier ) {
@@ -1217,7 +1218,8 @@ void CouplingScheme::updateEnergyMortarTransferData()
 //------------------------------------------------------------------------------
 void CouplingScheme::updateContactFormulation()
 {
-  if ( m_contactMethod == ENERGY_MORTAR ) {
+  if ( m_contactMethod == ENERGY_MORTAR ||
+       ( m_contactMethod == COMMON_PLANE && m_parameters.use_common_plane_formulation ) ) {
     // Formulation construction captures search configuration, so valid current meshes are required before invoking
     // the factory. Setters that change search configuration update its derived values before rebuilding here.
     // Status 2 selects a usable but nonoptimal execution mode, so only status 1 prevents formulation construction.

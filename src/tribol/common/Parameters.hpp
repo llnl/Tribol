@@ -506,7 +506,8 @@ struct Parameters {
   bool auto_contact_check = false;  ///! True if auto-contact checks should be enabled
 
   EnforcementLocation enforcement_location =
-      EnforcementLocation::QuadraturePoint;  ///! Defaults to quadrature-point enforcement
+      EnforcementLocation::QuadraturePoint;   ///! Defaults to quadrature-point enforcement
+  bool use_common_plane_formulation = false;  ///< Opt in to host MFEM common-plane residual/Jacobian assembly.
   ///! Requested polynomial degree to integrate exactly.
   ///! The default (5) corresponds to a three-point Gauss-Legendre rule in 1D.
   int quadrature_order = 5;

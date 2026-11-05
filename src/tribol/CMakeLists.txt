@@ -28,6 +28,8 @@ set(tribol_headers
     geom/Hyperplane.hpp
     geom/OpposingNormalGap.hpp
     geom/OffsetGap.hpp
+    geom/CommonPlaneEdgeMapping.hpp
+    geom/CommonPlaneGap.hpp
     geom/LinearEdgeGeometry.hpp
     geom/NodalNormal.hpp
     geom/SmoothedProjectedEdgeMapping.hpp
