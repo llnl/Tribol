@@ -8,6 +8,9 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added opt-in linear 2D Common Plane contact through `setMfemUseCommonPlaneFormulation()`, sharing
+  `PairContactFormulation` with nodal and quadrature-point Energy Mortar. It supports host MFEM/Redecomp frictionless
+  constant-penalty contact, orders 0-5, and Enzyme residual Jacobians. No nodal gap, energy, or timestep is defined.
 - Nodal and quadrature-point Energy Mortar share `PairContactFormulation`, with separate method and penalty-input
   arguments. Pair calculations use direct quadrature loops and local Enzyme derivatives. Nodal penalty assembly
   uses explicit gap/area partials, returning zero for unsupported area before division. Quadrature-point enforcement
@@ -66,6 +69,11 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Nodal penalty Energy Mortar uses `0.5*k*min(weighted_gap,0)^2/area` with consistent coordinate derivatives,
+  including area coupling. This includes the one-half factor missing from the previous nodal penalty energy.
+- `ContactFormulation` now returns caller-owned results from `computeNodalGaps()` and `computeNodalForces()` instead
+  of retaining outputs behind update methods and getters. `PairContactFormulation` replaces `EnergyMortarAdapter`.
+  Energy Mortar energies are globally summed; callers must not reduce them again across MPI ranks.
 - Numerical coordinates, fields, matrix entries, and parameters consistently use `RealT` across Tribol, shared helpers,
   Redecomp, examples, and tests. Public C++ declarations retain their existing types because `RealT` aliases `double`;
   generated C/Fortran interfaces retain their concrete types. Single precision remains unsupported.

@@ -181,6 +181,9 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location )
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnforcementLocation(): call tribol::registerCouplingScheme() "
                                << "prior to calling this routine." );
 
+  if ( cs->getParameters().use_common_plane_formulation && location != EnforcementLocation::QuadraturePoint ) {
+    throw std::invalid_argument( "Common Plane requires quadrature-point enforcement." );
+  }
   if ( location != EnforcementLocation::Nodal && location != EnforcementLocation::QuadraturePoint ) {
     throw std::invalid_argument( "Unsupported enforcement location." );
   }
@@ -199,9 +202,12 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location )
 void setQuadratureOrder( IndexT cs_id, int order )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-  if ( !cs || cs->getContactMethod() != ENERGY_MORTAR || order < 0 || order > 5 ) {
+  if ( !cs ||
+       ( cs->getContactMethod() != ENERGY_MORTAR &&
+         !( cs->getContactMethod() == COMMON_PLANE && cs->getParameters().use_common_plane_formulation ) ) ||
+       order < 0 || order > 5 ) {
     throw std::invalid_argument(
-        "setQuadratureOrder requires a registered ENERGY_MORTAR scheme and an order from 0 through 5." );
+        "setQuadratureOrder requires ENERGY_MORTAR or opted-in COMMON_PLANE and an order from 0 through 5." );
   }
   cs->getParameters().quadrature_order = order;
   if ( cs->hasContactFormulation() ) cs->updateContactFormulation();

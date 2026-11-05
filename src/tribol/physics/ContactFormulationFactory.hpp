@@ -22,6 +22,16 @@ class CouplingScheme;
  */
 std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs );
 
+namespace detail {
+/**
+ * @brief Validate the supported Common Plane formulation configuration before selecting or rebuilding it.
+ * @param cs Registered coupling scheme; no configuration is changed.
+ * @throws std::invalid_argument The method, geometry, penalty, or execution configuration is unsupported.
+ * @throws std::runtime_error Enzyme or Redecomp support is unavailable.
+ */
+void validateCommonPlaneFormulation( CouplingScheme& cs );
+}  // namespace detail
+
 }  // namespace tribol
 
 #endif /* SRC_TRIBOL_PHYSICS_CONTACTFORMULATIONFACTORY_HPP_ */

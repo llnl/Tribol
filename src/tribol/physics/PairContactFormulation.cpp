@@ -270,5 +270,11 @@ template class PairContactFormulation<EnergyMortarPairMethod<
 template class PairContactFormulation<EnergyMortarNodalPairMethod<
     PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>, SeriesPenaltyStiffness>>;
 
+template class PairContactFormulation<CommonPlanePairMethod<EdgeQuadratureRuleGenerator<1>, AveragePenaltyStiffness>>;
+template class PairContactFormulation<CommonPlanePairMethod<EdgeQuadratureRuleGenerator<1>, SeriesPenaltyStiffness>>;
+template class PairContactFormulation<CommonPlanePairMethod<EdgeQuadratureRuleGenerator<2>, AveragePenaltyStiffness>>;
+template class PairContactFormulation<CommonPlanePairMethod<EdgeQuadratureRuleGenerator<2>, SeriesPenaltyStiffness>>;
+template class PairContactFormulation<CommonPlanePairMethod<EdgeQuadratureRuleGenerator<3>, AveragePenaltyStiffness>>;
+template class PairContactFormulation<CommonPlanePairMethod<EdgeQuadratureRuleGenerator<3>, SeriesPenaltyStiffness>>;
 #endif
 }  // namespace tribol

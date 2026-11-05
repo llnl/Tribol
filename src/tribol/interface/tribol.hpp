@@ -138,6 +138,10 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
  * \param [in] location contact enforcement location
  *
  * \note Quadrature-point computation is only supported with penalty enforcement.
+ *
+ * ENERGY_MORTAR creates pressure/gap fields only for nodal enforcement. Switching locations releases the previous
+ * formulation and its cached outputs and initializes the selected transfer data on any existing decomposition.
+ * Views into the previous pressure/gap fields must not be retained across this call.
  */
 void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
 
@@ -152,9 +156,9 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
  * also depend on overlap geometry and subdivision. This does not promise exact integration of a curved physical
  * mapping or a nonpolynomial contact integrand.
  *
- * Currently supported for ENERGY_MORTAR linear edges and orders 0-5: orders 0-1 use one Gauss-Legendre point, 2-3 use
- * two, and 4-5 use three. The default is order 5, preserving three-point integration.
- * An existing formulation is rebuilt. Unsupported orders or methods are rejected without changing the scheme.
+ * Supported for ENERGY_MORTAR and opted-in COMMON_PLANE linear edges, with orders 0-5: orders 0-1 use one
+ * Gauss-Legendre point, 2-3 use two, and 4-5 use three. The default is order 5, preserving three-point integration. An
+ * existing formulation is rebuilt. Unsupported orders or methods are rejected without changing the scheme.
  */
 void setQuadratureOrder( IndexT cs_id, int order );
 

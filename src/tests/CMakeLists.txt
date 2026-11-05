@@ -12,6 +12,7 @@ set( tribol_tests
      tribol_energy_mortar_definition.cpp
      tribol_basis_function.cpp
      tribol_check_tpl.cpp
+     tribol_common_plane_formulation.cpp
      tribol_common_plane_penalty.cpp
      tribol_common_plane_gap_rate.cpp
      tribol_common_plane_gpu.cpp
@@ -223,6 +224,7 @@ if( TRIBOL_USE_ENZYME )
       tribol_enzyme_nodal_normal.cpp
       tribol_enzyme_mortar_assembled.cpp
       tribol_enzyme_poly_intersect.cpp
+      tribol_mfem_common_plane_formulation.cpp
       tribol_energy_mortar_quadrature_settings.cpp
       tribol_energy_mortar_patch.cpp
       tribol_energy_mortar_patch_LM.cpp
@@ -281,6 +283,9 @@ if( MFEM_FOUND )
 endif()
 
 if( TRIBOL_USE_ENZYME )
+
+  blt_add_test(NAME tribol_mfem_common_plane_formulation_2rank
+      COMMAND tribol_mfem_common_plane_formulation_test NUM_MPI_TASKS 2)
 
   blt_add_test(NAME tribol_energy_mortar_quadrature_settings_2rank
       COMMAND tribol_energy_mortar_quadrature_settings_test NUM_MPI_TASKS 2)

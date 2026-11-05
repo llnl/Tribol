@@ -11,6 +11,7 @@
 #define SRC_TRIBOL_PHYSICS_PAIRCONTACTFORMULATION_HPP_
 
 #include "tribol/physics/ContactFormulation.hpp"
+#include "tribol/physics/CommonPlane.hpp"
 #include "tribol/physics/EnergyMortarEnergy.hpp"
 #include "tribol/geom/OffsetGap.hpp"
 #include "tribol/physics/PairMethod.hpp"
@@ -44,6 +45,17 @@ template <typename QuadratureRule, typename PenaltyStiffness = AveragePenaltySti
           typename GapDefinition = OffsetGap<OpposingNormalGap>>
 using EnergyMortarNodalPairMethod =
     NodalPairMethod<EnergyMortarNodalEnergy<QuadratureRule, GapDefinition>, RegisteredPenaltyInputs<PenaltyStiffness>>;
+
+/**
+ * @brief Common Plane defaults: residual derivatives and current scaled mesh penalties.
+ * @tparam BaseQuadratureRule Gauss rule on the common-line interval.
+ * @tparam PenaltyStiffness Combination of scaled mesh penalties; defaults to springs in series.
+ * @tparam GapDefinition Owned geometric or offset gap; the factory selects the offset wrapper.
+ */
+template <typename BaseQuadratureRule, typename PenaltyStiffness = SeriesPenaltyStiffness,
+          typename GapDefinition = OffsetGap<CommonPlaneGap>>
+using CommonPlanePairMethod =
+    ForcePairMethod<CommonPlaneForce<BaseQuadratureRule, GapDefinition>, ScaledMeshPenaltyInputs<PenaltyStiffness>>;
 
 /**
  * @brief Search current surfaces and assemble element-pair or nodal residuals and Jacobians on MFEM true DOFs.
