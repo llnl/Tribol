@@ -50,7 +50,10 @@ struct EdgeQuadratureRuleGenerator {
   }
 
   /**
-   * @brief Map the standard Gauss-Legendre rule on [-1,1] onto the supplied interval.
+   * @brief Map the standard Gauss-Legendre rule on [-1,1] onto the supplied integration-surface coordinate interval.
+   *
+   * The returned weights include the scale from [-1,1] to the supplied interval. They do not include an element
+   * Jacobian; the element-pair mapping applies that separately.
    *
    * @param bounds Lower and upper integration-interval coordinates, stored at indices 0 and 1.
    * @return Success with NumPoints points if bounds[1] > bounds[0]; otherwise Success with zero points.
