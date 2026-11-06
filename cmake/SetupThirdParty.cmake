@@ -129,7 +129,7 @@ endif()
 
 
 #---------------------------------------------------------------------------
-# Remove non-existant INTERFACE_INCLUDE_DIRECTORIES from imported targets
+# Remove non-existent INTERFACE_INCLUDE_DIRECTORIES from imported targets
 # to work around CMake error
 #---------------------------------------------------------------------------
 set(_imported_targets
@@ -145,18 +145,19 @@ set(_imported_targets
 
 foreach(_target ${_imported_targets})
     if(TARGET ${_target})
-        message(STATUS "Removing non-existant include directories from target[${_target}]")
-
         get_target_property(_dirs ${_target} INTERFACE_INCLUDE_DIRECTORIES)
         set(_existing_dirs)
         foreach(_dir ${_dirs})
-            if (EXISTS "${_dir}")
+            if("${_dir}" MATCHES "^\\$<" OR IS_DIRECTORY "${_dir}")
                 list(APPEND _existing_dirs "${_dir}")
             endif()
         endforeach()
-        if (_existing_dirs)
+        if(_existing_dirs)
+            if(NOT "${_existing_dirs}" STREQUAL "${_dirs}")
+                message(STATUS "Removed non-existent include directories from target '${_target}'")
+            endif()
             set_target_properties(${_target} PROPERTIES
-                                  INTERFACE_INCLUDE_DIRECTORIES "${_existing_dirs}" )
+                                    INTERFACE_INCLUDE_DIRECTORIES "${_existing_dirs}" )
         endif()
     endif()
 endforeach()
