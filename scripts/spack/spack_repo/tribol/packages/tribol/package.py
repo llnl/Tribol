@@ -81,10 +81,9 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     depends_on("mfem@4.9.0:+lapack", when="+enzyme")
     depends_on("mfem+metis+mpi", when="+redecomp")
     depends_on("mfem+asan", when="+asan")
-    depends_on("mfem+enzyme", when="+enzyme")
 
-    depends_on("raja@2024.02.0:~examples~exercises", when="+raja")
-    depends_on("umpire@2024.02.0:~examples~device_alloc", when="+umpire")
+    depends_on("raja@2024.02.0", when="+raja")
+    depends_on("umpire@2024.02.0", when="+umpire")
 
     depends_on("enzyme@0.0.180:", when="+enzyme")
     depends_on("cuda+allow-unsupported-compilers", when="+enzyme+cuda")
@@ -92,7 +91,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     requires("%cxx=llvm-amdgpu", when="+enzyme+rocm")
     requires("%cxx=llvm", when="+enzyme~rocm")
 
-    depends_on("axom~fortran~tools~examples+mfem+lua")
+    depends_on("axom")
     depends_on("axom+raja", when="+raja")
     depends_on("axom~raja", when="~raja")
     depends_on("axom+umpire", when="+umpire")
@@ -108,16 +107,12 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
 
     with when("+openmp"):
         depends_on("axom+openmp")
-        depends_on("mfem+openmp")
         # Tribol requires RAJA and Umpire for OpenMP support
         depends_on("raja+openmp")
         depends_on("umpire+openmp")
 
     with when("~openmp"):
         depends_on("axom~openmp")
-        depends_on("mfem~openmp")
-        depends_on("raja~openmp", when="+raja")
-        depends_on("umpire~openmp", when="+umpire")
 
     ######
     # CUDA
@@ -144,7 +139,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
 
         # required
         depends_on(f"axom {ext_rocm_dep}", when=f"{ext_rocm_dep}")
-        depends_on(f"mfem+raja+umpire {ext_rocm_dep}", when=f"{ext_rocm_dep}")
+        depends_on(f"mfem {ext_rocm_dep}", when=f"{ext_rocm_dep}")
 
         # optional
         depends_on(f"caliper {ext_rocm_dep}", when=f"+caliper {ext_rocm_dep}")

@@ -21,7 +21,7 @@ concretizer:
 packages:
   axom:
     require:
-    - spec: "~shared"
+    - spec: "~shared~fortran~tools~examples+mfem+lua"
   caliper:
     require:
     - spec: "~kokkos"
@@ -45,7 +45,7 @@ packages:
     - spec: "~shared~examples~exercises"
   umpire:
     require:
-    - spec: "~shared~examples~werror"
+    - spec: "~shared~examples~werror~device_alloc"
 
   # Forward debug variant to relevant tpls
   tribol:
