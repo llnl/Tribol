@@ -129,7 +129,8 @@ struct IntegrationSurfaceRule {
 /**
  * @brief Provide views of quadrature points in each element's parametric coordinates and physical integration weights.
  *
- * Parametric coordinates are the local element variables used for geometry mapping and basis evaluation.
+ * Parametric quadrature-point coordinates locate each point within an element. Contact calculations use them to find
+ * the point's physical position and evaluate the element basis there.
  * LinearEdgeGeometry uses one coordinate, xi, with vertices at -1 and 1. Arrays are indexed by point, then coordinate
  * component. Mapping to the second element does not add another Jacobian. The caller's arrays must remain alive while
  * this view is used.
@@ -167,7 +168,8 @@ struct PairQuadratureView {
  * @brief Own fixed-capacity quadrature points in each element's parametric coordinates and physical integration
  * weights.
  *
- * Parametric coordinates are the local element variables used for geometry mapping and basis evaluation.
+ * Parametric quadrature-point coordinates locate each point within an element. Contact calculations use them to find
+ * the point's physical position and evaluate the element basis there.
  * LinearEdgeGeometry uses one coordinate, xi, with vertices at -1 and 1.
  * @tparam ParametricDimension1 Number of coordinates used to parameterize geometry1: one for an edge, two for a face.
  * @tparam ParametricDimension2 Number of coordinates used to parameterize geometry2: one for an edge, two for a face.
