@@ -81,9 +81,10 @@ concept PairQuadratureComponentsAreCompatible =
  * geometry or point data.
  *
  * Mapping defines element geometry types constructible from Coords views and the integration surface passed to
- * IntegrationSurfaceRuleGenerator. It owns forward surface construction and reverse point mapping, including the
- * physical measure. Each call constructs element geometry objects from the supplied coordinates and discards them
- * before returning. For linear edges, these objects copy the endpoints and cache the edge vector and squared length for
+ * IntegrationSurfaceRuleGenerator. It constructs the contact integration surface from the element geometries, maps
+ * generated integration points back to both elements, and calculates each point's physical integration weight. Each
+ * call constructs element geometry objects from the supplied coordinates and discards them before returning. For
+ * linear edges, these objects copy the endpoints and cache the edge vector and squared length for
  * reuse by the mapping.
  * @tparam Mapping Integration-surface construction and mapping to both elements.
  * @tparam IntegrationSurfaceRuleGenerator Generates points and weights in the mapping's integration-surface
