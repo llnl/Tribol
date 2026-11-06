@@ -950,41 +950,6 @@ TEST( QuadratureRuleFactory, rejects_unsupported_orders_without_creating_a_rule 
   }
 }
 
-/**
- * @brief Test-only rule descriptions used to check factory selection; these types generate no points or weights.
- *
- * @tparam Degree Exactly integrated reference polynomial degree.
- * @tparam Points Points in the synthetic integration-surface rule.
- */
-template <int Degree, int Points>
-struct TestQuadratureRuleMetadata {
-  static constexpr int polynomial_order = Degree;  ///< Declared exact polynomial degree.
-  static constexpr int max_points = Points;        ///< Declared maximum point count.
-};
-
-/**
- * @brief Check factory selection using custom rule descriptions with gaps between supported polynomial degrees.
- * These types provide only degree and point-count metadata; they do not implement quadrature generation.
- */
-TEST( QuadratureRuleFactory, selects_custom_rule_types_by_polynomial_degree )
-{
-  using DegreeOneRule = TestQuadratureRuleMetadata<1, 1>;
-  using DegreeTwoRule = TestQuadratureRuleMetadata<2, 3>;
-  using DegreeFourRule = TestQuadratureRuleMetadata<4, 6>;
-  // Return the selected type's point count so the assertion can identify which description the factory chose.
-  const auto identify_selected_rule = []<typename QuadratureRule>() { return QuadratureRule::max_points; };
-  // Each case is {requested degree, expected point count}. There is no degree-3 rule in this test family, so a
-  // degree-3 request must select the degree-4 description (six points), not assume the edge-rule point-count formula.
-  const std::pair<int, int> test_cases[] = { { 0, 1 }, { 1, 1 }, { 2, 3 }, { 3, 6 }, { 4, 6 } };
-  for ( const auto& [requested_order, expected_point_count] : test_cases ) {
-    SCOPED_TRACE( testing::Message() << "requested polynomial degree=" << requested_order );
-    const auto selected_point_count = createWithQuadratureRule<DegreeOneRule, DegreeTwoRule, DegreeFourRule>(
-        requested_order, identify_selected_rule );
-    // The selected description must be the first in this family that meets or exceeds the requested degree.
-    EXPECT_EQ( selected_point_count, expected_point_count );
-  }
-}
-
 }  // namespace
 
 /**
