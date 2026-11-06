@@ -123,8 +123,8 @@ class PairQuadratureRule {
   /**
    * @brief Construct the integration surface and generate quadrature points and weights in its coordinates.
    *
-   * The mapping defines these coordinates. SmoothedProjectedEdgeMapping uses edge1's parent coordinate, with vertices
-   * at -1 and 1; its weights do not yet include edge1's physical Jacobian.
+   * The mapping defines these coordinates. It also determines how the generated weights become physical integration
+   * weights when the points are mapped to both elements.
    *
    * @param element1_coords Current first-element coordinates, with geometry defined by FirstGeometry.
    * @param element2_coords Current second-element coordinates, with geometry defined by SecondGeometry.
