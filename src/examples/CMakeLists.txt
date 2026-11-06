@@ -38,7 +38,7 @@ endforeach()
 if ( TRIBOL_ENABLE_TESTS AND ENABLE_TESTS )
 
   # TODO re-add mortar test https://github.com/llnl/Tribol/issues/281
-  foreach( example common_plane ) #mortar_lm_patch_test)
+  foreach( example common_plane mortar_lm_patch_test)
     if(TRIBOL_USE_MPI)
       blt_add_test( NAME    tribol_${example}_ex
                     COMMAND ${example}_ex 

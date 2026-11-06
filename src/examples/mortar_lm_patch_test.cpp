@@ -41,9 +41,8 @@
 // tribol::update() call. More specifically, this example demonstrates how to use
 // the Tribol API to obtain Jacobian (i.e. sparse matrix) contributions.
 //
-// Note: This example uses MFEM linear algebra features; namely, the LU solver.
-// There may be issues if the mesh blocks are too refined. Additionally, the
-// runtime will be very slow.
+// Note: This example uses MFEM's sparse MINRES solver with a diagonal Jacobi preconditioner that approximates the
+// pressure Schur complement. Refining the mesh will increase the iteration count and runtime.
 //
 // srun -n1 ./mortar_lm_patch_test_ex --block1_res 5 5 1  --block1_min 0 0 0. --block1_max 1 1 1.05 --block2_res 4 4 1
 // --block2_min 0 0 0.95 --block2_max 1 1 2
@@ -180,13 +179,8 @@ int main( int argc, char** argv )
 
     SLIC_INFO( "Assembled equilibrium contributions from mfem." );
 
-    // finalize the sparse matrix. This converts the row-wise linked list
-    // format into CSR format. We could use CSR data directly, but for ease
-    // we will then convert the sparse matrix to a dense matrix hopefully
-    // to ease clarity
+    // Finalize the sparse matrix, converting the row-wise linked-list format to CSR.
     tribolJac->Finalize();
-    mfem::DenseMatrix tribolA;  // full global system in dense matrix format
-    tribolJac->ToDenseMatrix( tribolA );
 
     // instantiate mfem vector for RHS contributions
     int rhs_size = mesh.dim * mesh.numTotalNodes +  // equilibrium equations
@@ -198,7 +192,7 @@ int main( int argc, char** argv )
 
     //////////////////////////////////////////////////////////
     //                                                      //
-    // Condense the matrix tribolA into a system that is    //
+    // Condense the Tribol Jacobian into a system that is   //
     // (dim*numTotalNodes + numPressureDof). For clarity,   //
     // sum contributions into another sparse matrix of this //
     // proper size.                                         //
@@ -214,9 +208,8 @@ int main( int argc, char** argv )
     //////////////////////////////////////////////////////////
     int solveSize = rhs_size;
     mfem::SparseMatrix A_s( solveSize );  // A_s for "s"parse matrix "A"
-    // int numRows = A_s.NumRows();
 
-    mesh.tribolMatrixToSystemMatrix( &tribolA, &A_s );
+    mesh.tribolMatrixToSystemMatrix( tribolJac, &A_s );
 
     SLIC_INFO( "Condensed oversized matrix into properly sized matrix." );
 
@@ -234,22 +227,38 @@ int main( int argc, char** argv )
 
     SLIC_INFO( "Applied homogeneous Dirichlet BCs to global system." );
 
-    // Finalize A_s and convert to dense matrix to solve using
-    // MFEM LU solver
+    // Finalize the condensed sparse matrix and solve the symmetric indefinite system with MINRES.
     A_s.Finalize();
-    mfem::DenseMatrix A;
-    A_s.ToDenseMatrix( A );
-    int rank = A.Rank( 1.e-15 );
-    SLIC_INFO( "Matrix rank: " << rank );
 
-    // instantiate MFEM dense matrix inverse object
-    // and solution vector
-    mfem::DenseMatrixInverse invA( A );
-    mfem::Vector sol;
-    invA.Mult( rhs, sol );            // solve the system
+    constexpr RealT relativeTolerance = 1.e-12;
+    constexpr RealT absoluteTolerance = 1.e-14;
+    constexpr int maxIterations = 5000;
+    constexpr int printLevel = 0;
+
+    mfem::Vector preconditionerDiagonal;
+    mesh.buildLagrangeMultiplierPreconditionerDiagonal( &A_s, &preconditionerDiagonal );
+    mfem::Array<int> essentialDofs;
+    mfem::OperatorJacobiSmoother preconditioner( preconditionerDiagonal, essentialDofs );
+
+    mfem::MINRESSolver solver;
+    solver.SetRelTol( relativeTolerance );
+    solver.SetAbsTol( absoluteTolerance );
+    solver.SetMaxIter( maxIterations );
+    solver.SetPrintLevel( printLevel );
+    solver.SetPreconditioner( preconditioner );
+    solver.SetOperator( A_s );
+
+    mfem::Vector sol( rhs.Size() );
+    sol = 0.0;
+    solver.Mult( rhs, sol );
+
+    SLIC_ERROR_IF( !solver.GetConverged(), "MINRES failed to converge in "
+                                               << solver.GetNumIterations()
+                                               << " iterations; final norm = " << solver.GetFinalNorm() << "." );
     RealT* sol_data = sol.GetData();  // get solution data
 
-    SLIC_INFO( "Solved global system of equations." );
+    SLIC_INFO( "MINRES converged in " << solver.GetNumIterations()
+                                      << " iterations; final norm = " << solver.GetFinalNorm() << "." );
 
     RealT pressureSum = 0.;
     for ( int i = 0; i < mesh.numNonmortarSurfaceNodes; ++i ) {
