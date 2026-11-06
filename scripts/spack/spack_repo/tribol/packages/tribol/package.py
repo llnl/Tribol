@@ -77,8 +77,8 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     depends_on("cmake@3.14:", type="build")
     depends_on("cmake@3.21:", type="build", when="+rocm")
 
-    depends_on("mfem@4.7.0.2:+lapack")
-    depends_on("mfem@4.9.0:+lapack", when="+enzyme")
+    depends_on("mfem@4.7.0.2:")
+    depends_on("mfem@4.9.0:", when="+enzyme")
     depends_on("mfem+metis+mpi", when="+redecomp")
     depends_on("mfem+asan", when="+asan")
 
