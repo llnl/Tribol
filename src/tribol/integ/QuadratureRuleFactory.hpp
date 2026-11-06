@@ -25,21 +25,21 @@ namespace detail {
  *
  * @throws std::invalid_argument No supported rule covers the requested order.
  *
- * @tparam QuadratureRule First supported rule, with its exact polynomial degree.
- * @tparam OtherQuadratureRules Remaining rule types in increasing degree order.
+ * @tparam CandidateRule Rule currently being compared with the requested order.
+ * @tparam RemainingRules Rules with higher polynomial degrees, in increasing order.
  * @tparam Create Callable with `operator()<SelectedRule>()` and a common return type for all rules.
  * @param order Requested reference polynomial degree.
  * @param create Callback invoked with the selected rule type.
  * @return Callback result.
  */
-template <typename QuadratureRule, typename... OtherQuadratureRules, typename Create>
+template <typename CandidateRule, typename... RemainingRules, typename Create>
 decltype( auto ) createWithQuadratureRuleImpl( int order, Create&& create )
 {
-  if ( order <= QuadratureRule::polynomial_order ) {
-    return std::forward<Create>( create ).template operator()<QuadratureRule>();
+  if ( order <= CandidateRule::polynomial_order ) {
+    return std::forward<Create>( create ).template operator()<CandidateRule>();
   }
-  if constexpr ( sizeof...( OtherQuadratureRules ) > 0 ) {
-    return createWithQuadratureRuleImpl<OtherQuadratureRules...>( order, std::forward<Create>( create ) );
+  if constexpr ( sizeof...( RemainingRules ) > 0 ) {
+    return createWithQuadratureRuleImpl<RemainingRules...>( order, std::forward<Create>( create ) );
   } else {
     throw std::invalid_argument( "Requested quadrature order exceeds the supported quadrature rules." );
   }
@@ -53,19 +53,18 @@ decltype( auto ) createWithQuadratureRuleImpl( int order, Create&& create )
  * @throws std::invalid_argument The order is negative or exceeds every supported rule.
  * Selection runs on the host; the selected type can be used in device and differentiated kernels.
  *
- * @tparam QuadratureRule First supported rule, with its exact polynomial degree.
- * @tparam OtherQuadratureRules Remaining rule types in increasing degree order.
+ * @tparam QuadratureRules Supported rule types in increasing polynomial degree order.
  * @tparam Create Callable with `operator()<SelectedRule>()` and a common return type for all rules.
  * @param order Requested nonnegative reference polynomial degree.
  * @param create Callback invoked once as `operator()<SelectedRule>()`.
  * @return Callback result.
  */
-template <typename QuadratureRule, typename... OtherQuadratureRules, typename Create>
+template <typename... QuadratureRules, typename Create>
+  requires( sizeof...( QuadratureRules ) > 0 )
 decltype( auto ) createWithQuadratureRule( int order, Create&& create )
 {
   if ( order < 0 ) throw std::invalid_argument( "Quadrature order must be nonnegative." );
-  return detail::createWithQuadratureRuleImpl<QuadratureRule, OtherQuadratureRules...>(
-      order, std::forward<Create>( create ) );
+  return detail::createWithQuadratureRuleImpl<QuadratureRules...>( order, std::forward<Create>( create ) );
 }
 
 namespace detail {
