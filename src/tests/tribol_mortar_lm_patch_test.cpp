@@ -164,10 +164,6 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
   // make sure sparse matrix is finalized to convert to CSR format
   tribolJac->Finalize();
 
-  // convert sparse matrix to dense matrix for output
-  mfem::DenseMatrix dTribolJac;
-  tribolJac->ToDenseMatrix( dTribolJac );
-
   // instantiate mfem vector for rhs vector. The length of this vector is the
   // (space dimension) x (total number of mesh nodes) + (number of nonmortar nodes in contact),
   // where the last addition is for the pressure lagrange multiplier field
@@ -188,9 +184,7 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
   int solveSize = rhs_size;
   mfem::SparseMatrix jac( solveSize );
 
-  int numRows = jac.NumRows();
-
-  this->m_mesh.tribolMatrixToSystemMatrix( &dTribolJac, &jac );
+  this->m_mesh.tribolMatrixToSystemMatrix( tribolJac, &jac );
 
   // note: this does not populate the right hand side with any contact weak form
   // residual terms. That is, the initial guess for pressure is zero, and therefore
@@ -206,20 +200,34 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
   this->m_mesh.enforceDirichletBCs( &jac, &rhs, contact );
 
   jac.Finalize();
-  mfem::DenseMatrix dJac;
-  jac.ToDenseMatrix( dJac );
-  int rank = dJac.Rank( 1.e-15 );
 
-  SLIC_DEBUG( "Matrix rank: " << rank );
+  constexpr RealT relativeTolerance = 1.e-12;
+  constexpr RealT absoluteTolerance = 1.e-14;
+  constexpr int maxIterations = 5000;
+  constexpr int printLevel = 0;
 
-  SLIC_ERROR_IF( rank < numRows, "Jacobian rank (" << rank << ") less than row dimension (" << numRows << ")" );
+  mfem::Vector preconditionerDiagonal;
+  this->m_mesh.buildLagrangeMultiplierPreconditionerDiagonal( &jac, &preconditionerDiagonal );
+  mfem::Array<int> essentialDofs;
+  mfem::OperatorJacobiSmoother preconditioner( preconditionerDiagonal, essentialDofs );
 
-  // instantiate mfem dense matrix inverse object and
-  // solution vector
-  mfem::DenseMatrixInverse invJ( dJac );
+  mfem::MINRESSolver solver;
+  solver.SetRelTol( relativeTolerance );
+  solver.SetAbsTol( absoluteTolerance );
+  solver.SetMaxIter( maxIterations );
+  solver.SetPrintLevel( printLevel );
+  solver.SetPreconditioner( preconditioner );
+  solver.SetOperator( jac );
 
-  // Solve the system
-  invJ.Mult( rhs, sol );
+  sol.SetSize( rhs.Size() );
+  sol = 0.0;
+  solver.Mult( rhs, sol );
+
+  SLIC_ERROR_IF( !solver.GetConverged(), "MINRES failed to converge in "
+                                             << solver.GetNumIterations()
+                                             << " iterations; final norm = " << solver.GetFinalNorm() << "." );
+  SLIC_DEBUG( "MINRES converged in " << solver.GetNumIterations()
+                                     << " iterations; final norm = " << solver.GetFinalNorm() << "." );
 
   // get solution data
   RealT* sol_data = sol.GetData();
@@ -380,11 +388,20 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
     suffix_rhs << "vector_" << test_name << ".txt";
     rhs_vec.open( "rhs_" + suffix_rhs.str() );
 
+    const int* rowOffsets = jac.HostReadI();
+    const int* columns = jac.HostReadJ();
+    const RealT* values = jac.HostReadData();
     for ( int i = 0; i < jac.NumRows(); ++i ) {
       rhs_vec << rhs[i] << "\n";
       sol_vec << sol_data[i] << "\n";
       for ( int j = 0; j < jac.NumCols(); ++j ) {
-        RealT val = dJac( i, j );
+        RealT val = 0.0;
+        for ( int entry = rowOffsets[i]; entry < rowOffsets[i + 1]; ++entry ) {
+          if ( columns[entry] == j ) {
+            val = values[entry];
+            break;
+          }
+        }
         matrix << val << "  ";
       }
       matrix << "\n";
