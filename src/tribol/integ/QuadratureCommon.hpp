@@ -37,7 +37,7 @@ enum class QuadratureStatus
 {
   Success,               ///< Every reported point is initialized; zero points means zero measure.
   InsufficientCapacity,  ///< Reported count exceeds capacity; discard partial output.
-  InvalidGeometry        ///< Geometry calculation failed; discard output and report zero points.
+  InvalidGeometry        ///< Mapping rejected the supplied element geometry; discard output and report zero points.
 };
 
 /**
