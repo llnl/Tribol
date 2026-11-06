@@ -57,11 +57,11 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     variant("tests", default=False, description="Build tests")
 
     # variants for package dependencies
-    variant("adiak", default=False, description="Build with adiak")
-    variant("caliper", default=False, description="Build with hooks for Caliper performance analysis")
-    variant("enzyme", default=False, description="Build with Enzyme support")
-    variant("raja", default=True, description="Build with portable kernel execution support")
-    variant("umpire", default=True, description="Build with portable memory access support")
+    variant("adiak", default=False, sticky=True, description="Build with adiak")
+    variant("caliper", default=False, sticky=True, description="Build with hooks for Caliper performance analysis")
+    variant("enzyme", default=False, sticky=True, description="Build with Enzyme support")
+    variant("raja", default=True, sticky=True, description="Build with portable kernel execution support")
+    variant("umpire", default=True, sticky=True, description="Build with portable memory access support")
 
     # -----------------------------------------------------------------------
     # Dependencies
@@ -82,8 +82,8 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     depends_on("mfem+metis+mpi", when="+redecomp")
     depends_on("mfem+asan", when="+asan")
 
-    depends_on("raja@2024.02.0", when="+raja")
-    depends_on("umpire@2024.02.0", when="+umpire")
+    depends_on("raja@2024.02.0:", when="+raja")
+    depends_on("umpire@2024.02.0:", when="+umpire")
 
     depends_on("enzyme@0.0.180:", when="+enzyme")
     depends_on("cuda+allow-unsupported-compilers", when="+enzyme+cuda")
@@ -183,6 +183,8 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
 
     conflicts("+cuda", when="+rocm")
     conflicts("+openmp", when="+rocm")
+    conflicts("~umpire", when="+rocm")
+    conflicts("~raja", when="+rocm")
 
     for compiler_ in ["aocc", "cce", "gcc", "nag", "fj", "intel", "nvhpc", "xl"]:
         conflicts("+enzyme", when=f"%[virtuals=c,cxx] {compiler_}")
