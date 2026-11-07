@@ -911,11 +911,12 @@ INSTANTIATE_TEST_SUITE_P( execution, EdgeQuadratureTest, tribol::detail::enabled
 TEST( QuadratureRuleFactory, selects_registered_rule_by_polynomial_order )
 {
   int creation_count = 0;
-  // The factory passes its selected rule type to this callback. Returning its point count identifies that type
+  const SmoothedProjectedEdgeMapping mapping{};
+  // The factory passes its selected pair rule to this callback. Returning its point count identifies its generator
   // without generating any quadrature points; the counter checks how often the callback is invoked.
-  const auto identify_selected_rule = [&]<typename QuadratureRule>() {
+  const auto identify_selected_rule = [&]( auto quadrature_rule ) {
     ++creation_count;
-    return QuadratureRule::max_points;
+    return decltype( quadrature_rule )::max_points;
   };
   // Each case is {requested polynomial degree, expected point count}. N-point Gauss rules are exact through 2*N-1,
   // so degrees 0-1 need one point, 2-3 need two, and 4-5 need three.
@@ -923,7 +924,7 @@ TEST( QuadratureRuleFactory, selects_registered_rule_by_polynomial_order )
   for ( const auto& [requested_order, expected_point_count] : test_cases ) {
     SCOPED_TRACE( testing::Message() << "requested polynomial degree=" << requested_order );
     const int previous_creation_count = creation_count;
-    const auto selected_point_count = createWithQuadratureRule( requested_order, identify_selected_rule );
+    const auto selected_point_count = createWithQuadratureRule( requested_order, mapping, identify_selected_rule );
     // Compare the selected type's point count with the independently specified degree-to-point table above.
     EXPECT_EQ( selected_point_count, expected_point_count );
     // One valid request must invoke the creation callback exactly once.
@@ -935,16 +936,17 @@ TEST( QuadratureRuleFactory, selects_registered_rule_by_polynomial_order )
 TEST( QuadratureRuleFactory, rejects_unsupported_orders_without_creating_a_rule )
 {
   int creation_count = 0;
-  const auto identify_selected_rule = [&]<typename QuadratureRule>() {
+  const SmoothedProjectedEdgeMapping mapping{};
+  const auto identify_selected_rule = [&]( auto quadrature_rule ) {
     ++creation_count;
-    return QuadratureRule::max_points;
+    return decltype( quadrature_rule )::max_points;
   };
   // The registered rules support degrees 0 through 5. Check one request below and one above that range.
   for ( const int requested_order : { -1, 6 } ) {
     SCOPED_TRACE( testing::Message() << "unsupported polynomial degree=" << requested_order );
     const int previous_creation_count = creation_count;
     // Invalid requests must report an argument error instead of silently selecting another degree.
-    EXPECT_THROW( createWithQuadratureRule( requested_order, identify_selected_rule ), std::invalid_argument );
+    EXPECT_THROW( createWithQuadratureRule( requested_order, mapping, identify_selected_rule ), std::invalid_argument );
     // Rejection must happen before any creation callback runs.
     EXPECT_EQ( creation_count, previous_creation_count );
   }
