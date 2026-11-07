@@ -33,15 +33,20 @@ class EnergyMortarQuadratureSettingsTest : public testing::TestWithParam<std::tu
    */
   void SetUp() override
   {
+    // MFEM labels the unit square's bottom and top boundaries 1 and 3. This test only needs two valid surfaces for
+    // coupling-scheme registration; it does not evaluate their contact geometry.
+    constexpr int bottom_boundary_attribute = 1;
+    constexpr int top_boundary_attribute = 3;
     mesh_ = std::make_unique<mfem::ParMesh>( static_cast<const mfem::ParMesh&>(
         shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::SquareMesh( 1, 1 ) ) ) );
     fec_ = std::make_unique<mfem::H1_FECollection>( 1, 2 );
     fes_ = std::make_unique<mfem::ParFiniteElementSpace>( mesh_.get(), fec_.get(), 2 );
     coords_ = std::make_unique<mfem::ParGridFunction>( fes_.get() );
     mesh_->GetNodes( *coords_ );
-    tribol::registerMfemCouplingScheme( 0, 0, 1, *mesh_, *coords_, { 1 }, { 3 }, tribol::SURFACE_TO_SURFACE,
-                                        tribol::NO_SLIDING, tribol::ENERGY_MORTAR, tribol::FRICTIONLESS,
-                                        tribol::PENALTY, tribol::BINNING_GRID, tribol::ExecutionMode::Sequential );
+    tribol::registerMfemCouplingScheme( 0, 0, 1, *mesh_, *coords_, { bottom_boundary_attribute },
+                                        { top_boundary_attribute }, tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING,
+                                        tribol::ENERGY_MORTAR, tribol::FRICTIONLESS, tribol::PENALTY,
+                                        tribol::BINNING_GRID, tribol::ExecutionMode::Sequential );
     EXPECT_EQ( tribol::CouplingSchemeManager::getInstance().findData( 0 )->getParameters().quadrature_order, 5 );
     tribol::setEnforcementLocation( 0, std::get<0>( GetParam() ) );
     tribol::setQuadratureOrder( 0, quadratureOrder() );
