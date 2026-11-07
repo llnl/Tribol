@@ -20,12 +20,12 @@
 namespace tribol {
 
 /**
- * @brief Select a built-in unprojected edge rule by polynomial order.
+ * @brief Select a built-in edge rule by polynomial order.
  *
- * @throws std::invalid_argument The order is negative or greater than five.
+ * @throws std::invalid_argument The order is negative or unsupported by the available edge rules.
  *
  * @tparam Create Callable invoked as `operator()<SelectedRule>()`.
- * @param order Requested degree 0-5, selecting one, two, or three Gauss points.
+ * @param order Requested nonnegative polynomial degree.
  * @param create Callback invoked once with the selected rule type.
  * @return Callback result.
  */
@@ -53,11 +53,12 @@ decltype( auto ) createWithQuadratureRule( int order, Create&& create )
 
 /**
  * @brief Compose a supplied mapping with the edge rule generator selected by polynomial order.
- * @throws std::invalid_argument The order is negative or greater than five.
+ * @throws std::invalid_argument The order is negative or unsupported by the available edge rules.
  * @tparam Mapping Forward and reverse mapping retained by the pair rule.
  * @tparam Create Callable accepting the composed rule by value.
- * @param order Requested degree 0-5, selecting one, two, or three Gauss points.
- * @param mapping Configuration copied into the composed rule.
+ * @param order Requested nonnegative polynomial degree.
+ * @param mapping Mapping object copied into the pair rule and used to construct the integration surface and map its
+ * points to both elements.
  * @param create Callback invoked once with the configured pair rule.
  * @return Callback result.
  */
