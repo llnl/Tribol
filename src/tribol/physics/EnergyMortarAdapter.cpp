@@ -15,16 +15,15 @@ namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
-template <template <typename> class EnforcementLocation>
-EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
-                                                               MfemJacobianData& jac_data,
-                                                               std::unique_ptr<CoarseSearch> coarse_search,
-                                                               std::unique_ptr<RefinedSearch> refined_search, double k,
-                                                               double delta, int N, bool enzyme_quadrature,
-                                                               bool use_penalty, RealT residual_gap )
+template <template <typename> class EnforcementLocation, typename QuadratureRule>
+EnergyMortarAdapter<EnforcementLocation, QuadratureRule>::EnergyMortarAdapter(
+    MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
+    std::unique_ptr<CoarseSearch> coarse_search, std::unique_ptr<RefinedSearch> refined_search, double k,
+    QuadratureRule quadrature_rule, bool enzyme_quadrature, bool use_penalty, RealT residual_gap )
     : use_penalty_( use_penalty ),
       coarse_search_( std::move( coarse_search ) ),
       refined_search_( std::move( refined_search ) ),
+      quadrature_rule_( std::move( quadrature_rule ) ),
       mesh_data_( mesh_data ),
       submesh_data_( submesh_data ),
       jac_data_( jac_data )
@@ -33,12 +32,10 @@ EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mes
   SLIC_ASSERT_MSG( refined_search_ != nullptr, "ENERGY_MORTAR requires a refined search object." );
 
   params_.k = k;
-  params_.del = delta;
-  params_.N = N;
   params_.enzyme_quadrature = enzyme_quadrature;
   params_.residual_gap = residual_gap;
 
-  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+  evaluator_ = std::make_unique<EnergyMortarCalculator<QuadratureRule>>( params_, quadrature_rule_ );
 
   this->init( this );
 }
@@ -54,16 +51,9 @@ void Nodal<Adapter>::init( Adapter* adapter )
   pressure_vec_.fill( 0.0 );
 }
 
-template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::updateIntegrationRule( MeshData::Viewer /*mesh1*/,
-                                                                      MeshData::Viewer /*mesh2*/ )
-{
-  SLIC_WARNING_ROOT( "Update integration rule not implemented for ENERGY_MORTAR." );
-  // TODO: break out integration rule as a separate method
-}
-
-template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::findCandidatePairs( MeshData::Viewer mesh1, MeshData::Viewer mesh2 )
+template <template <typename> class EnforcementLocation, typename QuadratureRule>
+void EnergyMortarAdapter<EnforcementLocation, QuadratureRule>::findCandidatePairs( MeshData::Viewer mesh1,
+                                                                                   MeshData::Viewer mesh2 )
 {
   const auto candidates = coarse_search_->findCandidatePairs( mesh1, mesh2 );
   pairs_ = refined_search_->filterCandidatePairs( candidates, mesh1, mesh2 );
@@ -302,8 +292,8 @@ void Nodal<Adapter>::updateNodalForces( MeshData::Viewer mesh1, MeshData::Viewer
   adapter->df_dx_ += adapter->dg_tilde_dx_.transpose() * dp_dx;
 }
 
-template <template <typename> class EnforcementLocation>
-RealT EnergyMortarAdapter<EnforcementLocation>::computeTimeStep()
+template <template <typename> class EnforcementLocation, typename QuadratureRule>
+RealT EnergyMortarAdapter<EnforcementLocation, QuadratureRule>::computeTimeStep()
 {
   SLIC_INFO_ROOT( "computeTimestep() not implemented for EnergyMortar" );
   // TODO: implement timestep calculation
@@ -556,8 +546,8 @@ void QuadraturePoint<Adapter>::updateNodalForces( MeshData::Viewer mesh1, MeshDa
   adapter->df_dx_ = adapter->jac_data_.GetMfemJacobian( parent_fes, parent_fes, df_contribs );
 }
 
-template <template <typename> class EnforcementLocation>
-std::unique_ptr<mfem::HypreParMatrix> EnergyMortarAdapter<EnforcementLocation>::getMfemDfDx() const
+template <template <typename> class EnforcementLocation, typename QuadratureRule>
+std::unique_ptr<mfem::HypreParMatrix> EnergyMortarAdapter<EnforcementLocation, QuadratureRule>::getMfemDfDx() const
 {
   return std::unique_ptr<mfem::HypreParMatrix>( df_dx_.release() );
 }
@@ -573,8 +563,18 @@ std::unique_ptr<mfem::HypreParMatrix> Nodal<Adapter>::getMfemDfDp() const
   return std::unique_ptr<mfem::HypreParMatrix>( df_dlambda.release() );
 }
 
-template class EnergyMortarAdapter<Nodal>;
-template class EnergyMortarAdapter<QuadraturePoint>;
+template class EnergyMortarAdapter<Nodal,
+                                   PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>>;
+template class EnergyMortarAdapter<QuadraturePoint,
+                                   PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>>;
+template class EnergyMortarAdapter<Nodal,
+                                   PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>>;
+template class EnergyMortarAdapter<QuadraturePoint,
+                                   PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>>;
+template class EnergyMortarAdapter<Nodal,
+                                   PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>>;
+template class EnergyMortarAdapter<QuadraturePoint,
+                                   PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>>;
 
 #endif  // TRIBOL_USE_ENZYME
 

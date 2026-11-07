@@ -142,6 +142,23 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
 void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
 
 /*!
+ * \brief Request a polynomial integration order for each reference base region
+ *
+ * \param [in] cs_id Registered coupling scheme ID
+ * \param [in] order Nonnegative total polynomial degree to integrate exactly on each reference base region
+ *
+ * On an edge the degree concerns one parent coordinate; on a surface it is the total degree in both parent
+ * coordinates. Each rule family selects enough points to meet the requested degree. The complete point count may
+ * also depend on overlap geometry and subdivision. This does not promise exact integration of a curved physical
+ * mapping or a nonpolynomial contact integrand.
+ *
+ * Currently supported for ENERGY_MORTAR linear edges and orders 0-5: orders 0-1 use one Gauss-Legendre point, 2-3 use
+ * two, and 4-5 use three. The default is order 5, preserving three-point integration.
+ * An existing formulation is rebuilt. Unsupported orders or methods are rejected without changing the scheme.
+ */
+void setQuadratureOrder( IndexT cs_id, int order );
+
+/*!
  *
  * \brief sets the timestep scale factor applied to the timestep vote
  *

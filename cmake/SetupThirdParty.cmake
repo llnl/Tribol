@@ -35,6 +35,10 @@ if (ENZYME_DIR)
   set(Enzyme_DIR ${ENZYME_DIR})
   find_dependency(Enzyme REQUIRED PATHS "${ENZYME_DIR}")
 
+  # When Debug leaves LLVM IR at -O0, Enzyme cannot determine the element types of aggregate initialization and may
+  # either reject the code or generate incorrect derivatives. Keep debug symbols while simplifying the IR for Enzyme.
+  set_property(TARGET ClangEnzymeFlags APPEND PROPERTY INTERFACE_COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")
+
   set(TRIBOL_USE_ENZYME TRUE)
 else()
   message(STATUS "Enzyme support is OFF")
