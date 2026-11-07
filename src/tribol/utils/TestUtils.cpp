@@ -1562,61 +1562,110 @@ void TestMesh::computeElementJacobianContributions( mfem::SparseMatrix* const A,
 }  // end TestMesh::computeElementJacobianContributions()
 
 //------------------------------------------------------------------------------
-void TestMesh::tribolMatrixToSystemMatrix( mfem::DenseMatrix* const ATribol, mfem::SparseMatrix* const ASystem )
+void TestMesh::tribolMatrixToSystemMatrix( const mfem::SparseMatrix* ATribol, mfem::SparseMatrix* ASystem )
 {
   SLIC_ERROR_IF( ATribol == nullptr, "TestMesh::tribolMatrixToSystemMatrix(): " << "ATribol pointer is null." );
+  SLIC_ERROR_IF( ASystem == nullptr, "TestMesh::tribolMatrixToSystemMatrix(): " << "ASystem pointer is null." );
+  SLIC_ERROR_IF( !ATribol->Finalized(),
+                 "TestMesh::tribolMatrixToSystemMatrix(): ATribol must be in finalized CSR format." );
+  SLIC_ERROR_IF( ASystem->Finalized(), "TestMesh::tribolMatrixToSystemMatrix(): ASystem must not be finalized." );
 
-  SLIC_ERROR_IF( ATribol == nullptr, "TestMesh::tribolMatrixToSystemMatrix(): " << "ASystem pointer is null." );
+  const int displacementSize = this->dim * this->numTotalNodes;
+  const int tribolPressureOffset = displacementSize + this->numMortarNodes;
+  const int tribolPressureEnd = tribolPressureOffset + this->numNonmortarSurfaceNodes;
+  const int systemSize = displacementSize + this->numNonmortarSurfaceNodes;
 
-  int solveSize = this->dim * this->numTotalNodes + this->numNonmortarSurfaceNodes;
+  SLIC_ERROR_IF( ATribol->NumRows() < tribolPressureEnd || ATribol->NumCols() < tribolPressureEnd,
+                 "TestMesh::tribolMatrixToSystemMatrix(): ATribol is too small for the requested pressure block." );
+  SLIC_ERROR_IF( ASystem->NumRows() != systemSize || ASystem->NumCols() != systemSize,
+                 "TestMesh::tribolMatrixToSystemMatrix(): ASystem dimensions do not match the condensed system." );
 
-  // initialize matrix
-  for ( int i = 0; i < solveSize; ++i ) {
-    for ( int j = 0; j < solveSize; ++j ) {
-      ASystem->Add( i, j, 0. );
+  const int* rowOffsets = ATribol->HostReadI();
+  const int* columns = ATribol->HostReadJ();
+  const RealT* values = ATribol->HostReadData();
+
+  // MFEM's EliminateRowCol() requires a structural diagonal entry for every essential degree of freedom.
+  for ( int systemRow = 0; systemRow < systemSize; ++systemRow ) {
+    ASystem->Add( systemRow, systemRow, 0.0 );
+  }
+
+  for ( int tribolRow = 0; tribolRow < ATribol->NumRows(); ++tribolRow ) {
+    const bool isDisplacementRow = tribolRow < displacementSize;
+    const bool isPressureRow = tribolRow >= tribolPressureOffset && tribolRow < tribolPressureEnd;
+    if ( !isDisplacementRow && !isPressureRow ) {
+      continue;
     }
-  }  // end of matrix initialization
 
-  ////////////////////////////
-  // assemble matrix blocks //
-  ////////////////////////////
+    const int systemRow = isDisplacementRow ? tribolRow : displacementSize + tribolRow - tribolPressureOffset;
+    for ( int entry = rowOffsets[tribolRow]; entry < rowOffsets[tribolRow + 1]; ++entry ) {
+      const int tribolColumn = columns[entry];
+      const bool isDisplacementColumn = tribolColumn < displacementSize;
+      const bool isPressureColumn = tribolColumn >= tribolPressureOffset && tribolColumn < tribolPressureEnd;
 
-  // compose upper diagonal block
-  for ( int i = 0; i < this->dim * this->numTotalNodes; ++i ) {
-    for ( int j = 0; j < this->dim * this->numTotalNodes; ++j ) {
-      ASystem->Add( i, j, ( *ATribol )( i, j ) );
+      // The pressure-pressure block is zero for the Lagrange multiplier system.
+      if ( !( isDisplacementRow && ( isDisplacementColumn || isPressureColumn ) ) &&
+           !( isPressureRow && isDisplacementColumn ) ) {
+        continue;
+      }
+
+      const int systemColumn =
+          isDisplacementColumn ? tribolColumn : displacementSize + tribolColumn - tribolPressureOffset;
+      if ( values[entry] != 0.0 ) {
+        ASystem->Add( systemRow, systemColumn, values[entry] );
+        if ( systemRow != systemColumn ) {
+          // MFEM's EliminateRowCol() requires a structurally symmetric matrix before finalization.
+          ASystem->Add( systemColumn, systemRow, 0.0 );
+        }
+      }
     }
-  }  // end of upper diagonal block loop
-
-  // compose off-diagonal blocks
-  for ( int i = 0; i < this->numNonmortarSurfaceNodes; ++i ) {
-    int newOffset = this->dim * this->numTotalNodes;
-    int oldOffset = this->dim * this->numTotalNodes + this->numMortarNodes;
-    int col_id = newOffset + i;
-    int row_id = col_id;
-
-    for ( int j = 0; j < this->dim * this->numTotalNodes; ++j ) {
-      // assemble upper-right diagonal block first
-      ASystem->Set( j, col_id, ( *ATribol )( j, oldOffset + i ) );
-
-      // assemble lower left diagonal block
-      ASystem->Set( row_id, j, ( *ATribol )( oldOffset + i, j ) );
-    }
-  }  // end of off-diagonal block loop
-
-  // KEEP this as debug code for unit tests, but in general
-  // there should be no contributions
-  // TEST: compose bottom-diagonal block diagonal elements
-  //   for (int i=0; i<this->m_mesh.numNonmortarSurfaceNodes; ++i)
-  //   {
-  //      int newOffset = this->m_mesh.dim * this->m_mesh.numTotalNodes;
-  //      int oldOffset = this->m_mesh.dim * this->m_mesh.numTotalNodes +
-  //                      this->m_mesh.numMortarNodes;
-  //      int idx = newOffset + i;
-  //         ASystem->Add(idx,idx, (*ATribol)( oldOffset + i, oldOffset + i ));
-  //   }
+  }
 
 }  // end TestMesh::tribolMatrixToSystemMatrix()
+
+//------------------------------------------------------------------------------
+void TestMesh::buildLagrangeMultiplierPreconditionerDiagonal( const mfem::SparseMatrix* A,
+                                                              mfem::Vector* diagonal ) const
+{
+  SLIC_ERROR_IF( A == nullptr,
+                 "TestMesh::buildLagrangeMultiplierPreconditionerDiagonal(): input matrix pointer is null." );
+  SLIC_ERROR_IF( diagonal == nullptr,
+                 "TestMesh::buildLagrangeMultiplierPreconditionerDiagonal(): diagonal pointer is null." );
+  SLIC_ERROR_IF( !A->Finalized(),
+                 "TestMesh::buildLagrangeMultiplierPreconditionerDiagonal(): input matrix must be finalized." );
+
+  const int displacementSize = this->dim * this->numTotalNodes;
+  SLIC_ERROR_IF( A->NumRows() != A->NumCols() || A->NumRows() < displacementSize,
+                 "TestMesh::buildLagrangeMultiplierPreconditionerDiagonal(): invalid system dimensions." );
+
+  A->GetDiag( *diagonal );
+  for ( int displacementDof = 0; displacementDof < displacementSize; ++displacementDof ) {
+    ( *diagonal )[displacementDof] = std::abs( ( *diagonal )[displacementDof] );
+    SLIC_ERROR_IF( ( *diagonal )[displacementDof] == 0.0,
+                   "TestMesh::buildLagrangeMultiplierPreconditionerDiagonal(): zero displacement diagonal entry." );
+  }
+
+  const int* rowOffsets = A->HostReadI();
+  const int* columns = A->HostReadJ();
+  const RealT* values = A->HostReadData();
+  for ( int pressureDof = displacementSize; pressureDof < A->NumRows(); ++pressureDof ) {
+    if ( ( *diagonal )[pressureDof] != 0.0 ) {
+      ( *diagonal )[pressureDof] = std::abs( ( *diagonal )[pressureDof] );
+      continue;
+    }
+
+    RealT schurDiagonal = 0.0;
+    for ( int entry = rowOffsets[pressureDof]; entry < rowOffsets[pressureDof + 1]; ++entry ) {
+      const int displacementDof = columns[entry];
+      if ( displacementDof < displacementSize ) {
+        schurDiagonal += values[entry] * values[entry] / ( *diagonal )[displacementDof];
+      }
+    }
+    SLIC_ERROR_IF( schurDiagonal == 0.0,
+                   "TestMesh::buildLagrangeMultiplierPreconditionerDiagonal(): zero pressure Schur complement "
+                       << "approximation for row " << pressureDof << "." );
+    ( *diagonal )[pressureDof] = schurDiagonal;
+  }
+}
 
 //------------------------------------------------------------------------------
 void TestMesh::getGapEvals( RealT* const v )
