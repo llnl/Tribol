@@ -102,10 +102,10 @@ TEST_P( EnergyMortarQuadratureSettingsTest, selects_and_rebuilds_adapter )
   check( quadratureOrder() );
   for ( int order = 0; order <= 5; ++order ) check( order );
   for ( int invalid : { -1, 6 } ) {
-    auto* before = cs->getContactFormulation();
+    auto* formulation_before_invalid_order = cs->getContactFormulation();
     EXPECT_THROW( tribol::setQuadratureOrder( 0, invalid ), std::invalid_argument );
     EXPECT_EQ( cs->getParameters().quadrature_order, 5 );
-    EXPECT_EQ( cs->getContactFormulation(), before );
+    EXPECT_EQ( cs->getContactFormulation(), formulation_before_invalid_order );
     cs->getParameters().quadrature_order = invalid;
     EXPECT_THROW( tribol::createContactFormulation( cs ), std::invalid_argument );
     cs->getParameters().quadrature_order = 5;
