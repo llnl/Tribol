@@ -23,14 +23,28 @@ _host_configs_map = {"rzgenie"   : "rzwhippet-toss_4_x86_64_ib-llvm@19.1.3.cmake
                      "rzwhippet" : "rzwhippet-toss_4_x86_64_ib-llvm@19.1.3.cmake",
                      "rzvernal"  : "rzvernal-toss_4_x86_64_ib_cray-rocmcc@6.2.1_hip.cmake",
                      "rzadams"   : "rzadams-toss_4_x86_64_ib_cray-llvm-amdgpu@6.4.2_hip.cmake",
+                     "rzvector"  : "rzvector-toss_4_x86_64_ib-llvm@19.1.3_cuda.cmake",
                      "dane"      : "dane-toss_4_x86_64_ib-llvm@19.1.3.cmake",
                      "tioga"     : "tuolumne-toss_4_x86_64_ib_cray-llvm-amdgpu@6.4.2_hip.cmake",
-                     "tuolumne"  : "tuolumne-toss_4_x86_64_ib_cray-llvm-amdgpu@6.4.2_hip.cmake"}
+                     "tuolumne"  : "tuolumne-toss_4_x86_64_ib_cray-llvm-amdgpu@6.4.2_hip.cmake",
+                     "matrix"    : "matrix-toss_4_x86_64_ib-llvm@19.1.3_cuda.cmake"}
 
 def get_machine_name():
     return socket.gethostname().rstrip('1234567890')
 
 def get_default_host_config():
+    # Prefer the repo helper script when present. This allows SYS_TYPE-aware
+    # selection and compiler preference (e.g., prefer LLVM unless specified).
+    repodir = os.path.dirname(os.path.abspath(__file__))
+    helper = os.path.join(repodir, "skills", "building", "scripts", "determine_host_config")
+    if os.path.isfile(helper) and os.access(helper, os.X_OK):
+        try:
+            hostconfig = subprocess.check_output([helper, "--basename"], text=True).strip()
+            if hostconfig:
+                return hostconfig
+        except Exception:
+            pass
+
     machine_name = get_machine_name()
 
     if machine_name in _host_configs_map.keys():

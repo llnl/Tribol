@@ -229,14 +229,14 @@ int main( int argc, char* argv[] )
   ::testing::InitGoogleTest( &argc, argv );
 
 #ifdef TRIBOL_USE_UMPIRE
-  umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
+  umpire::ResourceManager::getInstance();  // initialize umpire's ResourceManager
 #endif
 
 #if defined( TRIBOL_USE_CUDA )
   std::string device_str( "cuda" );
 #elif defined( TRIBOL_USE_HIP )
   std::string device_str( "hip" );
-#elif defined( TRIBOL_USE_OPENMP )
+#elif defined( TRIBOL_USE_OPENMP ) && defined( MFEM_USE_OPENMP )
   std::string device_str( "omp" );
 #else
   std::string device_str( "cpu" );
