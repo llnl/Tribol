@@ -65,17 +65,18 @@ class EnergyMortarQuadratureSettingsTest : public testing::TestWithParam<std::tu
 };
 
 /**
- * @brief Check the selected adapter specialization without exposing generated quadrature as a public API.
- * @tparam Count Expected Gauss point count.
- * @param formulation Factory-created contact formulation.
- * @param location Selected enforcement location.
- * @return Whether the adapter has the expected rule and enforcement types.
+ * @brief Check whether the factory created the Energy Mortar adapter for the expected location and point count.
+ * @tparam PointCount Integration-surface points in the expected pair quadrature rule.
+ * @param formulation Factory-created contact formulation to inspect.
+ * @param location Expected enforcement location.
+ * @return Whether the formulation has the expected adapter specialization.
  */
-template <int Count>
-bool usesPointCount( tribol::ContactFormulation* formulation, tribol::EnforcementLocation location )
+template <int PointCount>
+bool isEnergyMortarAdapterWithPointCount( tribol::ContactFormulation* formulation,
+                                          tribol::EnforcementLocation location )
 {
   using Rule =
-      tribol::PairQuadratureRule<tribol::SmoothedProjectedEdgeMapping, tribol::EdgeQuadratureRuleGenerator<Count>>;
+      tribol::PairQuadratureRule<tribol::SmoothedProjectedEdgeMapping, tribol::EdgeQuadratureRuleGenerator<PointCount>>;
   if ( location == tribol::EnforcementLocation::Nodal ) {
     return dynamic_cast<tribol::EnergyMortarAdapter<tribol::Nodal, Rule>*>( formulation ) != nullptr;
   }
@@ -92,11 +93,11 @@ TEST_P( EnergyMortarQuadratureSettingsTest, selects_and_rebuilds_adapter )
     auto* formulation = cs->getContactFormulation();
     ASSERT_NE( formulation, nullptr );
     if ( order <= 1 )
-      EXPECT_TRUE( usesPointCount<1>( formulation, location ) );
+      EXPECT_TRUE( isEnergyMortarAdapterWithPointCount<1>( formulation, location ) );
     else if ( order <= 3 )
-      EXPECT_TRUE( usesPointCount<2>( formulation, location ) );
+      EXPECT_TRUE( isEnergyMortarAdapterWithPointCount<2>( formulation, location ) );
     else
-      EXPECT_TRUE( usesPointCount<3>( formulation, location ) );
+      EXPECT_TRUE( isEnergyMortarAdapterWithPointCount<3>( formulation, location ) );
   };
   check( quadratureOrder() );
   for ( int order = 0; order <= 5; ++order ) check( order );
@@ -113,7 +114,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, selects_and_rebuilds_adapter )
   tribol::setQuadratureOrder( 0, 2 );
   EXPECT_FALSE( cs->hasContactFormulation() );
   cs->updateContactFormulation();
-  EXPECT_TRUE( usesPointCount<2>( cs->getContactFormulation(), location ) );
+  EXPECT_TRUE( isEnergyMortarAdapterWithPointCount<2>( cs->getContactFormulation(), location ) );
 }
 
 /** @brief Host edges used to register an unsupported contact method. */
