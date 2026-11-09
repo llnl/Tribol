@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
+// Copyright (c) Lawrence Livermore National Security, LLC and
 // other Tribol Project developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
