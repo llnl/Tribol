@@ -99,14 +99,14 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
         { "Disjoint intervals beyond smoothing support", 8.0, 6.0, 0.1, 1.0, 1.0 } };
     for ( const auto& test_case : test_cases ) {
       SCOPED_TRACE( testing::Message() << test_case.label << ", Gauss points=" << Count );
-      // Each records row stores one quadrature point. Columns are:
+      // Each row stores data for one quadrature point. Columns are:
       // 0: edge1 parent coordinate; 1-2: edge1 physical (x,y); 3: physical integration weight;
       // 4: edge2 parent coordinate; 5-6: edge2 physical (x,y).
-      ArrayT<RealT, 2> records( axom::StackArray<axom::IndexType, 2>{ Count, 7 }, allocatorId() );
+      ArrayT<RealT, 2> quadrature_point_data( axom::StackArray<axom::IndexType, 2>{ Count, 7 }, allocatorId() );
       // One result for the entire generated rule: its status and required point count, rather than per-point data.
       ArrayT<QuadratureResult> results( 1, 1, allocatorId() );
       // The kernel writes through these views; host copies below make the data available for assertions.
-      const auto records_view = records.view();
+      const auto quadrature_point_data_view = quadrature_point_data.view();
       const auto results_view = results.view();
       forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
         const MdArray<RealT, 2, 2> edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } };
@@ -120,17 +120,17 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
         for ( IndexT q = 0; q < rule.result.required_point_count; ++q ) {
           const auto physical1 = LinearEdgeGeometry::position( edge1.view(), points.geometry1_coords( q, 0 ) );
           const auto physical2 = LinearEdgeGeometry::position( edge2.view(), points.geometry2_coords( q, 0 ) );
-          records_view( q, 0 ) = points.geometry1_coords( q, 0 );
-          records_view( q, 1 ) = physical1[0];
-          records_view( q, 2 ) = physical1[1];
-          records_view( q, 3 ) = points.weights[q];
-          records_view( q, 4 ) = points.geometry2_coords( q, 0 );
-          records_view( q, 5 ) = physical2[0];
-          records_view( q, 6 ) = physical2[1];
+          quadrature_point_data_view( q, 0 ) = points.geometry1_coords( q, 0 );
+          quadrature_point_data_view( q, 1 ) = physical1[0];
+          quadrature_point_data_view( q, 2 ) = physical1[1];
+          quadrature_point_data_view( q, 3 ) = points.weights[q];
+          quadrature_point_data_view( q, 4 ) = points.geometry2_coords( q, 0 );
+          quadrature_point_data_view( q, 5 ) = physical2[0];
+          quadrature_point_data_view( q, 6 ) = physical2[1];
         }
       } );
       const ArrayT<QuadratureResult, 1, MemorySpace::Host> host_results( results );
-      const ArrayT<RealT, 2, MemorySpace::Host> host_records( records );
+      const ArrayT<RealT, 2, MemorySpace::Host> host_quadrature_point_data( quadrature_point_data );
       // Every case, including zero overlap, must produce a valid rule.
       ASSERT_EQ( host_results[0].status, QuadratureStatus::Success );
       const bool empty = test_case.expected_lower == test_case.expected_upper;
@@ -139,24 +139,25 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
       RealT measure = 0.0;
       for ( IndexT q = 0; q < host_results[0].required_point_count; ++q ) {
         // No point may fall below the expected edge1 parent interval.
-        EXPECT_GE( host_records( q, 0 ), test_case.expected_lower );
+        EXPECT_GE( host_quadrature_point_data( q, 0 ), test_case.expected_lower );
         // No point may fall above the expected edge1 parent interval.
-        EXPECT_LE( host_records( q, 0 ), test_case.expected_upper );
+        EXPECT_LE( host_quadrature_point_data( q, 0 ), test_case.expected_upper );
         // Mapping [-1,1] onto edge1's x=[0,4] gives x=2*(1+xi).
-        EXPECT_NEAR( host_records( q, 1 ), 2.0 * ( 1.0 + host_records( q, 0 ) ), tolerance );
+        EXPECT_NEAR( host_quadrature_point_data( q, 1 ), 2.0 * ( 1.0 + host_quadrature_point_data( q, 0 ) ),
+                     tolerance );
         // All mapped edge1 points lie on its horizontal edge at y=0.
-        EXPECT_EQ( host_records( q, 2 ), 0.0 );
+        EXPECT_EQ( host_quadrature_point_data( q, 2 ), 0.0 );
         // Inverting edge2's right-to-left x mapping must recover its reported parent coordinate.
-        EXPECT_NEAR(
-            host_records( q, 4 ),
-            2.0 * ( host_records( q, 1 ) - test_case.edge2_right ) / ( test_case.edge2_left - test_case.edge2_right ) -
-                1.0,
-            tolerance );
+        EXPECT_NEAR( host_quadrature_point_data( q, 4 ),
+                     2.0 * ( host_quadrature_point_data( q, 1 ) - test_case.edge2_right ) /
+                             ( test_case.edge2_left - test_case.edge2_right ) -
+                         1.0,
+                     tolerance );
         // Normal projection between these parallel edges preserves the physical x coordinate.
-        EXPECT_NEAR( host_records( q, 5 ), host_records( q, 1 ), tolerance );
+        EXPECT_NEAR( host_quadrature_point_data( q, 5 ), host_quadrature_point_data( q, 1 ), tolerance );
         // All mapped edge2 points lie on its horizontal edge at y=0.2.
-        EXPECT_NEAR( host_records( q, 6 ), 0.2, tolerance );
-        measure += host_records( q, 3 );
+        EXPECT_NEAR( host_quadrature_point_data( q, 6 ), 0.2, tolerance );
+        measure += host_quadrature_point_data( q, 3 );
       }
       // Integrating 1 must give the physical interval length: parent interval width times edge1's Jacobian of 2.
       EXPECT_NEAR( measure, 2.0 * ( test_case.expected_upper - test_case.expected_lower ), tolerance );
