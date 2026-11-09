@@ -228,7 +228,8 @@ TEST_P( EdgeQuadratureTest, selects_first_edge_interval_from_projection )
   checkIntervals<3>();
 }
 
-// Edges tilted relative to each other require projection along edge2's normal, rather than edge1's normal.
+// Energy Mortar defines its edge1 integration interval by projecting edge2's endpoints along edge2's normal. Tilted
+// edges make that formulation-specific direction observable because using edge1's normal gives different bounds.
 TEST_P( EdgeQuadratureTest, projects_oblique_edges_to_parent_bounds )
 {
   ArrayT<RealT> bounds( 2, 2, allocatorId() );
