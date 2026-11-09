@@ -656,8 +656,8 @@ TEST_P( EdgeQuadratureTest, uses_first_edge_length_for_physical_weights )
   EXPECT_NEAR( integrated_field_product, 44.0 / 3.0, tolerance );
 }
 
-// Reuse edge1's integration-surface quadrature points after moving edge2. Mapping must update edge2's parent
-// coordinates even though the integration-surface quadrature and edge1 have not changed.
+// Reuse edge1's integration-surface quadrature points after moving edge2. Mapping must update the normalized [-1,1]
+// coordinates that locate the projected points on edge2, even though the rule and edge1 have not changed.
 TEST_P( EdgeQuadratureTest, remaps_integration_surface_rule_after_second_edge_moves )
 {
   constexpr int point_count = 1;
