@@ -19,9 +19,24 @@
 #include "tribol/physics/EnergyMortarAdapter.hpp"
 
 namespace {
+
+constexpr tribol::IndexT coupling_scheme_id = 0;
+constexpr tribol::IndexT first_mesh_id = 0;
+constexpr tribol::IndexT second_mesh_id = 1;
+constexpr int minimum_supported_order = 0;
+constexpr int highest_order_with_one_point = tribol::EdgeQuadratureRuleGenerator<1>::polynomial_order;
+constexpr int highest_order_with_two_points = tribol::EdgeQuadratureRuleGenerator<2>::polynomial_order;
+constexpr int maximum_supported_order = tribol::EdgeQuadratureRuleGenerator<3>::polynomial_order;
+constexpr int order_requiring_two_points = highest_order_with_one_point + 1;
+
 /** @brief Register an MFEM coupling scheme for each enforcement location and quadrature order. */
 class EnergyMortarQuadratureSettingsTest : public testing::TestWithParam<std::tuple<tribol::EnforcementLocation, int>> {
  protected:
+  /**
+   * @brief Read the enforcement location from the test parameters.
+   * @return Selected enforcement location.
+   */
+  tribol::EnforcementLocation enforcementLocation() const { return std::get<0>( GetParam() ); }
   /**
    * @brief Read the requested reference polynomial degree from the test parameters.
    *
@@ -33,25 +48,33 @@ class EnergyMortarQuadratureSettingsTest : public testing::TestWithParam<std::tu
    */
   void SetUp() override
   {
+    constexpr int elements_per_direction = 1;
+    constexpr int linear_basis_order = 1;
+    constexpr int spatial_dimension = 2;
+    constexpr tribol::RealT kinematic_penalty_stiffness = 100.0;
     // MFEM labels the unit square's bottom and top boundaries 1 and 3. This test only needs two valid surfaces for
     // coupling-scheme registration; it does not evaluate their contact geometry.
     constexpr int bottom_boundary_attribute = 1;
     constexpr int top_boundary_attribute = 3;
-    mesh_ = std::make_unique<mfem::ParMesh>( static_cast<const mfem::ParMesh&>(
-        shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::SquareMesh( 1, 1 ) ) ) );
-    fec_ = std::make_unique<mfem::H1_FECollection>( 1, 2 );
-    fes_ = std::make_unique<mfem::ParFiniteElementSpace>( mesh_.get(), fec_.get(), 2 );
+    mesh_ = std::make_unique<mfem::ParMesh>( static_cast<const mfem::ParMesh&>( shared::ParMeshBuilder(
+        MPI_COMM_WORLD, shared::MeshBuilder::SquareMesh( elements_per_direction, elements_per_direction ) ) ) );
+    fec_ = std::make_unique<mfem::H1_FECollection>( linear_basis_order, spatial_dimension );
+    fes_ = std::make_unique<mfem::ParFiniteElementSpace>( mesh_.get(), fec_.get(), spatial_dimension );
     coords_ = std::make_unique<mfem::ParGridFunction>( fes_.get() );
     mesh_->GetNodes( *coords_ );
-    tribol::registerMfemCouplingScheme( 0, 0, 1, *mesh_, *coords_, { bottom_boundary_attribute },
-                                        { top_boundary_attribute }, tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING,
-                                        tribol::ENERGY_MORTAR, tribol::FRICTIONLESS, tribol::PENALTY,
-                                        tribol::BINNING_GRID, tribol::ExecutionMode::Sequential );
-    EXPECT_EQ( tribol::CouplingSchemeManager::getInstance().findData( 0 )->getParameters().quadrature_order, 5 );
-    tribol::setEnforcementLocation( 0, std::get<0>( GetParam() ) );
-    tribol::setQuadratureOrder( 0, quadratureOrder() );
-    tribol::setMfemKinematicConstantPenalty( 0, 100, 100 );
-    ASSERT_NE( tribol::CouplingSchemeManager::getInstance().findData( 0 )->getContactFormulation(), nullptr );
+    tribol::registerMfemCouplingScheme(
+        coupling_scheme_id, first_mesh_id, second_mesh_id, *mesh_, *coords_, { bottom_boundary_attribute },
+        { top_boundary_attribute }, tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
+        tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID, tribol::ExecutionMode::Sequential );
+    EXPECT_EQ(
+        tribol::CouplingSchemeManager::getInstance().findData( coupling_scheme_id )->getParameters().quadrature_order,
+        maximum_supported_order );
+    tribol::setEnforcementLocation( coupling_scheme_id, enforcementLocation() );
+    tribol::setQuadratureOrder( coupling_scheme_id, quadratureOrder() );
+    tribol::setMfemKinematicConstantPenalty( coupling_scheme_id, kinematic_penalty_stiffness,
+                                             kinematic_penalty_stiffness );
+    ASSERT_NE( tribol::CouplingSchemeManager::getInstance().findData( coupling_scheme_id )->getContactFormulation(),
+               nullptr );
   }
   /**
    * @brief Release coupling-scheme state after each test.
@@ -86,32 +109,32 @@ bool isEnergyMortarAdapterWithPointCount( tribol::ContactFormulation* formulatio
 // The default uses three points; changing order selects the requested specialization for either enforcement location.
 TEST_P( EnergyMortarQuadratureSettingsTest, selects_and_rebuilds_adapter )
 {
-  auto* cs = tribol::CouplingSchemeManager::getInstance().findData( 0 );
-  const auto location = std::get<0>( GetParam() );
+  auto* cs = tribol::CouplingSchemeManager::getInstance().findData( coupling_scheme_id );
+  const auto location = enforcementLocation();
   const auto check = [&]( int order ) {
-    tribol::setQuadratureOrder( 0, order );
+    tribol::setQuadratureOrder( coupling_scheme_id, order );
     auto* formulation = cs->getContactFormulation();
     ASSERT_NE( formulation, nullptr );
-    if ( order <= 1 )
+    if ( order <= highest_order_with_one_point )
       EXPECT_TRUE( isEnergyMortarAdapterWithPointCount<1>( formulation, location ) );
-    else if ( order <= 3 )
+    else if ( order <= highest_order_with_two_points )
       EXPECT_TRUE( isEnergyMortarAdapterWithPointCount<2>( formulation, location ) );
     else
       EXPECT_TRUE( isEnergyMortarAdapterWithPointCount<3>( formulation, location ) );
   };
   check( quadratureOrder() );
-  for ( int order = 0; order <= 5; ++order ) check( order );
-  for ( int invalid : { -1, 6 } ) {
+  for ( int order = minimum_supported_order; order <= maximum_supported_order; ++order ) check( order );
+  for ( int invalid_order : { minimum_supported_order - 1, maximum_supported_order + 1 } ) {
     auto* formulation_before_invalid_order = cs->getContactFormulation();
-    EXPECT_THROW( tribol::setQuadratureOrder( 0, invalid ), std::invalid_argument );
-    EXPECT_EQ( cs->getParameters().quadrature_order, 5 );
+    EXPECT_THROW( tribol::setQuadratureOrder( coupling_scheme_id, invalid_order ), std::invalid_argument );
+    EXPECT_EQ( cs->getParameters().quadrature_order, maximum_supported_order );
     EXPECT_EQ( cs->getContactFormulation(), formulation_before_invalid_order );
-    cs->getParameters().quadrature_order = invalid;
+    cs->getParameters().quadrature_order = invalid_order;
     EXPECT_THROW( tribol::createContactFormulation( cs ), std::invalid_argument );
-    cs->getParameters().quadrature_order = 5;
+    cs->getParameters().quadrature_order = maximum_supported_order;
   }
   cs->setContactFormulation( nullptr );
-  tribol::setQuadratureOrder( 0, 2 );
+  tribol::setQuadratureOrder( coupling_scheme_id, order_requiring_two_points );
   EXPECT_FALSE( cs->hasContactFormulation() );
   cs->updateContactFormulation();
   EXPECT_TRUE( isEnergyMortarAdapterWithPointCount<2>( cs->getContactFormulation(), location ) );
@@ -121,9 +144,6 @@ TEST_P( EnergyMortarQuadratureSettingsTest, selects_and_rebuilds_adapter )
 // the stored order.
 TEST( ContactFormulation, rejects_order_setting_without_registered_energy_mortar )
 {
-  constexpr tribol::IndexT coupling_scheme_id = 0;
-  constexpr tribol::IndexT first_mesh_id = 0;
-  constexpr tribol::IndexT second_mesh_id = 1;
   constexpr tribol::IndexT edge_element_count = 1;
 
   EXPECT_THROW( tribol::setQuadratureOrder( coupling_scheme_id, 2 ), std::invalid_argument );
