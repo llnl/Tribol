@@ -103,18 +103,18 @@ if(NOT TRIBOL_FOUND)
   # mfem is also a required TPL
   set(TRIBOL_MFEM_DIR  "@MFEM_DIR@")
   if(NOT MFEM_DIR) 
-    set(MFEM_DIR "${MFEM_DIR}")
+    set(MFEM_DIR "${TRIBOL_MFEM_DIR}")
   endif()
   set(TRIBOL_MFEM_BUILT_WITH_CMAKE @MFEM_BUILT_WITH_CMAKE@)
 
   if(TRIBOL_MFEM_BUILT_WITH_CMAKE)
-    # Allow user to override with MFEM_DIR
-    if(NOT MFEM_DIR)
-      set(MFEM_DIR ${TRIBOL_MFEM_DIR}) 
-    endif()
     find_dependency(mfem REQUIRED PATHS "${MFEM_DIR}/lib/cmake/mfem" NAMES MFEM)
+  elseif(NOT TARGET mfem)
+    blt_import_library( NAME mfem
+                        INCLUDES "@MFEM_INCLUDE_DIRS@"
+                        TREAT_INCLUDES_AS_SYSTEM ON
+                        DEPENDS_ON "@MFEM_LIBRARIES@")
   else()
-    # Makefile case handled by exporting `tribol::mfem`
   endif()
 
   get_filename_component(TRIBOL_CMAKE_CONFIG_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
@@ -135,4 +135,3 @@ if(NOT TRIBOL_FOUND)
   set(TRIBOL_FOUND TRUE)
 
 endif()
-
