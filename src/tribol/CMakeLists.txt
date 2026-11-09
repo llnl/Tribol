@@ -137,6 +137,12 @@ blt_list_append(TO tribol_depends ELEMENTS RAJA IF TRIBOL_USE_RAJA )
 blt_list_append(TO tribol_depends ELEMENTS ClangEnzymeFlags IF TRIBOL_USE_ENZYME)
 message(STATUS "Tribol library dependencies: ${tribol_depends}")
 
+if(TRIBOL_USE_ENZYME)
+    # At -O0, Enzyme rejects Clang 19's aggregate-heavy IR or silently generates incorrect fixed-rule derivatives.
+    # Optimize only the translation unit that generates those derivatives so every other Debug source remains at -O0.
+    set_property(SOURCE physics/EnergyMortar.cpp APPEND PROPERTY COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")
+endif()
+
 ## create the library
 blt_add_library(
     NAME tribol
