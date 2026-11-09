@@ -872,7 +872,8 @@ TEST_P( EdgeQuadratureTest, preserves_integration_surface_generator_failure_and_
   EXPECT_EQ( host_point_storage[0], initial_storage_value );
 }
 
-// Use the same Gauss rule with a mapping that integrates in physical x rather than edge1's parent coordinate.
+// PairQuadratureRule must not assume that integration-surface coordinates are normalized element coordinates. This
+// test-only mapping defines its integration interval, points, and weights in physical x.
 TEST_P( EdgeQuadratureTest, composes_with_a_different_integration_mapping )
 {
   constexpr int point_count = 1;
