@@ -46,6 +46,8 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
     ArrayT<QuadratureResult> results( 1, 1, allocatorId() );
     const auto output = integrals.view();
     const auto status = results.view();
+    // Approximate the integral of xi^degree from -1 to 1 through degree 2*Count-1, the highest degree this rule must
+    // integrate exactly.
     forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
       const auto rule = Generator{}.generate();
       status[0] = rule.result;
@@ -63,10 +65,9 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
     const ArrayT<QuadratureResult, 1, MemorySpace::Host> statuses( results );
     ASSERT_EQ( statuses[0].status, QuadratureStatus::Success );
     ASSERT_EQ( statuses[0].required_point_count, Count );
-    // Use an independent analytical reference: integrating xi^degree from -1 to 1 gives
-    // [xi^(degree+1)/(degree+1)] at the endpoints, hence zero for odd degrees and 2/(degree+1) for even degrees.
-    // The expected value depends only on degree, not on the generated points or weights. Check every degree through
-    // 2*Count-1 against this reference with the absolute error tolerance defined above (1e-12).
+    // Compare against an independent analytical result: [xi^(degree+1)/(degree+1)] evaluated at -1 and 1 is zero for
+    // odd degrees and 2/(degree+1) for even degrees. This result depends only on degree, not on the generated points or
+    // weights; use the absolute error tolerance defined above (1e-12).
     for ( int degree = 0; degree < degree_count; ++degree ) {
       EXPECT_NEAR( values[degree], ( degree % 2 == 0 ? 2.0 / ( degree + 1 ) : 0.0 ), tolerance );
     }
