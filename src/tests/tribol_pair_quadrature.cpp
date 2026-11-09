@@ -76,6 +76,10 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
   /**
    * @brief Check edge1 coordinates and measure for full, partial, smoothed, and disjoint intervals.
    *
+   * The mapping intentionally gives the edges different roles: edge1 supplies the integration coordinates and physical
+   * measure, while projecting edge2 selects the bounds on edge1. The smoothing distance is a fraction of edge1's
+   * length.
+   *
    * A disjoint interval lies entirely outside edge1's [-1, 1] parent interval before smoothing. It can still
    * contribute when it reaches edge1's endpoint smoothing support.
    * @tparam Count Number of Gauss points.
