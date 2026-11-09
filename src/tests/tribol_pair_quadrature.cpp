@@ -508,11 +508,10 @@ TEST_P( EdgeQuadratureTest, applies_same_minimum_length_to_both_edges )
   }
 }
 
-// EnergyMortar's fixed-quadrature derivative path keeps the integration-surface rule unchanged while element
-// coordinates are perturbed. Verify that remapping the fixed rule after doubling the first edge preserves its parent
-// coordinates and recomputes its physical weights from the new edge length. The overlap with the second edge is
-// intentionally not recomputed because that occurs when the integration-surface rule is generated, not when an existing
-// rule is mapped.
+// PairQuadratureRule can remap an existing integration-surface rule after the element coordinates change. This is used,
+// for example, in EnergyMortar's fixed-quadrature derivative path. Verify that SmoothedProjectedEdgeMapping preserves
+// the supplied edge1 parent coordinates and recomputes the physical weights from the current edge1 length. It does not
+// select a new overlap interval when mapping an existing rule.
 TEST_P( EdgeQuadratureTest, remaps_integration_surface_rule_after_first_edge_doubles_in_length )
 {
   constexpr int point_count = 3;
@@ -549,8 +548,9 @@ TEST_P( EdgeQuadratureTest, remaps_integration_surface_rule_after_first_edge_dou
   EXPECT_NEAR( host_records[1], 2.0, tolerance );
 }
 
-// Map integration-surface quadrature points to edge1, then project their physical positions onto the tilted edge2 along
-// edge2's normal.
+// SmoothedProjectedEdgeMapping expresses its integration surface in edge1 parent coordinates. For each supplied point,
+// it keeps the edge1 coordinate and projects its physical position along edge2's normal to find the corresponding edge2
+// coordinate. Tilting edge2 makes the projection direction observable.
 TEST_P( EdgeQuadratureTest, maps_integration_surface_rule_to_both_tilted_edges )
 {
   constexpr int point_count = 3;
