@@ -27,7 +27,7 @@ constexpr int minimum_supported_order = 0;
 constexpr int highest_order_with_one_point = tribol::EdgeQuadratureRuleGenerator<1>::polynomial_order;
 constexpr int highest_order_with_two_points = tribol::EdgeQuadratureRuleGenerator<2>::polynomial_order;
 constexpr int maximum_supported_order = tribol::EdgeQuadratureRuleGenerator<3>::polynomial_order;
-constexpr int order_requiring_two_points = highest_order_with_one_point + 1;
+constexpr int minimum_order_for_two_point_rule = highest_order_with_one_point + 1;
 
 /** @brief Register an MFEM coupling scheme for each enforcement location and quadrature order. */
 class EnergyMortarQuadratureSettingsTest : public testing::TestWithParam<std::tuple<tribol::EnforcementLocation, int>> {
@@ -134,7 +134,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, selects_and_rebuilds_adapter )
     cs->getParameters().quadrature_order = maximum_supported_order;
   }
   cs->setContactFormulation( nullptr );
-  tribol::setQuadratureOrder( coupling_scheme_id, order_requiring_two_points );
+  tribol::setQuadratureOrder( coupling_scheme_id, minimum_order_for_two_point_rule );
   EXPECT_FALSE( cs->hasContactFormulation() );
   cs->updateContactFormulation();
   EXPECT_TRUE( isEnergyMortarAdapterWithPointCount<2>( cs->getContactFormulation(), location ) );
@@ -146,7 +146,8 @@ TEST( ContactFormulation, rejects_order_setting_without_registered_energy_mortar
 {
   constexpr tribol::IndexT edge_element_count = 1;
 
-  EXPECT_THROW( tribol::setQuadratureOrder( coupling_scheme_id, 2 ), std::invalid_argument );
+  EXPECT_THROW( tribol::setQuadratureOrder( coupling_scheme_id, minimum_order_for_two_point_rule ),
+                std::invalid_argument );
 
   // Register Common Plane with two parallel, oppositely oriented edges 0.1 apart. This test only checks contact-method
   // validation; it does not evaluate the edge geometry for contact.
@@ -164,10 +165,12 @@ TEST( ContactFormulation, rejects_order_setting_without_registered_energy_mortar
   tribol::registerCouplingScheme( coupling_scheme_id, first_mesh_id, second_mesh_id, tribol::SURFACE_TO_SURFACE,
                                   tribol::NO_CASE, tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY,
                                   tribol::BINNING_GRID, tribol::ExecutionMode::Sequential );
-  EXPECT_THROW( tribol::setQuadratureOrder( coupling_scheme_id, 2 ), std::invalid_argument );
+  // This order is valid for Energy Mortar, so the Common Plane contact method alone must cause rejection.
+  EXPECT_THROW( tribol::setQuadratureOrder( coupling_scheme_id, minimum_order_for_two_point_rule ),
+                std::invalid_argument );
   EXPECT_EQ(
       tribol::CouplingSchemeManager::getInstance().findData( coupling_scheme_id )->getParameters().quadrature_order,
-      5 );
+      maximum_supported_order );
   tribol::finalize();
 }
 
