@@ -83,10 +83,11 @@ bool usesPointCount( tribol::ContactFormulation* formulation, tribol::Enforcemen
   using Rule =
       tribol::PairQuadratureRule<tribol::SmoothedProjectedEdgeMapping, tribol::EdgeQuadratureRuleGenerator<Count>>;
   if ( location == tribol::EnforcementLocation::Nodal ) {
-    return dynamic_cast<tribol::PairContactFormulation<tribol::EnergyMortarNodalPairMethod<Rule>>*>( formulation ) !=
+    return dynamic_cast<tribol::PairContactFormulation<tribol::EnergyMortarAssembledMethod<Rule>>*>( formulation ) !=
            nullptr;
   }
-  return dynamic_cast<tribol::PairContactFormulation<tribol::EnergyMortarPairMethod<Rule>>*>( formulation ) != nullptr;
+  return dynamic_cast<tribol::PairContactFormulation<tribol::EnergyMortarQuadraturePointMethod<Rule>>*>(
+             formulation ) != nullptr;
 }
 
 // The default uses three points; changing order selects the requested specialization for either enforcement location.
@@ -194,14 +195,14 @@ TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
                                           cs.getEffectiveBinningProximityScale(), 0.0 );
         auto refined = std::make_unique<ProjectedEdgeSearch>( cs.getExecutionMode(), false );
         if ( std::get<0>( GetParam() ) == EnforcementLocation::Nodal ) {
-          using Method = EnergyMortarNodalPairMethod<decltype( rule ), SeriesPenaltyStiffness>;
+          using Method = EnergyMortarAssembledMethod<decltype( rule ), SeriesPenaltyStiffness>;
           return std::make_unique<PairContactFormulation<Method>>(
               *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), std::move( coarse ),
               std::move( refined ),
               Method{ std::move( rule ), EnergyMortarNodal{ OffsetGap{ OpposingNormalGap{}, 0.0 } },
                       RegisteredPenaltyInputs<SeriesPenaltyStiffness>{ true } } );
         }
-        using Method = EnergyMortarPairMethod<decltype( rule ), SeriesPenaltyStiffness>;
+        using Method = EnergyMortarQuadraturePointMethod<decltype( rule ), SeriesPenaltyStiffness>;
         return std::make_unique<PairContactFormulation<Method>>(
             *cs.getMfemMeshData(), *cs.getMfemJacobianData(), std::move( coarse ), std::move( refined ),
             Method{ std::move( rule ), EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, 0.0 } },

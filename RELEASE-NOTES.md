@@ -11,10 +11,11 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Added opt-in linear 2D Common Plane contact through `setMfemUseCommonPlaneFormulation()`, sharing
   `PairContactFormulation` with nodal and quadrature-point Energy Mortar. It supports host MFEM/Redecomp frictionless
   constant-penalty contact, orders 0-5, and Enzyme residual Jacobians. No nodal gap, energy, or timestep is defined.
-- Nodal and quadrature-point Energy Mortar share `PairContactFormulation`, with separate method and penalty-input
-  arguments. Pair calculations use direct quadrature loops and local Enzyme derivatives. Nodal penalty assembly
-  uses explicit gap/area partials, returning zero for unsupported area before division. Quadrature-point enforcement
-  needs no pressure/gap field. Contact energy is globally summed for both locations.
+- `EnergyMortarQuadraturePointMethod` and `EnergyMortarAssembledMethod` share `PairContactFormulation`, with separate
+  method and penalty-input arguments. `AssembledEnergyMethod` evaluates energy after element-pair integrals are assembled;
+  it does not imply node-to-segment contact. Pair calculations use direct quadrature loops and local Enzyme derivatives.
+  Nodal penalty assembly uses explicit gap/area partials, returning zero for unsupported area before division.
+  Quadrature-point enforcement needs no pressure/gap field. Contact energy is globally summed for both locations.
 - Contact formulations return caller-owned results through `computeNodalGaps()` and `computeNodalForces()`. MFEM
   pair and nodal assemblers share the transfer of numerical contact contributions without retaining results.
 - Added `ProjectedEdgeSearch` to reject self-pairs, optionally reject shared-node pairs, and require opposing edge

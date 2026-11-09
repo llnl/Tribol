@@ -245,29 +245,29 @@ ContactFormulationResult PairContactFormulation<PairMethod>::assembleNodalForces
   }
 }
 
-template class PairContactFormulation<EnergyMortarPairMethod<
+template class PairContactFormulation<EnergyMortarQuadraturePointMethod<
     PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>, AveragePenaltyStiffness>>;
-template class PairContactFormulation<EnergyMortarNodalPairMethod<
+template class PairContactFormulation<EnergyMortarAssembledMethod<
     PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>, AveragePenaltyStiffness>>;
-template class PairContactFormulation<EnergyMortarPairMethod<
+template class PairContactFormulation<EnergyMortarQuadraturePointMethod<
     PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>, SeriesPenaltyStiffness>>;
-template class PairContactFormulation<EnergyMortarNodalPairMethod<
+template class PairContactFormulation<EnergyMortarAssembledMethod<
     PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>, SeriesPenaltyStiffness>>;
-template class PairContactFormulation<EnergyMortarPairMethod<
+template class PairContactFormulation<EnergyMortarQuadraturePointMethod<
     PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>, AveragePenaltyStiffness>>;
-template class PairContactFormulation<EnergyMortarNodalPairMethod<
+template class PairContactFormulation<EnergyMortarAssembledMethod<
     PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>, AveragePenaltyStiffness>>;
-template class PairContactFormulation<EnergyMortarPairMethod<
+template class PairContactFormulation<EnergyMortarQuadraturePointMethod<
     PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>, SeriesPenaltyStiffness>>;
-template class PairContactFormulation<EnergyMortarNodalPairMethod<
+template class PairContactFormulation<EnergyMortarAssembledMethod<
     PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>, SeriesPenaltyStiffness>>;
-template class PairContactFormulation<EnergyMortarPairMethod<
+template class PairContactFormulation<EnergyMortarQuadraturePointMethod<
     PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>, AveragePenaltyStiffness>>;
-template class PairContactFormulation<EnergyMortarNodalPairMethod<
+template class PairContactFormulation<EnergyMortarAssembledMethod<
     PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>, AveragePenaltyStiffness>>;
-template class PairContactFormulation<EnergyMortarPairMethod<
+template class PairContactFormulation<EnergyMortarQuadraturePointMethod<
     PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>, SeriesPenaltyStiffness>>;
-template class PairContactFormulation<EnergyMortarNodalPairMethod<
+template class PairContactFormulation<EnergyMortarAssembledMethod<
     PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>, SeriesPenaltyStiffness>>;
 
 template class PairContactFormulation<CommonPlanePairMethod<EdgeQuadratureRuleGenerator<1>, AveragePenaltyStiffness>>;
