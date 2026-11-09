@@ -25,26 +25,26 @@ namespace tribol {
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
 
 /**
- * @brief Energy Mortar defaults: energy derivatives and current registered constant penalties.
+ * @brief Energy Mortar energy evaluated at quadrature points and integrated independently for each element pair.
  * @tparam QuadratureRule Smoothed projected-edge pair rule.
  * @tparam PenaltyStiffness Combination of registered mesh constants; defaults to their arithmetic mean.
  * @tparam GapDefinition Owned geometric or offset gap; the factory selects the offset wrapper.
  */
 template <typename QuadratureRule, typename PenaltyStiffness = AveragePenaltyStiffness,
           typename GapDefinition = OffsetGap<OpposingNormalGap>>
-using EnergyMortarPairMethod =
+using EnergyMortarQuadraturePointMethod =
     EnergyPairMethod<EnergyMortarEnergy<QuadratureRule, GapDefinition>, RegisteredPenaltyInputs<PenaltyStiffness>>;
 
 /**
- * @brief Nodal Energy Mortar defaults: nodal gap/area integrals, nodal energy derivatives, and registered penalties.
+ * @brief Energy Mortar energy evaluated from assembled nodal gap/area integrals and registered penalties.
  * @tparam QuadratureRule Smoothed projected-edge pair rule.
  * @tparam PenaltyStiffness Combination of registered mesh constants; defaults to their arithmetic mean.
  * @tparam GapDefinition Owned geometric or offset gap; the factory selects the offset wrapper.
  */
 template <typename QuadratureRule, typename PenaltyStiffness = AveragePenaltyStiffness,
           typename GapDefinition = OffsetGap<OpposingNormalGap>>
-using EnergyMortarNodalPairMethod =
-    NodalPairMethod<EnergyMortarNodalEnergy<QuadratureRule, GapDefinition>, RegisteredPenaltyInputs<PenaltyStiffness>>;
+using EnergyMortarAssembledMethod = AssembledEnergyMethod<EnergyMortarNodalEnergy<QuadratureRule, GapDefinition>,
+                                                          RegisteredPenaltyInputs<PenaltyStiffness>>;
 
 /**
  * @brief Common Plane defaults: residual derivatives and current scaled mesh penalties.

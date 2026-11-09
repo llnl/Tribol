@@ -112,13 +112,16 @@ class PairMethod {
 }  // namespace detail
 
 /**
- * @brief Prepare a nodal mortar definition and select nodal penalty or Lagrange multiplier derivatives.
+ * @brief Configure energy evaluated from assembled element-pair integrals.
+ *
+ * Element-pair quadrature produces the integrals before assembly. This does not imply node-to-segment contact.
+ * The current implementation uses nodal weighted-gap and area fields for Energy Mortar, with penalty or LM enforcement.
  * @tparam NodalDefinition Local definition with Physics, Quadrature, PrimalResult, node_count, value_count, dof_count,
  * evaluate(), values(), and withWeights().
  * @tparam InputProvider Reads current fixed penalty parameters when penalty enforcement is enabled.
  */
 template <typename NodalDefinition, typename InputProvider>
-class NodalPairMethod {
+class AssembledEnergyMethod {
  public:
   using Definition = NodalDefinition;                        ///< Local nodal physics definition.
   using Physics = typename Definition::Physics;              ///< Mathematical expression owning its gap configuration.
@@ -126,7 +129,7 @@ class NodalPairMethod {
   using FirstGeometry = typename Quadrature::FirstGeometry;  ///< First-element coordinate layout.
   using SecondGeometry = typename Quadrature::SecondGeometry;  ///< Second-element coordinate layout.
   using PrimalResult = typename Definition::PrimalResult;      ///< Nodal integrals, activation, and quadrature status.
-  static constexpr bool is_nodal = true;                       ///< Uses nodal submesh assembly.
+  static constexpr bool is_nodal = true;                       ///< Assembles integral values on the dual submesh.
   static constexpr bool has_energy = true;                     ///< Assembled output includes contact energy.
   static constexpr RealT area_tolerance = 1.0e-14;             ///< Minimum tributary area for gap normalization.
 
@@ -136,7 +139,7 @@ class NodalPairMethod {
    * @param physics Owned nodal gap configuration.
    * @param inputs Owned provider, which reads current penalty values on each penalty force request.
    */
-  NodalPairMethod( Quadrature quadrature_rule, Physics physics, InputProvider inputs )
+  AssembledEnergyMethod( Quadrature quadrature_rule, Physics physics, InputProvider inputs )
       : quadrature_rule_( std::move( quadrature_rule ) ),
         physics_( std::move( physics ) ),
         inputs_( std::move( inputs ) )

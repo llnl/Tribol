@@ -66,8 +66,15 @@ It owns the searches and method configuration and gathers current pair coordinat
 argument selects a concrete calculation, local derivative evaluator, penalty inputs, and assembly location:
 
 * ``CommonPlanePairMethod`` integrates the direct Common Plane residual and selects ``ForcePairEvaluator``.
-* ``EnergyMortarPairMethod`` integrates scalar penalty energy and selects ``EnergyPairEvaluator``.
-* ``EnergyMortarNodalPairMethod`` integrates nodal weighted gaps and areas before activation and normalization.
+* ``EnergyMortarQuadraturePointMethod`` evaluates penalty energy at quadrature points, integrates it per element pair,
+  and selects ``EnergyPairEvaluator``.
+* ``EnergyMortarAssembledMethod`` uses ``AssembledEnergyMethod`` to evaluate energy from assembled nodal gap/area
+  integrals.
+
+``AssembledEnergyMethod`` describes when the energy is evaluated: element-pair quadrature produces integrals, those
+integrals are assembled across pairs, and the energy is evaluated from the assembled quantities. This does not imply
+node-to-segment contact. Energy Mortar's assembled quantities are nodal fields; its contact integration is over element
+pairs.
 
 Method calculations use direct quadrature loops. Common Plane and quadrature-point Energy Mortar use displacement-only
 Jacobian transfer and ``MfemPairAssembler``. Nodal Energy Mortar uses dual submesh fields and ``MfemNodalAssembler``.
