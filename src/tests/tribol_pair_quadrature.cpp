@@ -211,7 +211,7 @@ TEST_P( EdgeQuadratureTest, owns_coordinate_snapshot )
   EXPECT_NEAR( values[Jacobian], 2.5, tolerance );
 }
 
-// The integration-surface rule integrates its supported polynomial degrees without knowledge of either element.
+// Verify that each Gauss-Legendre rule exactly integrates its supported polynomial degrees.
 TEST_P( EdgeQuadratureTest, integrates_supported_polynomial_degrees )
 {
   checkPolynomialIntegrals<1>();
