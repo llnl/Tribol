@@ -727,7 +727,7 @@ struct ParallelEdgeMapping {
    * @param edge1 First edge endpoints.
    * @param edge2 Second edge endpoints.
    * @param integration_surface_rule Points and weights expressed in physical x.
-   * @param [out] paired_points Parent coordinates on both elements and physical weights.
+   * @param [out] paired_points Normalized [-1,1] coordinates on both elements and physical weights.
    * @return Success with initialized count, or InsufficientCapacity with the full count and untouched output.
    */
   TRIBOL_HOST_DEVICE QuadratureResult mapToElements( const LinearEdgeGeometry& edge1, const LinearEdgeGeometry& edge2,
