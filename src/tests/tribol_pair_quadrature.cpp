@@ -34,7 +34,7 @@ constexpr double tolerance = 1.0e-12;  ///< Absolute tolerance for coordinates, 
 class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
  protected:
   /**
-   * @brief Check the Count-point Gauss-Legendre rule against exact monomial integrals on [-1, 1].
+   * @brief Check a Gauss-Legendre rule against exact monomial integrals on [-1, 1].
    * @tparam Count Number of Gauss points.
    */
   template <int Count>
