@@ -74,14 +74,7 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
   }
 
   /**
-   * @brief Check edge1 coordinates and measure for full, partial, smoothed, and disjoint intervals.
-   *
-   * The mapping intentionally gives the edges different roles: edge1 supplies the integration coordinates and physical
-   * measure, while projecting edge2 selects the bounds on edge1. The smoothing distance is a fraction of edge1's
-   * length.
-   *
-   * A disjoint interval lies entirely outside edge1's [-1, 1] parent interval before smoothing. It can still
-   * contribute when it reaches edge1's endpoint smoothing support.
+   * @brief Check quadrature intervals from different edge2 positions against a fixed edge1.
    * @tparam Count Number of Gauss points.
    */
   template <int Count>
@@ -95,7 +88,8 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
       RealT expected_lower;  ///< Expected edge1 parent lower bound.
       RealT expected_upper;  ///< Expected edge1 parent upper bound.
     };
-    // Edge1 spans x=[0,4]; edge2 endpoints are listed right-to-left to give the opposite edge orientation.
+    // Edge1 remains fixed at x=[0,4]. Each case changes edge2's x span and lists its endpoints right-to-left to give
+    // the opposite edge orientation.
     const IntervalCase test_cases[] = {
         { "Full overlap without smoothing", 4.0, 0.0, 0.0, -1.0, 1.0 },
         { "Interior overlap without smoothing", 3.0, 1.0, 0.0, -0.5, 0.5 },
