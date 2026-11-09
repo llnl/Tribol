@@ -5,10 +5,11 @@
 
 /**
  * @file
- * @brief Tests base and paired edge quadrature on every enabled backend: polynomial accuracy, interval selection,
- * bounded writes, invalid geometry, owned edge geometry, and frozen integration-surface quadrature points mapped to
- * changed geometry. Pair generation preserves integration-surface generator failures. Compile-time checks accept
- * compatible mappings and generators and reject mismatched interfaces. Factory tests check order selection.
+ * @brief Tests reference-interval quadrature and its mapping to edge pairs on every enabled backend: polynomial
+ * accuracy, interval selection, bounded writes, invalid geometry, owned edge geometry, and frozen integration-surface
+ * quadrature points mapped to changed geometry. Pair generation preserves integration-surface generator failures.
+ * Compile-time checks accept compatible mappings and generators and reject mismatched interfaces. Factory tests check
+ * order selection.
  */
 
 #include <cmath>
