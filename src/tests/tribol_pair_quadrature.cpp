@@ -448,8 +448,8 @@ TEST_P( EdgeQuadratureTest, reports_insufficient_capacity_without_writing_past_o
   EXPECT_EQ( host_weight_storage[weight_storage_size - 1], initial_storage_value );
 }
 
-// Both generate() and mapIntegrationSurfaceRuleToElements() reject an edge shorter than the minimum length.
-// An edge exactly at the minimum is accepted, provided the other edge also meets the minimum.
+// Refined search and quadrature generation use the same minimum input-edge length. This test checks that element
+// validity rule (it does not apply a minimum length to the projected overlap).
 TEST_P( EdgeQuadratureTest, applies_same_minimum_length_to_both_edges )
 {
   constexpr RealT minimum_length = 1.0e-14;
