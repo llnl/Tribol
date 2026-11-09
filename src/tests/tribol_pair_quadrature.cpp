@@ -75,6 +75,9 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
 
   /**
    * @brief Check edge1 coordinates and measure for full, partial, smoothed, and disjoint intervals.
+   *
+   * A disjoint interval lies entirely outside edge1's [-1, 1] parent interval before smoothing. It can still
+   * contribute when it reaches edge1's endpoint smoothing support.
    * @tparam Count Number of Gauss points.
    */
   template <int Count>
