@@ -6,8 +6,9 @@
 /**
  * @file
  * @brief Tests reference-interval quadrature and its mapping to edge pairs on every enabled backend: polynomial
- * accuracy, interval selection, bounded writes, invalid geometry, owned edge geometry, and frozen integration-surface
- * quadrature points mapped to changed geometry. Pair generation preserves integration-surface generator failures.
+ * accuracy, interval selection, bounded writes, invalid geometry, and owned edge geometry. Energy Mortar can hold
+ * integration-surface quadrature fixed during differentiation, and these tests cover that mode. If integration-surface
+ * point generation fails, the tests verify the pair rule reports the failure without mapping incomplete points.
  * Compile-time checks accept compatible mappings and generators and reject mismatched interfaces. Factory tests check
  * order selection.
  */
