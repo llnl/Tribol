@@ -508,9 +508,11 @@ TEST_P( EdgeQuadratureTest, applies_same_minimum_length_to_both_edges )
   }
 }
 
-// Map the same integration-surface quadrature onto the first edge before and after doubling its length, without
-// recomputing overlap. The supplied normalized coordinates stay unchanged; the physical weights must scale with the new
-// edge length.
+// EnergyMortar's fixed-quadrature derivative path keeps the integration-surface rule unchanged while element
+// coordinates are perturbed. Verify that remapping the fixed rule after doubling the first edge preserves its parent
+// coordinates and recomputes its physical weights from the new edge length. The overlap with the second edge is
+// intentionally not recomputed because that occurs when the integration-surface rule is generated, not when an existing
+// rule is mapped.
 TEST_P( EdgeQuadratureTest, remaps_integration_surface_rule_after_first_edge_doubles_in_length )
 {
   constexpr int point_count = 3;
