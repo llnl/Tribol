@@ -134,7 +134,7 @@ enum ContactModel
   NO_CONTACT,                      ///! No contact
   FRICTIONLESS,                    ///! Frictionless, normal contact only
   VISCOUS_TANGENTIAL,              ///! Velocity based tangential damping (viscous) term added to contact force
-  FRICTION_COULOMB,                ///! Coulomb friction model, not supported
+  FRICTION_COULOMB,                ///! Coulomb friction: host linear MFEM Enzyme single mortar with direct multipliers
   ADHESION_SEPARATION_SCALAR_LAW,  ///! Scalar pressure law for the separation of adhered surfaces (Used with tied
                                    /// contact)
   NULL_MODEL,                      ///! Null model, for use with ContactMethod = MORTAR_WEIGHTS

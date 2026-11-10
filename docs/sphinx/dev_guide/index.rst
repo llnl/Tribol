@@ -19,3 +19,4 @@ procedures.
 
    git_aliases
    common_plane_formulation
+   coulomb_mortar

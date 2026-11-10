@@ -893,6 +893,10 @@ int update( int cycle, RealT t, RealT& dt )
   for ( auto& cs_pair : CouplingSchemeManager::getInstance() ) {
     auto& cs = cs_pair.second;
 
+#ifdef BUILD_REDECOMP
+    if ( cs.getContactModel() == FRICTION_COULOMB && !cs.getCoulombMortar() )
+      throw std::invalid_argument( "Coulomb contact requires MFEM single mortar registration." );
+#endif
     // initialize and check for valid coupling scheme. If not valid, the coupling
     // scheme will not be valid across all ranks and we will skip this coupling scheme
     if ( !cs.init() ) {

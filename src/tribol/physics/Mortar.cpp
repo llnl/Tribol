@@ -717,18 +717,18 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
 }
 
 //------------------------------------------------------------------------------
-void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* g1, int size1,
-                               const RealT* x2, RealT* f2, int size2, RealT lenCollapseRatio, RealT residual_gap )
+detail::MortarPairWeights detail::computeMortarPairWeights( const RealT* x1, int size1, const RealT* x2, int size2,
+                                                            RealT lenCollapseRatio )
 {
   // convention: elem1 = nonmortar element
   //             elem2 = mortar element
-  constexpr int max_mortar_mat_size = 4 * 4;
-  RealT mortar_mat1[max_mortar_mat_size];
+  detail::MortarPairWeights result;
+  RealT* mortar_mat1 = result.nonmortar.data();
   int mortar_mat1_size = size1 * size1;
   for ( int i{ 0 }; i < mortar_mat1_size; ++i ) {
     mortar_mat1[i] = 0.0;
   }
-  RealT mortar_mat2[max_mortar_mat_size];
+  RealT* mortar_mat2 = result.mortar.data();
   int mortar_mat2_size = size1 * size2;
   for ( int i{ 0 }; i < mortar_mat2_size; ++i ) {
     mortar_mat2[i] = 0.0;
@@ -837,7 +837,7 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
                                &overlap_poly_size );
   RealT overlap_poly_area = Area2DPolygon( xti_2d, yti_2d, overlap_poly_size );
   if ( overlap_poly_area <= 0.0 ) {
-    return;
+    return result;
   }
 
   // Integrate mortar matrix over the polygon
@@ -948,6 +948,57 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
     }
   }
 
+  result.area = overlap_poly_area;
+  return result;
+}
+
+namespace {
+/** @brief Expose both mortar matrices to Enzyme without differentiating the overlap classification.
+ * @param x Component-major coordinates of element1 followed by element2.
+ * @param n1 Nonmortar nodes per element.
+ * @param n2 Mortar nodes per element.
+ * @param tolerance Nondimensional clipping tolerance.
+ * @param out Packed D and M matrices, each occupying 16 entries with unused entries zeroed.
+ */
+void mortarWeightKernel( const RealT* x, int n1, int n2, RealT tolerance, RealT* out )
+{
+  const auto w = detail::computeMortarPairWeights( x, n1, x + 3 * n1, n2, tolerance );
+  for ( int i = 0; i < 16; ++i ) {
+    out[i] = w.nonmortar[i];
+    out[16 + i] = w.mortar[i];
+  }
+}
+}  // namespace
+
+detail::MortarPairWeightJacobian detail::computeMortarPairWeightJacobian( const RealT* x1, int size1, const RealT* x2,
+                                                                          int size2, RealT lenCollapseRatio )
+{
+  MortarPairWeightJacobian result;
+  result.weights = computeMortarPairWeights( x1, size1, x2, size2, lenCollapseRatio );
+  if ( result.weights.area <= 0.0 ) return result;
+  MdArray<RealT, 24> x{}, seed{};
+  MdArray<RealT, 32> out{}, derivative{};
+  for ( int i = 0; i < 3 * size1; ++i ) x[i] = x1[i];
+  for ( int i = 0; i < 3 * size2; ++i ) x[3 * size1 + i] = x2[i];
+  for ( int col = 0; col < 3 * ( size1 + size2 ); ++col ) {
+    seed[col] = 1.0;
+    __enzyme_fwddiff<void>( (void*)mortarWeightKernel, TRIBOL_ENZYME_DUP, x.data(), seed.data(), TRIBOL_ENZYME_CONST,
+                            size1, TRIBOL_ENZYME_CONST, size2, TRIBOL_ENZYME_CONST, lenCollapseRatio, TRIBOL_ENZYME_DUP,
+                            out.data(), derivative.data() );
+    for ( int row = 0; row < 32; ++row ) result.derivative( row, col ) = derivative[row];
+    seed[col] = 0.0;
+  }
+  return result;
+}
+
+//------------------------------------------------------------------------------
+void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* g1, int size1,
+                               const RealT* x2, RealT* f2, int size2, RealT lenCollapseRatio, RealT residual_gap )
+{
+  const auto weights = detail::computeMortarPairWeights( x1, size1, x2, size2, lenCollapseRatio );
+  if ( weights.area <= 0.0 ) return;
+  const RealT* mortar_mat1 = weights.nonmortar.data();
+  const RealT* mortar_mat2 = weights.mortar.data();
   // compute gaps
   for ( int i{ 0 }; i < size1; ++i ) {
     g1[i] = 0.0;

@@ -1006,6 +1006,10 @@ int CouplingScheme::checkExecutionModeData()
 //------------------------------------------------------------------------------
 void CouplingScheme::performBinning()
 {
+#ifdef BUILD_REDECOMP
+  if ( m_coulombMortar ) return;
+#endif
+
   // Contact formulations own their candidate search because each formulation decides which coarse pairs are usable.
   if ( m_formulation ) {
     return;
@@ -1035,6 +1039,13 @@ void CouplingScheme::performBinning()
 //------------------------------------------------------------------------------
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
+#ifdef BUILD_REDECOMP
+  if ( m_coulombMortar ) {
+    m_coulombMortar->evaluate( *this );
+    return 0;
+  }
+#endif
+
   if ( m_formulation ) {
     if ( m_parameters.use_common_plane_formulation ) detail::validateCommonPlaneFormulation( *this );
     // The formulation performs the search and gap calculations needed to compute forces from the current mesh data.
@@ -1239,6 +1250,15 @@ void CouplingScheme::updateContactFormulation()
 //------------------------------------------------------------------------------
 bool CouplingScheme::init()
 {
+#ifdef BUILD_REDECOMP
+  // Coulomb validates its vector multiplier fields and constructs normals during its own calculation.
+  if ( m_coulombMortar ) {
+    m_isValid = setMeshPointers();
+    if ( m_isValid ) setSlicLoggingLevel();
+    return m_isValid;
+  }
+#endif
+
   if ( m_formulation ) {
     // validity checks are done in the constructors of ContactFormulations
     this->m_isValid = true;

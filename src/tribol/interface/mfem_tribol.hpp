@@ -14,6 +14,8 @@
 
 #include "tribol/common/Parameters.hpp"
 #include "tribol/common/ExecModel.hpp"
+#include "tribol/physics/CoulombFriction.hpp"
+#include "tribol/physics/ContactResidual.hpp"
 
 namespace tribol {
 
@@ -60,6 +62,62 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
                                  EnforcementMethod enforcement_method,
                                  BinningMethod binning_method = DEFAULT_BINNING_METHOD,
                                  ExecutionMode exec_mode = ExecutionMode::Sequential );
+
+/**
+ * @brief Configure Puso-Laursen mortar with direct Coulomb multipliers.
+ * @param cs_id Registered MFEM SINGLE_MORTAR/FRICTION_COULOMB/LAGRANGE_MULTIPLIER scheme.
+ * @param options Finite coefficient, positive equation scales, and positive overlap tolerance.
+ * @throws std::invalid_argument Options or configuration are unsupported.
+ * @throws std::logic_error A load step is active.
+ * This function is collective on the parent communicator. Supports linear 3D CPU TRI3/TRI3 and
+ * QUAD4/QUAD4 surfaces, with fixed conforming parent topology and partition. Redecomp may change during a step.
+ */
+void setCoulombFrictionOptions( IndexT cs_id, const CoulombFrictionOptions& options );
+/**
+ * @brief Access Cartesian traction multiplier input; call update() after changing it.
+ * @param cs_id Registered MFEM scheme with Cartesian multiplier enforcement, currently Coulomb mortar.
+ * @return Mutable vector grid function on the parent-linked boundary submesh.
+ * @throws std::invalid_argument The scheme does not provide a Cartesian multiplier field.
+ * This function is collective. For Coulomb mortar, lambda dot outward unit normal is compression-positive.
+ * Scalar normal multipliers remain available through getMfemPressure() or getMfemContactPressure().
+ */
+mfem::ParGridFunction& getMfemContactTraction( IndexT cs_id );
+/**
+ * @brief Return owning copies of the latest contact residuals and available diagnostics.
+ * @param cs_id Registered MFEM Coulomb mortar or ContactFormulation scheme.
+ * @return Owned true-DOF residuals; unavailable diagnostics are empty and penalty constraints are null.
+ * @throws std::invalid_argument The scheme does not provide assembled residuals, or Coulomb inputs are stale.
+ * @throws std::logic_error No successful calculation is available; call update() first.
+ * This function is collective. A nonzero residual means unconverged equations, not a failed calculation.
+ * Frictionless nodal mortar returns its weighted gap as the multiplier equation; Coulomb mortar returns its
+ * normal/tangential contact-law equations. See ContactResidual for ordering and method-dependent diagnostics.
+ */
+ContactResidual getMfemContactResidual( IndexT cs_id );
+/**
+ * @brief Begin a load step by snapshotting the accepted configuration for methods with history.
+ * @param cs_id Registered MFEM scheme; first call updateMfemParallelDecomposition().
+ * @throws std::invalid_argument The scheme is absent, unsupported, or has invalid inputs.
+ * @throws std::logic_error A history-dependent load step is already active or not configured.
+ * This collective call does nothing for stateless methods. Coulomb mortar saves coordinates, traction, and gap vectors.
+ */
+void beginContactStep( IndexT cs_id );
+/**
+ * @brief Accept the last evaluation; the application is responsible for convergence acceptance.
+ * @param cs_id Registered MFEM scheme; methods with history require a successful update() at unchanged inputs.
+ * @throws std::logic_error No history-dependent step is active.
+ * @throws std::invalid_argument The scheme is absent or the latest history-dependent result is absent or stale.
+ * This collective call does nothing for stateless methods. Calculation success is separate from convergence acceptance.
+ */
+void commitContactStep( IndexT cs_id );
+/**
+ * @brief Discard trial results and restore accepted multipliers; application restores its coordinate field.
+ * @param cs_id Registered MFEM scheme; methods with history require an active step.
+ * @throws std::invalid_argument The scheme is absent or not registered through MFEM.
+ * @throws std::logic_error No history-dependent step is active.
+ * This collective call does nothing for stateless methods. Caller-owned coordinates must be restored by the
+ * application.
+ */
+void rollbackContactStep( IndexT cs_id );
 
 /**
  * @brief Opt in to a direct common-plane residual and Enzyme Jacobian, or restore legacy Common Plane.
@@ -261,6 +319,7 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r );
  *
  * @note Values on shared DOFs are already consistent across ranks. For the Common Plane formulation, the negative of
  * this residual is the physical force returned by the legacy getMfemResponse() path.
+ * Coulomb mortar returns the same displacement residual contribution as getMfemContactResidual().force.
  *
  * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
  * @pre Redecomp mesh must be created and up to date by calling updateMfemParallelDecomposition()
@@ -280,19 +339,21 @@ mfem::HypreParVector getMfemContactForce( IndexT cs_id );
  *
  * This method requires registration of an mfem::ParMesh with the coupling scheme. The Jacobian contributions are split
  * into a 2x2 block structure. The first row (or column) block is associated with the coordinate grid function degrees
- * of freedom and the second row (or column) block is associated with the Lagrange multiplier (pressure) degrees of
- * freedom. Specifically, the blocks are as follows (f = force, u = displacement, g = gap, p = pressure):
+ * of freedom and the second row (or column) block is associated with scalar pressure or Cartesian traction multiplier
+ * degrees of freedom. With f = displacement residual, u = displacement, r = multiplier residual, and lambda =
+ * multiplier:
  *
- *   df/du | df/dp
+ *   df/du | df/dlambda
  *  ---------------
- *   dg/du | dg/dp
+ *   dr/du | dr/dlambda
  *
  * Note, for contact methods with Lagrange multiplier constraint enforcement, Tribol will have contact contribution
  * placeholders for nodes on both contact surfaces. For instance, in a mortar method, both mortar and nonmortar nodes
  * will have placeholders in the contact contribution data structures. If, however, SINGLE_MORTAR is used as the
- * ContactMethod, the gap/pressure degrees of freedom are ONLY on the nonmortar surface. As a result, Tribol will return
- * Jacobian blocks that have empty rows of dg/du and empty columns of df/dp and ones on the diagonal of the dg/dp block
- * for all mortar node placeholders.
+ * ContactMethod, the multiplier degrees of freedom are ONLY on the nonmortar surface. Tribol returns empty rows of
+ * dr/du, empty columns of df/dlambda, and identity rows in dr/dlambda for unused mortar multiplier placeholders.
+ * Coulomb mortar retains physical dr/dlambda derivatives on supported multiplier nodes and returns all four
+ * nonsymmetric blocks as owning copies. Its force blocks are differentiated independently of the constraint blocks.
  *
  * @param cs_id Coupling scheme id with a registered MFEM mesh
  * @return Jacobian contributions as an mfem::BlockOperator

@@ -32,6 +32,7 @@
 /**
  * @brief Contact patch test using ENERGY_MORTAR with zero initial gap
  *        and prescribed displacement applied incrementally over timesteps.
+ * Generic residual access also checks that penalty contact supplies forces without multiplier equations.
  *
  * Two unit squares [0,1]x[0,1] and [0,1]x[1,2] with zero gap.
  * Linear elasticity with lambda = mu = 50.
@@ -250,6 +251,14 @@ class MfemMortarEnergyPatchTest
       shared::ParSparseMat A_cont( std::move( A_cont_ptr ) );
 
       auto f_contact = tribol::getMfemContactForce( cs_id );
+      if ( step == 1 ) {
+        // Penalty contact supplies diagnostics without introducing multiplier equations.
+        auto result = tribol::getMfemContactResidual( cs_id );
+        ASSERT_NE( result.force, nullptr );
+        EXPECT_EQ( result.constraint, nullptr );
+        *result.force -= f_contact;
+        EXPECT_DOUBLE_EQ( result.force->Normlinf(), 0.0 );
+      }
       f_contact.Neg();
 
       // Inhomogeneous Dirichlet: rhs = f_contact - K * u_prescribed

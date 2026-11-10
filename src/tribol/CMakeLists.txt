@@ -58,6 +58,9 @@ set(tribol_headers
     physics/CommonPlane.hpp
     physics/ContactFormulation.hpp
     physics/ContactFormulationFactory.hpp
+    physics/ContactResidual.hpp
+    physics/CoulombFriction.hpp
+    physics/CoulombMortar.hpp
     physics/Mortar.hpp
     physics/EnergyMortarEnergy.hpp
     physics/PairContactFormulation.hpp
@@ -110,6 +113,8 @@ set(tribol_sources
     physics/AlignedMortar.cpp
     physics/CommonPlane.cpp
     physics/ContactFormulationFactory.cpp
+    physics/CoulombFriction.cpp
+    physics/CoulombMortar.cpp
     physics/Mortar.cpp
     physics/PairContactFormulation.cpp
     physics/EnergyMortar.cpp

@@ -247,6 +247,20 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
                                  EnforcementMethod enforcement_method, BinningMethod binning_method,
                                  ExecutionMode exec_mode )
 {
+  if ( contact_model == FRICTION_COULOMB ) {
+#ifndef TRIBOL_USE_ENZYME
+    throw std::runtime_error( "Coulomb mortar requires Enzyme support." );
+#endif
+    if ( contact_method != SINGLE_MORTAR || enforcement_method != LAGRANGE_MULTIPLIER || mesh.Dimension() != 3 ||
+         mesh.SpaceDimension() != 3 || current_coords.FESpace()->GetVDim() != 3 ||
+         current_coords.ParFESpace()->GetParMesh() != &mesh ||
+         dynamic_cast<const mfem::H1_FECollection*>( current_coords.FESpace()->FEColl() ) == nullptr ||
+         current_coords.FESpace()->FEColl()->GetOrder() != 1 || isOnDevice( exec_mode ) ||
+         contact_mode != SURFACE_TO_SURFACE || ( contact_case != NO_CASE && contact_case != NO_SLIDING ) )
+      throw std::invalid_argument(
+          "Coulomb mortar requires host linear 3D MFEM single mortar with direct multipliers." );
+  }
+
   // verify valid execution mode and set memory space
   MemorySpace mem_space = MemorySpace::Host;
 #ifdef TRIBOL_USE_CUDA
@@ -306,21 +320,15 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
     std::unique_ptr<mfem::FiniteElementCollection> pressure_fec = std::make_unique<mfem::H1_FECollection>(
         current_coords.FESpace()->FEColl()->GetOrder(), mesh.SpaceDimension() );
     int pressure_vdim = 0;
-    if ( contact_model == FRICTIONLESS )  // only contact model supported with Lagrange multipliers now
-    {
+    if ( contact_model == FRICTIONLESS ) {
       pressure_vdim = 1;
-    }
-    // TODO add the following if they are implemented with Lagrange multipliers:
-    //
-    // 1) contact_model == FRICTION_COULOMB
-    // 2) contact_case == TIED_NORMAL
-    // 3) contact_case == TIED_FULL
-    //
-    // and set pressure_vdim = mesh.SpaceDimension();
-    else {
+    } else if ( contact_model == FRICTION_COULOMB ) {
+      pressure_vdim = 3;
+      cs.enableEnzyme( true );
+    } else {
       SLIC_ERROR_ROOT(
           "Unsupported contact model. "
-          "Only FRICTIONLESS is supported with Lagrange multipliers." );
+          "SINGLE_MORTAR supports FRICTIONLESS and host Enzyme FRICTION_COULOMB." );
     }
     // create pressure field on the parent-linked boundary submesh and
     // transfer operators to the redecomp level
@@ -329,7 +337,8 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
                                                               isOnDevice( exec_mode ) ) );
     // Legacy mortar constructs matrix transfer only when its requested outputs include a Jacobian.
     auto lm_options = cs.getEnforcementOptions().lm_implicit_options;
-    if ( ( lm_options.enforcement_option_set &&
+    if ( contact_model == FRICTION_COULOMB ||
+         ( lm_options.enforcement_option_set &&
            ( lm_options.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ||
              lm_options.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ) ) ) {
       // create matrix transfer operator between redecomp and parent/parent-linked boundary submesh
@@ -337,9 +346,69 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
     }
   }
   cs.setMfemMeshData( std::move( mfem_data ) );
+  if ( contact_model == FRICTION_COULOMB ) cs.setCoulombMortar( std::make_unique<detail::CoulombMortar>( cs ) );
   if ( contact_method == ENERGY_MORTAR ) {
     cs.updateContactFormulation();
   }
+}
+
+namespace {
+/** @brief Require an MFEM coupling scheme. @param id Coupling scheme ID.
+ * @return Current scheme. @throws std::invalid_argument The scheme is absent or has no MFEM data. */
+CouplingScheme& contactScheme( IndexT id )
+{
+  auto* cs = CouplingSchemeManager::getInstance().findData( id );
+  if ( !cs || !cs->hasMfemData() ) throw std::invalid_argument( "Register an MFEM coupling scheme first." );
+  return *cs;
+}
+}  // namespace
+void setCoulombFrictionOptions( IndexT id, const CoulombFrictionOptions& options )
+{
+  auto& cs = contactScheme( id );
+  if ( !cs.getCoulombMortar() ) throw std::invalid_argument( "Register an MFEM Coulomb mortar scheme first." );
+  cs.getCoulombMortar()->setOptions( options );
+}
+mfem::ParGridFunction& getMfemContactTraction( IndexT id )
+{
+  auto& cs = contactScheme( id );
+  auto* submesh = cs.getMfemSubmeshData();
+  if ( cs.getEnforcementMethod() != LAGRANGE_MULTIPLIER || !submesh ||
+       submesh->GetSubmeshFESpace().GetVDim() != cs.spatialDimension() )
+    throw std::invalid_argument( "This scheme has no Cartesian traction multiplier field." );
+  return submesh->GetSubmeshPressure();
+}
+ContactResidual getMfemContactResidual( IndexT id )
+{
+  auto& cs = contactScheme( id );
+  if ( cs.getCoulombMortar() ) return cs.getCoulombMortar()->residual( cs );
+  if ( !cs.hasContactFormulation() )
+    throw std::invalid_argument( "This scheme does not provide assembled contact residuals." );
+  const auto& source = cs.getContactFormulationResult();
+  if ( !source.force ) throw std::logic_error( "No contact residual is available; call update() first." );
+  ContactResidual result;
+  result.force = std::make_unique<mfem::HypreParVector>( *source.force );
+  if ( source.gap ) {
+    result.gap = *source.gap;
+    if ( cs.getEnforcementMethod() == LAGRANGE_MULTIPLIER )
+      result.constraint = std::make_unique<mfem::HypreParVector>( *source.gap );
+  }
+  if ( source.pressure ) result.pressure = *source.pressure;
+  return result;
+}
+void beginContactStep( IndexT id )
+{
+  auto& cs = contactScheme( id );
+  if ( cs.getCoulombMortar() ) cs.getCoulombMortar()->begin( cs );
+}
+void commitContactStep( IndexT id )
+{
+  auto& cs = contactScheme( id );
+  if ( cs.getCoulombMortar() ) cs.getCoulombMortar()->commit( cs );
+}
+void rollbackContactStep( IndexT id )
+{
+  auto& cs = contactScheme( id );
+  if ( cs.getCoulombMortar() ) cs.getCoulombMortar()->rollback( cs );
 }
 
 void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled )
@@ -378,7 +447,9 @@ void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled )
 
 void setMfemLORFactor( IndexT cs_id, int lor_factor )
 {
-  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  auto* cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  if ( cs && cs->getCoulombMortar() ) throw std::invalid_argument( "Coulomb mortar does not support LOR subdivision." );
+
   SLIC_ERROR_ROOT_IF(
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
@@ -599,6 +670,8 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r )
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
+  if ( cs->getCoulombMortar() ) throw std::logic_error( "Use getMfemContactForce() or getMfemContactResidual()." );
+
   SLIC_ERROR_ROOT_IF(
       cs->hasContactFormulation(),
       "Coupling scheme has a contact formulation. Forces are returned using getMfemContactForce() instead." );
@@ -615,6 +688,7 @@ mfem::HypreParVector getMfemContactForce( IndexT cs_id )
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
+  if ( cs->getCoulombMortar() ) return cs->getCoulombMortar()->force( *cs );
   SLIC_ERROR_ROOT_IF(
       !cs->hasContactFormulation(),
       "Coupling scheme does not contain a contact formulation. Forces are returned using getMfemResponse() instead." );
@@ -630,6 +704,8 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
+
+  if ( cs->getCoulombMortar() ) return cs->getCoulombMortar()->jacobian( *cs );
 
   SLIC_ERROR_ROOT_IF( cs->getEnforcementMethod() == PENALTY,
                       "getMfemBlockJacobian() is not supported for coupling schemes with penalty enforcement. "
@@ -759,6 +835,7 @@ void getMfemGap( IndexT cs_id, mfem::Vector& g )
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
+  if ( cs->getCoulombMortar() ) throw std::logic_error( "Use getMfemContactResidual().gap for Coulomb mortar." );
 
   if ( cs->hasContactFormulation() ) {
     throw std::logic_error( "Contact formulations return nodal gaps through getMfemContactGap()." );
@@ -791,6 +868,7 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id )
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
+  if ( cs->getCoulombMortar() ) throw std::logic_error( "Use getMfemContactTraction() for Cartesian multipliers." );
 
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(),
                       axom::fmt::format( "Coupling scheme cs_id={0} does not contain MFEM pressure field data. "
@@ -823,6 +901,7 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
 
     // update redecomp meshes if supplied mfem data
     if ( cs.hasMfemData() ) {
+      if ( cs.getCoulombMortar() ) cs.getCoulombMortar()->checkParentMesh( cs );
       auto mfem_data = cs.getMfemMeshData();
       ArrayT<int> mesh_ids{ 2, 2 };
       mesh_ids[0] = mfem_data->GetMesh1ID();
@@ -865,7 +944,8 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
       }
       // TODO: consider redesign where a specific method isn't checked and just the enforcement method is checked
       if ( cs.hasMfemSubmeshData() ) {
-        SLIC_ERROR_ROOT_IF( cs.getContactModel() != FRICTIONLESS, "Only frictionless contact is supported." );
+        SLIC_ERROR_ROOT_IF( cs.getContactModel() != FRICTIONLESS && cs.getContactModel() != FRICTION_COULOMB,
+                            "Unsupported multiplier contact model." );
         SLIC_ERROR_ROOT_IF( cs.getContactMethod() != SINGLE_MORTAR && cs.getContactMethod() != ENERGY_MORTAR,
                             "Only single mortar or ENERGY_MORTAR contact is supported." );
         auto submesh_data = cs.getMfemSubmeshData();
@@ -874,10 +954,14 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         submesh_data->UpdateMfemSubmeshData( mfem_data->GetRedecompMesh(), new_redecomp );
         // ContactFormulation uses mesh 1 as non-mortar; legacy mortar methods use mesh 2.
         const auto nonmortar_mesh_id = mesh_ids[cs.hasContactFormulation() ? 0 : 1];
-        auto g_ptrs = submesh_data->GetRedecompGapPtrs();
-        registerMortarGaps( nonmortar_mesh_id, g_ptrs[0] );
-        auto p_ptrs = submesh_data->GetRedecompPressurePtrs();
-        registerMortarPressures( nonmortar_mesh_id, p_ptrs[0] );
+        if ( cs.getCoulombMortar() )
+          cs.getCoulombMortar()->invalidate();
+        else {
+          auto g_ptrs = submesh_data->GetRedecompGapPtrs();
+          registerMortarGaps( nonmortar_mesh_id, g_ptrs[0] );
+          auto p_ptrs = submesh_data->GetRedecompPressurePtrs();
+          registerMortarPressures( nonmortar_mesh_id, p_ptrs[0] );
+        }
       }
       if ( cs.hasMfemJacobianData() && new_redecomp ) {
         cs.getMfemJacobianData()->UpdateJacobianXfer();

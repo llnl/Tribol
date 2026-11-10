@@ -20,6 +20,7 @@
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/physics/Physics.hpp"
 #include "tribol/physics/ContactFormulation.hpp"
+#include "tribol/physics/CoulombMortar.hpp"
 #include "tribol/utils/DataManager.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/geom/CompGeom.hpp"
@@ -743,11 +744,13 @@ class CouplingScheme {
    */
   void updateContactFormulation();
 
-  /**
-   * @brief Check if a ContactFormulation implementation is set
-   *
-   * @return true if set
-   */
+#ifdef BUILD_REDECOMP
+  /** @brief Access Coulomb history and calculations. @return Null for other contact models. */
+  detail::CoulombMortar* getCoulombMortar() const { return m_coulombMortar.get(); }
+  /** @brief Install the Coulomb calculation. @param data Owned history and result storage. */
+  void setCoulombMortar( std::unique_ptr<detail::CoulombMortar> data ) { m_coulombMortar = std::move( data ); }
+#endif
+  /** @brief Check if a ContactFormulation implementation is set. @return True if set. */
   bool hasContactFormulation() const { return m_formulation != nullptr; }
 
   /**
@@ -996,6 +999,9 @@ class CouplingScheme {
 
 #endif /* BUILD_REDECOMP */
 
+#ifdef BUILD_REDECOMP
+  std::unique_ptr<detail::CoulombMortar> m_coulombMortar;  ///< History/results released before borrowed MFEM spaces.
+#endif
   ContactFormulationResult m_formulation_result;  ///< Latest outputs, destroyed before their MFEM spaces.
 
 };  // end class CouplingScheme

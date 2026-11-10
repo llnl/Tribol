@@ -219,6 +219,7 @@ endif()
 if( TRIBOL_USE_ENZYME )
 
   set( combined_tests
+      tribol_coulomb_friction.cpp
       tribol_enzyme_element_mortar.cpp
       tribol_enzyme_nodal_normal.cpp
       tribol_enzyme_mortar_assembled.cpp
@@ -259,6 +260,8 @@ if( TRIBOL_USE_ENZYME )
     endif()
 
   endforeach()
+  blt_add_test(NAME tribol_coulomb_friction_mpi COMMAND tribol_coulomb_friction_test NUM_MPI_TASKS 2)
+  set_tests_properties(tribol_coulomb_friction tribol_coulomb_friction_mpi PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=2")
 
 endif()
 

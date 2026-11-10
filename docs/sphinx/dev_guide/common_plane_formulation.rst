@@ -22,6 +22,10 @@ Register an MFEM coupling scheme using ``COMMON_PLANE``, ``FRICTIONLESS``, and `
    auto residual = tribol::getMfemContactForce(cs_id);
    auto jacobian = tribol::getMfemDfDx(cs_id);
 
+``getMfemContactResidual(cs_id)`` returns the same assembled displacement contribution in its owning ``force`` field.
+Common Plane penalty contact has no multiplier equation or nodal gap/pressure diagnostics; ``constraint`` is null and
+the diagnostic arrays are empty. The generic contact-step history calls do nothing for this stateless method.
+
 The returned residual is assembled on parent true degrees of freedom. Its negative is the physical contact force
 returned by the legacy ``getMfemResponse()`` path. The Jacobian differentiates this residual with respect to current
 coordinates and can be nonsymmetric. Matrix retrieval transfers ownership; update contact before retrieving another

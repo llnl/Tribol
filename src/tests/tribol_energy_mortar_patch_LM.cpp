@@ -32,6 +32,7 @@
 /**
  * @brief Contact patch test using ENERGY_MORTAR with Lagrange multiplier
  *        enforcement and prescribed displacement applied incrementally.
+ * Generic contact residuals must match the existing force, weighted gap, and pressure getters for scalar multipliers.
  *
  * Two unit squares [0,1]x[0,1] and [0,1]x[1,2] with zero initial gap.
  * Linear elasticity with lambda = mu = 5.
@@ -248,8 +249,26 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         // Contact residual and Jacobian blocks (LM mode)
         auto r_contact_force = tribol::getMfemContactForce( cs_id );  // G^T * lambda (disp-sized)
         auto r_gap = tribol::getMfemContactGap( cs_id );              // g_tilde (contact-sized)
-        auto H_ptr = tribol::getMfemDfDx( cs_id );                    // lambda * d2g/du2 (disp x disp)
-        auto G_T_ptr = tribol::getMfemDfDp( cs_id );                  // G^T (disp x contact)
+        if ( newton == 0 ) {
+          // Scalar multiplier input remains separate from Cartesian traction input.
+          EXPECT_THROW( tribol::getMfemContactTraction( cs_id ), std::invalid_argument );
+          auto result = tribol::getMfemContactResidual( cs_id );
+          ASSERT_NE( result.force, nullptr );
+          ASSERT_NE( result.constraint, nullptr );
+          *result.force -= r_contact_force;
+          *result.constraint -= r_gap;
+          result.gap -= r_gap;
+          result.pressure -= tribol::getMfemContactPressure( cs_id );
+          EXPECT_DOUBLE_EQ( result.force->Normlinf(), 0.0 );
+          EXPECT_DOUBLE_EQ( result.constraint->Normlinf(), 0.0 );
+          EXPECT_DOUBLE_EQ( result.gap.Normlinf(), 0.0 );
+          EXPECT_DOUBLE_EQ( result.pressure.Normlinf(), 0.0 );
+          EXPECT_EQ( result.slip.Size(), 0 );
+          EXPECT_EQ( result.normal.Size(), 0 );
+          EXPECT_EQ( result.state.Size(), 0 );
+        }
+        auto H_ptr = tribol::getMfemDfDx( cs_id );    // lambda * d2g/du2 (disp x disp)
+        auto G_T_ptr = tribol::getMfemDfDp( cs_id );  // G^T (disp x contact)
         ASSERT_TRUE( G_T_ptr != nullptr );
 
         mfem::Vector R_u( disp_size );

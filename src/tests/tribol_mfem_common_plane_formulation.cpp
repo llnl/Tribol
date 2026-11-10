@@ -7,7 +7,7 @@
  * @file
  * @brief Check explicit MFEM Common Plane selection, nonmatching constant-traction patches, and parent Jacobians.
  * The same tests run on one and two ranks; decomposition onto rank zero exercises a rank without contact elements.
- * Direct calls check output availability and validity after destroying the formulation.
+ * Direct calls check generic MFEM residual availability and validity after destroying the formulation.
  * Local quadrature and full pair derivatives are checked in tribol_common_plane_formulation.
  */
 #include <cmath>
@@ -72,6 +72,39 @@ class MfemCommonPlaneTest : public testing::TestWithParam<int> {
   std::unique_ptr<mfem::ParFiniteElementSpace> fes_;  ///< Parent vector-coordinate space.
   std::unique_ptr<mfem::ParGridFunction> coords_;     ///< Current parent geometry.
 };
+
+// Generic residuals must distinguish unavailable equations from calculated zero values and retain their own storage.
+TEST_P( MfemCommonPlaneTest, generic_residual_availability_and_history )
+{
+  EXPECT_THROW( getMfemContactResidual( 0 ), std::invalid_argument );
+  EXPECT_THROW( getMfemContactTraction( 0 ), std::invalid_argument );
+  EXPECT_THROW( beginContactStep( 1 ), std::invalid_argument );
+  EXPECT_THROW( commitContactStep( 1 ), std::invalid_argument );
+  EXPECT_THROW( rollbackContactStep( 1 ), std::invalid_argument );
+  enable();
+  EXPECT_THROW( getMfemContactResidual( 0 ), std::logic_error );
+  // Stateless methods allow the same application load driver without storing or restoring contact history.
+  EXPECT_NO_THROW( beginContactStep( 0 ) );
+  EXPECT_NO_THROW( beginContactStep( 0 ) );
+  evaluate();
+  auto result = getMfemContactResidual( 0 );
+  ASSERT_NE( result.force, nullptr );
+  EXPECT_EQ( result.constraint, nullptr );
+  EXPECT_EQ( result.gap.Size(), 0 );
+  EXPECT_EQ( result.pressure.Size(), 0 );
+  EXPECT_EQ( result.slip.Size(), 0 );
+  EXPECT_EQ( result.normal.Size(), 0 );
+  EXPECT_EQ( result.state.Size(), 0 );
+  auto difference = getMfemContactForce( 0 );
+  difference -= *result.force;
+  EXPECT_DOUBLE_EQ( norm( difference ), 0.0 );
+  RealT saved_norm = norm( *result.force );
+  EXPECT_GT( saved_norm, 0.0 );
+  EXPECT_NO_THROW( commitContactStep( 0 ) );
+  EXPECT_NO_THROW( rollbackContactStep( 0 ) );
+  setMfemUseCommonPlaneFormulation( 0, false );
+  EXPECT_DOUBLE_EQ( norm( *result.force ), saved_norm );
+}
 
 // Nonmatching pair assembly must reproduce uniform analytic boundary traction without any pressure or gap field.
 TEST_P( MfemCommonPlaneTest, matches_nonmatching_constant_traction_patch )

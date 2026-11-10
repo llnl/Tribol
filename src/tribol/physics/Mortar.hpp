@@ -8,6 +8,7 @@
 
 #include "tribol/common/Parameters.hpp"
 #include "Physics.hpp"
+#include "tribol/common/MdArray.hpp"
 
 namespace tribol {
 
@@ -162,6 +163,41 @@ void ComputeConstraintJacobian<SINGLE_MORTAR, DUAL>( SurfaceContactElem& elem );
 void ComputeSingleMortarJacobian( SurfaceContactElem& elem );
 
 #ifdef TRIBOL_USE_ENZYME
+namespace detail {
+/** @brief Owned linear-surface mortar weights; zero area denotes no projected overlap. */
+struct MortarPairWeights {
+  MdArray<RealT, 16> nonmortar{};  ///< D, packed row-major with stride size1.
+  MdArray<RealT, 16> mortar{};     ///< M, packed row-major with stride size2.
+  RealT area{ 0.0 };               ///< Projected polygon area; zero when there is no overlap.
+};
+/**
+ * @brief Integrate both mortar matrices on the same projected overlap.
+ * @param x1 Nonmortar coordinates in component-major order.
+ * @param size1 Nonmortar nodes per element, three or four.
+ * @param x2 Mortar coordinates in component-major order.
+ * @param size2 Mortar nodes per element, three or four.
+ * @param lenCollapseRatio Nondimensional clipping tolerance.
+ * @return Owned weights; no overlap returns zero matrices and zero area.
+ */
+MortarPairWeights computeMortarPairWeights( const RealT* x1, int size1, const RealT* x2, int size2,
+                                            RealT lenCollapseRatio );
+/** @brief Mortar weights and coordinate derivatives, including geometry-dependent integration. */
+struct MortarPairWeightJacobian {
+  MortarPairWeights weights;            ///< Primal weights.
+  MdArray<RealT, 32, 24> derivative{};  ///< Rows: packed D then M; columns: component-major x1 then x2.
+};
+/** @brief Calculate weights and their Enzyme coordinate derivatives.
+ * @param x1 Component-major nonmortar coordinates.
+ * @param size1 Nonmortar nodes per element.
+ * @param x2 Component-major mortar coordinates.
+ * @param size2 Mortar nodes per element.
+ * @param lenCollapseRatio Nondimensional clipping tolerance.
+ * @return Owned weights and derivatives; no overlap returns zeros.
+ */
+MortarPairWeightJacobian computeMortarPairWeightJacobian( const RealT* x1, int size1, const RealT* x2, int size2,
+                                                          RealT lenCollapseRatio );
+}  // namespace detail
+
 /*!
  * \brief Computes frictionless mortar forces and Jacobians (using Enzyme) following Puso and Laursen (2004)
  *

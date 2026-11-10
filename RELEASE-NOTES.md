@@ -8,6 +8,17 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added host linear 3D MFEM/Redecomp Coulomb friction for Enzyme `SINGLE_MORTAR`, using the Puso-Laursen discrete
+  normals, weighted gap/slip, and force interpolation with direct Cartesian multipliers and a nonsymmetric semismooth
+  Newton Jacobian. New APIs configure friction, access multiplier/residual fields, and begin, commit, or roll back
+  accepted-step history. Supports nonmatching TRI3/TRI3 and QUAD4/QUAD4 surfaces and changing Redecomp partitions.
+  Higher order/LOR, mixed face shapes, GPUs, self-contact, and parent remeshing/repartitioning are unsupported.
+  Existing frictionless calculations are unchanged. Added a nonlinear elastic-block loading/reversal example.
+- Added generic MFEM contact access through `getMfemContactTraction()` and `getMfemContactResidual()`, with an owning
+  `ContactResidual` result. The residual getter also supports existing contact formulations, preserving each method's
+  gap/pressure convention and reporting unavailable outputs explicitly. `getMfemContactForce()` supports Coulomb mortar.
+  `beginContactStep()`, `commitContactStep()`, and `rollbackContactStep()` manage contact history and do nothing for
+  stateless methods. Existing scalar pressure/gap interfaces retain their contracts.
 - Added opt-in linear 2D Common Plane contact through `setMfemUseCommonPlaneFormulation()`, sharing
   `PairContactFormulation` with nodal and quadrature-point Energy Mortar. It supports host MFEM/Redecomp frictionless
   constant-penalty contact, orders 0-5, and Enzyme residual Jacobians. No nodal gap, energy, or timestep is defined.

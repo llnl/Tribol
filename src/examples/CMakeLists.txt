@@ -125,3 +125,14 @@ if ( BUILD_REDECOMP )
   endforeach()
   
 endif()
+
+# Direct Coulomb multipliers require Enzyme differentiation and MFEM/Redecomp transfer.
+if(BUILD_REDECOMP AND TRIBOL_USE_ENZYME)
+  blt_add_executable(NAME mfem_coulomb_mortar_ex SOURCES mfem_coulomb_mortar.cpp
+                    OUTPUT_DIR ${EXAMPLE_OUTPUT_DIRECTORY} DEPENDS_ON tribol ${tribol_device_depends})
+  if(TRIBOL_ENABLE_TESTS AND ENABLE_TESTS)
+    blt_add_test(NAME tribol_mfem_coulomb_mortar_ex COMMAND mfem_coulomb_mortar_ex NUM_MPI_TASKS 1)
+    blt_add_test(NAME tribol_mfem_coulomb_mortar_refined_ex COMMAND mfem_coulomb_mortar_ex --refinements 1 NUM_MPI_TASKS 1)
+    blt_add_test(NAME tribol_mfem_coulomb_mortar_mpi_ex COMMAND mfem_coulomb_mortar_ex NUM_MPI_TASKS 2)
+  endif()
+endif()
