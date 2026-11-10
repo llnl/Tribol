@@ -5,10 +5,12 @@
 
 /**
  * @file
- * @brief Tests base and paired edge quadrature on every enabled backend: polynomial accuracy, interval selection,
- * bounded writes, invalid geometry, owned edge geometry, and frozen integration-surface quadrature points mapped to
- * changed geometry. Pair generation preserves integration-surface generator failures. Compile-time checks accept
- * compatible mappings and generators and reject mismatched interfaces. Factory tests check order selection.
+ * @brief Tests reference-interval quadrature and its mapping to edge pairs on every enabled backend: polynomial
+ * accuracy, interval selection, bounded writes, invalid geometry, and owned edge geometry. Energy Mortar can hold
+ * integration-surface quadrature fixed during differentiation, and these tests cover that mode. If integration-surface
+ * point generation fails, the tests verify the pair rule reports the failure without mapping incomplete points.
+ * Compile-time checks accept compatible mappings and generators and reject mismatched interfaces. Factory tests check
+ * order selection.
  */
 
 #include <cmath>
@@ -32,7 +34,7 @@ constexpr RealT tolerance = 1.0e-12;  ///< Absolute tolerance for coordinates, w
 class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
  protected:
   /**
-   * @brief Check the Count-point Gauss-Legendre rule against exact monomial integrals on [-1, 1].
+   * @brief Check a Gauss-Legendre rule against exact monomial integrals on [-1, 1].
    * @tparam Count Number of Gauss points.
    */
   template <int Count>
@@ -44,6 +46,8 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
     ArrayT<QuadratureResult> results( 1, 1, allocatorId() );
     const auto output = integrals.view();
     const auto status = results.view();
+    // Approximate the integral of xi^degree from -1 to 1 through degree 2*Count-1, the highest degree this rule must
+    // integrate exactly.
     forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
       const auto rule = Generator{}.generate();
       status[0] = rule.result;
@@ -61,17 +65,16 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
     const ArrayT<QuadratureResult, 1, MemorySpace::Host> statuses( results );
     ASSERT_EQ( statuses[0].status, QuadratureStatus::Success );
     ASSERT_EQ( statuses[0].required_point_count, Count );
-    // Use an independent analytical reference: integrating xi^degree from -1 to 1 gives
-    // [xi^(degree+1)/(degree+1)] at the endpoints, hence zero for odd degrees and 2/(degree+1) for even degrees.
-    // The expected value depends only on degree, not on the generated points or weights. Check every degree through
-    // 2*Count-1 against this reference with the absolute error tolerance defined above (1e-12).
+    // Compare against an independent analytical result: [xi^(degree+1)/(degree+1)] evaluated at -1 and 1 is zero for
+    // odd degrees and 2/(degree+1) for even degrees. This result depends only on degree, not on the generated points or
+    // weights; use the absolute error tolerance defined above (1e-12).
     for ( int degree = 0; degree < degree_count; ++degree ) {
       EXPECT_NEAR( values[degree], ( degree % 2 == 0 ? 2.0 / ( degree + 1 ) : 0.0 ), tolerance );
     }
   }
 
   /**
-   * @brief Check edge1 coordinates and measure for full, partial, smoothed, and disjoint intervals.
+   * @brief Check quadrature intervals from different edge2 positions against a fixed edge1.
    * @tparam Count Number of Gauss points.
    */
   template <int Count>
@@ -85,7 +88,8 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
       RealT expected_lower;  ///< Expected edge1 parent lower bound.
       RealT expected_upper;  ///< Expected edge1 parent upper bound.
     };
-    // Edge1 spans x=[0,4]; edge2 endpoints are listed right-to-left to give the opposite edge orientation.
+    // Edge1 remains fixed at x=[0,4]. Each case changes edge2's x span and lists its endpoints right-to-left to give
+    // the opposite edge orientation.
     const IntervalCase test_cases[] = {
         { "Full overlap without smoothing", 4.0, 0.0, 0.0, -1.0, 1.0 },
         { "Interior overlap without smoothing", 3.0, 1.0, 0.0, -0.5, 0.5 },
@@ -95,14 +99,14 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
         { "Disjoint intervals beyond smoothing support", 8.0, 6.0, 0.1, 1.0, 1.0 } };
     for ( const auto& test_case : test_cases ) {
       SCOPED_TRACE( testing::Message() << test_case.label << ", Gauss points=" << Count );
-      // Each records row stores one quadrature point. Columns are:
+      // Each row stores data for one quadrature point. Columns are:
       // 0: edge1 parent coordinate; 1-2: edge1 physical (x,y); 3: physical integration weight;
       // 4: edge2 parent coordinate; 5-6: edge2 physical (x,y).
-      ArrayT<RealT, 2> records( axom::StackArray<axom::IndexType, 2>{ Count, 7 }, allocatorId() );
+      ArrayT<RealT, 2> quadrature_point_data( axom::StackArray<axom::IndexType, 2>{ Count, 7 }, allocatorId() );
       // One result for the entire generated rule: its status and required point count, rather than per-point data.
       ArrayT<QuadratureResult> results( 1, 1, allocatorId() );
       // The kernel writes through these views; host copies below make the data available for assertions.
-      const auto records_view = records.view();
+      const auto quadrature_point_data_view = quadrature_point_data.view();
       const auto results_view = results.view();
       forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
         const MdArray<RealT, 2, 2> edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } };
@@ -116,17 +120,17 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
         for ( IndexT q = 0; q < rule.result.required_point_count; ++q ) {
           const auto physical1 = LinearEdgeGeometry::position( edge1.view(), points.geometry1_coords( q, 0 ) );
           const auto physical2 = LinearEdgeGeometry::position( edge2.view(), points.geometry2_coords( q, 0 ) );
-          records_view( q, 0 ) = points.geometry1_coords( q, 0 );
-          records_view( q, 1 ) = physical1[0];
-          records_view( q, 2 ) = physical1[1];
-          records_view( q, 3 ) = points.weights[q];
-          records_view( q, 4 ) = points.geometry2_coords( q, 0 );
-          records_view( q, 5 ) = physical2[0];
-          records_view( q, 6 ) = physical2[1];
+          quadrature_point_data_view( q, 0 ) = points.geometry1_coords( q, 0 );
+          quadrature_point_data_view( q, 1 ) = physical1[0];
+          quadrature_point_data_view( q, 2 ) = physical1[1];
+          quadrature_point_data_view( q, 3 ) = points.weights[q];
+          quadrature_point_data_view( q, 4 ) = points.geometry2_coords( q, 0 );
+          quadrature_point_data_view( q, 5 ) = physical2[0];
+          quadrature_point_data_view( q, 6 ) = physical2[1];
         }
       } );
       const ArrayT<QuadratureResult, 1, MemorySpace::Host> host_results( results );
-      const ArrayT<RealT, 2, MemorySpace::Host> host_records( records );
+      const ArrayT<RealT, 2, MemorySpace::Host> host_quadrature_point_data( quadrature_point_data );
       // Every case, including zero overlap, must produce a valid rule.
       ASSERT_EQ( host_results[0].status, QuadratureStatus::Success );
       const bool empty = test_case.expected_lower == test_case.expected_upper;
@@ -135,24 +139,25 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
       RealT measure = 0.0;
       for ( IndexT q = 0; q < host_results[0].required_point_count; ++q ) {
         // No point may fall below the expected edge1 parent interval.
-        EXPECT_GE( host_records( q, 0 ), test_case.expected_lower );
+        EXPECT_GE( host_quadrature_point_data( q, 0 ), test_case.expected_lower );
         // No point may fall above the expected edge1 parent interval.
-        EXPECT_LE( host_records( q, 0 ), test_case.expected_upper );
+        EXPECT_LE( host_quadrature_point_data( q, 0 ), test_case.expected_upper );
         // Mapping [-1,1] onto edge1's x=[0,4] gives x=2*(1+xi).
-        EXPECT_NEAR( host_records( q, 1 ), 2.0 * ( 1.0 + host_records( q, 0 ) ), tolerance );
+        EXPECT_NEAR( host_quadrature_point_data( q, 1 ), 2.0 * ( 1.0 + host_quadrature_point_data( q, 0 ) ),
+                     tolerance );
         // All mapped edge1 points lie on its horizontal edge at y=0.
-        EXPECT_EQ( host_records( q, 2 ), 0.0 );
+        EXPECT_EQ( host_quadrature_point_data( q, 2 ), 0.0 );
         // Inverting edge2's right-to-left x mapping must recover its reported parent coordinate.
-        EXPECT_NEAR(
-            host_records( q, 4 ),
-            2.0 * ( host_records( q, 1 ) - test_case.edge2_right ) / ( test_case.edge2_left - test_case.edge2_right ) -
-                1.0,
-            tolerance );
+        EXPECT_NEAR( host_quadrature_point_data( q, 4 ),
+                     2.0 * ( host_quadrature_point_data( q, 1 ) - test_case.edge2_right ) /
+                             ( test_case.edge2_left - test_case.edge2_right ) -
+                         1.0,
+                     tolerance );
         // Normal projection between these parallel edges preserves the physical x coordinate.
-        EXPECT_NEAR( host_records( q, 5 ), host_records( q, 1 ), tolerance );
+        EXPECT_NEAR( host_quadrature_point_data( q, 5 ), host_quadrature_point_data( q, 1 ), tolerance );
         // All mapped edge2 points lie on its horizontal edge at y=0.2.
-        EXPECT_NEAR( host_records( q, 6 ), 0.2, tolerance );
-        measure += host_records( q, 3 );
+        EXPECT_NEAR( host_quadrature_point_data( q, 6 ), 0.2, tolerance );
+        measure += host_quadrature_point_data( q, 3 );
       }
       // Integrating 1 must give the physical interval length: parent interval width times edge1's Jacobian of 2.
       EXPECT_NEAR( measure, 2.0 * ( test_case.expected_upper - test_case.expected_lower ), tolerance );
@@ -206,7 +211,7 @@ TEST_P( EdgeQuadratureTest, owns_coordinate_snapshot )
   EXPECT_NEAR( values[Jacobian], 2.5, tolerance );
 }
 
-// The integration-surface rule integrates its supported polynomial degrees without knowledge of either element.
+// Verify that each Gauss-Legendre rule exactly integrates its supported polynomial degrees.
 TEST_P( EdgeQuadratureTest, integrates_supported_polynomial_degrees )
 {
   checkPolynomialIntegrals<1>();
@@ -223,7 +228,8 @@ TEST_P( EdgeQuadratureTest, selects_first_edge_interval_from_projection )
   checkIntervals<3>();
 }
 
-// Edges tilted relative to each other require projection along edge2's normal, rather than edge1's normal.
+// Energy Mortar defines its edge1 integration interval by projecting edge2's endpoints along edge2's normal. Tilted
+// edges make that formulation-specific direction observable because using edge1's normal gives different bounds.
 TEST_P( EdgeQuadratureTest, projects_oblique_edges_to_parent_bounds )
 {
   ArrayT<RealT> bounds( 2, 2, allocatorId() );
@@ -442,8 +448,8 @@ TEST_P( EdgeQuadratureTest, reports_insufficient_capacity_without_writing_past_o
   EXPECT_EQ( host_weight_storage[weight_storage_size - 1], initial_storage_value );
 }
 
-// Both generate() and mapIntegrationSurfaceRuleToElements() reject an edge shorter than the minimum length.
-// An edge exactly at the minimum is accepted, provided the other edge also meets the minimum.
+// Refined search and quadrature generation use the same minimum input-edge length. This test checks that element
+// validity rule (it does not apply a minimum length to the projected overlap).
 TEST_P( EdgeQuadratureTest, applies_same_minimum_length_to_both_edges )
 {
   constexpr RealT minimum_length = 1.0e-14;
@@ -502,9 +508,10 @@ TEST_P( EdgeQuadratureTest, applies_same_minimum_length_to_both_edges )
   }
 }
 
-// Map the same integration-surface quadrature onto the first edge before and after doubling its length, without
-// recomputing overlap. The supplied normalized coordinates stay unchanged; the physical weights must scale with the new
-// edge length.
+// PairQuadratureRule can remap an existing integration-surface rule after the element coordinates change. This is used,
+// for example, in EnergyMortar's fixed-quadrature derivative path. Verify that SmoothedProjectedEdgeMapping preserves
+// the supplied edge1 parent coordinates and recomputes the physical weights from the current edge1 length. It does not
+// select a new overlap interval when mapping an existing rule.
 TEST_P( EdgeQuadratureTest, remaps_integration_surface_rule_after_first_edge_doubles_in_length )
 {
   constexpr int point_count = 3;
@@ -541,8 +548,9 @@ TEST_P( EdgeQuadratureTest, remaps_integration_surface_rule_after_first_edge_dou
   EXPECT_NEAR( host_records[1], 2.0, tolerance );
 }
 
-// Map integration-surface quadrature points to edge1, then project their physical positions onto the tilted edge2 along
-// edge2's normal.
+// SmoothedProjectedEdgeMapping expresses its integration surface in edge1 parent coordinates. For each supplied point,
+// it keeps the edge1 coordinate and projects its physical position along edge2's normal to find the corresponding edge2
+// coordinate. Tilting edge2 makes the projection direction observable.
 TEST_P( EdgeQuadratureTest, maps_integration_surface_rule_to_both_tilted_edges )
 {
   constexpr int point_count = 3;
@@ -648,8 +656,8 @@ TEST_P( EdgeQuadratureTest, uses_first_edge_length_for_physical_weights )
   EXPECT_NEAR( integrated_field_product, 44.0 / 3.0, tolerance );
 }
 
-// Reuse edge1's integration-surface quadrature points after moving edge2. Mapping must update edge2's parent
-// coordinates even though the integration-surface quadrature and edge1 have not changed.
+// Reuse edge1's integration-surface quadrature points after moving edge2. Mapping must update the normalized [-1,1]
+// coordinates that locate the projected points on edge2, even though the rule and edge1 have not changed.
 TEST_P( EdgeQuadratureTest, remaps_integration_surface_rule_after_second_edge_moves )
 {
   constexpr int point_count = 1;
@@ -719,7 +727,7 @@ struct ParallelEdgeMapping {
    * @param edge1 First edge endpoints.
    * @param edge2 Second edge endpoints.
    * @param integration_surface_rule Points and weights expressed in physical x.
-   * @param [out] paired_points Parent coordinates on both elements and physical weights.
+   * @param [out] paired_points Normalized [-1,1] coordinates on both elements and physical weights.
    * @return Success with initialized count, or InsufficientCapacity with the full count and untouched output.
    */
   TRIBOL_HOST_DEVICE QuadratureResult mapToElements( const LinearEdgeGeometry& edge1, const LinearEdgeGeometry& edge2,
@@ -864,7 +872,8 @@ TEST_P( EdgeQuadratureTest, preserves_integration_surface_generator_failure_and_
   EXPECT_EQ( host_point_storage[0], initial_storage_value );
 }
 
-// Use the same Gauss rule with a mapping that integrates in physical x rather than edge1's parent coordinate.
+// PairQuadratureRule must not assume that integration-surface coordinates are normalized element coordinates. This
+// test-only mapping defines its integration interval, points, and weights in physical x.
 TEST_P( EdgeQuadratureTest, composes_with_a_different_integration_mapping )
 {
   constexpr int point_count = 1;
@@ -911,11 +920,12 @@ INSTANTIATE_TEST_SUITE_P( execution, EdgeQuadratureTest, tribol::detail::enabled
 TEST( QuadratureRuleFactory, selects_registered_rule_by_polynomial_order )
 {
   int creation_count = 0;
-  // The factory passes its selected rule type to this callback. Returning its point count identifies that type
+  const SmoothedProjectedEdgeMapping mapping{};
+  // The factory passes its selected pair rule to this callback. Returning its point count identifies its generator
   // without generating any quadrature points; the counter checks how often the callback is invoked.
-  const auto identify_selected_rule = [&]<typename QuadratureRule>() {
+  const auto identify_selected_rule = [&]( auto quadrature_rule ) {
     ++creation_count;
-    return QuadratureRule::max_points;
+    return decltype( quadrature_rule )::max_points;
   };
   // Each case is {requested polynomial degree, expected point count}. N-point Gauss rules are exact through 2*N-1,
   // so degrees 0-1 need one point, 2-3 need two, and 4-5 need three.
@@ -923,7 +933,7 @@ TEST( QuadratureRuleFactory, selects_registered_rule_by_polynomial_order )
   for ( const auto& [requested_order, expected_point_count] : test_cases ) {
     SCOPED_TRACE( testing::Message() << "requested polynomial degree=" << requested_order );
     const int previous_creation_count = creation_count;
-    const auto selected_point_count = createWithQuadratureRule( requested_order, identify_selected_rule );
+    const auto selected_point_count = createWithQuadratureRule( requested_order, mapping, identify_selected_rule );
     // Compare the selected type's point count with the independently specified degree-to-point table above.
     EXPECT_EQ( selected_point_count, expected_point_count );
     // One valid request must invoke the creation callback exactly once.
@@ -935,53 +945,19 @@ TEST( QuadratureRuleFactory, selects_registered_rule_by_polynomial_order )
 TEST( QuadratureRuleFactory, rejects_unsupported_orders_without_creating_a_rule )
 {
   int creation_count = 0;
-  const auto identify_selected_rule = [&]<typename QuadratureRule>() {
+  const SmoothedProjectedEdgeMapping mapping{};
+  const auto identify_selected_rule = [&]( auto quadrature_rule ) {
     ++creation_count;
-    return QuadratureRule::max_points;
+    return decltype( quadrature_rule )::max_points;
   };
   // The registered rules support degrees 0 through 5. Check one request below and one above that range.
   for ( const int requested_order : { -1, 6 } ) {
     SCOPED_TRACE( testing::Message() << "unsupported polynomial degree=" << requested_order );
     const int previous_creation_count = creation_count;
     // Invalid requests must report an argument error instead of silently selecting another degree.
-    EXPECT_THROW( createWithQuadratureRule( requested_order, identify_selected_rule ), std::invalid_argument );
+    EXPECT_THROW( createWithQuadratureRule( requested_order, mapping, identify_selected_rule ), std::invalid_argument );
     // Rejection must happen before any creation callback runs.
     EXPECT_EQ( creation_count, previous_creation_count );
-  }
-}
-
-/**
- * @brief Test-only rule descriptions used to check factory selection; these types generate no points or weights.
- *
- * @tparam Degree Exactly integrated reference polynomial degree.
- * @tparam Points Points in the synthetic integration-surface rule.
- */
-template <int Degree, int Points>
-struct TestQuadratureRuleMetadata {
-  static constexpr int polynomial_order = Degree;  ///< Declared exact polynomial degree.
-  static constexpr int max_points = Points;        ///< Declared maximum point count.
-};
-
-/**
- * @brief Check factory selection using custom rule descriptions with gaps between supported polynomial degrees.
- * These types provide only degree and point-count metadata; they do not implement quadrature generation.
- */
-TEST( QuadratureRuleFactory, selects_custom_rule_types_by_polynomial_degree )
-{
-  using DegreeOneRule = TestQuadratureRuleMetadata<1, 1>;
-  using DegreeTwoRule = TestQuadratureRuleMetadata<2, 3>;
-  using DegreeFourRule = TestQuadratureRuleMetadata<4, 6>;
-  // Return the selected type's point count so the assertion can identify which description the factory chose.
-  const auto identify_selected_rule = []<typename QuadratureRule>() { return QuadratureRule::max_points; };
-  // Each case is {requested degree, expected point count}. There is no degree-3 rule in this test family, so a
-  // degree-3 request must select the degree-4 description (six points), not assume the edge-rule point-count formula.
-  const std::pair<int, int> test_cases[] = { { 0, 1 }, { 1, 1 }, { 2, 3 }, { 3, 6 }, { 4, 6 } };
-  for ( const auto& [requested_order, expected_point_count] : test_cases ) {
-    SCOPED_TRACE( testing::Message() << "requested polynomial degree=" << requested_order );
-    const auto selected_point_count = createWithQuadratureRule<DegreeOneRule, DegreeTwoRule, DegreeFourRule>(
-        requested_order, identify_selected_rule );
-    // The selected description must be the first in this family that meets or exceeds the requested degree.
-    EXPECT_EQ( selected_point_count, expected_point_count );
   }
 }
 

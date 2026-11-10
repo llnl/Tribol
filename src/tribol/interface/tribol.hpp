@@ -142,10 +142,10 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
 void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
 
 /*!
- * \brief Request a polynomial integration order for each reference base region
+ * \brief Set the polynomial degree integrated exactly by contact quadrature
  *
  * \param [in] cs_id Registered coupling scheme ID
- * \param [in] order Nonnegative total polynomial degree to integrate exactly on each reference base region
+ * \param [in] order Nonnegative total polynomial degree to integrate exactly
  *
  * On an edge the degree concerns one parent coordinate; on a surface it is the total degree in both parent
  * coordinates. Each rule family selects enough points to meet the requested degree. The complete point count may

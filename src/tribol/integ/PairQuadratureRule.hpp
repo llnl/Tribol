@@ -38,16 +38,16 @@ concept ElementPairMapping =
     };
 
 /**
- * @brief Requires a generator and mapping that can exchange integration-surface rules and paired element coordinates.
+ * @brief Requires a mapping and generator that can exchange integration-surface rules and paired element coordinates.
  *
  * The generator accepts the mapping's integration surface. The mapping accepts the generated rule's read-only view
  * and writes paired element coordinates and physical weights. These requirements check types and expressions;
  * coordinate conventions, weight scaling, and host/device execution must be verified separately.
- * @tparam Generator Type generating integration-surface points, weights, and generation status.
  * @tparam Mapping Type constructing the integration surface and mapping its quadrature points to both elements.
+ * @tparam Generator Type generating integration-surface points, weights, and generation status.
  */
-template <typename Generator, typename Mapping>
-concept IntegrationSurfaceRuleGeneratorFor =
+template <typename Mapping, typename Generator>
+concept PairQuadratureComponentsAreCompatible =
     ElementPairMapping<Mapping> &&
     requires {
       typename Generator::IntegrationSurfaceRule;
@@ -81,16 +81,17 @@ concept IntegrationSurfaceRuleGeneratorFor =
  * geometry or point data.
  *
  * Mapping defines element geometry types constructible from Coords views and the integration surface passed to
- * IntegrationSurfaceRuleGenerator. It owns forward surface construction and reverse point mapping, including the
- * physical measure. Each call constructs element geometry objects from the supplied coordinates and discards them
- * before returning. For linear edges, these objects copy the endpoints and cache the edge vector and squared length for
+ * IntegrationSurfaceRuleGenerator. It constructs the contact integration surface from the element geometries, maps
+ * generated integration points back to both elements, and calculates each point's physical integration weight. Each
+ * call constructs element geometry objects from the supplied coordinates and discards them before returning. For
+ * linear edges, these objects copy the endpoints and cache the edge vector and squared length for
  * reuse by the mapping.
  * @tparam Mapping Integration-surface construction and mapping to both elements.
  * @tparam IntegrationSurfaceRuleGenerator Generates points and weights in the mapping's integration-surface
  * coordinates.
  */
 template <ElementPairMapping Mapping, typename IntegrationSurfaceRuleGenerator>
-  requires IntegrationSurfaceRuleGeneratorFor<IntegrationSurfaceRuleGenerator, Mapping>
+  requires PairQuadratureComponentsAreCompatible<Mapping, IntegrationSurfaceRuleGenerator>
 class PairQuadratureRule {
  public:
   using FirstGeometry = typename Mapping::FirstGeometry;    ///< Geometry type of the first element.
@@ -122,8 +123,8 @@ class PairQuadratureRule {
   /**
    * @brief Construct the integration surface and generate quadrature points and weights in its coordinates.
    *
-   * The mapping defines these coordinates. SmoothedProjectedEdgeMapping uses edge1's parent coordinate, with vertices
-   * at -1 and 1; its weights do not yet include edge1's physical Jacobian.
+   * The mapping defines these coordinates. It also determines how the generated weights become physical integration
+   * weights when the points are mapped to both elements.
    *
    * @param element1_coords Current first-element coordinates, with geometry defined by FirstGeometry.
    * @param element2_coords Current second-element coordinates, with geometry defined by SecondGeometry.

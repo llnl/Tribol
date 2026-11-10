@@ -322,20 +322,29 @@ class TestMesh {
                                             mfem::FiniteElementSpace* fe_space, bool matrixDebug = false );
 
   /*!
-   * \brief takes an oversized tribol sparse matrix and condenses it to an appropriate
-   *        system size sparse matrix
+   * \brief takes an oversized Tribol sparse matrix and condenses it to an appropriate system size sparse matrix
    *
-   * \param [in,out] ATribol Tribol-sized dense matrix (dim * totalNumberOfNodes + totalNumberOfNodes)
+   * \param [in] ATribol Tribol-sized sparse matrix (dim * totalNumberOfNodes + totalNumberOfNodes)
    * \param [in,out] ASystem system-sized sparse matrix (dim * totalNumberOfNodes + numNonmortarNodes)
    *
    * \pre ATribol != nullptr
    * \pre ASystem != nullptr
-   *
-   * \note this routine is a little odd taking a dense matrix and populating a sparse
-   *       matrix. This reflects the way the Lagrange multiplier patch test code
-   *       was originally written and does not represent the optimal way of doing things
+   * \pre ATribol is finalized
+   * \pre ASystem is not finalized
    */
-  void tribolMatrixToSystemMatrix( mfem::DenseMatrix* const ATribol, mfem::SparseMatrix* const ASystem );
+  void tribolMatrixToSystemMatrix( const mfem::SparseMatrix* ATribol, mfem::SparseMatrix* ASystem );
+
+  /*!
+   * \brief builds a positive diagonal approximation to the displacement and pressure Schur complement blocks
+   *
+   * \param [in] A finalized Lagrange multiplier system matrix
+   * \param [in,out] diagonal diagonal used by an MFEM Jacobi preconditioner
+   *
+   * \pre A != nullptr
+   * \pre diagonal != nullptr
+   * \pre A is finalized
+   */
+  void buildLagrangeMultiplierPreconditionerDiagonal( const mfem::SparseMatrix* A, mfem::Vector* diagonal ) const;
 
   /*!
    * \brief populate a right hand side length vector with gap evaluations
