@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Copyright (c) 2017-2026, Lawrence Livermore National Security, LLC and
+# Copyright (c) Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level LICENSE file for details.
 #
 # SPDX-License-Identifier: (MIT)
