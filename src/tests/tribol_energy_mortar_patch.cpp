@@ -22,6 +22,7 @@
 #include "redecomp/redecomp.hpp"
 
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
@@ -45,15 +46,15 @@ class MfemMortarEnergyPatchTest
     : public testing::TestWithParam<std::tuple<int, tribol::EnforcementLocation, tribol::BinningMethod, bool>> {
  protected:
   tribol::RealT max_disp_;
-  double l2_err_vec_;
-  double l2_err_x_;
-  double l2_err_y_;
+  tribol::RealT l2_err_vec_;
+  tribol::RealT l2_err_x_;
+  tribol::RealT l2_err_y_;
 
   // --- User-configurable parameters ---
   static constexpr int num_timesteps_ = 10;
-  static constexpr double total_prescribed_disp_ = -0.01;
-  static constexpr double lam_ = 50.0;
-  static constexpr double mu_ = 50.0;
+  static constexpr tribol::RealT total_prescribed_disp_ = -0.01;
+  static constexpr tribol::RealT lam_ = 50.0;
+  static constexpr tribol::RealT mu_ = 50.0;
   // ------------------------------------
 
   void SetUp() override
@@ -76,7 +77,7 @@ class MfemMortarEnergyPatchTest
     int nel_per_dir = std::pow( 2, ref_levels );
 
     constexpr int mortar_refinement_ratio = 2;
-    constexpr double inactive_pressure_tolerance = 1.0e-12;
+    constexpr tribol::RealT inactive_pressure_tolerance = 1.0e-12;
     const int mortar_nel = uses_refined_mortar_mesh ? mortar_refinement_ratio * nel_per_dir : nel_per_dir;
 
     // clang-format off
@@ -181,7 +182,7 @@ class MfemMortarEnergyPatchTest
     visit_dc.Save();
 
     // timestepping loop for displacement
-    double disp_increment = total_prescribed_disp_ / num_timesteps_;
+    tribol::RealT disp_increment = total_prescribed_disp_ / num_timesteps_;
     tribol::RealT dt = 1.0 / num_timesteps_;
     int cs_id = 0, mesh1_id = 0, mesh2_id = 1;
 
@@ -195,7 +196,7 @@ class MfemMortarEnergyPatchTest
     X = 0.0;
 
     for ( int step = 1; step <= num_timesteps_; ++step ) {
-      double current_prescribed_disp = disp_increment * step;
+      tribol::RealT current_prescribed_disp = disp_increment * step;
 
       // Prescribed displacement vector
       mfem::Vector X_prescribed( par_fe_space.GetTrueVSize() );
@@ -226,12 +227,12 @@ class MfemMortarEnergyPatchTest
         auto& pressure_fes = cs->getMfemSubmeshData()->GetSubmeshFESpace();
         mfem::ParGridFunction pressure( const_cast<mfem::ParFiniteElementSpace*>( &pressure_fes ) );
         pressure.SetFromTrueDofs( tribol::getMfemContactPressure( cs_id ) );
-        double local_nonmortar_pressure = 0.0;
+        tribol::RealT local_nonmortar_pressure = 0.0;
         for ( int e = 0; e < pressure_fes.GetNE(); ++e ) {
           mfem::Array<int> dofs;
           pressure_fes.GetElementDofs( e, dofs );
           for ( int i = 0; i < dofs.Size(); ++i ) {
-            const double value = pressure( dofs[i] );
+            const tribol::RealT value = pressure( dofs[i] );
             if ( nonmortar_attrs.contains( pressure_fes.GetAttribute( e ) ) ) {
               local_nonmortar_pressure += value * value;
             } else {
@@ -239,7 +240,7 @@ class MfemMortarEnergyPatchTest
             }
           }
         }
-        double global_nonmortar_pressure = 0.0;
+        tribol::RealT global_nonmortar_pressure = 0.0;
         MPI_Allreduce( &local_nonmortar_pressure, &global_nonmortar_pressure, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
         EXPECT_GT( global_nonmortar_pressure, 0.0 );
       }
@@ -318,7 +319,7 @@ class MfemMortarEnergyPatchTest
     MPI_Allreduce( &local_max, &max_disp_, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD );
 
     auto local_min = displacement.Min();
-    double min_disp = 0.0;
+    tribol::RealT min_disp = 0.0;
     MPI_Allreduce( &local_min, &min_disp, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD );
 
     SLIC_INFO( "Max displacement: " << max_disp_ );
@@ -333,9 +334,9 @@ class MfemMortarEnergyPatchTest
     //   u_y = eps_yy * y
     //   u_x = eps_xx * x
     // -----------------------------------------------------------------
-    double total_height = 2.0;
-    double eps_yy = total_prescribed_disp_ / total_height;
-    double eps_xx = -lam_ / ( lam_ + 2.0 * mu_ ) * eps_yy;
+    tribol::RealT total_height = 2.0;
+    tribol::RealT eps_yy = total_prescribed_disp_ / total_height;
+    tribol::RealT eps_xx = -lam_ / ( lam_ + 2.0 * mu_ ) * eps_yy;
 
     SLIC_INFO( "Analytical: eps_yy = " << eps_yy << ", eps_xx = " << eps_xx );
 

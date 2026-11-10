@@ -6,6 +6,7 @@
 #include "mfem.hpp"
 
 #include "shared/config.hpp"
+#include "shared/common/BasicTypes.hpp"
 
 /**
  * @file MeshBuilder.hpp
@@ -58,7 +59,7 @@ class MeshBuilder {
    * @param outer_radius Outer radius of the shell.
    * @return A new MeshBuilder object representing the 2D cylinder mesh.
    */
-  static MeshBuilder Cylinder2D( int n_radial_els, int n_hoop_els, double inner_radius, double outer_radius );
+  static MeshBuilder Cylinder2D( int n_radial_els, int n_hoop_els, RealT inner_radius, RealT outer_radius );
 
   /**
    * @brief Creates a half-cylinder 2D mesh (bottom half).
@@ -68,7 +69,7 @@ class MeshBuilder {
    * @param outer_radius Outer radius of the shell.
    * @return A new MeshBuilder object representing the half-cylinder 2D mesh.
    */
-  static MeshBuilder HalfCylinder2D( int n_radial_els, int n_hoop_els, double inner_radius, double outer_radius );
+  static MeshBuilder HalfCylinder2D( int n_radial_els, int n_hoop_els, RealT inner_radius, RealT outer_radius );
 
   /**
    * @brief Creates a cube mesh occupying the unit cube, [0, 1]^3.
@@ -100,14 +101,14 @@ class MeshBuilder {
    * @param scale_factors A list of scale factors to apply to each dimension.
    * @return An rvalue reference to the updated MeshBuilder object.
    */
-  MeshBuilder&& scale( std::initializer_list<double> scale_factors );
+  MeshBuilder&& scale( std::initializer_list<RealT> scale_factors );
 
   /**
    * @brief Translates the mesh by a given vector.
    * @param dx A list of translation distances for each dimension.
    * @return An rvalue reference to the updated MeshBuilder object.
    */
-  MeshBuilder&& translate( std::initializer_list<double> dx );
+  MeshBuilder&& translate( std::initializer_list<RealT> dx );
 
   /**
    * @brief Translates a specific node in the mesh by a given vector.
@@ -115,7 +116,7 @@ class MeshBuilder {
    * @param dx A list of translation distances for each dimension.
    * @return An rvalue reference to the updated MeshBuilder object.
    */
-  MeshBuilder&& translateNode( int node_id, std::initializer_list<double> dx );
+  MeshBuilder&& translateNode( int node_id, std::initializer_list<RealT> dx );
 
   /**
    * @brief Refines the mesh uniformly a specified number of times.

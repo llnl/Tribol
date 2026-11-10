@@ -7,6 +7,7 @@
 
 #include "mfem.hpp"
 
+#include "shared/common/BasicTypes.hpp"
 #include "redecomp/MultiRedecomp.hpp"
 #include "tribol/config.hpp"
 #include "redecomp/redecomp.hpp"
@@ -73,9 +74,9 @@ class MultiTransferTest : public testing::TestWithParam<std::pair<MeshType, int>
     serial_meshes.emplace_back( mesh_filename.c_str(), 1, 1, true );
     serial_meshes.emplace_back( mesh_filename.c_str(), 1, 1, true );
     // rotate second mesh 30 degrees
-    auto theta = 30.0;
+    shared::RealT theta = 30.0;
     theta = theta * redecomp::pi / 180.0;
-    auto R = axom::Array<double, 2>( 3, 3 );
+    auto R = axom::Array<shared::RealT, 2>( 3, 3 );
     R( 0, 0 ) = cos( theta );
     R( 0, 1 ) = -sin( theta );
     R( 0, 2 ) = 0.0;
@@ -87,7 +88,7 @@ class MultiTransferTest : public testing::TestWithParam<std::pair<MeshType, int>
     R( 2, 2 ) = 1.0;
     auto dim = serial_meshes[1].Dimension();
     for ( int v{ 0 }; v < serial_meshes[1].GetNV(); ++v ) {
-      auto tmp_vert = axom::Array<double>( dim, dim );
+      auto tmp_vert = axom::Array<shared::RealT>( dim, dim );
       auto vert = serial_meshes[1].GetVertex( v );
       for ( int i{ 0 }; i < dim; ++i ) {
         for ( int j{ 0 }; j < dim; ++j ) {
@@ -103,7 +104,7 @@ class MultiTransferTest : public testing::TestWithParam<std::pair<MeshType, int>
       auto node_fes = node_gf->FESpace();
       auto vdim = node_fes->GetVDim();
       for ( int n{ 0 }; n < node_fes->GetNDofs(); ++n ) {
-        auto tmp_node = axom::Array<double>( vdim, vdim );
+        auto tmp_node = axom::Array<shared::RealT>( vdim, vdim );
         for ( int i{ 0 }; i < vdim; ++i ) {
           for ( int j{ 0 }; j < vdim; ++j ) {
             tmp_node[i] = tmp_node[i] + R( i, j ) * ( *node_gf )( node_fes->DofToVDof( n, j ) );
@@ -162,16 +163,16 @@ class MultiTransferTest : public testing::TestWithParam<std::pair<MeshType, int>
         auto quad_val = mfem::Vector();
         mesh_data.orig_quadfn->GetValues( e, quad_val );
         for ( int i{ 0 }; i < quad_val.Size(); ++i ) {
-          quad_val[i] = static_cast<double>( mesh_data_[i].par_mesh.GetGlobalElementNum( e ) );
+          quad_val[i] = static_cast<shared::RealT>( mesh_data_[i].par_mesh.GetGlobalElementNum( e ) );
         }
       }
       mesh_data.redecomp_quad_space = std::make_unique<mfem::QuadratureSpace>( mesh_data.redecomp_mesh.get(), 0 );
       mesh_data.xfer_quadfn = std::make_unique<mfem::QuadratureFunction>( mesh_data.redecomp_quad_space.get() );
     }
   }
-  double CalcGridFnl2Error()
+  shared::RealT CalcGridFnl2Error()
   {
-    auto total_error = 0.0;
+    shared::RealT total_error = 0.0;
     for ( auto& mesh_data : mesh_data_ ) {
       if ( mesh_data.final_gridfn->FESpace()->GetNDofs() > 0 ) {
         *mesh_data.final_gridfn -= *mesh_data.orig_gridfn;
@@ -181,9 +182,9 @@ class MultiTransferTest : public testing::TestWithParam<std::pair<MeshType, int>
     MPI_Allreduce( MPI_IN_PLACE, &total_error, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
     return total_error;
   }
-  double CalcQuadFnl2Error()
+  shared::RealT CalcQuadFnl2Error()
   {
-    auto total_error = 0.0;
+    shared::RealT total_error = 0.0;
     for ( auto& mesh_data : mesh_data_ ) {
       if ( mesh_data.final_quadfn->GetSpace()->GetSize() > 0 ) {
         *mesh_data.final_quadfn -= *mesh_data.orig_quadfn;

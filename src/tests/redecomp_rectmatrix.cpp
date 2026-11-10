@@ -8,6 +8,7 @@
 #include "mfem.hpp"
 
 #include "tribol/config.hpp"
+#include "shared/common/BasicTypes.hpp"
 #include "redecomp/redecomp.hpp"
 #include "redecomp/utils/ArrayUtility.hpp"
 
@@ -22,7 +23,7 @@ namespace redecomp {
  */
 class RectMatrixTest : public testing::TestWithParam<std::pair<std::string, int>> {
  protected:
-  double max_error_;
+  shared::RealT max_error_;
   void SetUp() override
   {
     auto mesh_file = GetParam().first;

@@ -1854,7 +1854,7 @@ struct PackedPairJacobianContribs {
   const Array1D<int>* col_elem_map{ nullptr };
   Array1D<IndexT, MemorySpace::Host> row_elem_ids;   ///< Tribol element IDs for rows
   Array1D<IndexT, MemorySpace::Host> col_elem_ids;   ///< Tribol element IDs for columns
-  Array1D<double, MemorySpace::Host> jacobian_data;  ///< Flattened Jacobian data
+  Array1D<RealT, MemorySpace::Host> jacobian_data;   ///< Flattened Jacobian data
   Array1D<IndexT, MemorySpace::Host> value_offsets;  ///< Offsets into jacobian_data for each element
 
   PackedPairJacobianContribs() = default;
@@ -1895,13 +1895,13 @@ struct PackedPairJacobianContribs {
    * @param data Pointer to a contiguous, column-major dense block of Jacobian values.
    * @param size Number of scalar entries in @p data (typically `n_row_dofs * n_col_dofs`).
    */
-  void append( int row_elem_id, int col_elem_id, const double* data, IndexT size )
+  void append( int row_elem_id, int col_elem_id, const RealT* data, IndexT size )
   {
     row_elem_ids.push_back( row_elem_id );
     col_elem_ids.push_back( col_elem_id );
     value_offsets.push_back( jacobian_data.size() );
     if ( size > 0 ) {
-      jacobian_data.append( axom::ArrayView<const double>( data, size ) );
+      jacobian_data.append( axom::ArrayView<const RealT>( data, size ) );
     }
   }
 

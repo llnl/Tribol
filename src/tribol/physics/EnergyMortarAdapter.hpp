@@ -6,6 +6,7 @@
 #ifndef SRC_TRIBOL_PHYSICS_ENERGYMORTARADAPTER_HPP_
 #define SRC_TRIBOL_PHYSICS_ENERGYMORTARADAPTER_HPP_
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 #include "tribol/physics/ContactFormulation.hpp"
 #include "tribol/physics/EnergyMortar.hpp"
@@ -155,7 +156,7 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
                        std::unique_ptr<CoarseSearch> coarse_search, std::unique_ptr<RefinedSearch> refined_search,
-                       double k, QuadratureRule quadrature_rule, bool enzyme_quadrature, bool use_penalty = true,
+                       RealT k, QuadratureRule quadrature_rule, bool enzyme_quadrature, bool use_penalty = true,
                        RealT residual_gap = 0.0 );
 
   /**
@@ -244,7 +245,7 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   /**
    * @brief Tolerance used to avoid division by zero for area-weighted quantities
    */
-  double area_tol_{ 1.0e-14 };
+  RealT area_tol_{ 1.0e-14 };
 
   /**
    * @brief If true, treat contact as tied (no opening) for gap filtering logic

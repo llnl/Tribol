@@ -11,16 +11,20 @@
 
 #include "axom/primal.hpp"
 
+#include "shared/common/BasicTypes.hpp"
 #include "redecomp/utils/MPIArray.hpp"
 
 namespace redecomp {
-constexpr double pi = M_PI;
+
+/// Floating-point type used for redecomp numerical data.
+using RealT = shared::RealT;
+constexpr RealT pi = M_PI;
 
 template <int NDIMS>
-using Point = axom::primal::Point<double, NDIMS>;
+using Point = axom::primal::Point<RealT, NDIMS>;
 
 template <int NDIMS>
-using BoundingBox = axom::primal::BoundingBox<double, NDIMS>;
+using BoundingBox = axom::primal::BoundingBox<RealT, NDIMS>;
 
 /**
  * @brief In its usage in redecomp, the first pair entry contains a list of

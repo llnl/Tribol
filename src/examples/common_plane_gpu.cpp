@@ -28,6 +28,7 @@
  * integration with the redecomp domain repartitioning library.
  */
 
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/interface/tribol.hpp"
 
 #include "mfem.hpp"
@@ -167,7 +168,7 @@ int runExample( int num_elems_1d )
   axom::utilities::Timer timer( true );
 
   int num_contact_elems = num_elems_1d * num_elems_1d;
-  double elem_height = 1.0 / static_cast<double>( num_elems_1d );
+  tribol::RealT elem_height = 1.0 / static_cast<tribol::RealT>( num_elems_1d );
 
   // create top mesh
   mfem::Mesh top_mesh = mfem::Mesh::MakeCartesian3D( num_elems_1d, num_elems_1d, 1, mfem::Element::Type::HEXAHEDRON,

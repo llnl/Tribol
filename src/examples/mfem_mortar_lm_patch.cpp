@@ -56,6 +56,7 @@
 
 // Tribol includes
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
@@ -81,9 +82,9 @@ int main( int argc, char** argv )
   // polynomial order of the finite element discretization
   int order = 1;
   // Lame parameter lambda
-  double lambda = 50.0;
+  tribol::RealT lambda = 50.0;
   // Lame parameter mu (shear modulus)
-  double mu = 50.0;
+  tribol::RealT mu = 50.0;
   // device configuration string (see mfem::Device::Configure() for valid options)
   std::string device_config = "cpu";
   // Should we mesh with tet elements?
@@ -268,8 +269,8 @@ int main( int argc, char** argv )
 
   // Update the cycle information for the data collections. Also update time with a pseudotime for the solution.
   int cycle = 1;
-  double time = 1.0;  // time is arbitrary here (no timesteps)
-  double dt = 1.0;
+  tribol::RealT time = 1.0;  // time is arbitrary here (no timesteps)
+  tribol::RealT dt = 1.0;
   paraview_datacoll.SetCycle( cycle );
   paraview_datacoll.SetTime( time );
   paraview_datacoll.SetTimeStep( dt );

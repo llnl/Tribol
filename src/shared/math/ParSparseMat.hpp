@@ -89,7 +89,7 @@ class ParSparseMatView {
   /**
    * @brief Returns this scaled by s
    */
-  ParSparseMat operator*( double s ) const;
+  ParSparseMat operator*( RealT s ) const;
 
   /**
    * @brief Returns lhs * rhs
@@ -151,7 +151,7 @@ class ParSparseMatView {
   /**
    * @brief Returns s * mat
    */
-  friend ParSparseMat operator*( double s, const ParSparseMatView& mat );
+  friend ParSparseMat operator*( RealT s, const ParSparseMatView& mat );
 
   /**
    * @brief Returns x^T * mat, computed as mat^T * x
@@ -386,7 +386,7 @@ class ParSparseMat : public ParSparseMatView {
    * @return ParSparseMat The constructed diagonal matrix
    */
   static ParSparseMat diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_size,
-                                      const mfem::Array<HYPRE_BigInt>& row_starts, double diag_val,
+                                      const mfem::Array<HYPRE_BigInt>& row_starts, RealT diag_val,
                                       const mfem::Array<int>& ordered_rows = mfem::Array<int>(),
                                       bool skip_rows = true );
 
@@ -402,8 +402,8 @@ class ParSparseMat : public ParSparseMatView {
    * are retained. If false, only rows listed in ordered_rows receive diagonal entries.
    * @return ParSparseMat The constructed diagonal matrix
    */
-  static ParSparseMat diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_size, HYPRE_BigInt* row_starts,
-                                      double diag_val, const mfem::Array<int>& ordered_rows = mfem::Array<int>(),
+  static ParSparseMat diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_size, HYPRE_BigInt* row_starts, RealT diag_val,
+                                      const mfem::Array<int>& ordered_rows = mfem::Array<int>(),
                                       bool skip_rows = true );
 
   /**
