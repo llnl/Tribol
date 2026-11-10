@@ -10,7 +10,7 @@
 
 #include "axom/core.hpp"
 
-#include "shared/common/BasicTypes.hpp"
+#include "redecomp/common/TypeDefs.hpp"
 #include "shared/math/ParSparseMat.hpp"
 
 #include "redecomp/utils/MPIArray.hpp"
@@ -103,7 +103,7 @@ class MatrixTransfer {
    */
   shared::ParSparseMat TransferToParallel( const axom::Array<int>& test_elem_idx,
                                            const axom::Array<int>& trial_elem_idx,
-                                           const axom::Array<shared::RealT>& src_elem_mat_data,
+                                           const axom::Array<RealT>& src_elem_mat_data,
                                            const axom::Array<int>& src_elem_mat_offsets,
                                            bool parallel_assemble = true ) const;
 
@@ -170,7 +170,7 @@ class MatrixTransfer {
    * @param src_elem_mat_offsets Offsets into the flattened element-matrix buffer
    */
   void validateFlatMatrices( const axom::Array<int>& test_elem_idx, const axom::Array<int>& trial_elem_idx,
-                             const axom::Array<shared::RealT>& src_elem_mat_data,
+                             const axom::Array<RealT>& src_elem_mat_data,
                              const axom::Array<int>& src_elem_mat_offsets ) const;
 
   /**

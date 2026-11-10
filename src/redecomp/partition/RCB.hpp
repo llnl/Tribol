@@ -11,7 +11,7 @@
 #include "axom/core.hpp"
 #include "axom/primal.hpp"
 
-#include "shared/common/BasicTypes.hpp"
+#include "redecomp/common/TypeDefs.hpp"
 #include "redecomp/partition/PartitionMethod.hpp"
 #include "redecomp/utils/BisecTree.hpp"
 
@@ -27,12 +27,12 @@ struct RCBInfo {
   /**
    * @brief Desired fraction of entities in the partition
    */
-  shared::RealT desired_frac_;
+  RealT desired_frac_;
 
   /**
    * @brief Actual fraction of entities in the partition
    */
-  shared::RealT actual_frac_;
+  RealT actual_frac_;
 
   /**
    * @brief Bounding box defining the bounds of the partition
@@ -74,7 +74,7 @@ class RCB : public PartitionMethod<NDIMS> {
    * @param max_out_of_balance Allowable deviation from desired fraction of entities on each partition
    * @param n_try_new_axis Number of attempted cuts with no change in entity counts before trying a new axis
    */
-  RCB( const MPI_Comm& comm, shared::RealT max_out_of_balance = 0.1, int n_try_new_axis = 10 );
+  RCB( const MPI_Comm& comm, RealT max_out_of_balance = 0.1, int n_try_new_axis = 10 );
 
   /**
    * @brief Build entity partitioning using recursive coordinate bisection
@@ -85,7 +85,7 @@ class RCB : public PartitionMethod<NDIMS> {
    * @return List of points and ghost entities on each subdomain sorted by mesh
    */
   std::vector<EntityIndexByRank> generatePartitioning( int n_parts, const std::vector<CoordList<NDIMS>>& coords_by_mesh,
-                                                       shared::RealT ghost_len ) const override;
+                                                       RealT ghost_len ) const override;
 
  private:
   /**
@@ -97,7 +97,7 @@ class RCB : public PartitionMethod<NDIMS> {
    * @return BisecTree of bounding boxes defining subdomains and ghost subdomains
    */
   BisecTree<RCBInfo<NDIMS>> BuildProblemTree( int n_parts, const std::vector<CoordList<NDIMS>>& coords_by_mesh,
-                                              shared::RealT ghost_len ) const;
+                                              RealT ghost_len ) const;
 
   /**
    * @brief Bounding box of coords on all ranks
@@ -138,7 +138,7 @@ class RCB : public PartitionMethod<NDIMS> {
   /**
    * @brief Tolerance for out-of-balance loading (default = 0.1, i.e. 10%)
    */
-  shared::RealT max_out_of_balance_;
+  RealT max_out_of_balance_;
 
   /**
    * @brief Number of cuts to try before switching to a new axis (default = 5).  Designed to guard against cases where

@@ -5,7 +5,7 @@
 
 #include "Partitioner.hpp"
 
-#include "shared/common/BasicTypes.hpp"
+#include "redecomp/common/TypeDefs.hpp"
 #include "redecomp/partition/PartitionMethod.hpp"
 #include "redecomp/partition/PartitionEntity.hpp"
 
@@ -26,7 +26,7 @@ const MPIUtility& PartitionerByDim<NDIMS>::getMPIUtility() const
 
 template <int NDIMS>
 std::vector<EntityIndexByRank> PartitionerByDim<NDIMS>::generatePartitioning(
-    int n_parts, const std::vector<const mfem::ParMesh*>& par_meshes, shared::RealT ghost_size ) const
+    int n_parts, const std::vector<const mfem::ParMesh*>& par_meshes, RealT ghost_size ) const
 {
   return partition_method_->generatePartitioning( n_parts, partition_entity_->EntityCoordinates( par_meshes ),
                                                   ghost_size );
