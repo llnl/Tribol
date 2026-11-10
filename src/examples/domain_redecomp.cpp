@@ -52,9 +52,10 @@
 #include "redecomp/redecomp.hpp"
 
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 template <int NDIMS>
-void RedecompExample( mfem::ParMesh& pmesh, int order, double max_out_of_balance );
+void RedecompExample( mfem::ParMesh& pmesh, int order, tribol::RealT max_out_of_balance );
 
 int main( int argc, char** argv )
 {
@@ -83,7 +84,7 @@ int main( int argc, char** argv )
   // to deviate from an exactly balanced decomposition. lower values are better, but this may need to be increased for
   // coarse meshes. note, the RCB method prevents max_out_of_balance from being so small that decomposition is
   // impossible on very coarse meshes, though the decomposition can still fail with the simple checks implemented.
-  double max_out_of_balance = 0.05;
+  tribol::RealT max_out_of_balance = 0.05;
   // device configuration string (see mfem::Device::Configure() for valid options)
   std::string device_config = "cpu";
 
@@ -158,7 +159,7 @@ int main( int argc, char** argv )
 }
 
 template <int NDIMS>
-void RedecompExample( mfem::ParMesh& pmesh, int order, double max_out_of_balance )
+void RedecompExample( mfem::ParMesh& pmesh, int order, tribol::RealT max_out_of_balance )
 {
   auto rank = pmesh.GetMyRank();
   auto np = pmesh.GetNRanks();
@@ -303,7 +304,7 @@ void RedecompExample( mfem::ParMesh& pmesh, int order, double max_out_of_balance
     auto quad_val = mfem::Vector();
     quad_fn.GetValues( e, quad_val );
     for ( int i{ 0 }; i < quad_val.Size(); ++i ) {
-      quad_val[i] = static_cast<double>( pmesh.GetGlobalElementNum( e ) );
+      quad_val[i] = static_cast<tribol::RealT>( pmesh.GetGlobalElementNum( e ) );
     }
   }
 

@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "shared/config.hpp"
+#include "shared/common/BasicTypes.hpp"
 
 #include <gtest/gtest.h>
 
@@ -406,7 +407,7 @@ TEST_F( ParSparseMatTest, Elimination )
 
   // Check Ae * e_last = original value
   ye = Ae * x_last;
-  double expected_val = 3.0;
+  shared::RealT expected_val = 3.0;
 
   EXPECT_NEAR( ye[last_local_col], expected_val, 1e-12 );
 }
@@ -502,7 +503,7 @@ TEST_F( ParSparseMatTest, DiagonalFromVector )
 
   mfem::Vector diag_vals( local_size );
   for ( int i = 0; i < local_size; ++i ) {
-    diag_vals[i] = static_cast<double>( rank * 100 + i );
+    diag_vals[i] = static_cast<shared::RealT>( rank * 100 + i );
   }
 
   shared::ParSparseMat A =
@@ -513,7 +514,7 @@ TEST_F( ParSparseMatTest, DiagonalFromVector )
   auto y = A * x;
 
   for ( int i = 0; i < local_size; ++i ) {
-    EXPECT_NEAR( y[i], static_cast<double>( rank * 100 + i ), 1e-12 );
+    EXPECT_NEAR( y[i], static_cast<shared::RealT>( rank * 100 + i ), 1e-12 );
   }
 }
 

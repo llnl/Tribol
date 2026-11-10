@@ -45,17 +45,6 @@ class ContactFormulation {
   virtual ~ContactFormulation() = default;
 
   /**
-   * @brief Updates the integration rule
-   *
-   * Determines overlapping contact pairs and computes necessary integration data (e.g. quadrature points, weights).
-   * Implementations compute any missing pair data needed by this request. Some formulations may treat this as a no-op.
-   *
-   * @param mesh1 Current first mesh in Tribol coupling-scheme order
-   * @param mesh2 Current second mesh in Tribol coupling-scheme order
-   */
-  virtual void updateIntegrationRule( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) = 0;
-
-  /**
    * @brief Updates nodal gaps
    *
    * Implementations compute any missing pair or integration data needed by this request.

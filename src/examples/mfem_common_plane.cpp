@@ -27,6 +27,7 @@
 
 // Tribol includes
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
@@ -71,26 +72,26 @@ int main( int argc, char** argv )
   // polynomial order of the finite element discretization
   int order = 1;
   // initial separation between the two blocks
-  double initial_sep = 0.01;
+  tribol::RealT initial_sep = 0.01;
   // initial velocity to apply in the negative z-direction to the top block
-  double init_velocity = 0.02;
+  tribol::RealT init_velocity = 0.02;
   // timestep size (fixed)
-  double dt = 0.001;
+  tribol::RealT dt = 0.001;
   // end time of the simulation
-  double t_end = 2.0;
+  tribol::RealT t_end = 2.0;
   // use const penalty (true) or element penalty (false)
   bool use_const_penalty = false;
   // number of cycles to skip before next output
   int output_cycles = 20;
   // material density
-  double rho = 1000.0;
+  tribol::RealT rho = 1000.0;
   // Lame parameter lambda
-  double lambda = 100000.0;
+  tribol::RealT lambda = 100000.0;
   // Lame parameter mu (shear modulus)
-  double mu = 100000.0;
+  tribol::RealT mu = 100000.0;
   // kinematic penalty parameter (only for constant penalty)
   // the kinematic constant penalty is chosen here to match the kinematic element penalty
-  double p_kine = ( lambda + 2.0 / 3.0 * mu ) / ( 1.0 / std::pow( 2.0, ref_levels ) );
+  tribol::RealT p_kine = ( lambda + 2.0 / 3.0 * mu ) / ( 1.0 / std::pow( 2.0, ref_levels ) );
   // device configuration string (see mfem::Device::Configure() for valid options). This example has been tested on
   // "cpu" and "cuda"
   std::string device_config = "cpu";
@@ -314,7 +315,7 @@ int main( int argc, char** argv )
 
   // This is the main timestepping loop.
   int cycle{ 0 };
-  for ( double t{ 0.0 }; t < t_end; t += dt ) {
+  for ( tribol::RealT t{ 0.0 }; t < t_end; t += dt ) {
     // Update the cycle information for the data collections.
     paraview_datacoll.SetCycle( cycle );
     paraview_datacoll.SetTime( t );

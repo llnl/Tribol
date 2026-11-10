@@ -9,6 +9,7 @@
 
 // Tribol includes
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
@@ -51,7 +52,7 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol
     // polynomial order of the finite element discretization
     int order = std::get<0>( GetParam() );
     // initial separation between the two blocks
-    double initial_sep = -0.001;
+    tribol::RealT initial_sep = -0.001;
     // initial velocity
     tribol::RealT initial_v = 0.0;
     // timestep size

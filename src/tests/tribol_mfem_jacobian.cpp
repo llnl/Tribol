@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 #include <gtest/gtest.h>
 
@@ -131,9 +132,9 @@ bool BuildConsistentHoVector( const mfem::ParFiniteElementSpace& ho_fes, mfem::V
     if ( tdof_offsets == nullptr ) {
       return false;
     }
-    const double g0 = static_cast<double>( tdof_offsets[myid] );
+    const tribol::RealT g0 = static_cast<tribol::RealT>( tdof_offsets[myid] );
     for ( int i = 0; i < x_true.Size(); ++i ) {
-      x_true[i] = std::sin( 0.1 * ( g0 + static_cast<double>( i ) + 1.0 ) );
+      x_true[i] = std::sin( 0.1 * ( g0 + static_cast<tribol::RealT>( i ) + 1.0 ) );
     }
   }
 
@@ -173,16 +174,16 @@ void CompareHoToLorTransfers( const mfem::Operator& F, const mfem::HypreParMatri
   diff += y_mfem;
   diff -= y_tribol;
 
-  double local_norm2 = diff * diff;
-  double global_norm2 = 0.0;
+  tribol::RealT local_norm2 = diff * diff;
+  tribol::RealT global_norm2 = 0.0;
   MPI_Allreduce( &local_norm2, &global_norm2, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
   EXPECT_LT( std::sqrt( global_norm2 ), 1e-10 );
 }
 
-double MaxAbsMatrixEntry( const shared::ParSparseMatView& mat )
+tribol::RealT MaxAbsMatrixEntry( const shared::ParSparseMatView& mat )
 {
   // Hypre stores diagonal and off-diagonal CSR blocks separately, so inspect both.
-  double local_max = 0.0;
+  tribol::RealT local_max = 0.0;
   HYPRE_ParCSRMatrix csr = mat.get();
   auto* parcsr = (hypre_ParCSRMatrix*)csr;
 
@@ -202,12 +203,12 @@ double MaxAbsMatrixEntry( const shared::ParSparseMatView& mat )
     }
   }
 
-  double global_max = 0.0;
+  tribol::RealT global_max = 0.0;
   MPI_Allreduce( &local_max, &global_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD );
   return global_max;
 }
 
-double LocalDiagonalEntry( const mfem::HypreParMatrix& mat, int local_row )
+tribol::RealT LocalDiagonalEntry( const mfem::HypreParMatrix& mat, int local_row )
 {
   // Helper to read the local diagonal entry (i,i) out of Hypre's diagonal CSR block. Used to validate the dual-dual
   // constraint identity block without needing a full matrix compare.
@@ -218,7 +219,7 @@ double LocalDiagonalEntry( const mfem::HypreParMatrix& mat, int local_row )
   auto& nc_mat = const_cast<mfem::HypreParMatrix&>( mat );
   nc_mat.HostReadWrite();  // Ensure the underlying Hypre data are valid on host.
 
-  double result = 0.0;
+  tribol::RealT result = 0.0;
   if ( local_row >= 0 && local_row < nc_mat.NumRows() ) {
     HYPRE_ParCSRMatrix csr = nc_mat;
     auto* parcsr = (hypre_ParCSRMatrix*)csr;
@@ -241,7 +242,7 @@ double LocalDiagonalEntry( const mfem::HypreParMatrix& mat, int local_row )
   return result;
 }
 
-mfem::DenseMatrix ConstantDenseMatrix( int rows, int cols, double value )
+mfem::DenseMatrix ConstantDenseMatrix( int rows, int cols, tribol::RealT value )
 {
   // Create a dense element matrix filled with a constant. Used to build synthetic per-element contributions with
   // predictable assembled results.
@@ -391,7 +392,7 @@ const tribol::Array1D<int>& ElemMapForBlock( const tribol::MfemMeshData& mesh_da
 
 tribol::PackedPairJacobianContribs MakeConstantContribution( const JacobianTestContext& ctx,
                                                              tribol::BlockSpace row_space, tribol::BlockSpace col_space,
-                                                             double value )
+                                                             tribol::RealT value )
 {
   // Use one local element pair and fill its dense contribution with a constant so
   // assembled values stay easy to reason about in the tests below.
@@ -444,7 +445,7 @@ tribol::PackedPairJacobianContribs MakeConstantContribution( const JacobianTestC
   RedecompFESpaceForBlock( *ctx.mesh_data, *ctx.submesh_data, col_space )
       .GetElementVDofs( col_redecomp_elem, col_dofs );
 
-  std::vector<double> values( static_cast<size_t>( row_dofs.Size() * col_dofs.Size() ), value );
+  std::vector<tribol::RealT> values( static_cast<size_t>( row_dofs.Size() * col_dofs.Size() ), value );
   contrib.reserve( 1, static_cast<int>( values.size() ) );
   contrib.append( 0, 0, values.data(), static_cast<int>( values.size() ) );
   return contrib;
@@ -467,8 +468,8 @@ TEST_F( MfemJacobianTest, computed_element_data_append_tracks_offsets )
   // reserve() takes a total scalar-value count; this test appends blocks of sizes 2 and 3 (total 5).
   contrib.reserve( 2, 5 );
 
-  const double first[] = { 1.0, 2.0 };
-  const double second[] = { 3.0, 4.0, 5.0 };
+  const tribol::RealT first[] = { 1.0, 2.0 };
+  const tribol::RealT second[] = { 3.0, 4.0, 5.0 };
 
   contrib.append( 7, 8, first, 2 );
   contrib.append( 9, 10, second, 3 );
@@ -521,7 +522,7 @@ tribol::MethodData BuildSyntheticMethodData( const tribol::MfemMeshData& mesh_da
 
   const tribol::BlockSpace spaces[] = { tribol::BlockSpace::MORTAR, tribol::BlockSpace::NONMORTAR,
                                         tribol::BlockSpace::LAGRANGE_MULTIPLIER };
-  const double values[3][3] = { { 1.0, 2.0, 3.0 }, { 4.0, 5.0, 6.0 }, { 7.0, 8.0, 0.0 } };
+  const tribol::RealT values[3][3] = { { 1.0, 2.0, 3.0 }, { 4.0, 5.0, 6.0 }, { 7.0, 8.0, 0.0 } };
 
   for ( int i = 0; i < 3; ++i ) {
     for ( int j = 0; j < 3; ++j ) {
@@ -584,7 +585,7 @@ std::vector<int> BuildInactiveDualTdofs( const tribol::MfemMeshData& mesh_data,
 }
 
 void ExpectParMatricesNear( const mfem::HypreParMatrix& actual, const shared::ParSparseMat& expected,
-                            double tol = 1e-12 )
+                            tribol::RealT tol = 1e-12 )
 {
   // Compare two parallel sparse matrices by subtracting and checking the maximum absolute entry.
   // This avoids relying on Hypre internal equality checks and keeps the failure signal simple.
@@ -623,7 +624,7 @@ TEST_F( MfemJacobianTest, lor_or_submesh_jacobian_and_solver_composition_smoke )
         tribol::PackedPairJacobianContribs contrib(
             primary_surface_fes, primary_surface_fes, *mesh_data->GetRedecompResponse().FESpace(),
             *mesh_data->GetRedecompResponse().FESpace(), mesh_data->GetElemMap1(), mesh_data->GetElemMap1() );
-        std::vector<double> values( static_cast<size_t>( mat_size ), 1.0 );
+        std::vector<tribol::RealT> values( static_cast<size_t>( mat_size ), 1.0 );
         contrib.reserve( 1, mat_size );
         contrib.append( 0, 0, values.data(), mat_size );
 
@@ -764,7 +765,7 @@ TEST_F( MfemJacobianTest, jacobian_dual_dual_inactive_dofs_form_identity )
     // Avoid copying mfem::HypreParMatrix (unsafe with Hypre GPU memory-location tracking).
     const mfem::HypreParMatrix& hypre = mat.get();
     for ( int i = 0; i < hypre.NumRows(); ++i ) {
-      const double expected = is_inactive[static_cast<size_t>( i )] ? 1.0 : 0.0;
+      const tribol::RealT expected = is_inactive[static_cast<size_t>( i )] ? 1.0 : 0.0;
       EXPECT_DOUBLE_EQ( LocalDiagonalEntry( hypre, i ), expected );
     }
   } );
@@ -1071,7 +1072,7 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
   EXPECT_FALSE( cs->getMesh2().getNodalFields().m_is_node_gap_set );
   EXPECT_FALSE( cs->getMesh2().getNodalFields().m_is_node_pressure_set );
 
-  double dt = 1.0;
+  tribol::RealT dt = 1.0;
   tribol::update( 1, 1.0, dt );
 
   auto DfDx = tribol::getMfemDfDx( cs_id );
@@ -1088,9 +1089,10 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
   constexpr tribol::RealT updated_mesh1_penalty = 2.0;
   constexpr tribol::RealT updated_mesh2_penalty = 4.0;
   constexpr tribol::RealT stiffness_ratio = 0.5 * ( updated_mesh1_penalty + updated_mesh2_penalty ) / initial_penalty;
-  constexpr double relative_force_tolerance = 1.0e-10;
+  constexpr tribol::RealT relative_force_tolerance = 1.0e-10;
   const auto initial_force = tribol::getMfemContactForce( cs_id );
-  const double initial_force_norm = std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, initial_force, initial_force ) );
+  const tribol::RealT initial_force_norm =
+      std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, initial_force, initial_force ) );
   ASSERT_GT( initial_force_norm, 0.0 );
 
   tribol::setMfemKinematicConstantPenalty( cs_id, updated_mesh1_penalty, updated_mesh2_penalty );
@@ -1098,7 +1100,7 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
 
   auto force_error = tribol::getMfemContactForce( cs_id );
   force_error.Add( -stiffness_ratio, initial_force );
-  const double force_error_norm = std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, force_error, force_error ) );
+  const tribol::RealT force_error_norm = std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, force_error, force_error ) );
   EXPECT_LE( force_error_norm, relative_force_tolerance * stiffness_ratio * initial_force_norm );
 }
 

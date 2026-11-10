@@ -12,6 +12,7 @@
 #include <iostream>
 
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 #include "gtest/gtest.h"
 
@@ -31,7 +32,7 @@ namespace tribol {
  */
 class EnzymeNodalNormalTest : public testing::Test {
  protected:
-  double delta_{ 1.0e-7 };
+  RealT delta_{ 1.0e-7 };
   void SetUp() override {}
 
   void FDCheck( RealT* x, MeshData& mesh )
@@ -104,8 +105,8 @@ class EnzymeNodalNormalTest : public testing::Test {
 TEST_F( EnzymeNodalNormalTest, TwoElementsFlatNormalJacobian )
 {
   // two elements flat
-  double x[18] = { 0.0, 0.5, 1.0, 0.0, 0.5, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
-  double xref[18];
+  RealT x[18] = { 0.0, 0.5, 1.0, 0.0, 0.5, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+  RealT xref[18];
   for ( int i{ 0 }; i < 18; ++i ) {
     xref[i] = x[i];
   }

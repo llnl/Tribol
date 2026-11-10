@@ -24,6 +24,7 @@
 #include "redecomp/redecomp.hpp"
 
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
@@ -45,18 +46,18 @@
 class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tuple<int>> {
  protected:
   tribol::RealT max_disp_;
-  double l2_err_vec_;
-  double l2_err_x_;
-  double l2_err_y_;
+  tribol::RealT l2_err_vec_;
+  tribol::RealT l2_err_x_;
+  tribol::RealT l2_err_y_;
 
   // --- User-configurable parameters ---
   static constexpr int num_timesteps_ = 1;
-  static constexpr double total_prescribed_disp_ = -0.01;
-  static constexpr double lam_ = 50.0;
-  static constexpr double mu_ = 50.0;
+  static constexpr tribol::RealT total_prescribed_disp_ = -0.01;
+  static constexpr tribol::RealT lam_ = 50.0;
+  static constexpr tribol::RealT mu_ = 50.0;
   static constexpr int max_newton_iter_ = 10;
-  static constexpr double newton_rtol_ = 1.0e-10;
-  static constexpr double newton_atol_ = 1.0e-12;
+  static constexpr tribol::RealT newton_rtol_ = 1.0e-10;
+  static constexpr tribol::RealT newton_atol_ = 1.0e-12;
   // ------------------------------------
 
   void SetUp() override
@@ -185,7 +186,7 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
 
     // ---- Time-stepping loop ----
 
-    double disp_increment = total_prescribed_disp_ / num_timesteps_;
+    tribol::RealT disp_increment = total_prescribed_disp_ / num_timesteps_;
     tribol::RealT dt = 1.0 / num_timesteps_;
     int cs_id = 0, mesh1_id = 0, mesh2_id = 1;
 
@@ -210,7 +211,7 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
     lambda = 0.0;
 
     for ( int step = 1; step <= num_timesteps_; ++step ) {
-      double current_prescribed_disp = disp_increment * step;
+      tribol::RealT current_prescribed_disp = disp_increment * step;
 
       // Build prescribed displacement vector
       mfem::Vector U_prescribed( disp_size );
@@ -259,13 +260,13 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         R_lambda = r_gap;  // R_lambda = g_tilde
 
         // Compute residual norms for convergence check
-        double norm_R_u = mfem::InnerProduct( MPI_COMM_WORLD, R_u, R_u );
-        double norm_R_lambda = mfem::InnerProduct( MPI_COMM_WORLD, R_lambda, R_lambda );
+        tribol::RealT norm_R_u = mfem::InnerProduct( MPI_COMM_WORLD, R_u, R_u );
+        tribol::RealT norm_R_lambda = mfem::InnerProduct( MPI_COMM_WORLD, R_lambda, R_lambda );
         // Zero out essential DOF contributions before computing norm
         for ( int i = 0; i < ess_tdof_list.Size(); ++i ) {
           norm_R_u -= R_u( ess_tdof_list[i] ) * R_u( ess_tdof_list[i] );
         }
-        double residual_norm = std::sqrt( std::abs( norm_R_u ) + norm_R_lambda );
+        tribol::RealT residual_norm = std::sqrt( std::abs( norm_R_u ) + norm_R_lambda );
 
         SLIC_INFO( "  Step " << step << " Newton " << newton << " | residual = " << residual_norm );
 
@@ -373,9 +374,9 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
     // -----------------------------------------------------------------
     // Analytical solution comparison
     // -----------------------------------------------------------------
-    double total_height = 2.0;
-    double eps_yy = total_prescribed_disp_ / total_height;
-    double eps_xx = -lam_ / ( lam_ + 2.0 * mu_ ) * eps_yy;
+    tribol::RealT total_height = 2.0;
+    tribol::RealT eps_yy = total_prescribed_disp_ / total_height;
+    tribol::RealT eps_xx = -lam_ / ( lam_ + 2.0 * mu_ ) * eps_yy;
 
     SLIC_INFO( "Analytical: eps_yy = " << eps_yy << ", eps_xx = " << eps_xx );
 

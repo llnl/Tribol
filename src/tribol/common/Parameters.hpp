@@ -495,7 +495,7 @@ struct Parameters {
 
   bool auto_interpen_check = false;  ///! True if the auto-contact interpenetration check is used for full-overlap pairs
 
-  double auto_contact_len_scale_factor;  ///! Scale factor applied to element thickness for auto contact length scale
+  RealT auto_contact_len_scale_factor;  ///! Scale factor applied to element thickness for auto contact length scale
 
   // Interpenetration check for auto-contact. If true, this will check a full-overlap
   // face-pair configuration in the computational geoemtry routines to preclude
@@ -507,7 +507,10 @@ struct Parameters {
 
   EnforcementLocation enforcement_location =
       EnforcementLocation::QuadraturePoint;  ///! Defaults to quadrature-point enforcement
-  RealT residual_gap = 0.0;                  ///! Nonnegative gap constraint; positive values enforce separation
+  ///! Requested polynomial degree to integrate exactly.
+  ///! The default (5) corresponds to a three-point Gauss-Legendre rule in 1D.
+  int quadrature_order = 5;
+  RealT residual_gap = 0.0;  ///! Nonnegative gap constraint; positive values enforce separation
 };
 
 }  // namespace tribol

@@ -7,6 +7,7 @@
 #define SRC_SHARED_MATH_PARVECTOR_HPP_
 
 #include "shared/config.hpp"
+#include "shared/common/BasicTypes.hpp"
 
 #include <memory>
 #include <utility>
@@ -74,7 +75,7 @@ class ParVectorView {
    *
    * @param val Value to set
    */
-  void fill( double val ) { *vec_ = val; }
+  void fill( RealT val ) { *vec_ = val; }
 
   /**
    * @brief Returns the local size of the vector
@@ -128,12 +129,12 @@ class ParVectorView {
   /**
    * @brief Returns this scaled by s
    */
-  ParVector operator*( double s ) const;
+  ParVector operator*( RealT s ) const;
 
   /**
    * @brief Returns s * vec
    */
-  friend ParVector operator*( double s, const ParVectorView& vec );
+  friend ParVector operator*( RealT s, const ParVectorView& vec );
 
  protected:
   /**
@@ -239,7 +240,7 @@ class ParVector : public ParVectorView {
   /**
    * @brief Scale this by s in place
    */
-  ParVector& operator*=( double s );
+  ParVector& operator*=( RealT s );
 
   /**
    * @brief Multiply this by other component-wise in place

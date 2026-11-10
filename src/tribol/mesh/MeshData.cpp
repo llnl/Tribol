@@ -260,7 +260,7 @@ int MeshData::getDimFromElementType() const
 //------------------------------------------------------------------------------
 ArrayViewT<const IndexT, 2> MeshData::createConnectivity( IndexT num_elements, const IndexT* connectivity )
 {
-  const int face_node_count = GetFaceNodeCount( m_element_type, m_face_order );
+  const int face_node_count = getFaceNodeCount( m_element_type, m_face_order );
   if ( face_node_count > 0 ) {
     return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, face_node_count } );
   }

@@ -38,7 +38,7 @@ class PartitionMethod {
    */
   virtual std::vector<EntityIndexByRank> generatePartitioning( int n_parts,
                                                                const std::vector<CoordList<NDIMS>>& coords_by_mesh,
-                                                               double ghost_size ) const = 0;
+                                                               RealT ghost_size ) const = 0;
 
   /**
    * @brief Returns the MPIUtility
