@@ -9,8 +9,8 @@
  * Direct gap and force calls check returned outputs and repeated calculations without a decomposition refresh.
  * One- and two-rank runs also check parent-only storage, switching locations, and changed penalties; decomposition
  * onto one rank covers a contact rank with no elements. Directional differences check global energy and coordinate
- * derivatives. Local quadrature accuracy is checked in tribol_pair_quadrature; gap and force derivatives have separate
- * tests.
+ * derivatives. Signed nodal gaps check penalty activation separately from scalar field assembly. Local quadrature
+ * accuracy is checked in tribol_pair_quadrature; gap and force derivatives have separate tests.
  */
 #include <gtest/gtest.h>
 #include <cmath>
@@ -314,6 +314,60 @@ TEST_P( EnergyMortarQuadratureSettingsTest, uses_updated_penalties_without_redec
   updated.force->Add( -2.0, force );
   EXPECT_LT( updated.force->Norml2(), 1.0e-11 );
   EXPECT_NEAR( *updated.energy, 2.0 * energy, 1.0e-11 );
+}
+
+// Penalty activation must remove positive weighted gaps and their derivative rows; LM gaps remain signed and weighted.
+TEST_P( EnergyMortarQuadratureSettingsTest, nodal_activation_preserves_only_compressive_gap_rows )
+{
+  using namespace tribol;
+  if ( std::get<0>( GetParam() ) != EnforcementLocation::Nodal ) {
+    GTEST_SKIP() << "This check requires nodal enforcement.";
+  }
+  // The top boundary crosses the bottom boundary, producing both opening and penetration along the same interface.
+  for ( int node = 0; node < fes_->GetNDofs(); ++node ) {
+    if ( ( *coords_ )[fes_->DofToVDof( node, 1 )] > 0.5 ) {
+      const RealT x = ( *coords_ )[fes_->DofToVDof( node, 0 )];
+      ( *coords_ )[fes_->DofToVDof( node, 1 )] = 0.2 - 0.4 * x;
+    }
+  }
+  updateMfemParallelDecomposition( 1, true );
+  auto& cs = CouplingSchemeManager::getInstance().at( 0 );
+  const auto penalty = cs.getContactFormulation()->computeNodalGaps( cs.getMesh1().getView(), cs.getMesh2().getView() );
+  const auto weighted = createWithQuadratureRule( quadratureOrder(), SmoothedProjectedEdgeMapping{}, [&]( auto rule ) {
+    auto coarse = createCoarseSearch( cs.spatialDimension(), cs.getBinningMethod(), cs.getExecutionMode(),
+                                      cs.getEffectiveBinningProximityScale(), 0.0 );
+    auto refined = std::make_unique<ProjectedEdgeSearch>( cs.getExecutionMode(), false );
+    NodalEnergyMortar<decltype( rule )> lm( *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(),
+                                            cs.getExecutionMode(),
+                                            PairListBuilder{ std::move( coarse ), std::move( refined ) }, rule,
+                                            OffsetGap{ OpposingNormalGap{}, 0.0 }, LagrangeMultiplierEnforcement{} );
+    return lm.computeNodalGaps( cs.getMesh1().getView(), cs.getMesh2().getView() );
+  } );
+  mfem::Vector direction( fes_->GetTrueVSize() ), penalty_action( penalty.gap->Size() ),
+      weighted_action( weighted.gap->Size() );
+  direction = 0.0;
+  for ( int dof = 0; dof < direction.Size(); ++dof ) {
+    direction[dof] = dof + 1.0;
+  }
+  penalty.dg_dx->Mult( direction, penalty_action );
+  weighted.dg_dx->Mult( direction, weighted_action );
+  int local_open = 0, local_closed = 0;
+  for ( int node = 0; node < weighted.gap->Size(); ++node ) {
+    if ( ( *weighted.gap )[node] > 1.0e-12 ) {
+      ++local_open;
+      EXPECT_EQ( ( *penalty.gap )[node], 0.0 );
+      EXPECT_NEAR( penalty_action[node], 0.0, 1.0e-12 );
+    } else if ( ( *weighted.gap )[node] < -1.0e-12 ) {
+      ++local_closed;
+      EXPECT_LT( ( *penalty.gap )[node], 0.0 );
+      EXPECT_NEAR( penalty_action[node], weighted_action[node], 1.0e-12 );
+    }
+  }
+  int global_open = 0, global_closed = 0;
+  MPI_Allreduce( &local_open, &global_open, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
+  MPI_Allreduce( &local_closed, &global_closed, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
+  EXPECT_GT( global_open, 0 );
+  EXPECT_GT( global_closed, 0 );
 }
 
 // Assembled gradients and Hessians must match finite differences as gap, area, and edge length vary.

@@ -5,6 +5,7 @@
 
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/mesh/MfemData.hpp"
+#include <stdexcept>
 
 #include "tribol/config.hpp"
 
@@ -1263,6 +1264,20 @@ void MfemSubmeshData::GetSubmeshGap( mfem::Vector& g ) const
   g.SetSize( submesh_pressure_.ParFESpace()->GetVSize() );
   g = 0.0;
   GetPressureTransfer().RedecompToSubmesh( redecomp_gap_, g );
+}
+
+mfem::GridFunction MfemSubmeshData::TransferTrueDofsToRedecomp( const mfem::Vector& true_dofs ) const
+{
+  auto* fes = const_cast<mfem::ParFiniteElementSpace*>( &GetSubmeshFESpace() );
+  if ( fes->GetVDim() != 1 || true_dofs.Size() != fes->GetTrueVSize() ) {
+    throw std::invalid_argument( "Scalar field vector length must match the submesh true DOFs." );
+  }
+  mfem::GridFunction result( const_cast<mfem::FiniteElementSpace*>( &GetRedecompFESpace() ) );
+  result = 0.0;
+  mfem::ParGridFunction field( fes );
+  field.SetFromTrueDofs( true_dofs );
+  GetPressureTransfer().SubmeshToRedecomp( field, result );
+  return result;
 }
 
 MfemSubmeshData::UpdateData::UpdateData( mfem::ParFiniteElementSpace& submesh_fes, SubmeshLORTransfer* submesh_lor_xfer,

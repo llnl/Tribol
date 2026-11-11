@@ -77,12 +77,21 @@ coordinate derivatives together; the gradient supplies the residual without a se
 formulations. Pair kernels do not allocate, call MFEM, throw, or dispatch virtual functions. A device reduction checks
 quadrature status after launch.
 
-``MfemPairAssembler`` and ``MfemNodalAssembler`` scatter vectors and pack dense element blocks in execution-space
+``MfemPairAssembler`` and ``MfemFieldAssembler`` scatter vectors and pack dense element blocks in execution-space
 kernels. Successive batch calls append matrix blocks and accumulate vector entries; empty batches preserve earlier
-contributions. Common Plane and quadrature-point Energy Mortar use displacement-only transfer; nodal Energy Mortar also
-assembles dual gap and area fields. Scalar energies use an execution-space reduction followed by one MPI scalar
-reduction. Sparse matrix ownership and transfer validation remain host orchestration, while pair-proportional residual,
-gap, area, derivative, and element-block calculations remain on the selected backend.
+contributions. ``MfemFieldAssembler`` handles any configured number of scalar nodal fields sharing one submesh space.
+Its result for each field contains values and a coordinate Jacobian, with submesh true-DOF rows and parent coordinate
+columns. Its batch kernel scatters all fields and packs their Jacobians together. It does not normalize fields, select
+active contact nodes, read pressure inputs, or assemble coordinate Hessians. Vector fields and mixed field spaces are
+unsupported.
+
+Nodal Energy Mortar names two assembled fields, weighted gap and tributary area, and applies normalization and contact
+activation in the formulation. It reads LM inputs from the submesh data and transfers scalar true-DOF weights through
+``MfemSubmeshData::TransferTrueDofsToRedecomp()``. Weighted coordinate Hessians use a separate ``MfemPairAssembler``
+configured for matrices only, which allocates no residual vector and performs no residual scatter. Common Plane and
+quadrature-point Energy Mortar use displacement-only transfer. Scalar energies use an execution-space reduction
+followed by one MPI scalar reduction. Sparse-matrix construction and transfer checks run on the host. Pair residuals,
+scalar fields, derivatives, and dense element-block calculations run on the selected backend.
 
 The enforcement value reads current settings on every calculation. Common Plane reads the registered MFEM constant
 penalties and current mesh scales and combines them with ``SeriesPenaltyStiffness``. Updating MFEM constants does not

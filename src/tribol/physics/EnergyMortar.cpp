@@ -11,7 +11,7 @@
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
-#include "tribol/mesh/MfemNodalAssembler.hpp"
+#include "tribol/mesh/MfemFieldAssembler.hpp"
 #include "tribol/mesh/MfemPairAssembler.hpp"
 #include "tribol/physics/GlobalScalarAssembler.hpp"
 #include "tribol/physics/PairContribution.hpp"
@@ -20,49 +20,84 @@
 namespace tribol {
 namespace {
 
+/** @brief Energy Mortar's assembled weighted gaps and tributary areas, before activation. */
+struct EnergyMortarNodalQuantities {
+  AssembledField weighted_gap;  ///< Weighted gaps and their coordinate Jacobian.
+  AssembledField area;          ///< Tributary areas and their coordinate Jacobian.
+};
+
+/**
+ * @brief Assemble Energy Mortar's two scalar fields in one batch.
+ * @tparam Function Pair function returning weighted gaps followed by areas.
+ * @param execution_mode Host or device execution policy.
+ * @param pairs Current pair list.
+ * @param buffer Pair values and coordinate gradients.
+ * @param assembler Scalar field accumulator configured for two fields.
+ * @return Unmodified weighted gaps, areas, and their coordinate Jacobians.
+ */
 template <typename Function>
-MfemNodalQuantityData assembleNodalQuantities(
+EnergyMortarNodalQuantities assembleNodalQuantities(
     ExecutionMode execution_mode, const ArrayT<InterfacePair>& pairs,
-    PairValueJacobianBuffer<Function::value_count, Function::dof_count>& buffer, MfemNodalAssembler& assembler )
+    PairValueJacobianBuffer<Function::value_count, Function::dof_count>& buffer, MfemFieldAssembler& assembler )
 {
   constexpr IndexT node_count = Function::node_count;
   constexpr IndexT dof_count = Function::dof_count;
+  static_assert( Function::value_count == 2 * node_count );
   const auto view = buffer.view();
-  assembler.addPairQuantities<node_count, dof_count>(
+  assembler.addPairs<2, node_count, dof_count>(
       execution_mode, pairs,
-      [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT value ) {
-        return view.has_active_points[pair] ? view.value( pair, value ) : 0.0;
+      [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node ) {
+        return view.has_active_points[pair] ? view.value( pair, field * node_count + node ) : 0.0;
       },
-      [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT value, IndexT coordinate ) {
-        return view.has_active_points[pair] ? view.jacobian( pair, value, coordinate ) : 0.0;
+      [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node, IndexT coordinate ) {
+        return view.has_active_points[pair] ? view.jacobian( pair, field * node_count + node, coordinate ) : 0.0;
       } );
-  return assembler.assembleQuantities( false, NodalEnergyMortar<typename Function::Quadrature>::area_tolerance );
+  auto fields = assembler.assemble();
+  return { std::move( fields[0] ), std::move( fields[1] ) };
 }
 
+/**
+ * @brief Normalize penalty gaps and remove positive-gap derivative rows.
+ * @tparam Inputs Penalty input reader.
+ * @param quantities Assembled unmodified gap and area fields.
+ * @param enforcement Selected penalty equation.
+ * @param area_tolerance Smallest supported area magnitude for normalization.
+ * @return Normalized, nonpositive gaps and the weighted-gap coordinate Jacobian.
+ */
 template <typename Inputs>
-ContactFormulationResult takeGapResult( MfemNodalQuantityData& quantities,
-                                        [[maybe_unused]] const PenaltyEnforcement<Inputs>& enforcement )
+ContactFormulationResult takeGapResult( EnergyMortarNodalQuantities& quantities,
+                                        [[maybe_unused]] const PenaltyEnforcement<Inputs>& enforcement,
+                                        RealT area_tolerance )
 {
+  auto normalized_gap = quantities.weighted_gap.values.divide( quantities.area.values, area_tolerance );
   mfem::Array<int> open_nodes;
-  for ( int node = 0; node < quantities.weighted_gap.size(); ++node ) {
-    if ( quantities.weighted_gap[node] > 0.0 ) {
-      quantities.normalized_gap[node] = 0.0;
+  for ( int node = 0; node < quantities.weighted_gap.values.size(); ++node ) {
+    if ( quantities.weighted_gap.values[node] > 0.0 ) {
+      normalized_gap[node] = 0.0;
       open_nodes.Append( node );
     }
   }
-  quantities.weighted_gap_jacobian.eliminateRows( open_nodes );
+  quantities.weighted_gap.dvalues_dx.eliminateRows( open_nodes );
   ContactFormulationResult result;
-  result.gap.reset( quantities.normalized_gap.release() );
-  result.dg_dx.reset( quantities.weighted_gap_jacobian.release() );
+  result.gap.reset( normalized_gap.release() );
+  result.dg_dx.reset( quantities.weighted_gap.dvalues_dx.release() );
   return result;
 }
 
-ContactFormulationResult takeGapResult( MfemNodalQuantityData& quantities,
-                                        [[maybe_unused]] const LagrangeMultiplierEnforcement& enforcement )
+/**
+ * @brief Return the weighted LM constraint without normalization or gap activation.
+ * @param quantities Assembled gap and area fields.
+ * @param enforcement Selected LM equation.
+ * @param area_tolerance Unused normalization tolerance.
+ * @return Weighted gaps and their coordinate Jacobian.
+ */
+ContactFormulationResult takeGapResult( EnergyMortarNodalQuantities& quantities,
+                                        [[maybe_unused]] const LagrangeMultiplierEnforcement& enforcement,
+                                        [[maybe_unused]] RealT area_tolerance )
 {
   ContactFormulationResult result;
-  result.gap.reset( quantities.weighted_gap.release() );
-  result.dg_dx.reset( quantities.weighted_gap_jacobian.release() );
+  result.gap.reset( quantities.weighted_gap.values.release() );
+  result.dg_dx.reset( quantities.weighted_gap.dvalues_dx.release() );
   return result;
 }
 
@@ -106,10 +141,11 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule, PenaltyStiffness>::co
                                                                                       pairs.getAllocatorID() );
   evaluatePairValuesAndJacobians( execution_mode_, pairs.view(), mesh1, mesh2, function, values.view() );
   checkPairQuadratureResults( execution_mode_, values.quadratureResults() );
-  MfemNodalAssembler assembler( mesh_data_, submesh_data_, jacobian_data_, mesh1, mesh2, pairs.size() );
+  MfemFieldAssembler assembler( mesh_data_, submesh_data_, jacobian_data_, mesh1, mesh2, 2, pairs.size() );
   auto quantities = assembleNodalQuantities<PairFunction>( execution_mode_, pairs, values, assembler );
-  return std::visit( [&]( const auto& enforcement ) { return takeGapResult( quantities, enforcement ); },
-                     enforcement_ );
+  return std::visit(
+      [&]( const auto& enforcement ) { return takeGapResult( quantities, enforcement, area_tolerance ); },
+      enforcement_ );
 }
 
 template <typename QuadratureRule, typename PenaltyStiffness>
@@ -123,7 +159,7 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule, PenaltyStiffness>::co
   PairValueJacobianBuffer<PairFunction::value_count, PairFunction::dof_count> values( pairs.size(), allocator_id );
   evaluatePairValuesAndJacobians( execution_mode_, pairs.view(), mesh1, mesh2, function, values.view() );
   checkPairQuadratureResults( execution_mode_, values.quadratureResults() );
-  MfemNodalAssembler assembler( mesh_data_, submesh_data_, jacobian_data_, mesh1, mesh2, pairs.size() );
+  MfemFieldAssembler assembler( mesh_data_, submesh_data_, jacobian_data_, mesh1, mesh2, 2, pairs.size() );
   auto quantities = assembleNodalQuantities<PairFunction>( execution_mode_, pairs, values, assembler );
 
   const auto make_vector = [&] {
@@ -145,8 +181,8 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule, PenaltyStiffness>::co
     area_area = make_vector();
     Array1D<RealT> nodal_energy( gap_weights.size(), gap_weights.size(), allocator_id );
     const bool use_device = isOnDevice( execution_mode_ );
-    const auto* weighted_gap = quantities.weighted_gap.get().Read( use_device );
-    const auto* area = quantities.area.get().Read( use_device );
+    const auto* weighted_gap = quantities.weighted_gap.values.get().Read( use_device );
+    const auto* area = quantities.area.values.get().Read( use_device );
     auto* gap_weight = gap_weights.get().Write( use_device );
     auto* area_weight = area_weights.get().Write( use_device );
     auto* gap_gap_data = gap_gap.get().Write( use_device );
@@ -167,20 +203,21 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule, PenaltyStiffness>::co
         execution_mode_, gap_weights.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) { return nodal_energy_data[node]; },
         gap_weights.get().GetComm() );
   } else {
-    gap_weights = assembler.getSubmeshPressureTrueDofs();
-    if ( gap_weights.size() != quantities.weighted_gap.size() ) {
+    submesh_data_.GetSubmeshPressure().GetTrueDofs( gap_weights.get() );
+    if ( gap_weights.size() != quantities.weighted_gap.values.size() ) {
       throw std::invalid_argument( "LM values must match dual true DOFs." );
     }
-    energy = gap_weights.dot( quantities.weighted_gap );
+    energy = gap_weights.dot( quantities.weighted_gap.values );
   }
 
-  auto force = gap_weights * quantities.weighted_gap_jacobian;
+  auto force = gap_weights * quantities.weighted_gap.dvalues_dx;
   if ( penalty_enforcement_selected ) {
-    force += area_weights * quantities.area_jacobian;
+    force += area_weights * quantities.area.dvalues_dx;
   }
-  const auto redecomp_gap_weights = assembler.transferToRedecomp( gap_weights.get() );
-  const auto redecomp_area_weights =
-      penalty_enforcement_selected ? assembler.transferToRedecomp( area_weights.get() ) : mfem::GridFunction{};
+  const auto redecomp_gap_weights = submesh_data_.TransferTrueDofsToRedecomp( gap_weights.get() );
+  const auto redecomp_area_weights = penalty_enforcement_selected
+                                         ? submesh_data_.TransferTrueDofsToRedecomp( area_weights.get() )
+                                         : mfem::GridFunction{};
   Array1D<RealT> pair_weights( PairFunction::value_count * pairs.size(), PairFunction::value_count * pairs.size(),
                                allocator_id );
   const auto pair_view = pairs.view();
@@ -210,29 +247,36 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule, PenaltyStiffness>::co
       },
       hessians.view() );
   const auto hessian_view = hessians.view();
-  assembler.addPairJacobians<PairFunction::dof_count>(
+  MfemPairAssembler hessian_assembler( mesh_data_, jacobian_data_, mesh1, mesh2, pair_count, false );
+  hessian_assembler.addPairJacobians<PairFunction::dof_count>(
       execution_mode_, pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
         return hessian_view.hessian( pair, row, column );
       } );
-  auto jacobian = assembler.assembleHessians();
+  auto jacobian = hessian_assembler.assembleJacobian();
   if ( penalty_enforcement_selected ) {
-    const auto gg = assembler.makeSubmeshDiagonalMatrix( gap_gap.get() );
-    const auto ga = assembler.makeSubmeshDiagonalMatrix( gap_area.get() );
-    const auto aa = assembler.makeSubmeshDiagonalMatrix( area_area.get() );
-    jacobian += shared::ParSparseMat::rap( gg, quantities.weighted_gap_jacobian );
-    const auto mixed = shared::ParSparseMat::rap( quantities.weighted_gap_jacobian, ga, quantities.area_jacobian );
+    const auto make_diagonal = [&]( const shared::ParVector& values ) {
+      const auto& fes = submesh_data_.GetSubmeshFESpace();
+      return shared::ParSparseMat::diagonalMatrix( fes.GetComm(), fes.GlobalTrueVSize(), fes.GetTrueDofOffsets(),
+                                                   values.get() );
+    };
+    const auto gg = make_diagonal( gap_gap );
+    const auto ga = make_diagonal( gap_area );
+    const auto aa = make_diagonal( area_area );
+    jacobian += shared::ParSparseMat::rap( gg, quantities.weighted_gap.dvalues_dx );
+    const auto mixed = shared::ParSparseMat::rap( quantities.weighted_gap.dvalues_dx, ga, quantities.area.dvalues_dx );
     jacobian += mixed;
     jacobian += mixed.transpose();
-    jacobian += shared::ParSparseMat::rap( aa, quantities.area_jacobian );
+    jacobian += shared::ParSparseMat::rap( aa, quantities.area.dvalues_dx );
   }
 
   ContactFormulationResult result;
   if ( !penalty_enforcement_selected ) {
-    auto df_dp = quantities.weighted_gap_jacobian.transpose();
+    auto df_dp = quantities.weighted_gap.dvalues_dx.transpose();
     result.df_dp.reset( df_dp.release() );
   }
   auto gaps =
-      std::visit( [&]( const auto& enforcement ) { return takeGapResult( quantities, enforcement ); }, enforcement_ );
+      std::visit( [&]( const auto& enforcement ) { return takeGapResult( quantities, enforcement, area_tolerance ); },
+                  enforcement_ );
   result.gap = std::move( gaps.gap );
   result.dg_dx = std::move( gaps.dg_dx );
   result.energy = energy;

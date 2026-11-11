@@ -28,15 +28,15 @@ IndexT checkedProduct( IndexT count, IndexT size )
 }  // namespace
 
 MfemPairAssembler::MfemPairAssembler( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
-                                      MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT pair_capacity )
+                                      MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT pair_capacity,
+                                      bool assemble_residual )
     : mesh_data_( mesh_data ),
       jacobian_data_( jacobian_data ),
       connectivity_{ mesh1.getConnectivity(), mesh2.getConnectivity() },
-      dimension_( mesh1.spatialDimension() ),
-      redecomp_residual_( const_cast<mfem::FiniteElementSpace*>( mesh_data.GetRedecompResponse().FESpace() ) )
+      dimension_( mesh1.spatialDimension() )
 {
   if ( pair_capacity < 0 || dimension_ <= 0 || mesh2.spatialDimension() != dimension_ ||
-       redecomp_residual_.FESpace()->GetVDim() != dimension_ || mesh1.numberOfNodesPerElement() <= 0 ||
+       mesh_data.GetRedecompResponse().FESpace()->GetVDim() != dimension_ || mesh1.numberOfNodesPerElement() <= 0 ||
        mesh2.numberOfNodesPerElement() <= 0 ) {
     throw std::invalid_argument(
         "Pair assembly requires matching spatial dimensions and positive element node counts." );
@@ -48,7 +48,7 @@ MfemPairAssembler::MfemPairAssembler( const MfemMeshData& mesh_data, const MfemJ
   }
   dof_offsets_ = MdArray<IndexT, 3>{ 0, dofs1, dofs1 + dofs2 };
   const auto& surface_fes = mesh_data.GetLORMesh() ? *mesh_data.GetLORMeshFESpace() : mesh_data.GetSubmeshFESpace();
-  const auto& redecomp_fes = *redecomp_residual_.FESpace();
+  const auto& redecomp_fes = *mesh_data.GetRedecompResponse().FESpace();
   const std::array<const Array1D<int>*, 2> element_maps{ &mesh_data.GetElemMap1(), &mesh_data.GetElemMap2() };
   constexpr int pair_size = 2;
   jacobian_contributions_.reserve( pair_size * pair_size );
@@ -64,12 +64,18 @@ MfemPairAssembler::MfemPairAssembler( const MfemMeshData& mesh_data, const MfemJ
   }
   const IndexT max_element_dofs = std::max( dofs1, dofs2 );
   block_.resize( checkedProduct( max_element_dofs, max_element_dofs ) );
-  redecomp_residual_ = 0.0;
+  if ( assemble_residual ) {
+    redecomp_residual_.SetSpace( const_cast<mfem::FiniteElementSpace*>( &redecomp_fes ) );
+    redecomp_residual_ = 0.0;
+  }
 }
 
 void MfemPairAssembler::addPair( InterfacePair pair, ArrayViewT<const RealT> residual,
                                  ArrayViewT<const RealT, 2> jacobian )
 {
+  if ( !redecomp_residual_.FESpace() ) {
+    throw std::logic_error( "Residual assembly was not enabled for this pair assembler." );
+  }
   if ( residual.size() != dof_offsets_[2] || jacobian.shape()[0] != dof_offsets_[2] ||
        jacobian.shape()[1] != dof_offsets_[2] ) {
     throw std::invalid_argument( "Pair residual and Jacobian must match the two elements' displacement DOFs." );
@@ -117,6 +123,9 @@ void MfemPairAssembler::addPairJacobian( InterfacePair pair, ArrayViewT<const Re
 
 ContactFormulationResult MfemPairAssembler::assemble() const
 {
+  if ( !redecomp_residual_.FESpace() ) {
+    throw std::logic_error( "Residual assembly was not enabled for this pair assembler." );
+  }
   auto* parent_fes = mesh_data_.GetParentCoords().ParFESpace();
   shared::ParVector residual( const_cast<mfem::ParFiniteElementSpace*>( parent_fes ) );
   residual.fill( 0.0 );

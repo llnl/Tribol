@@ -1633,6 +1633,16 @@ class MfemSubmeshData {
   void GetSubmeshGap( mfem::Vector& g ) const;
 
   /**
+   * @brief Transfer a scalar submesh true-DOF field onto the current Redecomp finite-element space.
+   * @param true_dofs Field on this submesh's scalar true DOFs.
+   * @return Owned Redecomp grid function with values at all local field DOFs; the associated spaces must remain alive.
+   * @pre UpdateMfemSubmeshData() has initialized the current transfer and Redecomp space.
+   * @throws std::invalid_argument The field space is nonscalar or the vector length does not match; no field is
+   * returned.
+   */
+  mfem::GridFunction TransferTrueDofsToRedecomp( const mfem::Vector& true_dofs ) const;
+
+  /**
    * @brief Get the parent-linked boundary submesh to redecomp mesh pressure
    * transfer object
    *
@@ -1646,6 +1656,13 @@ class MfemSubmeshData {
    * @return const mfem::ParFiniteElementSpace&
    */
   const mfem::ParFiniteElementSpace& GetSubmeshFESpace() const { return *submesh_pressure_.ParFESpace(); }
+
+  /**
+   * @brief Get the current Redecomp finite-element space for fields transferred through this submesh.
+   * @return Borrowed field space, valid until the decomposition is rebuilt.
+   * @pre UpdateMfemSubmeshData() has initialized the current decomposition.
+   */
+  const mfem::FiniteElementSpace& GetRedecompFESpace() const { return *pressure_.GetRedecompGridFn().FESpace(); }
 
   /**
    * @brief Get the finite element space on the LOR mesh

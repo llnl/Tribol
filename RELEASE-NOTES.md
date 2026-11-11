@@ -73,6 +73,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Replaced `MfemNodalAssembler` and `MfemNodalQuantityData` with `MfemFieldAssembler` and per-field `AssembledField`
+  results. The assembler accumulates any configured number of scalar nodal fields sharing one submesh space in one
+  batch kernel. Energy Mortar applies gap normalization and activation in the formulation and uses separate matrix-only
+  pair assembly for weighted coordinate Hessians. Scalar true-DOF transfer is provided by `MfemSubmeshData`.
 - Nodal penalty Energy Mortar uses `0.5*k*min(weighted_gap,0)^2/area` with consistent coordinate derivatives,
   including area coupling. This includes the one-half factor missing from the previous nodal penalty energy.
 - `ContactFormulation` now returns caller-owned results from `computeNodalGaps()` and `computeNodalForces()` instead

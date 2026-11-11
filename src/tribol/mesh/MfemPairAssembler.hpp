@@ -13,7 +13,6 @@
 #include "tribol/config.hpp"
 #ifdef BUILD_REDECOMP
 #include <array>
-#include <limits>
 #include <stdexcept>
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/Atomics.hpp"
@@ -21,48 +20,11 @@
 #include "tribol/common/MdArray.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MfemData.hpp"
+#include "tribol/mesh/MfemElementAssembly.hpp"
 #include "tribol/physics/ContactFormulation.hpp"
 #include "tribol/physics/PairContribution.hpp"
 
 namespace tribol {
-namespace detail {
-
-/**
- * @brief Copy packed element blocks to the host and append them after any earlier contributions.
- * @tparam RowDofs Dense block row count.
- * @tparam ColumnDofs Dense block column count.
- * @param destination Accumulated host blocks; existing entries and value offsets are preserved.
- * @param blocks Execution-space blocks to copy; not retained.
- * @throws std::length_error Accumulated entries or values exceed the supported index range; nothing is appended.
- */
-template <IndexT RowDofs, IndexT ColumnDofs>
-void appendElementBlocks( PackedPairJacobianContribs& destination,
-                          const ElementBlockBuffer<RowDofs, ColumnDofs>& blocks )
-{
-  const auto max_size = std::numeric_limits<IndexT>::max();
-  if ( blocks.rowElementIds().size() > max_size - destination.row_elem_ids.size() ||
-       blocks.values().size() > max_size - destination.jacobian_data.size() ) {
-    throw std::length_error( "Accumulated element blocks exceed the supported index range." );
-  }
-  if ( blocks.rowElementIds().size() == 0 ) {
-    return;
-  }
-  const Array1D<IndexT, MemorySpace::Host> rows( blocks.rowElementIds() );
-  const Array1D<IndexT, MemorySpace::Host> columns( blocks.columnElementIds() );
-  Array1D<IndexT, MemorySpace::Host> offsets( blocks.valueOffsets() );
-  const Array1D<RealT, MemorySpace::Host> values( blocks.values() );
-  const IndexT value_offset = destination.jacobian_data.size();
-  for ( IndexT& offset : offsets ) {
-    offset += value_offset;
-  }
-  destination.row_elem_ids.append( rows.view() );
-  destination.col_elem_ids.append( columns.view() );
-  destination.value_offsets.append( offsets.view() );
-  destination.jacobian_data.append( values.view() );
-}
-
-}  // namespace detail
-
 /**
  * @brief Accumulate local pair residuals and Jacobians and transfer them to the parent displacement space.
  *
@@ -79,11 +41,12 @@ class MfemPairAssembler {
    * @param mesh1 First mesh with host-accessible connectivity; coordinates are not retained.
    * @param mesh2 Second mesh with host-accessible connectivity; coordinates are not retained.
    * @param pair_capacity Number of pairs expected to contribute, independent of all possible mesh pairs.
+   * @param assemble_residual If false, allocate only matrix storage; addPair() and addPairs() are unavailable.
    * @throws std::invalid_argument Dimensions, node counts, or the requested pair capacity are invalid.
    * @throws std::length_error Required array sizes exceed the supported index range.
    */
   MfemPairAssembler( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data, MeshData::Viewer mesh1,
-                     MeshData::Viewer mesh2, IndexT pair_capacity );
+                     MeshData::Viewer mesh2, IndexT pair_capacity, bool assemble_residual = true );
 
   /**
    * @brief Add one pair's residual and all four Jacobian blocks without retaining the input arrays.
@@ -92,6 +55,7 @@ class MfemPairAssembler {
    * @param jacobian Host-accessible matrix with residual rows and coordinate columns in that same DOF order.
    * The view uses row-major indexing; no symmetry is assumed.
    * @throws std::invalid_argument Array dimensions do not match the pair DOF count; no contributions are added.
+   * @throws std::logic_error Residual assembly was disabled; no contributions are added.
    */
   void addPair( InterfacePair pair, ArrayViewT<const RealT> residual, ArrayViewT<const RealT, 2> jacobian );
 
@@ -118,10 +82,66 @@ class MfemPairAssembler {
    * @param pairs Pair list in execution-accessible memory.
    * @param residual_reader Pair residual reader.
    * @param jacobian_reader Pair Jacobian reader.
+   * @throws std::invalid_argument Pair DOFs do not match the configured layout; no contributions are added.
+   * @throws std::logic_error Residual assembly was disabled; no contributions are added.
    */
   template <IndexT DofCount, typename ResidualReader, typename JacobianReader>
   void addPairs( ExecutionMode execution_mode, const ArrayT<InterfacePair>& pairs, ResidualReader residual_reader,
                  JacobianReader jacobian_reader )
+  {
+    if ( !redecomp_residual_.FESpace() ) {
+      throw std::logic_error( "Residual assembly was not enabled for this pair assembler." );
+    }
+    addPairsImpl<DofCount, true>( execution_mode, pairs, residual_reader, jacobian_reader );
+  }
+
+  /**
+   * @brief Append all four coordinate Jacobian blocks without allocating or scattering a residual.
+   * @tparam DofCount Pair coordinate count; each element contributes half.
+   * @tparam JacobianReader Device-callable `(pair, row, column) -> RealT` reader.
+   * @param execution_mode Host or device execution policy.
+   * @param pairs Pair list in execution-accessible memory.
+   * @param jacobian_reader Pair Jacobian reader.
+   * @throws std::invalid_argument Pair DOFs do not match the configured layout; no contributions are added.
+   */
+  template <IndexT DofCount, typename JacobianReader>
+  void addPairJacobians( ExecutionMode execution_mode, const ArrayT<InterfacePair>& pairs,
+                         JacobianReader jacobian_reader )
+  {
+    addPairsImpl<DofCount, false>(
+        execution_mode, pairs, [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; }, jacobian_reader );
+  }
+
+  /**
+   * @brief Return assembled residual and Jacobian on parent true DOFs.
+   * @return Owned force and df_dx; other outputs are absent. No pairs produce allocated zero outputs.
+   * Results remain valid after this assembler is destroyed, while their MFEM spaces and communicator remain alive.
+   * @throws std::logic_error Residual assembly was disabled; use assembleJacobian() instead.
+   */
+  ContactFormulationResult assemble() const;
+
+  /**
+   * @brief Return the assembled Jacobian on parent displacement true DOFs.
+   * @return Owned parent true-DOF sparse matrix; zero pairs produce an allocated zero matrix.
+   */
+  shared::ParSparseMat assembleJacobian() const;
+
+  /**
+   * @brief Pack matrix blocks and optionally scatter residual entries in one kernel.
+   * NVCC requires the enclosing function of an extended device lambda to be public, so this implementation helper
+   * is visible even though callers use addPairs() or addPairJacobians().
+   * @tparam DofCount Pair coordinate count.
+   * @tparam WithResidual Whether to scatter residuals.
+   * @tparam ResidualReader Pair residual reader.
+   * @tparam JacobianReader Pair Jacobian reader.
+   * @param execution_mode Host or device execution policy.
+   * @param pairs Pair list in execution-accessible memory.
+   * @param residual_reader Pair residual reader, unused when WithResidual is false.
+   * @param jacobian_reader Pair Jacobian reader.
+   */
+  template <IndexT DofCount, bool WithResidual, typename ResidualReader, typename JacobianReader>
+  void addPairsImpl( ExecutionMode execution_mode, const ArrayT<InterfacePair>& pairs, ResidualReader residual_reader,
+                     JacobianReader jacobian_reader )
   {
     static_assert( DofCount % 2 == 0, "Pair block assembly requires equal element DOF counts." );
     constexpr IndexT element_dofs = DofCount / 2;
@@ -140,10 +160,14 @@ class MfemPairAssembler {
     const IndexT nodes0 = connectivity0.shape()[1];
     const IndexT nodes1 = connectivity1.shape()[1];
     const int dimension = dimension_;
-    const int scalar_size = redecomp_residual_.FESpace()->GetNDofs();
-    const bool use_device = isOnDevice( execution_mode );
-    redecomp_residual_.UseDevice( use_device );
-    auto* residual = redecomp_residual_.ReadWrite( use_device );
+    int scalar_size = 0;
+    RealT* residual = nullptr;
+    if constexpr ( WithResidual ) {
+      scalar_size = redecomp_residual_.FESpace()->GetNDofs();
+      const bool use_device = isOnDevice( execution_mode );
+      redecomp_residual_.UseDevice( use_device );
+      residual = redecomp_residual_.ReadWrite( use_device );
+    }
     const auto output00 = block00.view();
     const auto output01 = block01.view();
     const auto output10 = block10.view();
@@ -154,18 +178,20 @@ class MfemPairAssembler {
       output01.setElements( pair_index, pair.element_id1_, pair.element_id2_ );
       output10.setElements( pair_index, pair.element_id2_, pair.element_id1_ );
       output11.setElements( pair_index, pair.element_id2_, pair.element_id2_ );
-      for ( IndexT node = 0; node < nodes0; ++node ) {
-        for ( int component = 0; component < dimension; ++component ) {
-          const IndexT row = node * dimension + component;
-          atomicAdd( residual + connectivity0( pair.element_id1_, node ) + component * scalar_size,
-                     residual_reader( pair_index, row ) );
+      if constexpr ( WithResidual ) {
+        for ( IndexT node = 0; node < nodes0; ++node ) {
+          for ( int component = 0; component < dimension; ++component ) {
+            const IndexT row = node * dimension + component;
+            atomicAdd( residual + connectivity0( pair.element_id1_, node ) + component * scalar_size,
+                       residual_reader( pair_index, row ) );
+          }
         }
-      }
-      for ( IndexT node = 0; node < nodes1; ++node ) {
-        for ( int component = 0; component < dimension; ++component ) {
-          const IndexT row = element_dofs + node * dimension + component;
-          atomicAdd( residual + connectivity1( pair.element_id2_, node ) + component * scalar_size,
-                     residual_reader( pair_index, row ) );
+        for ( IndexT node = 0; node < nodes1; ++node ) {
+          for ( int component = 0; component < dimension; ++component ) {
+            const IndexT row = element_dofs + node * dimension + component;
+            atomicAdd( residual + connectivity1( pair.element_id2_, node ) + component * scalar_size,
+                       residual_reader( pair_index, row ) );
+          }
         }
       }
       for ( IndexT column = 0; column < element_dofs; ++column ) {
@@ -186,19 +212,6 @@ class MfemPairAssembler {
     detail::appendElementBlocks( jacobian_contributions_[2], block10 );
     detail::appendElementBlocks( jacobian_contributions_[3], block11 );
   }
-
-  /**
-   * @brief Return assembled residual and Jacobian on parent true DOFs.
-   * @return Owned force and df_dx; other outputs are absent. No pairs produce allocated zero outputs.
-   * Results remain valid after this assembler is destroyed, while their MFEM spaces and communicator remain alive.
-   */
-  ContactFormulationResult assemble() const;
-
-  /**
-   * @brief Return the assembled Jacobian on parent displacement true DOFs.
-   * @return Owned parent true-DOF sparse matrix; zero pairs produce an allocated zero matrix.
-   */
-  shared::ParSparseMat assembleJacobian() const;
 
  private:
   const MfemMeshData& mesh_data_;                          ///< Borrowed displacement mesh and field transfers.
