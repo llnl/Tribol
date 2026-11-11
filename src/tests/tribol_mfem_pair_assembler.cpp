@@ -11,6 +11,8 @@
  * contact data on rank zero. Batch tests check accumulation after host calls, repeated batches, and an empty batch on
  * Sequential and OpenMP backends. Physics and Enzyme derivatives are checked by the formulation tests.
  * Force-only batches check shared-node accumulation without Jacobian transfer data and reject matrix operations.
+ * Independent scalar/coordinate matrix assemblers check both rectangular orientations, host and batch packing,
+ * invalid layouts, and empty batches on the same nonmatching surfaces.
  */
 #include <cmath>
 #include "gtest/gtest.h"
@@ -364,6 +366,112 @@ TEST_F( MfemPairAssemblerTest, scalar_fields_reject_invalid_layouts_and_return_e
 
 /** @brief Exercise host batch kernels with each enabled host execution mode. */
 class MfemBatchAssemblerTest : public MfemPairAssemblerTest, public testing::WithParamInterface<ExecutionMode> {};
+
+// Rectangular packing must transfer scalar and coordinate spaces in either orientation, including nonmatching element
+// maps and a rank with no local pairs. Host and execution-space batches must accumulate the same nonsymmetric entries.
+TEST_P( MfemBatchAssemblerTest, assembles_rectangular_matrices_in_both_orientations )
+{
+  prepareDualData();
+  auto& cs = scheme();
+  const auto& data = *cs.getMfemMeshData();
+  const auto& dual = *cs.getMfemSubmeshData();
+  const auto& transfer = *cs.getMfemJacobianData();
+  const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
+  const auto pair_list = pairs();
+  const auto& map1 = data.GetElemMap1();
+  const auto& map2 = data.GetElemMap2();
+  const MfemMatrixSpace scalar{ transfer.SubmeshPath(), dual.GetRedecompFESpace() };
+  const MfemMatrixSpace coordinate{ transfer.ParentPath(), *data.GetRedecompResponse().FESpace() };
+  constexpr IndexT element_dofs = nodes_per_edge * dimension;
+  const std::vector<MfemMatrixBlock> forward_blocks{
+      { 0, 0, nodes_per_edge, nodes_per_edge, 0, 0, map1, map1 },
+      { 0, 1, nodes_per_edge, nodes_per_edge, 0, element_dofs, map1, map2 } };
+  const std::vector<MfemMatrixBlock> reverse_blocks{
+      { 0, 0, nodes_per_edge, nodes_per_edge, 0, 0, map1, map1 },
+      { 1, 0, nodes_per_edge, nodes_per_edge, element_dofs, 0, map2, map1 } };
+  MfemMatrixAssembler forward( scalar, coordinate, forward_blocks, 0 );
+  MfemMatrixAssembler reverse( coordinate, scalar, reverse_blocks, 0 );
+  MfemFieldAssembler reference( data, dual, transfer, mesh1, mesh2, 1, 0 );
+  const ArrayT<InterfacePair> empty( 0, 0, pair_list.getAllocatorID() );
+
+  // Rejected shapes and scratch from a different assembler must leave the accumulated matrix empty.
+  MdArray<RealT, 1, 1> wrong_shape{};
+  EXPECT_THROW( forward.addPair( { 0, 0 }, { wrong_shape.data(), { 1, 1 } } ), std::invalid_argument );
+  EXPECT_THROW( ( forward.makeBatch<3, element_dofs, 2>( 0, pair_list.getAllocatorID() ) ), std::invalid_argument );
+  auto foreign_batch = reverse.makeBatch<element_dofs, nodes_per_edge, 2>( 0, pair_list.getAllocatorID() );
+  EXPECT_THROW( forward.addBatch( foreign_batch ), std::invalid_argument );
+  auto invalid_blocks = forward_blocks;
+  invalid_blocks[0].row_geometry = 2;
+  EXPECT_THROW( MfemMatrixAssembler( scalar, coordinate, invalid_blocks, 0 ), std::invalid_argument );
+  EXPECT_THROW( MfemMatrixAssembler( scalar, coordinate, forward_blocks, -1 ), std::invalid_argument );
+  const auto zero = forward.assemble();
+  mfem::Vector coordinate_direction( fes_->GetTrueVSize() ), scalar_action( zero->Height() );
+  coordinate_direction = 1.0;
+  zero->Mult( coordinate_direction, scalar_action );
+  EXPECT_EQ( norm( scalar_action ), 0.0 );
+
+  for ( IndexT batch = 0; batch < 2; ++batch ) {
+    const RealT scale = batch + 1.0;
+    const auto read_forward = [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT node, IndexT coordinate ) {
+      return scale * ( node + 1.0 + ( coordinate + 2.0 ) * ( pair + 1.0 ) );
+    };
+    const auto read_reverse = [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT coordinate, IndexT node ) {
+      return read_forward( pair, node, coordinate );
+    };
+    for ( IndexT pair = 0; pair < pair_list.size(); ++pair ) {
+      MdArray<RealT, 1, nodes_per_edge> values{};
+      MdArray<RealT, 1, nodes_per_edge, pair_dofs> gradients{};
+      MdArray<RealT, nodes_per_edge, pair_dofs> matrix{};
+      MdArray<RealT, pair_dofs, nodes_per_edge> transposed{};
+      for ( IndexT node = 0; node < nodes_per_edge; ++node ) {
+        for ( IndexT column = 0; column < pair_dofs; ++column ) {
+          const RealT entry = read_forward( pair, node, column );
+          gradients( 0, node, column ) = entry;
+          matrix( node, column ) = entry;
+          transposed( column, node ) = entry;
+        }
+      }
+      reference.addPair( pair_list[pair], { values.data(), { 1, nodes_per_edge } },
+                         { gradients.data(), { 1, nodes_per_edge, pair_dofs } } );
+      if ( batch == 0 ) {
+        forward.addPair( pair_list[pair], { matrix.data(), { nodes_per_edge, pair_dofs } } );
+        reverse.addPair( pair_list[pair], { transposed.data(), { pair_dofs, nodes_per_edge } } );
+      }
+    }
+    forward.addPairs<nodes_per_edge, element_dofs, 2>( GetParam(), empty, read_forward );
+    reverse.addPairs<element_dofs, nodes_per_edge, 2>( GetParam(), empty, read_reverse );
+    if ( batch != 0 ) {
+      forward.addPairs<nodes_per_edge, element_dofs, 2>( GetParam(), pair_list, read_forward );
+      reverse.addPairs<element_dofs, nodes_per_edge, 2>( GetParam(), pair_list, read_reverse );
+    }
+  }
+  const auto fields = reference.assemble();
+  const auto expected_reverse = fields[0].dvalues_dx.transpose();
+  const auto actual_forward = forward.assemble();
+  const auto actual_reverse = reverse.assemble();
+  EXPECT_EQ( actual_forward->Height(), dual.GetSubmeshFESpace().GetTrueVSize() );
+  EXPECT_EQ( actual_forward->Width(), fes_->GetTrueVSize() );
+  EXPECT_EQ( actual_reverse->Height(), fes_->GetTrueVSize() );
+  EXPECT_EQ( actual_reverse->Width(), dual.GetSubmeshFESpace().GetTrueVSize() );
+  mfem::Vector expected_scalar( actual_forward->Height() );
+  for ( int dof = 0; dof < coordinate_direction.Size(); ++dof ) {
+    coordinate_direction[dof] = 1.0 + 0.1 * dof;
+  }
+  fields[0].dvalues_dx->Mult( coordinate_direction, expected_scalar );
+  actual_forward->Mult( coordinate_direction, scalar_action );
+  scalar_action -= expected_scalar;
+  EXPECT_LT( norm( scalar_action ), tolerance );
+  mfem::Vector scalar_direction( actual_reverse->Width() ), actual_force( actual_reverse->Height() ),
+      expected_force( actual_reverse->Height() );
+  for ( int dof = 0; dof < scalar_direction.Size(); ++dof ) {
+    scalar_direction[dof] = 1.0 + 0.2 * dof;
+  }
+  expected_reverse->Mult( scalar_direction, expected_force );
+  actual_reverse->Mult( scalar_direction, actual_force );
+  EXPECT_GT( norm( expected_force ), 0.0 );
+  actual_force -= expected_force;
+  EXPECT_LT( norm( actual_force ), tolerance );
+}
 
 // Distinct batch entries and an intervening empty batch must preserve all four matrix blocks and accumulated forces.
 TEST_P( MfemBatchAssemblerTest, accumulates_residuals_and_jacobians_across_batches )

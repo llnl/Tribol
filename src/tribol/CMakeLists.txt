@@ -13,6 +13,7 @@ set(tribol_headers
 
     assembly/MfemElementAssembly.hpp
     assembly/MfemFieldAssembler.hpp
+    assembly/MfemMatrixAssembler.hpp
     assembly/MfemPairAssembler.hpp
     assembly/PairContribution.hpp
     assembly/PairEvaluation.hpp
@@ -95,6 +96,7 @@ set(tribol_headers
 set(tribol_sources
 
     assembly/MfemFieldAssembler.cpp
+    assembly/MfemMatrixAssembler.cpp
     assembly/MfemPairAssembler.cpp
      
     geom/CompGeom.cpp

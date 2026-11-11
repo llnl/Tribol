@@ -5,9 +5,9 @@
 
 #include "tribol/assembly/MfemPairAssembler.hpp"
 #ifdef BUILD_REDECOMP
-#include <algorithm>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 
 namespace tribol {
 namespace {
@@ -31,7 +31,6 @@ MfemPairAssembler::MfemPairAssembler( const MfemMeshData& mesh_data, const MfemJ
                                       MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT pair_capacity,
                                       bool assemble_residual )
     : mesh_data_( mesh_data ),
-      jacobian_data_( jacobian_data ),
       connectivity_{ mesh1.getConnectivity(), mesh2.getConnectivity() },
       dimension_( mesh1.spatialDimension() )
 {
@@ -47,36 +46,33 @@ MfemPairAssembler::MfemPairAssembler( const MfemMeshData& mesh_data, const MfemJ
     throw std::length_error( "Pair DOF count exceeds the supported index range." );
   }
   dof_offsets_ = MdArray<IndexT, 3>{ 0, dofs1, dofs1 + dofs2 };
-  const auto& surface_fes = mesh_data.GetLORMesh() ? *mesh_data.GetLORMeshFESpace() : mesh_data.GetSubmeshFESpace();
   const auto& redecomp_fes = *mesh_data.GetRedecompResponse().FESpace();
   if ( assemble_residual ) {
     redecomp_residual_.SetSpace( const_cast<mfem::FiniteElementSpace*>( &redecomp_fes ) );
     redecomp_residual_ = 0.0;
   }
-  if ( !jacobian_data_ ) {
+  if ( !jacobian_data ) {
     return;
   }
   const std::array<const Array1D<int>*, 2> element_maps{ &mesh_data.GetElemMap1(), &mesh_data.GetElemMap2() };
   constexpr int pair_size = 2;
-  jacobian_contributions_.reserve( pair_size * pair_size );
+  std::vector<MfemMatrixBlock> blocks;
+  blocks.reserve( pair_size * pair_size );
   for ( int i = 0; i < pair_size; ++i ) {
-    const IndexT row_dofs = dof_offsets_[i + 1] - dof_offsets_[i];
     for ( int j = 0; j < pair_size; ++j ) {
-      const IndexT column_dofs = dof_offsets_[j + 1] - dof_offsets_[j];
-      jacobian_contributions_.emplace_back( surface_fes, surface_fes, redecomp_fes, redecomp_fes, *element_maps[i],
-                                            *element_maps[j] );
-      jacobian_contributions_.back().reserve(
-          pair_capacity, checkedProduct( pair_capacity, checkedProduct( row_dofs, column_dofs ) ) );
+      blocks.push_back( { i, j, connectivity_[i].shape()[1], connectivity_[j].shape()[1], dof_offsets_[i],
+                          dof_offsets_[j], *element_maps[i], *element_maps[j] } );
     }
   }
-  const IndexT max_element_dofs = std::max( dofs1, dofs2 );
-  block_.resize( checkedProduct( max_element_dofs, max_element_dofs ) );
+  matrix_ = std::make_unique<MfemMatrixAssembler>( MfemMatrixSpace{ jacobian_data->ParentPath(), redecomp_fes },
+                                                   MfemMatrixSpace{ jacobian_data->ParentPath(), redecomp_fes },
+                                                   std::move( blocks ), pair_capacity );
 }
 
 void MfemPairAssembler::addPair( InterfacePair pair, ArrayViewT<const RealT> residual,
                                  ArrayViewT<const RealT, 2> jacobian )
 {
-  if ( !jacobian_data_ ) {
+  if ( !matrix_ ) {
     throw std::logic_error( "Jacobian assembly was not enabled for this pair assembler." );
   }
   if ( !redecomp_residual_.FESpace() ) {
@@ -103,31 +99,10 @@ void MfemPairAssembler::addPair( InterfacePair pair, ArrayViewT<const RealT> res
 
 void MfemPairAssembler::addPairJacobian( InterfacePair pair, ArrayViewT<const RealT, 2> jacobian )
 {
-  if ( !jacobian_data_ ) {
+  if ( !matrix_ ) {
     throw std::logic_error( "Jacobian assembly was not enabled for this pair assembler." );
   }
-  if ( jacobian.shape()[0] != dof_offsets_[2] || jacobian.shape()[1] != dof_offsets_[2] ) {
-    throw std::invalid_argument( "Pair Jacobian must match the two elements' displacement DOFs." );
-  }
-  const MdArray<IndexT, 2> elements{ pair.element_id1_, pair.element_id2_ };
-  constexpr int pair_size = 2;
-  for ( int i = 0; i < pair_size; ++i ) {
-    const IndexT row_nodes = connectivity_[i].shape()[1];
-    const IndexT row_dofs = dof_offsets_[i + 1] - dof_offsets_[i];
-    for ( int j = 0; j < pair_size; ++j ) {
-      const IndexT column_nodes = connectivity_[j].shape()[1];
-      const IndexT column_dofs = dof_offsets_[j + 1] - dof_offsets_[j];
-      for ( IndexT column = 0; column < column_dofs; ++column ) {
-        const IndexT pair_column = dof_offsets_[j] + ( column % column_nodes ) * dimension_ + column / column_nodes;
-        for ( IndexT row = 0; row < row_dofs; ++row ) {
-          const IndexT pair_row = dof_offsets_[i] + ( row % row_nodes ) * dimension_ + row / row_nodes;
-          block_[row + column * row_dofs] = jacobian( pair_row, pair_column );
-        }
-      }
-      jacobian_contributions_[i * pair_size + j].append( elements[i], elements[j], block_.data(),
-                                                         checkedProduct( row_dofs, column_dofs ) );
-    }
-  }
+  matrix_->addPair( pair, jacobian );
 }
 
 ContactFormulationResult MfemPairAssembler::assemble() const
@@ -144,7 +119,7 @@ ContactFormulationResult MfemPairAssembler::assemble() const
   parent_fes->GetProlongationMatrix()->MultTranspose( parent_residual, residual.get() );
   ContactFormulationResult result;
   result.force.reset( residual.release() );
-  if ( jacobian_data_ ) {
+  if ( matrix_ ) {
     result.df_dx.reset( assembleJacobian().release() );
   }
   return result;
@@ -152,11 +127,10 @@ ContactFormulationResult MfemPairAssembler::assemble() const
 
 shared::ParSparseMat MfemPairAssembler::assembleJacobian() const
 {
-  if ( !jacobian_data_ ) {
+  if ( !matrix_ ) {
     throw std::logic_error( "Jacobian assembly was not enabled for this pair assembler." );
   }
-  auto* parent_fes = mesh_data_.GetParentCoords().ParFESpace();
-  return jacobian_data_->GetMfemJacobian( parent_fes, parent_fes, jacobian_contributions_ );
+  return matrix_->assemble();
 }
 
 }  // namespace tribol

@@ -20,7 +20,7 @@
 #include "tribol/common/MdArray.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MfemData.hpp"
-#include "tribol/assembly/MfemElementAssembly.hpp"
+#include "tribol/assembly/MfemMatrixAssembler.hpp"
 #include "tribol/physics/ContactFormulation.hpp"
 #include "tribol/assembly/PairContribution.hpp"
 
@@ -210,7 +210,7 @@ class MfemPairAssembler {
   void addPairsImpl( ExecutionMode execution_mode, const ArrayT<InterfacePair>& pairs, ResidualReader residual_reader,
                      JacobianReader jacobian_reader )
   {
-    if ( !jacobian_data_ ) {
+    if ( !matrix_ ) {
       throw std::logic_error( "Jacobian assembly was not enabled for this pair assembler." );
     }
     static_assert( DofCount % 2 == 0, "Pair block assembly requires equal element DOF counts." );
@@ -219,11 +219,8 @@ class MfemPairAssembler {
       throw std::invalid_argument( "Pair buffer DOFs must match the MFEM element layouts." );
     }
     const IndexT pair_count = pairs.size();
-    const int allocator_id = pairs.getAllocatorID();
-    ElementBlockBuffer<element_dofs, element_dofs> block00( pair_count, allocator_id );
-    ElementBlockBuffer<element_dofs, element_dofs> block01( pair_count, allocator_id );
-    ElementBlockBuffer<element_dofs, element_dofs> block10( pair_count, allocator_id );
-    ElementBlockBuffer<element_dofs, element_dofs> block11( pair_count, allocator_id );
+    auto batch = matrix_->makeBatch<element_dofs, element_dofs, 4>( pair_count, pairs.getAllocatorID() );
+    const auto matrix = batch.view();
     const auto pairs_view = pairs.view();
     const auto connectivity0 = connectivity_[0];
     const auto connectivity1 = connectivity_[1];
@@ -238,16 +235,9 @@ class MfemPairAssembler {
       redecomp_residual_.UseDevice( use_device );
       residual = redecomp_residual_.ReadWrite( use_device );
     }
-    const auto output00 = block00.view();
-    const auto output01 = block01.view();
-    const auto output10 = block10.view();
-    const auto output11 = block11.view();
     forAllExec( execution_mode, pair_count, [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
       const auto pair = pairs_view[pair_index];
-      output00.setElements( pair_index, pair.element_id1_, pair.element_id1_ );
-      output01.setElements( pair_index, pair.element_id1_, pair.element_id2_ );
-      output10.setElements( pair_index, pair.element_id2_, pair.element_id1_ );
-      output11.setElements( pair_index, pair.element_id2_, pair.element_id2_ );
+      matrix.packPair( pair_index, pair, jacobian_reader );
       if constexpr ( WithResidual ) {
         for ( IndexT node = 0; node < nodes0; ++node ) {
           for ( int component = 0; component < dimension; ++component ) {
@@ -264,34 +254,17 @@ class MfemPairAssembler {
           }
         }
       }
-      for ( IndexT column = 0; column < element_dofs; ++column ) {
-        const IndexT column0 = ( column % nodes0 ) * dimension + column / nodes0;
-        const IndexT column1 = element_dofs + ( column % nodes1 ) * dimension + column / nodes1;
-        for ( IndexT row = 0; row < element_dofs; ++row ) {
-          const IndexT row0 = ( row % nodes0 ) * dimension + row / nodes0;
-          const IndexT row1 = element_dofs + ( row % nodes1 ) * dimension + row / nodes1;
-          output00.setValue( pair_index, row, column, jacobian_reader( pair_index, row0, column0 ) );
-          output01.setValue( pair_index, row, column, jacobian_reader( pair_index, row0, column1 ) );
-          output10.setValue( pair_index, row, column, jacobian_reader( pair_index, row1, column0 ) );
-          output11.setValue( pair_index, row, column, jacobian_reader( pair_index, row1, column1 ) );
-        }
-      }
     } );
-    detail::appendElementBlocks( jacobian_contributions_[0], block00 );
-    detail::appendElementBlocks( jacobian_contributions_[1], block01 );
-    detail::appendElementBlocks( jacobian_contributions_[2], block10 );
-    detail::appendElementBlocks( jacobian_contributions_[3], block11 );
+    matrix_->addBatch( batch );
   }
 
  private:
   const MfemMeshData& mesh_data_;                          ///< Borrowed displacement mesh and field transfers.
-  const MfemJacobianData* jacobian_data_;                  ///< Borrowed Jacobian transfers; nullptr for forces only.
   std::array<Array2DView<const IndexT>, 2> connectivity_;  ///< Borrowed connectivity for each mesh.
   int dimension_;                                          ///< Spatial components per node.
-  MdArray<IndexT, 3> dof_offsets_{};      ///< Pair DOF offsets before, between, and after the two elements.
-  mfem::GridFunction redecomp_residual_;  ///< Accumulated residual in the Redecomp displacement space.
-  std::vector<PackedPairJacobianContribs> jacobian_contributions_;  ///< Four packed element Jacobian blocks.
-  Array1D<RealT, MemorySpace::Host> block_;  ///< Reused column-major storage for one element Jacobian block.
+  MdArray<IndexT, 3> dof_offsets_{};             ///< Pair DOF offsets before, between, and after the two elements.
+  mfem::GridFunction redecomp_residual_;         ///< Accumulated residual in the Redecomp displacement space.
+  std::unique_ptr<MfemMatrixAssembler> matrix_;  ///< Matrix component, absent for force-only assembly.
 };
 
 }  // namespace tribol

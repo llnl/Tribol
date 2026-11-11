@@ -8,6 +8,9 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added `MfemMatrixAssembler` for rectangular element-pair matrices with independent row and column spaces, maps,
+  and local DOF ordering. Pair-force and scalar-field assemblers share its host and execution-space block packing
+  and true-DOF transfers. Matrix batch views can pack blocks alongside vector accumulation in the same kernel.
 - Common Plane supports force-only MFEM evaluation without Enzyme through
   `setMfemUseCommonPlaneFormulation(cs_id, true, false)`. This evaluates pair residuals directly and allocates no
   Jacobian buffers or matrix transfer data; `df_dx` is absent. Existing two-argument calls still calculate forces and

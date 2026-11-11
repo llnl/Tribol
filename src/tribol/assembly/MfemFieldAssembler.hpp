@@ -15,7 +15,7 @@
 #include "tribol/common/MdArray.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/assembly/MfemElementAssembly.hpp"
+#include "tribol/assembly/MfemMatrixAssembler.hpp"
 
 namespace tribol {
 
@@ -86,47 +86,30 @@ class MfemFieldAssembler {
       throw std::invalid_argument( "Scalar field batch layout must match the configured fields and element DOFs." );
     }
     const IndexT pair_count = pairs.size();
-    std::vector<ElementBlockBuffer<NodeCount, element_dofs>> blocks;
-    blocks.reserve( 2 * FieldCount );
-    MdArray<ElementBlockView<NodeCount, element_dofs>, FieldCount, 2> block_views{};
+    std::vector<MfemMatrixBatch<NodeCount, element_dofs, 2>> batches;
+    batches.reserve( FieldCount );
+    MdArray<MfemMatrixBatchView<NodeCount, element_dofs, 2>, FieldCount> matrices{};
     MdArray<RealT*, FieldCount> values{};
     const bool use_device = isOnDevice( execution_mode );
     for ( IndexT field = 0; field < FieldCount; ++field ) {
       fields_[field].UseDevice( use_device );
       values[field] = fields_[field].ReadWrite( use_device );
-      for ( IndexT side = 0; side < 2; ++side ) {
-        blocks.emplace_back( pair_count, pairs.getAllocatorID() );
-        block_views( field, side ) = blocks.back().view();
-      }
+      batches.push_back( matrices_[field].makeBatch<NodeCount, element_dofs, 2>( pair_count, pairs.getAllocatorID() ) );
+      matrices[field] = batches.back().view();
     }
     const auto pairs_view = pairs.view();
-    const auto connectivity0 = connectivity_[0];
-    const IndexT nodes2 = connectivity_[1].shape()[1];
-    const int dimension = dimension_;
+    const auto connectivity = connectivity_;
     forAllExec( execution_mode, pair_count, [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
       const auto pair = pairs_view[pair_index];
       for ( IndexT field = 0; field < FieldCount; ++field ) {
-        const auto block0 = block_views( field, 0 ), block1 = block_views( field, 1 );
-        block0.setElements( pair_index, pair.element_id1_, pair.element_id1_ );
-        block1.setElements( pair_index, pair.element_id1_, pair.element_id2_ );
+        matrices[field].packPair( pair_index, pair, gradient_reader, field );
         for ( IndexT node = 0; node < NodeCount; ++node ) {
-          atomicAdd( values[field] + connectivity0( pair.element_id1_, node ),
-                     value_reader( pair_index, field, node ) );
-        }
-        for ( IndexT column = 0; column < element_dofs; ++column ) {
-          const IndexT coordinate0 = ( column % NodeCount ) * dimension + column / NodeCount;
-          const IndexT coordinate1 = element_dofs + ( column % nodes2 ) * dimension + column / nodes2;
-          for ( IndexT node = 0; node < NodeCount; ++node ) {
-            block0.setValue( pair_index, node, column, gradient_reader( pair_index, field, node, coordinate0 ) );
-            block1.setValue( pair_index, node, column, gradient_reader( pair_index, field, node, coordinate1 ) );
-          }
+          atomicAdd( values[field] + connectivity( pair.element_id1_, node ), value_reader( pair_index, field, node ) );
         }
       }
     } );
     for ( IndexT field = 0; field < FieldCount; ++field ) {
-      for ( IndexT side = 0; side < 2; ++side ) {
-        detail::appendElementBlocks( gradients_[field][side], blocks[2 * field + side] );
-      }
+      matrices_[field].addBatch( batches[field] );
     }
   }
 
@@ -138,16 +121,12 @@ class MfemFieldAssembler {
   std::vector<AssembledField> assemble() const;
 
  private:
-  const MfemMeshData& mesh_data_;                          ///< Borrowed displacement spaces and transfers.
-  const MfemSubmeshData& submesh_data_;                    ///< Borrowed scalar field spaces and transfers.
-  const MfemJacobianData& jacobian_data_;                  ///< Borrowed matrix transfers.
-  std::array<Array2DView<const IndexT>, 2> connectivity_;  ///< Borrowed pair connectivity.
-  int dimension_;                                          ///< Coordinate components per node.
-  IndexT nodes1_;                                          ///< Field nodes per mesh1 element.
-  MdArray<IndexT, 3> dof_offsets_{};        ///< Pair coordinate offsets before, between, and after elements.
-  std::vector<mfem::GridFunction> fields_;  ///< Accumulated scalar fields on Redecomp DOFs.
-  std::vector<std::vector<PackedPairJacobianContribs>> gradients_;  ///< Two coordinate blocks per field.
-  Array1D<RealT, MemorySpace::Host> gradient_block_;  ///< Reused host storage for one element gradient block.
+  const MfemSubmeshData& submesh_data_;        ///< Borrowed scalar field spaces and transfers.
+  Array2DView<const IndexT> connectivity_;     ///< Borrowed mesh1 field connectivity.
+  IndexT nodes1_;                              ///< Field nodes per mesh1 element.
+  MdArray<IndexT, 3> dof_offsets_{};           ///< Pair coordinate offsets before, between, and after elements.
+  std::vector<mfem::GridFunction> fields_;     ///< Accumulated scalar fields on Redecomp DOFs.
+  std::vector<MfemMatrixAssembler> matrices_;  ///< Scalar-row, coordinate-column matrix assembly for each field.
 };
 }  // namespace tribol
 #endif  // BUILD_REDECOMP
