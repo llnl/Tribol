@@ -8,7 +8,8 @@
  * @brief Check host MFEM pair and nodal assembly with prescribed residuals, nodal quantities, and nonsymmetric
  * Jacobians, without contact physics. Nonmatching two- and three-edge surfaces exercise shared nodes, dual submesh
  * transfers, positive-gap clamping, and all matrix blocks. Tests run on one and two ranks, with contact data on rank
- * zero. Physics and Enzyme derivatives are checked by the formulation tests.
+ * zero. Batch tests check accumulation after host calls, repeated batches, and an empty batch on Sequential and
+ * OpenMP backends. Physics and Enzyme derivatives are checked by the formulation tests.
  */
 #include <cmath>
 #include "gtest/gtest.h"
@@ -77,6 +78,35 @@ class MfemPairAssemblerTest : public testing::Test {
   CouplingScheme& scheme() { return CouplingSchemeManager::getInstance().at( 0 ); }
   /** @brief Compute a global vector norm. @param v Local entries. @return Distributed Euclidean norm. */
   RealT norm( const mfem::Vector& v ) { return std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, v, v ) ); }
+
+  /** @brief Create scalar dual fields and their matrix transfers on the existing decomposition. */
+  void prepareDualData()
+  {
+    auto& cs = scheme();
+    auto& mesh_data = *cs.getMfemMeshData();
+    auto submesh_data =
+        std::make_unique<MfemSubmeshData>( mesh_data.GetSubmesh(), mesh_data.GetLORMesh(),
+                                           std::make_unique<mfem::H1_FECollection>( 1, dimension ), 1, false );
+    submesh_data->UpdateMfemSubmeshData( mesh_data.GetRedecompMesh(), true );
+    cs.setMfemSubmeshData( std::move( submesh_data ) );
+    cs.setMfemJacobianData( std::make_unique<MfemJacobianData>( mesh_data, *cs.getMfemSubmeshData() ) );
+    cs.getMfemJacobianData()->UpdateJacobianXfer();
+  }
+
+  /** @brief List every pair of the nonmatching contact edges. @return Owned host pair list. */
+  ArrayT<InterfacePair> pairs()
+  {
+    const auto mesh1 = scheme().getMesh1().getView(), mesh2 = scheme().getMesh2().getView();
+    const IndexT count = mesh1.numberOfElements() * mesh2.numberOfElements();
+    ArrayT<InterfacePair> result( count, count, mesh1.getAllocatorId() );
+    IndexT index = 0;
+    for ( IndexT element1 = 0; element1 < mesh1.numberOfElements(); ++element1 ) {
+      for ( IndexT element2 = 0; element2 < mesh2.numberOfElements(); ++element2 ) {
+        result[index++] = { element1, element2 };
+      }
+    }
+    return result;
+  }
 
   std::unique_ptr<mfem::ParMesh> mesh_;               ///< Parent patch mesh.
   std::unique_ptr<mfem::H1_FECollection> fec_;        ///< Linear coordinate basis.
@@ -243,15 +273,8 @@ TEST_F( MfemPairAssemblerTest, returns_zero_outputs_for_empty_or_rejected_input 
 TEST_F( MfemPairAssemblerTest, assembles_nodal_quantities_and_dual_transfers )
 {
   auto& cs = scheme();
+  prepareDualData();
   auto& mesh_data = *cs.getMfemMeshData();
-  auto submesh_data =
-      std::make_unique<MfemSubmeshData>( mesh_data.GetSubmesh(), mesh_data.GetLORMesh(),
-                                         std::make_unique<mfem::H1_FECollection>( 1, dimension ), 1, false );
-  submesh_data->UpdateMfemSubmeshData( mesh_data.GetRedecompMesh(), true );
-  cs.setMfemSubmeshData( std::move( submesh_data ) );
-  cs.setMfemJacobianData( std::make_unique<MfemJacobianData>( mesh_data, *cs.getMfemSubmeshData() ) );
-  cs.getMfemJacobianData()->UpdateJacobianXfer();
-
   auto& dual_data = *cs.getMfemSubmeshData();
   auto& dual_fes = dual_data.GetSubmeshFESpace();
   dual_data.GetSubmeshPressure() = 2.5;
@@ -347,6 +370,137 @@ TEST_F( MfemPairAssemblerTest, assembles_nodal_quantities_and_dual_transfers )
   EXPECT_GT( global_positive, 0 );
   EXPECT_GT( global_negative, 0 );
 }
+
+/** @brief Exercise host batch kernels with each enabled host execution mode. */
+class MfemBatchAssemblerTest : public MfemPairAssemblerTest, public testing::WithParamInterface<ExecutionMode> {};
+
+// Distinct batch entries and an intervening empty batch must preserve all four matrix blocks and accumulated forces.
+TEST_P( MfemBatchAssemblerTest, accumulates_residuals_and_jacobians_across_batches )
+{
+  auto& cs = scheme();
+  const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
+  const auto pair_list = pairs();
+  MfemPairAssembler reference( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2, 0 );
+  MfemPairAssembler batched( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2, 0 );
+  const ArrayT<InterfacePair> empty( 0, 0, pair_list.getAllocatorID() );
+  for ( int batch = 0; batch < 3; ++batch ) {
+    const RealT scale = batch + 1.0;
+    MdArray<RealT, pair_dofs> residual{};
+    MdArray<RealT, pair_dofs, pair_dofs> jacobian{};
+    for ( IndexT pair = 0; pair < pair_list.size(); ++pair ) {
+      for ( int row = 0; row < pair_dofs; ++row ) {
+        residual[row] = scale * ( row + 1.0 );
+        for ( int column = 0; column < pair_dofs; ++column ) {
+          jacobian( row, column ) = scale * ( row + 1.0 ) * ( column + 2.0 );
+        }
+      }
+      reference.addPair( pair_list[pair], { residual.data(), pair_dofs },
+                         { jacobian.data(), { pair_dofs, pair_dofs } } );
+      if ( batch == 0 ) {
+        batched.addPair( pair_list[pair], { residual.data(), pair_dofs },
+                         { jacobian.data(), { pair_dofs, pair_dofs } } );
+      }
+    }
+    if ( batch != 0 ) {
+      const auto read_residual = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT row ) { return scale * ( row + 1.0 ); };
+      const auto read_jacobian = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT row, IndexT column ) {
+        return scale * ( row + 1.0 ) * ( column + 2.0 );
+      };
+      batched.addPairs<pair_dofs>( GetParam(), empty, read_residual, read_jacobian );
+      batched.addPairs<pair_dofs>( GetParam(), pair_list, read_residual, read_jacobian );
+    }
+  }
+  auto expected = reference.assemble();
+  auto result = batched.assemble();
+  EXPECT_GT( norm( *expected.force ), 0.0 );
+  result.force->Add( -1.0, *expected.force );
+  EXPECT_LT( norm( *result.force ), tolerance );
+  mfem::Vector direction( fes_->GetTrueVSize() ), expected_action( fes_->GetTrueVSize() ),
+      action( fes_->GetTrueVSize() );
+  direction = 1.0;
+  expected.df_dx->Mult( direction, expected_action );
+  result.df_dx->Mult( direction, action );
+  action -= expected_action;
+  EXPECT_LT( norm( action ), tolerance );
+}
+
+// Weighted gaps, areas, and both gradient matrices must retain host contributions and every subsequent batch.
+TEST_P( MfemBatchAssemblerTest, accumulates_nodal_values_and_gradients_across_batches )
+{
+  prepareDualData();
+  auto& cs = scheme();
+  const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
+  const auto pair_list = pairs();
+  MfemNodalAssembler reference( *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), mesh1,
+                                mesh2, 0 );
+  MfemNodalAssembler batched( *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), mesh1, mesh2,
+                              0 );
+  const ArrayT<InterfacePair> empty( 0, 0, pair_list.getAllocatorID() );
+  for ( int batch = 0; batch < 3; ++batch ) {
+    const RealT scale = batch + 1.0;
+    MdArray<RealT, nodes_per_edge> gaps{}, areas{};
+    MdArray<RealT, nodes_per_edge, pair_dofs> gap_gradients{}, area_gradients{};
+    for ( int node = 0; node < nodes_per_edge; ++node ) {
+      gaps[node] = -scale * ( node + 1.0 );
+      areas[node] = scale * ( node + 2.0 );
+      for ( int column = 0; column < pair_dofs; ++column ) {
+        gap_gradients( node, column ) = -scale * ( node + 1.0 ) * ( column + 2.0 );
+        area_gradients( node, column ) = scale * ( node + 2.0 ) * ( column + 1.0 );
+      }
+    }
+    for ( const auto pair : pair_list ) {
+      reference.addPairQuantities( pair, { gaps.data(), nodes_per_edge }, { areas.data(), nodes_per_edge },
+                                   { gap_gradients.data(), { nodes_per_edge, pair_dofs } },
+                                   { area_gradients.data(), { nodes_per_edge, pair_dofs } } );
+      if ( batch == 0 ) {
+        batched.addPairQuantities( pair, { gaps.data(), nodes_per_edge }, { areas.data(), nodes_per_edge },
+                                   { gap_gradients.data(), { nodes_per_edge, pair_dofs } },
+                                   { area_gradients.data(), { nodes_per_edge, pair_dofs } } );
+      }
+    }
+    if ( batch != 0 ) {
+      const auto read_value = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT value ) {
+        return value < nodes_per_edge ? -scale * ( value + 1.0 ) : scale * ( value - nodes_per_edge + 2.0 );
+      };
+      const auto read_gradient = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT value, IndexT column ) {
+        return value < nodes_per_edge ? -scale * ( value + 1.0 ) * ( column + 2.0 )
+                                      : scale * ( value - nodes_per_edge + 2.0 ) * ( column + 1.0 );
+      };
+      batched.addPairQuantities<nodes_per_edge, pair_dofs>( GetParam(), empty, read_value, read_gradient );
+      batched.addPairQuantities<nodes_per_edge, pair_dofs>( GetParam(), pair_list, read_value, read_gradient );
+    }
+  }
+  const auto expected = reference.assembleQuantities( false );
+  const auto result = batched.assembleQuantities( false );
+  EXPECT_GT( norm( expected.weighted_gap.get() ), 0.0 );
+  auto gap_error = result.weighted_gap.get();
+  gap_error -= expected.weighted_gap.get();
+  EXPECT_LT( norm( gap_error ), tolerance );
+  auto area_error = result.area.get();
+  area_error -= expected.area.get();
+  EXPECT_LT( norm( area_error ), tolerance );
+  mfem::Vector direction( fes_->GetTrueVSize() );
+  direction = 1.0;
+  const int dual_size = cs.getMfemSubmeshData()->GetSubmeshFESpace().GetTrueVSize();
+  mfem::Vector expected_action( dual_size ), action( dual_size );
+  expected.weighted_gap_jacobian->Mult( direction, expected_action );
+  result.weighted_gap_jacobian->Mult( direction, action );
+  action -= expected_action;
+  EXPECT_LT( norm( action ), tolerance );
+  expected.area_jacobian->Mult( direction, expected_action );
+  result.area_jacobian->Mult( direction, action );
+  action -= expected_action;
+  EXPECT_LT( norm( action ), tolerance );
+}
+
+INSTANTIATE_TEST_SUITE_P( host_backends, MfemBatchAssemblerTest,
+                          testing::Values( ExecutionMode::Sequential
+#ifdef TRIBOL_USE_OPENMP
+                                           ,
+                                           ExecutionMode::OpenMP
+#endif
+                                           ) );
+
 }  // namespace
 
 /**

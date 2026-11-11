@@ -74,6 +74,7 @@ inline void checkPairQuadratureResults( ExecutionMode execution_mode, const Arra
   }
 }
 
+#ifdef TRIBOL_USE_ENZYME
 /**
  * @brief Evaluate pair values and first derivatives without assembly side effects.
  * @tparam Function Fixed-size vector pair function.
@@ -150,6 +151,53 @@ void evaluatePairWeightedHessians( ExecutionMode execution_mode, ArrayViewT<cons
     }
   } );
 }
+
+/**
+ * @brief Evaluate scalar pair energies and reuse their weighted gradients as residuals.
+ * @tparam Function Scalar energy function providing evaluate() with energy, activation, and quadrature status.
+ * @param execution_mode Host or device execution policy.
+ * @param pairs Current pair list in execution-accessible memory.
+ * @param mesh1 Current first mesh.
+ * @param mesh2 Current second mesh.
+ * @param function Fixed pair-energy configuration.
+ * @param output Preallocated energies, quadrature results, gradients, and Hessians, with one slot per pair.
+ * Failed or inactive pairs receive zero energy and derivatives; quadrature failure must be reported before assembly.
+ * Zero-gap pairs retain the compressive Hessian.
+ */
+template <typename Function>
+void evaluatePairEnergiesAndHessians( ExecutionMode execution_mode, ArrayViewT<const InterfacePair> pairs,
+                                      MeshData::Viewer mesh1, MeshData::Viewer mesh2, Function function,
+                                      PairEnergyHessianView<Function::dof_count> output )
+{
+  static_assert( Function::value_count == 1, "Pair energy evaluation requires one scalar output." );
+  constexpr IndexT first_dofs = Function::first_dofs;
+  constexpr IndexT dof_count = Function::dof_count;
+  if ( output.derivatives.pair_count != pairs.size() ) {
+    throw std::invalid_argument( "Pair energy buffer size must match the pair list." );
+  }
+  forAllExec( execution_mode, pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
+    const auto pair = pairs[pair_index];
+    MdArray<RealT, dof_count> coordinates{};
+    mesh1.getFaceCoords( pair.element_id1_, coordinates.data() );
+    mesh2.getFaceCoords( pair.element_id2_, coordinates.data() + first_dofs );
+    const auto primal = function.evaluate( coordinates.view() );
+    const bool active = primal.quadrature_result.status == QuadratureStatus::Success && primal.has_active_points;
+    output.energies[pair_index] = active ? primal.energy : 0.0;
+    output.quadrature[pair_index] = primal.quadrature_result;
+    PairWeightedHessian<dof_count> derivatives{};
+    if ( active ) {
+      const MdArray<RealT, 1> weights{ 1.0 };
+      derivatives = EnzymePairDerivative<Function>::weightedHessian( coordinates.view(), function, weights.view() );
+    }
+    for ( IndexT row = 0; row < dof_count; ++row ) {
+      output.derivatives.setGradient( pair_index, row, derivatives.gradient[row] );
+      for ( IndexT column = 0; column < dof_count; ++column ) {
+        output.derivatives.setHessian( pair_index, row, column, derivatives.hessian( row, column ) );
+      }
+    }
+  } );
+}
+#endif  // TRIBOL_USE_ENZYME
 
 }  // namespace tribol
 

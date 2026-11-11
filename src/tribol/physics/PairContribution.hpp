@@ -190,6 +190,40 @@ class PairHessianBuffer {
   Array1D<RealT> hessians_;   ///< Weighted Hessians in structure-of-arrays order.
 };
 
+/** @brief Device-copyable pair energies, quadrature results, gradients, and Hessians. @tparam DofCount Coordinates.
+ */
+template <IndexT DofCount>
+struct PairEnergyHessianView {
+  RealT* energies{ nullptr };               ///< One scalar energy per pair.
+  QuadratureResult* quadrature{ nullptr };  ///< One quadrature result per pair.
+  PairHessianView<DofCount> derivatives{};  ///< Coordinate gradients and Hessians.
+};
+
+/** @brief Own pair energies and their coordinate derivatives in execution-space memory. @tparam DofCount Coordinates.
+ */
+template <IndexT DofCount>
+class PairEnergyHessianBuffer {
+ public:
+  /** @brief Allocate all pair outputs. @param pair_count Pair count. @param allocator_id Execution allocator. */
+  PairEnergyHessianBuffer( IndexT pair_count, int allocator_id )
+      : energies_( pair_count, pair_count, allocator_id ),
+        quadrature_( pair_count, pair_count, allocator_id ),
+        derivatives_( pair_count, allocator_id )
+  {
+  }
+
+  /** @brief Return a device-copyable writable view. @return View retaining no ownership. */
+  PairEnergyHessianView<DofCount> view() { return { energies_.data(), quadrature_.data(), derivatives_.view() }; }
+
+  /** @brief Return quadrature results. @return One result per pair. */
+  const Array1D<QuadratureResult>& quadratureResults() const { return quadrature_; }
+
+ private:
+  Array1D<RealT> energies_;                  ///< Scalar energies, zero for empty or inactive pairs.
+  Array1D<QuadratureResult> quadrature_;     ///< Quadrature status for each pair.
+  PairHessianBuffer<DofCount> derivatives_;  ///< Coordinate gradients and Hessians.
+};
+
 /**
  * @brief Device-copyable view of one fixed-size element block per pair.
  * @tparam RowDofs Dense block row count.

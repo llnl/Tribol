@@ -68,21 +68,27 @@ Composition and GPU pipeline
 than inheriting pair-method behavior. ``PairListBuilder`` owns coarse and refined searches. Fixed-size pair functions
 contain only geometry-independent configuration and are statically dispatched inside device kernels.
 
-Pair evaluation and assembly use two numerical stages. ``evaluatePairValuesAndJacobians()`` and
+Pair evaluation and assembly use separate kernels. ``evaluatePairValuesAndJacobians()`` and
 ``evaluatePairWeightedHessians()`` assign one pair to each execution-space thread and write structure-of-arrays
-``PairValueJacobianBuffer`` or ``PairHessianBuffer`` storage allocated before launch. ``EnzymePairDerivative`` supplies
-the common ``valuesAndJacobian()`` and ``weightedHessian()`` operations for all three formulations. Pair kernels do not
-allocate, call MFEM, throw, or dispatch virtual functions. A device reduction checks quadrature status after launch.
+``PairValueJacobianBuffer`` or ``PairHessianBuffer`` storage allocated before launch. Quadrature-point Energy Mortar
+uses ``evaluatePairEnergiesAndHessians()`` and ``PairEnergyHessianBuffer`` to calculate energy and its weighted
+coordinate derivatives together; the gradient supplies the residual without a separate Jacobian calculation.
+``EnzymePairDerivative`` supplies the common ``valuesAndJacobian()`` and ``weightedHessian()`` operations for all three
+formulations. Pair kernels do not allocate, call MFEM, throw, or dispatch virtual functions. A device reduction checks
+quadrature status after launch.
 
 ``MfemPairAssembler`` and ``MfemNodalAssembler`` scatter vectors and pack dense element blocks in execution-space
-kernels. Common Plane and quadrature-point Energy Mortar use displacement-only transfer; nodal Energy Mortar also
+kernels. Successive batch calls append matrix blocks and accumulate vector entries; empty batches preserve earlier
+contributions. Common Plane and quadrature-point Energy Mortar use displacement-only transfer; nodal Energy Mortar also
 assembles dual gap and area fields. Scalar energies use an execution-space reduction followed by one MPI scalar
 reduction. Sparse matrix ownership and transfer validation remain host orchestration, while pair-proportional residual,
 gap, area, derivative, and element-block calculations remain on the selected backend.
 
-The enforcement value reads current settings on every calculation. Common Plane defaults to scaled mesh penalties
-combined by ``SeriesPenaltyStiffness``. Energy Mortar defaults to registered constant penalties combined by
-``AveragePenaltyStiffness``. Nodal penalty and Lagrange multiplier enforcement are represented by distinct value types.
+The enforcement value reads current settings on every calculation. Common Plane reads the registered MFEM constant
+penalties and current mesh scales and combines them with ``SeriesPenaltyStiffness``. Updating MFEM constants does not
+require another call to ``updateMfemParallelDecomposition()``. Energy Mortar defaults to registered constant penalties
+combined by ``AveragePenaltyStiffness``. Nodal penalty and Lagrange multiplier enforcement are represented by distinct
+value types.
 Changing a penalty between calls does not require retaining or regenerating a formulation's mesh views.
 
 Nodal Energy Mortar uses the concrete energy ``0.5*k*min(weighted_gap,0)^2/area`` and its explicit gap/area partials.

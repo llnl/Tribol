@@ -174,6 +174,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Added check for face convexity. If non-convex, a full overlap calculation is triggered for common-plane.
 
 ### Fixed
+- Pair and nodal batch assembly preserve earlier vector and matrix contributions, including across empty batches.
+  Common Plane reads updated MFEM penalty constants without another decomposition refresh. The installed pair-kernel
+  header can be included without Enzyme. Quadrature-point Energy Mortar reuses its weighted energy gradient as the
+  residual instead of differentiating the scalar energy twice.
 - Fixed MFEM submesh-to-parent dual transfers so shared response and gap degrees of freedom are assembled correctly.
 - Improved 2D polygon intersection robustness by using consistent length scales and centroid-angle vertex ordering.
 - Fixed Energy Mortar smoothing derivatives and memory leaks in Enzyme differentiation paths.

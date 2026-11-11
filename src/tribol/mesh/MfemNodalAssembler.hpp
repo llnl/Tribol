@@ -69,6 +69,7 @@ class MfemNodalAssembler {
 
   /**
    * @brief Scatter nodal values and pack their coordinate gradients for a complete pair batch.
+   * Values and gradients accumulate across batch and host calls; an empty batch preserves earlier contributions.
    * @tparam NodeCount Number of integration-side nodes per pair.
    * @tparam DofCount Pair coordinate count.
    * @tparam ValueReader Device-callable `(pair, value) -> RealT` reader; gaps precede areas.
@@ -132,10 +133,10 @@ class MfemNodalAssembler {
         }
       }
     } );
-    assignBlock( gap_gradient_contributions_[0], gap0 );
-    assignBlock( gap_gradient_contributions_[1], gap1 );
-    assignBlock( area_gradient_contributions_[0], area0 );
-    assignBlock( area_gradient_contributions_[1], area1 );
+    detail::appendElementBlocks( gap_gradient_contributions_[0], gap0 );
+    detail::appendElementBlocks( gap_gradient_contributions_[1], gap1 );
+    detail::appendElementBlocks( area_gradient_contributions_[0], area0 );
+    detail::appendElementBlocks( area_gradient_contributions_[1], area1 );
   }
 
   /**
@@ -198,17 +199,6 @@ class MfemNodalAssembler {
   shared::ParSparseMat assembleHessians() const;
 
  private:
-  /** @brief Bulk-copy a packed execution buffer into the current Redecomp transfer representation. */
-  template <IndexT RowDofs, IndexT ColumnDofs>
-  static void assignBlock( PackedPairJacobianContribs& destination,
-                           const ElementBlockBuffer<RowDofs, ColumnDofs>& source )
-  {
-    destination.row_elem_ids = Array1D<IndexT, MemorySpace::Host>( source.rowElementIds() );
-    destination.col_elem_ids = Array1D<IndexT, MemorySpace::Host>( source.columnElementIds() );
-    destination.value_offsets = Array1D<IndexT, MemorySpace::Host>( source.valueOffsets() );
-    destination.jacobian_data = Array1D<RealT, MemorySpace::Host>( source.values() );
-  }
-
   /**
    * @brief Pack one nodal gradient matrix into column-major element blocks and append to the two pair contributions.
    * @param pair Element IDs in mesh1 and mesh2.

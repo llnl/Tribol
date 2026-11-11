@@ -13,6 +13,7 @@
 #include "tribol/config.hpp"
 #ifdef BUILD_REDECOMP
 #include <array>
+#include <limits>
 #include <stdexcept>
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/Atomics.hpp"
@@ -24,6 +25,43 @@
 #include "tribol/physics/PairContribution.hpp"
 
 namespace tribol {
+namespace detail {
+
+/**
+ * @brief Copy packed element blocks to the host and append them after any earlier contributions.
+ * @tparam RowDofs Dense block row count.
+ * @tparam ColumnDofs Dense block column count.
+ * @param destination Accumulated host blocks; existing entries and value offsets are preserved.
+ * @param blocks Execution-space blocks to copy; not retained.
+ * @throws std::length_error Accumulated entries or values exceed the supported index range; nothing is appended.
+ */
+template <IndexT RowDofs, IndexT ColumnDofs>
+void appendElementBlocks( PackedPairJacobianContribs& destination,
+                          const ElementBlockBuffer<RowDofs, ColumnDofs>& blocks )
+{
+  const auto max_size = std::numeric_limits<IndexT>::max();
+  if ( blocks.rowElementIds().size() > max_size - destination.row_elem_ids.size() ||
+       blocks.values().size() > max_size - destination.jacobian_data.size() ) {
+    throw std::length_error( "Accumulated element blocks exceed the supported index range." );
+  }
+  if ( blocks.rowElementIds().size() == 0 ) {
+    return;
+  }
+  const Array1D<IndexT, MemorySpace::Host> rows( blocks.rowElementIds() );
+  const Array1D<IndexT, MemorySpace::Host> columns( blocks.columnElementIds() );
+  Array1D<IndexT, MemorySpace::Host> offsets( blocks.valueOffsets() );
+  const Array1D<RealT, MemorySpace::Host> values( blocks.values() );
+  const IndexT value_offset = destination.jacobian_data.size();
+  for ( IndexT& offset : offsets ) {
+    offset += value_offset;
+  }
+  destination.row_elem_ids.append( rows.view() );
+  destination.col_elem_ids.append( columns.view() );
+  destination.value_offsets.append( offsets.view() );
+  destination.jacobian_data.append( values.view() );
+}
+
+}  // namespace detail
 
 /**
  * @brief Accumulate local pair residuals and Jacobians and transfer them to the parent displacement space.
@@ -70,7 +108,8 @@ class MfemPairAssembler {
    *
    * The numerical stage performs no allocation and no MFEM sparse-matrix calls inside the pair kernel. Four dense
    * element blocks per pair are packed into preallocated execution-space buffers, then copied in bulk into the
-   * Redecomp transfer representation.
+   * Redecomp transfer representation. Residuals and Jacobians accumulate across batch and host calls; an empty batch
+   * leaves all earlier contributions unchanged.
    *
    * @tparam DofCount Pair coordinate and residual count; both linear edges must contribute half.
    * @tparam ResidualReader Device-callable `(pair, row) -> RealT` reader.
@@ -142,10 +181,10 @@ class MfemPairAssembler {
         }
       }
     } );
-    assignBlock( jacobian_contributions_[0], block00 );
-    assignBlock( jacobian_contributions_[1], block01 );
-    assignBlock( jacobian_contributions_[2], block10 );
-    assignBlock( jacobian_contributions_[3], block11 );
+    detail::appendElementBlocks( jacobian_contributions_[0], block00 );
+    detail::appendElementBlocks( jacobian_contributions_[1], block01 );
+    detail::appendElementBlocks( jacobian_contributions_[2], block10 );
+    detail::appendElementBlocks( jacobian_contributions_[3], block11 );
   }
 
   /**
@@ -162,17 +201,6 @@ class MfemPairAssembler {
   shared::ParSparseMat assembleJacobian() const;
 
  private:
-  /** @brief Bulk-copy a packed execution buffer into the current Redecomp transfer representation. */
-  template <IndexT RowDofs, IndexT ColumnDofs>
-  static void assignBlock( PackedPairJacobianContribs& destination,
-                           const ElementBlockBuffer<RowDofs, ColumnDofs>& source )
-  {
-    destination.row_elem_ids = Array1D<IndexT, MemorySpace::Host>( source.rowElementIds() );
-    destination.col_elem_ids = Array1D<IndexT, MemorySpace::Host>( source.columnElementIds() );
-    destination.value_offsets = Array1D<IndexT, MemorySpace::Host>( source.valueOffsets() );
-    destination.jacobian_data = Array1D<RealT, MemorySpace::Host>( source.values() );
-  }
-
   const MfemMeshData& mesh_data_;                          ///< Borrowed displacement mesh and field transfers.
   const MfemJacobianData& jacobian_data_;                  ///< Borrowed displacement Jacobian transfers.
   std::array<Array2DView<const IndexT>, 2> connectivity_;  ///< Borrowed connectivity for each mesh.

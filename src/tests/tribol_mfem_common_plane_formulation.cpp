@@ -8,7 +8,8 @@
  * @brief Check explicit MFEM Common Plane selection, nonmatching constant-traction patches, and parent Jacobians.
  * The same tests run on one and two ranks; decomposition onto rank zero exercises a rank without contact elements.
  * Direct calls check output availability and validity after destroying the formulation.
- * Local quadrature and full pair derivatives are checked in tribol_common_plane_formulation.
+ * Penalty changes are checked without refreshing the decomposition. Local quadrature and full pair derivatives are
+ * checked in tribol_common_plane_formulation.
  */
 #include <cmath>
 #include <stdexcept>
@@ -180,6 +181,27 @@ TEST_P( MfemCommonPlaneTest, returns_owned_outputs_without_retaining_results )
   direction = 1.0;
   first.df_dx->Mult( direction, action );
   EXPECT_TRUE( std::isfinite( norm( action ) ) );
+}
+
+// New MFEM constants and current mesh scales must affect direct calls and update() without changing the decomposition.
+TEST_P( MfemCommonPlaneTest, uses_changed_constants_without_decomposition_refresh )
+{
+  enable();
+  evaluate();
+  const auto initial = getMfemContactForce( 0 );
+  setPenaltyScale( 0, 2.0 );
+  setPenaltyScale( 1, 2.0 );
+  setMfemKinematicConstantPenalty( 0, 4.0, 12.0 );
+  auto direct = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
+                                                                      scheme().getMesh2().getView() );
+  // Doubling both constants and both scales multiplies the effective series stiffness by four.
+  direct.force->Add( -4.0, initial );
+  EXPECT_LT( norm( *direct.force ), 1.0e-11 );
+  RealT dt = 1.0;
+  ASSERT_EQ( update( 0, 0.0, dt ), 0 );
+  auto updated = getMfemContactForce( 0 );
+  updated.Add( -4.0, initial );
+  EXPECT_LT( norm( updated ), 1.0e-11 );
 }
 
 // Parent Jacobians differentiate assembled residuals through nonmatching pair maps and MPI transfers.

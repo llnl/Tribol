@@ -77,31 +77,21 @@ ContactFormulationResult QuadraturePointEnergyMortar<QuadratureRule, PenaltyStif
   const PairFunction function{ quadrature_, penalty, EnergyMortarPenalty{ gap_ } };
   const auto pairs = pair_builder_.build( mesh1, mesh2 );
   const int allocator_id = pairs.getAllocatorID();
-  PairValueJacobianBuffer<PairFunction::value_count, PairFunction::dof_count> values( pairs.size(), allocator_id );
-  PairHessianBuffer<PairFunction::dof_count> hessians( pairs.size(), allocator_id );
-  evaluatePairValuesAndJacobians( execution_mode_, pairs.view(), mesh1, mesh2, function, values.view() );
-  evaluatePairWeightedHessians(
-      execution_mode_, pairs.view(), mesh1, mesh2, function,
-      [] TRIBOL_HOST_DEVICE( IndexT ) { return MdArray<RealT, PairFunction::value_count>{ 1.0 }; }, hessians.view() );
-  checkPairQuadratureResults( execution_mode_, values.quadratureResults() );
+  PairEnergyHessianBuffer<PairFunction::dof_count> contributions( pairs.size(), allocator_id );
+  evaluatePairEnergiesAndHessians( execution_mode_, pairs.view(), mesh1, mesh2, function, contributions.view() );
+  checkPairQuadratureResults( execution_mode_, contributions.quadratureResults() );
 
   MfemPairAssembler assembler( mesh_data_, jacobian_data_, mesh1, mesh2, pairs.size() );
-  const auto value_view = values.view();
-  const auto hessian_view = hessians.view();
+  const auto contribution_view = contributions.view();
   assembler.addPairs<PairFunction::dof_count>(
       execution_mode_, pairs,
-      [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
-        return value_view.has_active_points[pair] ? value_view.jacobian( pair, 0, row ) : 0.0;
-      },
+      [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) { return contribution_view.derivatives.gradient( pair, row ); },
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
-        return value_view.has_active_points[pair] ? hessian_view.hessian( pair, row, column ) : 0.0;
+        return contribution_view.derivatives.hessian( pair, row, column );
       } );
   auto result = assembler.assemble();
   result.energy = GlobalScalarAssembler::sum(
-      execution_mode_, pairs.size(),
-      [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
-        return value_view.has_active_points[pair] ? value_view.value( pair, 0 ) : 0.0;
-      },
+      execution_mode_, pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) { return contribution_view.energies[pair]; },
       result.force->GetComm() );
   return result;
 }

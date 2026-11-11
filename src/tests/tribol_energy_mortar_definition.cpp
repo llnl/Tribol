@@ -7,7 +7,8 @@
  * @file
  * @brief Check direct Energy Mortar energies, nodal integrals, and explicit field partials on enabled backends.
  * Host Enzyme checks compare the new pair definitions with finite differences for each Gauss count and derivative
- * mode. MFEM tests separately check assembly and shared-node normalization.
+ * mode. The energy kernel checks active, open, zero-gap, and invalid pairs on every enabled backend, including the
+ * compressive zero-gap Hessian. MFEM tests separately check assembly and shared-node normalization.
  */
 #include <type_traits>
 
@@ -22,6 +23,7 @@
 #include "tribol/physics/EnergyMortarEnergy.hpp"
 #include "tribol/physics/PairContribution.hpp"
 #include "tribol/physics/PairEvaluation.hpp"
+#include "tribol/physics/PairKernel.hpp"
 
 namespace {
 using namespace tribol;
@@ -158,6 +160,62 @@ TEST_P( EnergyMortarDefinitionTest, contribution_buffers_use_backend_accessible_
 }
 
 #ifdef TRIBOL_USE_ENZYME
+// A rigid vertical edge translation has analytic energy derivatives; zero gap retains the compressive tangent.
+TEST_P( EnergyMortarDefinitionTest, energy_kernel_returns_values_gradients_and_hessians )
+{
+  using Rule = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
+  using Function = EnergyMortarEnergy<Rule>;
+  const Function function{ Rule{ SmoothedProjectedEdgeMapping{ 0.0 } }, 4.0 };
+  const auto x1 = copyToExecutionSpace<RealT>( { 0.0, 2.0 } );
+  const auto y1 = copyToExecutionSpace<RealT>( { 0.0, 0.0 } );
+  const auto conn1 = copyToExecutionSpace<IndexT>( { 0, 1 } );
+  const auto x2 = copyToExecutionSpace<RealT>( { 3.0, -1.0, 3.0, -1.0, 3.0, -1.0, 0.0, 0.0 } );
+  const auto y2 = copyToExecutionSpace<RealT>( { 0.1, 0.1, -0.1, -0.1, 0.0, 0.0, 0.0, 0.0 } );
+  const auto conn2 = copyToExecutionSpace<IndexT>( { 0, 1, 2, 3, 4, 5, 6, 7 } );
+  MeshData mesh1( 0, 1, x1.size(), conn1.data(), EDGE, LINEAR_LAGRANGE, x1.data(), y1.data(), nullptr, memorySpace() );
+  MeshData mesh2( 1, 4, x2.size(), conn2.data(), EDGE, LINEAR_LAGRANGE, x2.data(), y2.data(), nullptr, memorySpace() );
+  const auto pairs = copyToExecutionSpace<InterfacePair>( { { 0, 0 }, { 0, 1 }, { 0, 2 }, { 0, 3 } } );
+  PairEnergyHessianBuffer<Function::dof_count> buffer( pairs.size(), allocatorId() );
+  const auto output = buffer.view();
+  evaluatePairEnergiesAndHessians( GetParam(), pairs.view(), mesh1.getView(), mesh2.getView(), function, output );
+
+  ArrayT<RealT, 2> summaries( axom::StackArray<axom::IndexType, 2>{ pairs.size(), 4 }, allocatorId() );
+  const auto summary = summaries.view();
+  forAllExec( GetParam(), pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
+    summary( pair, 0 ) = output.energies[pair];
+    summary( pair, 1 ) = output.derivatives.gradient( pair, 1 ) + output.derivatives.gradient( pair, 3 );
+    summary( pair, 2 ) = 0.0;
+    summary( pair, 3 ) = 0.0;
+    for ( IndexT row = 0; row < Function::dof_count; ++row ) {
+      summary( pair, 3 ) += std::abs( output.derivatives.gradient( pair, row ) );
+      for ( IndexT column = 0; column < Function::dof_count; ++column ) {
+        summary( pair, 3 ) += std::abs( output.derivatives.hessian( pair, row, column ) );
+        if ( ( row == 1 || row == 3 ) && ( column == 1 || column == 3 ) ) {
+          summary( pair, 2 ) += output.derivatives.hessian( pair, row, column );
+        }
+      }
+    }
+  } );
+  const ArrayT<RealT, 2, MemorySpace::Host> host( summaries );
+  const Array1D<QuadratureResult, MemorySpace::Host> status( buffer.quadratureResults() );
+  // Length two and stiffness four give E=0.04, dE/dy=-0.8, and d2E/dy2=8 for the penetrating pair.
+  EXPECT_NEAR( host( 0, 0 ), 0.04, tolerance );
+  EXPECT_NEAR( host( 0, 1 ), -0.8, tolerance );
+  EXPECT_NEAR( host( 0, 2 ), 8.0, tolerance );
+  EXPECT_NEAR( host( 2, 0 ), 0.0, tolerance );
+  EXPECT_NEAR( host( 2, 1 ), 0.0, tolerance );
+  EXPECT_NEAR( host( 2, 2 ), 8.0, tolerance );
+  for ( IndexT pair : { 0, 1, 2 } ) {
+    EXPECT_EQ( status[pair].status, QuadratureStatus::Success );
+  }
+  EXPECT_EQ( status[3].status, QuadratureStatus::InvalidGeometry );
+  for ( IndexT pair : { 1, 3 } ) {
+    EXPECT_EQ( host( pair, 0 ), 0.0 );
+    EXPECT_EQ( host( pair, 3 ), 0.0 );
+  }
+  EXPECT_THROW( checkPairQuadratureResults( GetParam(), buffer.quadratureResults() ), std::invalid_argument );
+}
+
 /** @brief Small fixed-size pair function used to compile and execute both Enzyme operations on every backend. */
 struct PolynomialPairFunction {
   static constexpr IndexT value_count = 2;  ///< Number of outputs.

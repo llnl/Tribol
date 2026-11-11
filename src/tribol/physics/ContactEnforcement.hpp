@@ -101,7 +101,7 @@ using QuadraturePointContactEnforcement =
     std::variant<RegisteredPenaltyEnforcement<PenaltyStiffness>, UnconfiguredPenaltyEnforcement>;
 
 /**
- * @brief Read mesh penalties, apply current mesh scales, and validate them for each request.
+ * @brief Read registered MFEM penalties, apply current mesh scales, and validate them for each request.
  * @tparam PenaltyStiffness Callable combining the two scaled penalties.
  */
 template <typename PenaltyStiffness = SeriesPenaltyStiffness>
@@ -112,16 +112,21 @@ class ScaledMeshPenaltyInputs {
 
   /**
    * @brief Validate and combine current positive finite scaled penalties.
-   * @param mesh_data MFEM parent data, unused by this input provider.
-   * @param mesh1 First mesh with current constant penalty and scale.
-   * @param mesh2 Second mesh with current constant penalty and scale.
+   * @param mesh_data Current registered MFEM constant penalties.
+   * @param mesh1 First mesh with its current penalty scale.
+   * @param mesh2 Second mesh with its current penalty scale.
    * @return Combined scaled stiffness.
-   * @throws std::invalid_argument A scaled penalty is invalid; no stiffness is returned.
+   * @throws std::invalid_argument A constant is absent or a scaled penalty is invalid; no stiffness is returned.
    */
-  RealT prepare( [[maybe_unused]] const MfemMeshData& mesh_data, MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
+  RealT prepare( const MfemMeshData& mesh_data, MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
   {
-    const RealT penalty1 = mesh1.getElementData().m_penalty_stiffness * mesh1.getElementData().m_penalty_scale;
-    const RealT penalty2 = mesh2.getElementData().m_penalty_stiffness * mesh2.getElementData().m_penalty_scale;
+    const auto* constant1 = mesh_data.GetMesh1KinematicConstantPenalty();
+    const auto* constant2 = mesh_data.GetMesh2KinematicConstantPenalty();
+    if ( !constant1 || !constant2 ) {
+      throw std::invalid_argument( "Scaled mesh inputs require registered constant penalties." );
+    }
+    const RealT penalty1 = *constant1 * mesh1.getElementData().m_penalty_scale;
+    const RealT penalty2 = *constant2 * mesh2.getElementData().m_penalty_scale;
     if ( !std::isfinite( penalty1 ) || !std::isfinite( penalty2 ) || penalty1 <= 0.0 || penalty2 <= 0.0 ) {
       throw std::invalid_argument( "Scaled mesh inputs require positive finite penalties." );
     }
