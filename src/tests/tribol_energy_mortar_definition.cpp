@@ -178,7 +178,8 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernel_returns_values_gradients_and_h
   const auto pairs = copyToExecutionSpace<InterfacePair>( { { 0, 0 }, { 0, 1 }, { 0, 2 }, { 0, 3 } } );
   PairEnergyHessianBuffer<Function::dof_count> buffer( pairs.size(), allocatorId() );
   const auto output = buffer.view();
-  evaluatePairEnergiesAndHessians( GetParam(), pairs.view(), mesh1.getView(), mesh2.getView(), function, output );
+  evaluatePairValuesJacobiansAndHessians( GetParam(), pairs.view(), mesh1.getView(), mesh2.getView(), function,
+                                          output );
 
   ArrayT<RealT, 2> summaries( axom::StackArray<axom::IndexType, 2>{ pairs.size(), 4 }, allocatorId() );
   const auto summary = summaries.view();

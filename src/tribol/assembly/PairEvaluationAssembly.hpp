@@ -66,9 +66,9 @@ ContactFormulationResult evaluateAndAssembleResidualPairs( ExecutionMode executi
 }
 
 /**
- * @brief Evaluate scalar pair energies and assemble their gradients as forces and their Hessians as df_dx.
+ * @brief Evaluate scalar pair energies and assemble their Jacobians as forces and their Hessians as df_dx.
  *
- * The energy kernel reuses the gradient computed with each Hessian as the force contribution. Evaluation and assembly
+ * The energy kernel reuses the Jacobian computed with each Hessian as the force contribution. Evaluation and assembly
  * use separate kernels; scratch arrays remain alive until assembly and the global energy sum finish. Quadrature
  * failures are reported before any contributions are assembled.
  *
@@ -98,7 +98,7 @@ ContactFormulationResult evaluateAndAssembleEnergyPairs( ExecutionMode execution
   static_assert( Function::value_count == 1, "Pair energies must have one scalar output." );
   PairEnergyHessianBuffer<Function::dof_count> contributions( pairs.size(), pairs.getAllocatorID() );
   const auto view = contributions.view();
-  evaluatePairEnergiesAndHessians( execution_mode, pairs.view(), mesh1, mesh2, function, view );
+  evaluatePairValuesJacobiansAndHessians( execution_mode, pairs.view(), mesh1, mesh2, function, view );
   checkPairQuadratureResults( execution_mode, contributions.quadratureResults() );
 
   MfemPairAssembler assembler( mesh_data, jacobian_data, mesh1, mesh2, pairs.size() );

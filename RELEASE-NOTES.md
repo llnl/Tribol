@@ -73,6 +73,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Pair kernels use Jacobian and Hessian terminology for derivatives of the input function. Renamed
+  `evaluatePairWeightedHessians()` to `evaluatePairWeightedJacobiansAndHessians()` and
+  `evaluatePairEnergiesAndHessians()` to `evaluatePairValuesJacobiansAndHessians()`, documenting the weighted sums and
+  the scalar-only requirement of the value/Jacobian/Hessian kernel.
 - Moved pair evaluation, differentiation, contribution buffers, and MFEM vector/matrix assemblers into
   `tribol/assembly/`. Includes for `PairContribution`, `PairEvaluation`, `PairKernel`, `PairEvaluationAssembly`,
   `MfemPairAssembler`, `MfemFieldAssembler`, and `MfemElementAssembly` now use that directory.

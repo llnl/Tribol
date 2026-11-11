@@ -79,21 +79,24 @@ where applicable. Calculations pass that function to the evaluation kernels with
 The pair functions accept gap callables directly. Nodal penalty energy and its field partials are calculated by
 ``EnergyMortarNodalPartials::evaluate()``, independently of the geometric gap definition.
 
-Common Plane calls ``detail::evaluateAndAssembleResidualPairs()`` with its pair function to evaluate residual values
-and Jacobians. Quadrature-point Energy Mortar calls ``detail::evaluateAndAssembleEnergyPairs()`` to evaluate scalar
-energies, gradients, and Hessians. Both helpers allocate pair buffers, evaluate derivatives, check quadrature status
+Common Plane calls ``detail::evaluateAndAssembleResidualPairs()`` with its pair function to evaluate residual values and
+Jacobians. Quadrature-point Energy Mortar calls ``detail::evaluateAndAssembleEnergyPairs()`` to evaluate scalar energies
+and their Jacobians and Hessians. Both helpers allocate pair buffers, evaluate derivatives, check quadrature status
 before assembly, and return force and coordinate Jacobian on parent true DOFs. The energy helper also sums the scalar
 energy over MPI ranks. Search and physics remain in each formulation. Nodal Energy Mortar assembles gap and area fields
 before calculating forces, so it uses the kernels and assemblers directly.
 
 Pair evaluation and assembly use separate kernels. ``evaluatePairValuesAndJacobians()`` and
-``evaluatePairWeightedHessians()`` assign one pair to each execution-space thread and write structure-of-arrays
-``PairValueJacobianBuffer`` or ``PairHessianBuffer`` storage allocated before launch. Quadrature-point Energy Mortar
-uses ``evaluatePairEnergiesAndHessians()`` and ``PairEnergyHessianBuffer`` to calculate energy and its weighted
-coordinate derivatives together; the gradient supplies the residual without a separate Jacobian calculation.
+``evaluatePairWeightedJacobiansAndHessians()`` assign one pair to each execution-space thread and write
+structure-of-arrays ``PairValueJacobianBuffer`` or ``PairHessianBuffer`` storage allocated before launch.
+Quadrature-point Energy Mortar uses ``evaluatePairValuesJacobiansAndHessians()`` and ``PairEnergyHessianBuffer`` to
+calculate a scalar function's value, coordinate Jacobian, and Hessian together. The energy function's Jacobian supplies
+the residual vector. For a vector function ``f``, the weighted kernel returns ``sum_i w_i * df_i/dx_j`` and ``sum_i w_i
+* d²f_i/(dx_j dx_k)`` with fixed output weights. It returns neither values nor the full unweighted Jacobian. These
+output weights multiply components of ``f`` independently of the quadrature weights already included in ``f``.
 ``EnzymePairDerivative`` supplies the common ``valuesAndJacobian()`` and ``weightedHessian()`` operations for all three
-formulations. Pair kernels do not allocate, call MFEM, throw, or dispatch virtual functions. A device reduction checks
-quadrature status after launch.
+formulations. Per-pair calculations do not allocate, call MFEM, throw, or dispatch virtual functions. A device reduction
+checks quadrature status after launch.
 
 ``MfemPairAssembler`` and ``MfemFieldAssembler`` scatter vectors and pack dense element blocks in execution-space
 kernels. Successive batch calls append matrix blocks and accumulate vector entries; empty batches preserve earlier

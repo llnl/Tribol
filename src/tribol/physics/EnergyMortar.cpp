@@ -110,7 +110,7 @@ shared::ParSparseMat assembleWeightedNodalHessian( ExecutionMode execution_mode,
   } );
 
   PairHessianBuffer<Function::dof_count> hessians( pair_count, allocator_id );
-  evaluatePairWeightedHessians(
+  evaluatePairWeightedJacobiansAndHessians(
       execution_mode, pairs.view(), mesh1, mesh2, function,
       [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
         MdArray<RealT, Function::value_count> weights{};
