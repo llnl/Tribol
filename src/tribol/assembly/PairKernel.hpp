@@ -74,6 +74,19 @@ inline void checkPairQuadratureResults( ExecutionMode execution_mode, const Arra
   }
 }
 
+/**
+ * @brief Require a pair evaluation and a compile-time coordinate split with entries for both geometries.
+ *
+ * The kernel reads geometry1 coordinates first, followed by geometry2 coordinates starting at first_dofs.
+ * Derivative calculations on an already packed coordinate array require only PairFunctionType.
+ * @tparam PairFunction Type evaluating a pair gathered from two meshes.
+ */
+template <typename PairFunction>
+concept PairKernelFunctionType = PairFunctionType<PairFunction> && requires {
+  typename std::integral_constant<IndexT, PairFunction::first_dofs>;
+  requires( PairFunction::first_dofs > 0 && PairFunction::first_dofs < PairFunction::dof_count );
+};
+
 #ifdef TRIBOL_USE_ENZYME
 /**
  * @brief Evaluate each pair's values and coordinate Jacobian into preallocated buffers.
@@ -94,7 +107,7 @@ inline void checkPairQuadratureResults( ExecutionMode execution_mode, const Arra
  * After the check succeeds, the caller could assemble the values into a force vector and the Jacobians into a matrix.
  * This kernel stores each pair's contribution separately, including when pairs share nodes.
  *
- * @tparam PairFunction Pair function whose values() returns the fixed-size vector f(x).
+ * @tparam PairFunction Pair function whose evaluate() result supplies the fixed-size vector f(x) and quadrature state.
  * @param execution_mode Host or device execution policy.
  * @param pairs Current pair list in execution-accessible memory.
  * @param mesh1 Current first mesh.
@@ -103,7 +116,7 @@ inline void checkPairQuadratureResults( ExecutionMode execution_mode, const Arra
  * @param output Preallocated values, Jacobians, quadrature results, and activation flags, with one slot per pair.
  * @throws std::invalid_argument Buffer size does not match the pair list; no outputs are written.
  */
-template <typename PairFunction>
+template <PairKernelFunctionType PairFunction>
 void evaluatePairValuesAndJacobians( ExecutionMode execution_mode, ArrayViewT<const InterfacePair> pairs,
                                      MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function,
                                      PairValueJacobianView<PairFunction::value_count, PairFunction::dof_count> output )
@@ -155,7 +168,7 @@ void evaluatePairValuesAndJacobians( ExecutionMode execution_mode, ArrayViewT<co
  * its coordinate force Jacobian. This example uses the same multipliers for every pair; a production reader can
  * obtain different multipliers for each pair from the nodal field.
  *
- * @tparam PairFunction Pair function whose values() returns the fixed-size vector f(x).
+ * @tparam PairFunction Pair function whose evaluate() result supplies the fixed-size vector f(x) and quadrature state.
  * @tparam WeightReader Device-callable object returning one pair's fixed value weights.
  * @param execution_mode Host or device execution policy.
  * @param pairs Current pair list in execution-accessible memory.
@@ -167,7 +180,7 @@ void evaluatePairValuesAndJacobians( ExecutionMode execution_mode, ArrayViewT<co
  * @pre The caller has checked pair quadrature for errors at these coordinates.
  * @throws std::invalid_argument Buffer size does not match the pair list; no outputs are written.
  */
-template <typename PairFunction, typename WeightReader>
+template <PairKernelFunctionType PairFunction, typename WeightReader>
 void evaluatePairWeightedJacobiansAndHessians( ExecutionMode execution_mode, ArrayViewT<const InterfacePair> pairs,
                                                MeshData::Viewer mesh1, MeshData::Viewer mesh2,
                                                PairFunction pair_function, WeightReader read_weights,
@@ -224,12 +237,12 @@ void evaluatePairWeightedJacobiansAndHessians( ExecutionMode execution_mode, Arr
  * @param output Preallocated scalar values, quadrature results, Jacobians, and Hessians, with one slot per pair.
  * @throws std::invalid_argument Buffer size does not match the pair list; no outputs are written.
  */
-template <typename PairFunction>
+template <PairKernelFunctionType PairFunction>
+  requires( PairFunction::value_count == 1 )
 void evaluatePairValuesJacobiansAndHessians( ExecutionMode execution_mode, ArrayViewT<const InterfacePair> pairs,
                                              MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function,
                                              PairEnergyHessianView<PairFunction::dof_count> output )
 {
-  static_assert( PairFunction::value_count == 1, "Pair energy evaluation requires one scalar output." );
   constexpr IndexT first_dofs = PairFunction::first_dofs;
   constexpr IndexT dof_count = PairFunction::dof_count;
   if ( output.derivatives.pair_count != pairs.size() ) {

@@ -73,6 +73,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Pair functions expose `evaluate()` as their single calculation interface. Removed their `values(coordinates)`
+  wrappers; callers obtain numerical values through `evaluate(coordinates).values()`. `PairFunctionType` constrains
+  evaluation sizes and result types, while `PairKernelFunctionType` also checks the coordinate split used by mesh
+  kernels. Scalar value/Jacobian/Hessian operations require exactly one output.
 - Scalar pair differentiation returns the value, Jacobian, Hessian, quadrature status, and activation together through
   `EnzymePairDerivative::valueJacobianAndHessian()`. The scalar value/Jacobian/Hessian kernel reuses those AD outputs,
   removing separate value and Jacobian calculations while retaining active zero-value derivatives.

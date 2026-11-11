@@ -10,7 +10,8 @@
 #ifndef SRC_TRIBOL_ASSEMBLY_PAIREVALUATION_HPP_
 #define SRC_TRIBOL_ASSEMBLY_PAIREVALUATION_HPP_
 
-#include <utility>
+#include <concepts>
+#include <type_traits>
 #include "tribol/common/Enzyme.hpp"
 #include "tribol/common/MdArray.hpp"
 #include "tribol/integ/QuadratureCommon.hpp"
@@ -79,6 +80,27 @@ struct PairValueJacobianHessian {
 };
 
 /**
+ * @brief Require positive fixed sizes and a const pair evaluation exposing values, quadrature status, and activation.
+ *
+ * The evaluation result's const values() method returns an owning fixed-size array. Its quadrature_result and
+ * has_active_points members have types QuadratureResult and bool. These requirements check expressions and types;
+ * numerical correctness, host/device execution, and Enzyme compatibility must be verified separately.
+ * @tparam Function Type evaluating one pair from its coordinates.
+ */
+template <typename Function>
+concept PairFunctionType =
+    requires {
+      typename std::integral_constant<IndexT, Function::value_count>;
+      typename std::integral_constant<IndexT, Function::dof_count>;
+      requires( Function::value_count > 0 && Function::dof_count > 0 );
+    } && requires( const Function& function, MdSpan<const RealT, Function::dof_count> coordinates,
+                   const std::remove_cvref_t<decltype( function.evaluate( coordinates ) )>& result ) {
+      { result.values() } -> std::same_as<MdArray<RealT, Function::value_count>>;
+      requires std::same_as<std::remove_cvref_t<decltype( result.quadrature_result )>, QuadratureResult>;
+      requires std::same_as<std::remove_cvref_t<decltype( result.has_active_points )>, bool>;
+    };
+
+/**
  * @brief Differentiate a fixed-size vector pair function on the host or device.
  *
  * For f(x), valuesAndJacobian() returns f and J_ij = df_i/dx_j. weightedJacobianAndHessian() returns the sums
@@ -87,23 +109,22 @@ struct PairValueJacobianHessian {
  *
  * Function supplies positive static `value_count` and `dof_count` members and a host/device-callable evaluate()
  * taking MdSpan<const RealT, dof_count>. The result's values() method returns an MdArray<RealT, value_count>;
- * quadrature_result and has_active_points describe the calculation. Weighted differentiation additionally requires
- * Function::values() to return the same numerical values for those coordinates. Only coordinates are differentiated;
- * settings and output weights are held fixed. Output weights multiply components of f
- * independently of any quadrature weights already included in f. Scalar energies and vector residuals use the same
- * Jacobian and Hessian terminology, always referring to derivatives of the input function f.
+ * quadrature_result and has_active_points describe the calculation. All operations use this evaluate() interface.
+ * Only coordinates are differentiated; settings and output weights are held fixed. Output weights multiply components
+ * of f independently of any quadrature weights already included in f. Scalar energies and vector residuals use the
+ * same Jacobian and Hessian terminology, always referring to derivatives of the input function f.
  *
  * valuesAndJacobian() obtains values, quadrature status, and activation from the forward AD evaluations, without a
  * separate evaluate() call. The caller must check the returned quadrature status before consuming the numerical
- * outputs. weightedJacobianAndHessian() differentiates values() without returning status or activation; the caller
- * must check quadrature separately. valueJacobianAndHessian() obtains the scalar value and state from the same AD
- * calls that compute its derivatives. The class allocates no dynamic memory, retains no state, and can run inside a
- * CUDA or HIP kernel.
+ * outputs. weightedJacobianAndHessian() differentiates the returned values without returning status or activation;
+ * the caller must check quadrature separately. valueJacobianAndHessian() obtains the scalar value and state from the
+ * same AD calls that compute its derivatives. The class allocates no dynamic memory, retains no state, and can run
+ * inside a CUDA or HIP kernel.
  *
  * @tparam Function Fixed-size pair-local scalar or vector function.
  */
 #ifdef TRIBOL_USE_ENZYME
-template <typename Function>
+template <PairFunctionType Function>
 class EnzymePairDerivative {
  public:
   static constexpr IndexT value_count = Function::value_count;  ///< Number of pair-function outputs.
@@ -223,8 +244,8 @@ class EnzymePairDerivative {
    */
   TRIBOL_HOST_DEVICE static PairValueJacobianHessian<dof_count> valueJacobianAndHessian(
       MdSpan<const RealT, dof_count> coordinates, const Function& function )
+    requires( value_count == 1 )
   {
-    static_assert( value_count == 1, "Value/Jacobian/Hessian evaluation requires one scalar output." );
     PairValueJacobianHessian<dof_count> result{};
     for ( IndexT column = 0; column < dof_count; ++column ) {
       MdArray<RealT, dof_count> coordinate_seed{}, derivative{};
@@ -306,7 +327,7 @@ class EnzymePairDerivative {
                                                       const RealT* weights, RealT* scalar )
   {
     const auto& function = *static_cast<const Function*>( function_void );
-    const auto values = function.values( { coordinates, dof_count } );
+    const auto values = function.evaluate( { coordinates, dof_count } ).values();
     *scalar = 0.0;
     for ( IndexT value = 0; value < value_count; ++value ) {
       *scalar += weights[value] * values[value];

@@ -23,6 +23,9 @@ using namespace tribol;
 constexpr RealT tolerance = 1.0e-12;  ///< Roundoff allowance for geometry and exact polynomial integrals.
 using Coordinates = MdArray<RealT, LinearEdgeGeometry::vertex_count, LinearEdgeGeometry::spatial_dimension>;
 
+// Common Plane exposes the same values and quadrature state required by the shared pair derivative calculations.
+static_assert( PairFunctionType<CommonPlanePairFunction<EdgeQuadratureRuleGenerator<1>>> );
+
 /**
  * @brief Copy two edge-coordinate arrays into the pair function's input order.
  * @param coordinates1 First edge's vertex coordinates.

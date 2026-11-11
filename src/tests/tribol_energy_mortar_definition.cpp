@@ -9,6 +9,7 @@
  * Host Enzyme checks compare the new pair definitions with finite differences for each Gauss count and derivative
  * mode. The energy kernel checks active, open, zero-gap, and invalid pairs on every enabled backend, including the
  * compressive zero-gap Hessian. Forward AD checks values and quadrature state without an extra value evaluation.
+ * Compile-time checks accept the supported pair interfaces and reject invalid sizes, results, and coordinate splits.
  * MFEM tests separately check assembly and shared-node normalization.
  */
 #include <type_traits>
@@ -31,6 +32,117 @@ namespace {
 using namespace tribol;
 constexpr RealT tolerance = 1.0e-12;  ///< Roundoff allowance for primal integrals and exact partials.
 using EnergyMortarDefinitionTest = detail::ExecutionTest;
+
+/** @brief Declaration-only pair function for checking the evaluation interface without executing it. */
+struct PairFunctionCandidate {
+  static constexpr IndexT value_count = 2;  ///< Two output values.
+  static constexpr IndexT dof_count = 4;    ///< Four coordinate entries.
+
+  /** @brief Declare a const evaluation. @param coordinates Pair inputs. @return Values and quadrature state. */
+  PairResidualValue<value_count> evaluate( MdSpan<const RealT, dof_count> coordinates ) const;
+};
+
+/** @brief Valid mesh-kernel input splits four coordinates between two geometries. */
+struct PairKernelFunctionCandidate : PairFunctionCandidate {
+  static constexpr IndexT first_dofs = 2;  ///< Two coordinates for each geometry.
+};
+
+/** @brief Zero outputs must be rejected before instantiating fixed-size numerical arrays. */
+struct ZeroValuePairFunction : PairFunctionCandidate {
+  static constexpr IndexT value_count = 0;  ///< Invalid output count.
+};
+
+/** @brief Zero coordinates must be rejected before instantiating a coordinate view. */
+struct ZeroDofPairFunction : PairFunctionCandidate {
+  static constexpr IndexT dof_count = 0;  ///< Invalid coordinate count.
+};
+
+/** @brief Output counts must be compile-time constants. */
+struct RuntimeSizePairFunction : PairFunctionCandidate {
+  IndexT value_count = 2;  ///< Invalid runtime output count.
+};
+
+/** @brief The returned value array must agree with the declared output count. */
+struct WrongValueCountPairFunction : PairFunctionCandidate {
+  static constexpr IndexT value_count = 1;  ///< Disagrees with the inherited two-entry result.
+};
+
+/** @brief Pair evaluation must be callable on a const function object. */
+struct MutablePairFunction : PairFunctionCandidate {
+  /** @brief Declare a mutable-only evaluation. @param coordinates Pair inputs. @return Values and quadrature state. */
+  PairResidualValue<value_count> evaluate( MdSpan<const RealT, dof_count> coordinates );
+};
+
+/** @brief An array alone supplies no quadrature status or activation. */
+struct MissingStatePairFunction : PairFunctionCandidate {
+  /** @brief Declare a result without quadrature state. @param coordinates Pair inputs. @return Numerical values only.
+   */
+  MdArray<RealT, value_count> evaluate( MdSpan<const RealT, dof_count> coordinates ) const;
+};
+
+/** @brief The numerical values must be readable from a const evaluation result. */
+struct MutableValuesPairFunction : PairFunctionCandidate {
+  /** @brief Result that hides the const values() accessor with a mutable-only accessor. */
+  struct Result : PairResidualValue<value_count> {
+    /** @brief Declare mutable-only value access. @return Pair values. */
+    MdArray<RealT, value_count> values();
+  };
+  /** @brief Declare an incompatible result. @param coordinates Pair inputs. @return Mutable-only numerical values. */
+  Result evaluate( MdSpan<const RealT, dof_count> coordinates ) const;
+};
+
+/** @brief Activation must have the expected bool type. */
+struct WrongActivationPairFunction : PairFunctionCandidate {
+  /** @brief Result with an integer flag that hides the required bool member. */
+  struct Result : PairResidualValue<value_count> {
+    IndexT has_active_points = 0;  ///< Incompatible activation type.
+  };
+  /** @brief Declare an incompatible result. @param coordinates Pair inputs. @return Values with an integer flag. */
+  Result evaluate( MdSpan<const RealT, dof_count> coordinates ) const;
+};
+
+/** @brief Quadrature state must have the expected QuadratureResult type. */
+struct WrongQuadraturePairFunction : PairFunctionCandidate {
+  /** @brief Result whose status member omits the required point count. */
+  struct Result : PairResidualValue<value_count> {
+    QuadratureStatus quadrature_result{};  ///< Incompatible quadrature result type.
+  };
+  /** @brief Declare an incompatible result. @param coordinates Pair inputs. @return Values without a point count. */
+  Result evaluate( MdSpan<const RealT, dof_count> coordinates ) const;
+};
+
+/** @brief A coordinate split must leave entries for geometry1. */
+struct EmptyFirstGeometryPairFunction : PairKernelFunctionCandidate {
+  static constexpr IndexT first_dofs = 0;  ///< Invalid empty geometry1.
+};
+
+/** @brief A coordinate split must leave entries for geometry2. */
+struct EmptySecondGeometryPairFunction : PairKernelFunctionCandidate {
+  static constexpr IndexT first_dofs = dof_count;  ///< Invalid empty geometry2.
+};
+
+// Differentiation needs a const evaluation and fixed numerical sizes; it does not require a mesh coordinate split.
+static_assert( PairFunctionType<PairFunctionCandidate> );
+static_assert( !PairKernelFunctionType<PairFunctionCandidate> );
+static_assert( PairKernelFunctionType<PairKernelFunctionCandidate> );
+static_assert( !PairFunctionType<ZeroValuePairFunction> );
+static_assert( !PairFunctionType<ZeroDofPairFunction> );
+static_assert( !PairFunctionType<RuntimeSizePairFunction> );
+static_assert( !PairFunctionType<WrongValueCountPairFunction> );
+static_assert( !PairFunctionType<MutablePairFunction> );
+static_assert( !PairFunctionType<MissingStatePairFunction> );
+static_assert( !PairFunctionType<MutableValuesPairFunction> );
+static_assert( !PairFunctionType<WrongActivationPairFunction> );
+static_assert( !PairFunctionType<WrongQuadraturePairFunction> );
+static_assert( !PairKernelFunctionType<EmptyFirstGeometryPairFunction> );
+static_assert( !PairKernelFunctionType<EmptySecondGeometryPairFunction> );
+
+// Both energy and nodal-integral functions implement the same evaluation and coordinate-packing interface.
+static_assert( PairKernelFunctionType<
+               EnergyMortarEnergy<PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>>> );
+static_assert(
+    PairKernelFunctionType<
+        EnergyMortarNodalEnergy<PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>>> );
 
 /** @brief Pair energy and nodal integrals written by one backend thread. @tparam Count Gauss point count. */
 template <int Count>
@@ -162,6 +274,17 @@ TEST_P( EnergyMortarDefinitionTest, contribution_buffers_use_backend_accessible_
 }
 
 #ifdef TRIBOL_USE_ENZYME
+/** @brief Check whether a mesh kernel accepts a scalar pair function. @tparam Function Candidate pair function. */
+template <typename Function>
+concept CanEvaluateScalarPairKernel = requires { &evaluatePairValuesJacobiansAndHessians<Function>; };
+
+// The scalar kernel accepts energy outputs and rejects vector nodal integrals at its interface.
+static_assert( CanEvaluateScalarPairKernel<
+               EnergyMortarEnergy<PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>>> );
+static_assert(
+    !CanEvaluateScalarPairKernel<
+        EnergyMortarNodalEnergy<PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>>> );
+
 // Both kernels must return values and quadrature status for active, open, zero-gap, and invalid pairs. A rigid vertical
 // edge translation has analytic derivatives; zero gap retains activation and the compressive Hessian.
 TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_hessians )
@@ -255,13 +378,6 @@ struct PolynomialPairFunction {
                                           coordinates[0] * coordinates[1] },
              { QuadratureStatus::Success, 2 },
              true };
-  }
-
-  /** @brief Return polynomial values for weighted differentiation. @param coordinates Active coordinates.
-   * @return Function values. */
-  TRIBOL_HOST_DEVICE MdArray<RealT, value_count> values( MdSpan<const RealT, dof_count> coordinates ) const
-  {
-    return evaluate( coordinates ).values();
   }
 };
 

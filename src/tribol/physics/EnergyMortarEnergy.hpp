@@ -93,13 +93,6 @@ class EnergyMortarEnergy {
     }
     return result;
   }
-  /** @brief Vector entry shared with other pair functions. @param coordinates Current coordinates.
-   * @return Single-entry pair energy vector. */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE MdArray<RealT, value_count> values(
-      MdSpan<const RealT, dof_count> coordinates ) const
-  {
-    return evaluate( coordinates ).values();
-  }
 
  private:
   Quadrature quadrature_;  ///< Owned pair quadrature configuration.
@@ -165,12 +158,6 @@ class EnergyMortarNodalEnergy {
       }
     }
     return result;
-  }
-  /** @brief Vector entry for Enzyme. @param coordinates Current coordinates. @return Packed nodal integrals.
-   * @pre The host has checked primal quadrature status at these coordinates. */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE MdArray<RealT, value_count> values( CoordinateView coordinates ) const
-  {
-    return evaluate( coordinates ).values();
   }
 
  private:

@@ -18,4 +18,3 @@ procedures.
    :maxdepth: 2
 
    git_aliases
-   common_plane_formulation
