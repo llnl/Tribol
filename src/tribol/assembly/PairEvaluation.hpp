@@ -203,13 +203,13 @@ class EnzymePairDerivative {
     PairWeightedJacobianHessian<dof_count> result{};
     weightedJacobianKernel( coordinates.data(), &function, weights.data(), result.jacobian.data() );
     for ( IndexT column = 0; column < dof_count; ++column ) {
-      MdArray<RealT, dof_count> coordinate_seed{}, jacobian{}, derivative{};
+      MdArray<RealT, dof_count> coordinate_seed{}, jacobian{}, hessian_column{};
       coordinate_seed[column] = 1.0;
       __enzyme_fwddiff<void>( (void*)weightedJacobianKernel, TRIBOL_ENZYME_DUP, coordinates.data(),
                               coordinate_seed.data(), TRIBOL_ENZYME_CONST, (const void*)&function, TRIBOL_ENZYME_CONST,
-                              weights.data(), TRIBOL_ENZYME_DUP, jacobian.data(), derivative.data() );
+                              weights.data(), TRIBOL_ENZYME_DUP, jacobian.data(), hessian_column.data() );
       for ( IndexT row = 0; row < dof_count; ++row ) {
-        result.hessian( row, column ) = derivative[row];
+        result.hessian( row, column ) = hessian_column[row];
       }
     }
     return result;
@@ -248,11 +248,11 @@ class EnzymePairDerivative {
   {
     PairValueJacobianHessian<dof_count> result{};
     for ( IndexT column = 0; column < dof_count; ++column ) {
-      MdArray<RealT, dof_count> coordinate_seed{}, derivative{};
+      MdArray<RealT, dof_count> coordinate_seed{}, hessian_column{};
       coordinate_seed[column] = 1.0;
       __enzyme_fwddiff<void>( (void*)scalarJacobianKernel, TRIBOL_ENZYME_DUP, coordinates.data(),
                               coordinate_seed.data(), TRIBOL_ENZYME_CONST, (const void*)&function, TRIBOL_ENZYME_DUP,
-                              result.jacobian.data(), derivative.data(), TRIBOL_ENZYME_CONST, &result.value,
+                              result.jacobian.data(), hessian_column.data(), TRIBOL_ENZYME_CONST, &result.value,
                               TRIBOL_ENZYME_CONST, &result.quadrature_result, TRIBOL_ENZYME_CONST,
                               &result.has_active_points );
       if ( result.quadrature_result.status != QuadratureStatus::Success || !result.has_active_points ) {
@@ -261,7 +261,7 @@ class EnzymePairDerivative {
         return result;
       }
       for ( IndexT row = 0; row < dof_count; ++row ) {
-        result.hessian( row, column ) = derivative[row];
+        result.hessian( row, column ) = hessian_column[row];
       }
     }
     return result;
