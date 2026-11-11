@@ -82,33 +82,34 @@ inline void checkPairQuadratureResults( ExecutionMode execution_mode, const Arra
  * to scalar and vector functions. The values already include any quadrature weights used by f. The caller must check
  * the recorded quadrature results before using these outputs.
  *
- * For example, suppose f is a configured CommonPlanePairFunction of type Function, pairs is an accepted pair list,
- * and mesh1 and mesh2 are current mesh views. A caller could evaluate its local nodal forces and their Jacobians:
+ * For example, suppose pair_function is a configured CommonPlanePairFunction of type PairFunction, pairs is an accepted
+ * pair list, and mesh1 and mesh2 are current mesh views. A caller could evaluate its local nodal forces and their
+ * Jacobians:
  * @code
- * PairValueJacobianBuffer<Function::value_count, Function::dof_count> results(
+ * PairValueJacobianBuffer<PairFunction::value_count, PairFunction::dof_count> results(
  *     pairs.size(), pairs.getAllocatorID() );
- * evaluatePairValuesAndJacobians( execution_mode, pairs.view(), mesh1, mesh2, f, results.view() );
+ * evaluatePairValuesAndJacobians( execution_mode, pairs.view(), mesh1, mesh2, pair_function, results.view() );
  * checkPairQuadratureResults( execution_mode, results.quadratureResults() );
  * @endcode
  * After the check succeeds, the caller could assemble the values into a force vector and the Jacobians into a matrix.
  * This kernel stores each pair's contribution separately, including when pairs share nodes.
  *
- * @tparam Function Pair function whose values() returns the fixed-size vector f(x).
+ * @tparam PairFunction Pair function whose values() returns the fixed-size vector f(x).
  * @param execution_mode Host or device execution policy.
  * @param pairs Current pair list in execution-accessible memory.
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
- * @param function Fixed pair-function configuration.
+ * @param pair_function Fixed pair function configuration.
  * @param output Preallocated values, Jacobians, quadrature results, and activation flags, with one slot per pair.
  * @throws std::invalid_argument Buffer size does not match the pair list; no outputs are written.
  */
-template <typename Function>
+template <typename PairFunction>
 void evaluatePairValuesAndJacobians( ExecutionMode execution_mode, ArrayViewT<const InterfacePair> pairs,
-                                     MeshData::Viewer mesh1, MeshData::Viewer mesh2, Function function,
-                                     PairValueJacobianView<Function::value_count, Function::dof_count> output )
+                                     MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function,
+                                     PairValueJacobianView<PairFunction::value_count, PairFunction::dof_count> output )
 {
-  constexpr IndexT first_dofs = Function::first_dofs;
-  constexpr IndexT dof_count = Function::dof_count;
+  constexpr IndexT first_dofs = PairFunction::first_dofs;
+  constexpr IndexT dof_count = PairFunction::dof_count;
   if ( output.pair_count != pairs.size() ) {
     throw std::invalid_argument( "Pair value buffer size must match the pair list." );
   }
@@ -117,14 +118,13 @@ void evaluatePairValuesAndJacobians( ExecutionMode execution_mode, ArrayViewT<co
     MdArray<RealT, dof_count> coordinates{};
     mesh1.getFaceCoords( pair.element_id1_, coordinates.data() );
     mesh2.getFaceCoords( pair.element_id2_, coordinates.data() + first_dofs );
-    const auto primal = function.evaluate( coordinates.view() );
-    output.quadrature[pair_index] = primal.quadrature_result;
-    output.has_active_points[pair_index] = primal.has_active_points;
-    const auto derivatives = EnzymePairDerivative<Function>::valuesAndJacobian( coordinates.view(), function );
-    for ( IndexT value = 0; value < Function::value_count; ++value ) {
-      output.setValue( pair_index, value, derivatives.values[value] );
+    const auto pair_values = EnzymePairDerivative<PairFunction>::valuesAndJacobian( coordinates.view(), pair_function );
+    output.quadrature[pair_index] = pair_values.quadrature_result;
+    output.has_active_points[pair_index] = pair_values.has_active_points;
+    for ( IndexT value = 0; value < PairFunction::value_count; ++value ) {
+      output.setValue( pair_index, value, pair_values.values[value] );
       for ( IndexT coordinate = 0; coordinate < dof_count; ++coordinate ) {
-        output.setJacobian( pair_index, value, coordinate, derivatives.gradients( value, coordinate ) );
+        output.setJacobian( pair_index, value, coordinate, pair_values.jacobian( value, coordinate ) );
       }
     }
   } );
@@ -138,15 +138,16 @@ void evaluatePairValuesAndJacobians( ExecutionMode execution_mode, ArrayViewT<co
  * matrix. Function values and the full unweighted Jacobian are not returned. The weights multiply components of f;
  * they are distinct from quadrature weights, which are already included in f.
  *
- * For example, suppose f is an EnergyMortarNodalEnergy of type Function for two-node edges and its quadrature has
- * already been checked. Its four outputs are weighted gaps G0, G1 followed by areas A0, A1. A hypothetical nodal LM
- * calculation could use multipliers 2.0 and 3.0, and zero area weights, to differentiate 2.0*G0 + 3.0*G1:
+ * For example, suppose pair_function is an EnergyMortarNodalEnergy of type PairFunction for two-node edges and its
+ * quadrature has already been checked. Its four outputs are weighted gaps G0, G1 followed by areas A0, A1. A
+ * hypothetical nodal LM calculation could use multipliers 2.0 and 3.0, and zero area weights, to differentiate 2.0*G0
+ * + 3.0*G1:
  * @code
- * PairHessianBuffer<Function::dof_count> derivatives( pairs.size(), pairs.getAllocatorID() );
+ * PairHessianBuffer<PairFunction::dof_count> derivatives( pairs.size(), pairs.getAllocatorID() );
  * evaluatePairWeightedJacobiansAndHessians(
- *     execution_mode, pairs.view(), mesh1, mesh2, f,
+ *     execution_mode, pairs.view(), mesh1, mesh2, pair_function,
  *     [] TRIBOL_HOST_DEVICE( IndexT ) {
- *       return MdArray<RealT, Function::value_count>{ 2.0, 3.0, 0.0, 0.0 };
+ *       return MdArray<RealT, PairFunction::value_count>{ 2.0, 3.0, 0.0, 0.0 };
  *     },
  *     derivatives.view() );
  * @endcode
@@ -154,25 +155,26 @@ void evaluatePairValuesAndJacobians( ExecutionMode execution_mode, ArrayViewT<co
  * its coordinate force Jacobian. This example uses the same multipliers for every pair; a production reader can
  * obtain different multipliers for each pair from the nodal field.
  *
- * @tparam Function Pair function whose values() returns the fixed-size vector f(x).
+ * @tparam PairFunction Pair function whose values() returns the fixed-size vector f(x).
  * @tparam WeightReader Device-callable object returning one pair's fixed value weights.
  * @param execution_mode Host or device execution policy.
  * @param pairs Current pair list in execution-accessible memory.
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
- * @param function Fixed pair-function configuration.
- * @param read_weights Callable with signature `MdArray<RealT, Function::value_count>(IndexT)`.
+ * @param pair_function Fixed pair function configuration.
+ * @param read_weights Callable with signature `MdArray<RealT, PairFunction::value_count>(IndexT)`.
  * @param output Preallocated weighted Jacobians and Hessians, with one slot per pair.
  * @pre The caller has checked pair quadrature for errors at these coordinates.
  * @throws std::invalid_argument Buffer size does not match the pair list; no outputs are written.
  */
-template <typename Function, typename WeightReader>
+template <typename PairFunction, typename WeightReader>
 void evaluatePairWeightedJacobiansAndHessians( ExecutionMode execution_mode, ArrayViewT<const InterfacePair> pairs,
-                                               MeshData::Viewer mesh1, MeshData::Viewer mesh2, Function function,
-                                               WeightReader read_weights, PairHessianView<Function::dof_count> output )
+                                               MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                               PairFunction pair_function, WeightReader read_weights,
+                                               PairHessianView<PairFunction::dof_count> output )
 {
-  constexpr IndexT first_dofs = Function::first_dofs;
-  constexpr IndexT dof_count = Function::dof_count;
+  constexpr IndexT first_dofs = PairFunction::first_dofs;
+  constexpr IndexT dof_count = PairFunction::dof_count;
   if ( output.pair_count != pairs.size() ) {
     throw std::invalid_argument( "Pair Hessian buffer size must match the pair list." );
   }
@@ -182,12 +184,12 @@ void evaluatePairWeightedJacobiansAndHessians( ExecutionMode execution_mode, Arr
     mesh1.getFaceCoords( pair.element_id1_, coordinates.data() );
     mesh2.getFaceCoords( pair.element_id2_, coordinates.data() + first_dofs );
     const auto weights = read_weights( pair_index );
-    const auto derivatives =
-        EnzymePairDerivative<Function>::weightedHessian( coordinates.view(), function, weights.view() );
+    const auto pair_values = EnzymePairDerivative<PairFunction>::weightedJacobianAndHessian(
+        coordinates.view(), pair_function, weights.view() );
     for ( IndexT row = 0; row < dof_count; ++row ) {
-      output.setGradient( pair_index, row, derivatives.gradient[row] );
+      output.setGradient( pair_index, row, pair_values.jacobian[row] );
       for ( IndexT column = 0; column < dof_count; ++column ) {
-        output.setHessian( pair_index, row, column, derivatives.hessian( row, column ) );
+        output.setHessian( pair_index, row, column, pair_values.hessian( row, column ) );
       }
     }
   } );
@@ -197,38 +199,39 @@ void evaluatePairWeightedJacobiansAndHessians( ExecutionMode execution_mode, Arr
  * @brief Evaluate each scalar pair function's value, Jacobian, and Hessian into preallocated buffers.
  *
  * For scalar f(x), write f, Jacobian entries J_j = df/dx_j, and Hessian entries H_jk = d^2 f/(dx_j dx_k). The Jacobian
- * has one entry per coordinate. Internally, a unit output weight selects this scalar's derivatives. Failed or inactive
+ * has one entry per coordinate. AD supplies the value, derivatives, and quadrature state together. Failed or inactive
  * pairs receive zero values and derivatives; the caller must check quadrature results before using the outputs.
  * Active inputs retain their derivatives even when f(x) is zero.
  *
- * For example, suppose f is a configured EnergyMortarEnergy of type Function. A quadrature-point formulation could
- * request its scalar energy E, Jacobian J_E, and Hessian H_E together:
+ * For example, suppose pair_function is a configured EnergyMortarEnergy of type PairFunction. A quadrature-point
+ * formulation could request its scalar energy E, Jacobian J_E, and Hessian H_E together:
  * @code
- * PairEnergyHessianBuffer<Function::dof_count> results( pairs.size(), pairs.getAllocatorID() );
- * evaluatePairValuesJacobiansAndHessians( execution_mode, pairs.view(), mesh1, mesh2, f, results.view() );
+ * PairEnergyHessianBuffer<PairFunction::dof_count> results( pairs.size(), pairs.getAllocatorID() );
+ * evaluatePairValuesJacobiansAndHessians( execution_mode, pairs.view(), mesh1, mesh2, pair_function, results.view() );
  * checkPairQuadratureResults( execution_mode, results.quadratureResults() );
  * @endcode
  * After the check succeeds, the caller could sum E across pairs and MPI ranks, assemble J_E as the force vector,
  * and assemble H_E as its coordinate Jacobian. The first derivatives are those of the input energy E, not of the
  * resulting force vector.
  *
- * @tparam Function Scalar pair function returning f in evaluate().energy, with activation and quadrature status.
+ * @tparam PairFunction Scalar pair function whose evaluate() result supplies values(), activation, and quadrature
+ * status.
  * @param execution_mode Host or device execution policy.
  * @param pairs Current pair list in execution-accessible memory.
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
- * @param function Fixed scalar pair-function configuration.
+ * @param pair_function Fixed scalar pair function configuration.
  * @param output Preallocated scalar values, quadrature results, Jacobians, and Hessians, with one slot per pair.
  * @throws std::invalid_argument Buffer size does not match the pair list; no outputs are written.
  */
-template <typename Function>
+template <typename PairFunction>
 void evaluatePairValuesJacobiansAndHessians( ExecutionMode execution_mode, ArrayViewT<const InterfacePair> pairs,
-                                             MeshData::Viewer mesh1, MeshData::Viewer mesh2, Function function,
-                                             PairEnergyHessianView<Function::dof_count> output )
+                                             MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function,
+                                             PairEnergyHessianView<PairFunction::dof_count> output )
 {
-  static_assert( Function::value_count == 1, "Pair energy evaluation requires one scalar output." );
-  constexpr IndexT first_dofs = Function::first_dofs;
-  constexpr IndexT dof_count = Function::dof_count;
+  static_assert( PairFunction::value_count == 1, "Pair energy evaluation requires one scalar output." );
+  constexpr IndexT first_dofs = PairFunction::first_dofs;
+  constexpr IndexT dof_count = PairFunction::dof_count;
   if ( output.derivatives.pair_count != pairs.size() ) {
     throw std::invalid_argument( "Pair energy buffer size must match the pair list." );
   }
@@ -237,19 +240,14 @@ void evaluatePairValuesJacobiansAndHessians( ExecutionMode execution_mode, Array
     MdArray<RealT, dof_count> coordinates{};
     mesh1.getFaceCoords( pair.element_id1_, coordinates.data() );
     mesh2.getFaceCoords( pair.element_id2_, coordinates.data() + first_dofs );
-    const auto primal = function.evaluate( coordinates.view() );
-    const bool active = primal.quadrature_result.status == QuadratureStatus::Success && primal.has_active_points;
-    output.energies[pair_index] = active ? primal.energy : 0.0;
-    output.quadrature[pair_index] = primal.quadrature_result;
-    PairWeightedHessian<dof_count> derivatives{};
-    if ( active ) {
-      const MdArray<RealT, 1> weights{ 1.0 };
-      derivatives = EnzymePairDerivative<Function>::weightedHessian( coordinates.view(), function, weights.view() );
-    }
+    const auto pair_values =
+        EnzymePairDerivative<PairFunction>::valueJacobianAndHessian( coordinates.view(), pair_function );
+    output.energies[pair_index] = pair_values.value;
+    output.quadrature[pair_index] = pair_values.quadrature_result;
     for ( IndexT row = 0; row < dof_count; ++row ) {
-      output.derivatives.setGradient( pair_index, row, derivatives.gradient[row] );
+      output.derivatives.setGradient( pair_index, row, pair_values.jacobian[row] );
       for ( IndexT column = 0; column < dof_count; ++column ) {
-        output.derivatives.setHessian( pair_index, row, column, derivatives.hessian( row, column ) );
+        output.derivatives.setHessian( pair_index, row, column, pair_values.hessian( row, column ) );
       }
     }
   } );

@@ -94,9 +94,16 @@ calculate a scalar function's value, coordinate Jacobian, and Hessian together. 
 the residual vector. For a vector function ``f``, the weighted kernel returns ``sum_i w_i * df_i/dx_j`` and ``sum_i w_i
 * d²f_i/(dx_j dx_k)`` with fixed output weights. It returns neither values nor the full unweighted Jacobian. These
 output weights multiply components of ``f`` independently of the quadrature weights already included in ``f``.
-``EnzymePairDerivative`` supplies the common ``valuesAndJacobian()`` and ``weightedHessian()`` operations for all three
-formulations. Per-pair calculations do not allocate, call MFEM, throw, or dispatch virtual functions. A device reduction
-checks quadrature status after launch.
+``EnzymePairDerivative`` supplies ``valuesAndJacobian()``, ``weightedJacobianAndHessian()``, and the scalar-only
+``valueJacobianAndHessian()`` operations. ``valuesAndJacobian()`` differentiates ``evaluate()`` and returns its numerical
+values, quadrature status, and activation together with the Jacobian. These come from forward AD, with no separate
+value or status evaluation. ``Function::PrimalResult`` exposes the numerical entries through ``values()``; its status
+and activation fields are not differentiated. ``valueJacobianAndHessian()`` similarly retains the scalar value and
+quadrature state from the AD calls that produce its Jacobian and Hessian. Failed or inactive scalar evaluations return
+zero numerical outputs after the first AD call; active zero values retain their derivatives. Weighted Jacobian/Hessian
+calculations use ``Function::values()`` after quadrature has been checked. Per-pair calculations do not allocate,
+call MFEM, throw, or dispatch virtual functions.
+A device reduction checks quadrature status after launch.
 
 ``MfemPairAssembler`` and ``MfemFieldAssembler`` scatter vectors and pack dense element blocks in execution-space
 kernels. Successive batch calls append matrix blocks and accumulate vector entries; empty batches preserve earlier

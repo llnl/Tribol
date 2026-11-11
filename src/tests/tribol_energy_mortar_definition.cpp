@@ -8,7 +8,8 @@
  * @brief Check direct Energy Mortar energies, nodal integrals, and explicit field partials on enabled backends.
  * Host Enzyme checks compare the new pair definitions with finite differences for each Gauss count and derivative
  * mode. The energy kernel checks active, open, zero-gap, and invalid pairs on every enabled backend, including the
- * compressive zero-gap Hessian. MFEM tests separately check assembly and shared-node normalization.
+ * compressive zero-gap Hessian. Forward AD checks values and quadrature state without an extra value evaluation.
+ * MFEM tests separately check assembly and shared-node normalization.
  */
 #include <type_traits>
 
@@ -161,8 +162,9 @@ TEST_P( EnergyMortarDefinitionTest, contribution_buffers_use_backend_accessible_
 }
 
 #ifdef TRIBOL_USE_ENZYME
-// A rigid vertical edge translation has analytic energy derivatives; zero gap retains the compressive tangent.
-TEST_P( EnergyMortarDefinitionTest, energy_kernel_returns_values_gradients_and_hessians )
+// Both kernels must return values and quadrature status for active, open, zero-gap, and invalid pairs. A rigid vertical
+// edge translation has analytic derivatives; zero gap retains activation and the compressive Hessian.
+TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_hessians )
 {
   using Rule = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
   using Function = EnergyMortarEnergy<Rule>;
@@ -180,6 +182,9 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernel_returns_values_gradients_and_h
   const auto output = buffer.view();
   evaluatePairValuesJacobiansAndHessians( GetParam(), pairs.view(), mesh1.getView(), mesh2.getView(), function,
                                           output );
+  PairValueJacobianBuffer<Function::value_count, Function::dof_count> value_jacobian( pairs.size(), allocatorId() );
+  evaluatePairValuesAndJacobians( GetParam(), pairs.view(), mesh1.getView(), mesh2.getView(), function,
+                                  value_jacobian.view() );
 
   ArrayT<RealT, 2> summaries( axom::StackArray<axom::IndexType, 2>{ pairs.size(), 4 }, allocatorId() );
   const auto summary = summaries.view();
@@ -200,6 +205,17 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernel_returns_values_gradients_and_h
   } );
   const ArrayT<RealT, 2, MemorySpace::Host> host( summaries );
   const Array1D<QuadratureResult, MemorySpace::Host> status( buffer.quadratureResults() );
+  const Array1D<RealT, MemorySpace::Host> values( value_jacobian.values() );
+  const Array1D<RealT, MemorySpace::Host> jacobians( value_jacobian.jacobians() );
+  const Array1D<QuadratureResult, MemorySpace::Host> jacobian_status( value_jacobian.quadratureResults() );
+  const Array1D<IndexT, MemorySpace::Host> active( value_jacobian.activePoints() );
+  for ( IndexT pair = 0; pair < pairs.size(); ++pair ) {
+    EXPECT_NEAR( values[pair], host( pair, 0 ), tolerance );
+    EXPECT_NEAR( jacobians[pairs.size() + pair] + jacobians[3 * pairs.size() + pair], host( pair, 1 ), tolerance );
+    EXPECT_EQ( jacobian_status[pair].status, status[pair].status );
+    EXPECT_EQ( jacobian_status[pair].required_point_count, pair == 3 ? 0 : 2 );
+    EXPECT_EQ( active[pair], pair == 0 || pair == 2 );
+  }
   // Length two and stiffness four give E=0.04, dE/dy=-0.8, and d2E/dy2=8 for the penetrating pair.
   EXPECT_NEAR( host( 0, 0 ), 0.04, tolerance );
   EXPECT_NEAR( host( 0, 1 ), -0.8, tolerance );
@@ -214,29 +230,49 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernel_returns_values_gradients_and_h
   for ( IndexT pair : { 1, 3 } ) {
     EXPECT_EQ( host( pair, 0 ), 0.0 );
     EXPECT_EQ( host( pair, 3 ), 0.0 );
+    for ( IndexT coordinate = 0; coordinate < Function::dof_count; ++coordinate ) {
+      EXPECT_EQ( jacobians[coordinate * pairs.size() + pair], 0.0 );
+    }
   }
   EXPECT_THROW( checkPairQuadratureResults( GetParam(), buffer.quadratureResults() ), std::invalid_argument );
 }
 
 /** @brief Small fixed-size pair function used to compile and execute both Enzyme operations on every backend. */
 struct PolynomialPairFunction {
-  static constexpr IndexT value_count = 2;  ///< Number of outputs.
-  static constexpr IndexT dof_count = 2;    ///< Number of active coordinates.
+  static constexpr IndexT value_count = 2;              ///< Number of outputs.
+  static constexpr IndexT dof_count = 2;                ///< Number of active coordinates.
+  using PrimalResult = PairResidualValue<value_count>;  ///< Polynomial values with quadrature state.
+  IndexT* evaluation_count = nullptr;                   ///< Optional counter for complete function evaluations.
 
-  /** @brief Evaluate two coupled polynomial outputs. @param coordinates Active coordinates. @return Function values. */
+  /** @brief Evaluate two coupled polynomial outputs. @param coordinates Active coordinates.
+   * @return Function values with successful, active quadrature state. */
+  TRIBOL_HOST_DEVICE PrimalResult evaluate( MdSpan<const RealT, dof_count> coordinates ) const
+  {
+    if ( evaluation_count != nullptr ) {
+      ++*evaluation_count;
+    }
+    return { MdArray<RealT, value_count>{ coordinates[0] * coordinates[0] + coordinates[1],
+                                          coordinates[0] * coordinates[1] },
+             { QuadratureStatus::Success, 2 },
+             true };
+  }
+
+  /** @brief Return polynomial values for weighted differentiation. @param coordinates Active coordinates.
+   * @return Function values. */
   TRIBOL_HOST_DEVICE MdArray<RealT, value_count> values( MdSpan<const RealT, dof_count> coordinates ) const
   {
-    return MdArray<RealT, value_count>{ coordinates[0] * coordinates[0] + coordinates[1],
-                                        coordinates[0] * coordinates[1] };
+    return evaluate( coordinates ).values();
   }
 };
 
 /** @brief Device-storable output from both pair derivative operations. */
 struct PolynomialDerivativeResult {
-  PairVectorGradients<PolynomialPairFunction::value_count, PolynomialPairFunction::dof_count> value_jacobian;
-  PairWeightedHessian<PolynomialPairFunction::dof_count> weighted_hessian;
+  PairValueJacobian<PolynomialPairFunction::value_count, PolynomialPairFunction::dof_count> value_jacobian;
+  PairWeightedJacobianHessian<PolynomialPairFunction::dof_count> weighted_hessian;
+  IndexT evaluation_count = 0;  ///< Complete evaluations used for values and Jacobian.
 };
 
+// Forward AD must return values and quadrature state using only the calls needed for the Jacobian columns.
 TEST_P( EnergyMortarDefinitionTest, enzyme_pair_derivatives_execute_on_backend )
 {
   Array1D<PolynomialDerivativeResult> results( 1, 1, allocatorId() );
@@ -244,26 +280,99 @@ TEST_P( EnergyMortarDefinitionTest, enzyme_pair_derivatives_execute_on_backend )
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
     const MdArray<RealT, PolynomialPairFunction::dof_count> coordinates{ 3.0, 5.0 };
     const MdArray<RealT, PolynomialPairFunction::value_count> weights{ 2.0, -1.0 };
-    output[0].value_jacobian =
-        EnzymePairDerivative<PolynomialPairFunction>::valuesAndJacobian( coordinates.view(), {} );
-    output[0].weighted_hessian =
-        EnzymePairDerivative<PolynomialPairFunction>::weightedHessian( coordinates.view(), {}, weights.view() );
+    IndexT evaluation_count = 0;
+    output[0].value_jacobian = EnzymePairDerivative<PolynomialPairFunction>::valuesAndJacobian(
+        coordinates.view(), PolynomialPairFunction{ &evaluation_count } );
+    output[0].evaluation_count = evaluation_count;
+    output[0].weighted_hessian = EnzymePairDerivative<PolynomialPairFunction>::weightedJacobianAndHessian(
+        coordinates.view(), {}, weights.view() );
   } );
   const Array1D<PolynomialDerivativeResult, MemorySpace::Host> host_results( results );
   const auto& value_jacobian = host_results[0].value_jacobian;
+  EXPECT_EQ( host_results[0].evaluation_count, PolynomialPairFunction::dof_count );
+  EXPECT_EQ( value_jacobian.quadrature_result.status, QuadratureStatus::Success );
+  EXPECT_EQ( value_jacobian.quadrature_result.required_point_count, 2 );
+  EXPECT_TRUE( value_jacobian.has_active_points );
   EXPECT_DOUBLE_EQ( value_jacobian.values[0], 14.0 );
   EXPECT_DOUBLE_EQ( value_jacobian.values[1], 15.0 );
-  EXPECT_DOUBLE_EQ( value_jacobian.gradients( 0, 0 ), 6.0 );
-  EXPECT_DOUBLE_EQ( value_jacobian.gradients( 0, 1 ), 1.0 );
-  EXPECT_DOUBLE_EQ( value_jacobian.gradients( 1, 0 ), 5.0 );
-  EXPECT_DOUBLE_EQ( value_jacobian.gradients( 1, 1 ), 3.0 );
+  EXPECT_DOUBLE_EQ( value_jacobian.jacobian( 0, 0 ), 6.0 );
+  EXPECT_DOUBLE_EQ( value_jacobian.jacobian( 0, 1 ), 1.0 );
+  EXPECT_DOUBLE_EQ( value_jacobian.jacobian( 1, 0 ), 5.0 );
+  EXPECT_DOUBLE_EQ( value_jacobian.jacobian( 1, 1 ), 3.0 );
   const auto& weighted_hessian = host_results[0].weighted_hessian;
-  EXPECT_DOUBLE_EQ( weighted_hessian.gradient[0], 7.0 );
-  EXPECT_DOUBLE_EQ( weighted_hessian.gradient[1], -1.0 );
+  EXPECT_DOUBLE_EQ( weighted_hessian.jacobian[0], 7.0 );
+  EXPECT_DOUBLE_EQ( weighted_hessian.jacobian[1], -1.0 );
   EXPECT_DOUBLE_EQ( weighted_hessian.hessian( 0, 0 ), 4.0 );
   EXPECT_DOUBLE_EQ( weighted_hessian.hessian( 0, 1 ), -1.0 );
   EXPECT_DOUBLE_EQ( weighted_hessian.hessian( 1, 0 ), -1.0 );
   EXPECT_DOUBLE_EQ( weighted_hessian.hessian( 1, 1 ), 0.0 );
+}
+
+/** @brief Scalar polynomial with a counter to detect separate value or Jacobian evaluations. */
+struct ScalarPolynomialPairFunction {
+  static constexpr IndexT value_count = 1;  ///< One scalar output.
+  static constexpr IndexT dof_count = 2;    ///< Two coordinate entries.
+  IndexT* evaluation_count;                 ///< Number of evaluate() calls, in backend-accessible memory.
+  bool active;                              ///< Activation reported with the polynomial value.
+  QuadratureStatus status;                  ///< Quadrature status reported with the polynomial value.
+
+  /** @brief Evaluate x0^2*x1 with the configured status. @param coordinates Polynomial inputs.
+   * @return Scalar value, activation, and status; numerical outputs are retained even for inactive or failed inputs
+   * so the test can check that differentiation masks them. */
+  TRIBOL_HOST_DEVICE PairEnergyValue evaluate( MdSpan<const RealT, dof_count> coordinates ) const
+  {
+    ++*evaluation_count;
+    return { coordinates[0] * coordinates[0] * coordinates[1],
+             active,
+             { status, status == QuadratureStatus::InvalidGeometry ? 0 : 2 } };
+  }
+};
+
+// Scalar AD must retain primal values and quadrature state without extra calls. Active zero values keep their Hessian;
+// inactive and failed calculations return zeros and stop after the first call.
+TEST_P( EnergyMortarDefinitionTest, scalar_derivatives_reuse_ad_values_and_state )
+{
+  using Function = ScalarPolynomialPairFunction;
+  /** @brief Polynomial inputs and reported quadrature state for one backend test case. */
+  struct Input {
+    MdArray<RealT, Function::dof_count> coordinates;  ///< Polynomial inputs.
+    bool active;                                      ///< Reported activation.
+    QuadratureStatus status;                          ///< Reported quadrature status.
+  };
+  const auto cases = copyToExecutionSpace<Input>( {
+      { MdArray<RealT, Function::dof_count>{ 3.0, 5.0 }, true, QuadratureStatus::Success },
+      { MdArray<RealT, Function::dof_count>{ 0.0, 5.0 }, true, QuadratureStatus::Success },
+      { MdArray<RealT, Function::dof_count>{ 3.0, 5.0 }, false, QuadratureStatus::Success },
+      { MdArray<RealT, Function::dof_count>{ 3.0, 5.0 }, false, QuadratureStatus::InvalidGeometry },
+      { MdArray<RealT, Function::dof_count>{ 3.0, 5.0 }, false, QuadratureStatus::InsufficientCapacity },
+  } );
+  ArrayT<PairValueJacobianHessian<Function::dof_count>> results( cases.size(), cases.size(), allocatorId() );
+  ArrayT<IndexT> counts( cases.size(), cases.size(), allocatorId() );
+  const auto input = cases.view();
+  const auto output = results.view();
+  const auto count = counts.view();
+  forAllExec( GetParam(), cases.size(), [=] TRIBOL_HOST_DEVICE( IndexT i ) {
+    count[i] = 0;
+    const Function function{ &count[i], input[i].active, input[i].status };
+    output[i] = EnzymePairDerivative<Function>::valueJacobianAndHessian( input[i].coordinates.view(), function );
+  } );
+  const ArrayT<Input, 1, MemorySpace::Host> host_input( cases );
+  const ArrayT<PairValueJacobianHessian<Function::dof_count>, 1, MemorySpace::Host> host( results );
+  const ArrayT<IndexT, 1, MemorySpace::Host> host_counts( counts );
+  for ( IndexT i = 0; i < cases.size(); ++i ) {
+    SCOPED_TRACE( i );
+    EXPECT_EQ( host[i].quadrature_result.status, host_input[i].status );
+    EXPECT_EQ( host[i].quadrature_result.required_point_count, i == 3 ? 0 : 2 );
+    EXPECT_EQ( host[i].has_active_points, host_input[i].active );
+    EXPECT_EQ( host_counts[i], i < 2 ? Function::dof_count : 1 );
+    EXPECT_DOUBLE_EQ( host[i].value, i == 0 ? 45.0 : 0.0 );
+    EXPECT_DOUBLE_EQ( host[i].jacobian[0], i == 0 ? 30.0 : 0.0 );
+    EXPECT_DOUBLE_EQ( host[i].jacobian[1], i == 0 ? 9.0 : 0.0 );
+    EXPECT_DOUBLE_EQ( host[i].hessian( 0, 0 ), i < 2 ? 10.0 : 0.0 );
+    EXPECT_DOUBLE_EQ( host[i].hessian( 0, 1 ), i == 0 ? 6.0 : 0.0 );
+    EXPECT_DOUBLE_EQ( host[i].hessian( 1, 0 ), i == 0 ? 6.0 : 0.0 );
+    EXPECT_DOUBLE_EQ( host[i].hessian( 1, 1 ), 0.0 );
+  }
 }
 
 /**
@@ -279,7 +388,8 @@ void checkPairDerivatives( const Function& function, const MdArray<RealT, Functi
 {
   constexpr RealT step = 1.0e-6;
   const auto base = EnzymePairDerivative<Function>::valuesAndJacobian( coordinates.view(), function );
-  const auto weighted = EnzymePairDerivative<Function>::weightedHessian( coordinates.view(), function, weights.view() );
+  const auto weighted =
+      EnzymePairDerivative<Function>::weightedJacobianAndHessian( coordinates.view(), function, weights.view() );
   for ( IndexT column = 0; column < Function::dof_count; ++column ) {
     auto plus = coordinates, minus = coordinates;
     plus[column] += step;
@@ -291,16 +401,16 @@ void checkPairDerivatives( const Function& function, const MdArray<RealT, Functi
     for ( IndexT value = 0; value < Function::value_count; ++value ) {
       positive_scalar += weights[value] * positive.values[value];
       negative_scalar += weights[value] * negative.values[value];
-      EXPECT_NEAR( base.gradients( value, column ),
-                   ( positive.values[value] - negative.values[value] ) / ( 2.0 * step ), 1.0e-6 );
+      EXPECT_NEAR( base.jacobian( value, column ), ( positive.values[value] - negative.values[value] ) / ( 2.0 * step ),
+                   1.0e-6 );
     }
-    EXPECT_NEAR( weighted.gradient[column], ( positive_scalar - negative_scalar ) / ( 2.0 * step ), 1.0e-6 );
+    EXPECT_NEAR( weighted.jacobian[column], ( positive_scalar - negative_scalar ) / ( 2.0 * step ), 1.0e-6 );
     for ( IndexT row = 0; row < Function::dof_count; ++row ) {
       RealT positive_gradient = 0.0;
       RealT negative_gradient = 0.0;
       for ( IndexT value = 0; value < Function::value_count; ++value ) {
-        positive_gradient += weights[value] * positive.gradients( value, row );
-        negative_gradient += weights[value] * negative.gradients( value, row );
+        positive_gradient += weights[value] * positive.jacobian( value, row );
+        negative_gradient += weights[value] * negative.jacobian( value, row );
       }
       EXPECT_NEAR( weighted.hessian( row, column ), ( positive_gradient - negative_gradient ) / ( 2.0 * step ),
                    2.0e-5 );

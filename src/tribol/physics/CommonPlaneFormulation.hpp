@@ -90,7 +90,7 @@ class CommonPlanePairFunction {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE MdArray<RealT, value_count> values(
       MdSpan<const RealT, dof_count> coordinates ) const
   {
-    return evaluate( coordinates ).residual;
+    return evaluate( coordinates ).values();
   }
 
  private:

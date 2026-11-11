@@ -98,7 +98,7 @@ class EnergyMortarEnergy {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE MdArray<RealT, value_count> values(
       MdSpan<const RealT, dof_count> coordinates ) const
   {
-    return MdArray<RealT, value_count>( evaluate( coordinates ).energy );
+    return evaluate( coordinates ).values();
   }
 
  private:
@@ -127,6 +127,10 @@ class EnergyMortarNodalEnergy {
     MdArray<RealT, value_count> value{};   ///< Weighted gaps, then areas, in local-node order.
     bool has_active_points = false;        ///< Whether quadrature contains any integration points.
     QuadratureResult quadrature_result{};  ///< Failed output must not be consumed.
+
+    /** @brief Return the function value vector. @return Weighted gaps followed by tributary areas in local-node order.
+     */
+    TRIBOL_HOST_DEVICE MdArray<RealT, value_count> values() const { return value; }
   };
   /** @brief Store fixed inputs. @param rule Pair generator. @param gap Gap callable. */
   TRIBOL_HOST_DEVICE EnergyMortarNodalEnergy( Quadrature rule, GapDefinition gap = {} )
@@ -166,7 +170,7 @@ class EnergyMortarNodalEnergy {
    * @pre The host has checked primal quadrature status at these coordinates. */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE MdArray<RealT, value_count> values( CoordinateView coordinates ) const
   {
-    return evaluate( coordinates ).value;
+    return evaluate( coordinates ).values();
   }
 
  private:

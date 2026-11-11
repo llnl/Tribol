@@ -73,6 +73,17 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Scalar pair differentiation returns the value, Jacobian, Hessian, quadrature status, and activation together through
+  `EnzymePairDerivative::valueJacobianAndHessian()`. The scalar value/Jacobian/Hessian kernel reuses those AD outputs,
+  removing separate value and Jacobian calculations while retaining active zero-value derivatives.
+- Pair value/Jacobian differentiation returns values, quadrature status, and activation from its forward AD calls.
+  `evaluatePairValuesAndJacobians()` no longer evaluates the function separately to obtain quadrature state, and
+  differentiation no longer performs a separate value calculation. Pair results expose numerical values through
+  `values()`.
+- Pair differentiation uses value, Jacobian, and Hessian terminology. Renamed `PairVectorGradients` to
+  `PairValueJacobian`, `PairWeightedHessian` to `PairWeightedJacobianHessian`, their first-derivative members to
+  `jacobian`, and `EnzymePairDerivative::weightedHessian()` to `weightedJacobianAndHessian()`. Removed the nested
+  `ValueJacobian` and `WeightedHessian` aliases; return types name the result structs directly.
 - Pair kernels use Jacobian and Hessian terminology for derivatives of the input function. Renamed
   `evaluatePairWeightedHessians()` to `evaluatePairWeightedJacobiansAndHessians()` and
   `evaluatePairEnergiesAndHessians()` to `evaluatePairValuesJacobiansAndHessians()`, documenting the weighted sums and
