@@ -15,15 +15,16 @@
 #include "gtest/gtest.h"
 #include "axom/slic/core/SimpleLogger.hpp"
 #include "ExecutionTest.hpp"
+#include "FrozenPairQuadratureRule.hpp"
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 #include "tribol/geom/OffsetGap.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
 #include "tribol/physics/EnergyMortarEnergy.hpp"
-#include "tribol/physics/PairContribution.hpp"
-#include "tribol/physics/PairEvaluation.hpp"
-#include "tribol/physics/PairKernel.hpp"
+#include "tribol/assembly/PairContribution.hpp"
+#include "tribol/assembly/PairEvaluation.hpp"
+#include "tribol/assembly/PairKernel.hpp"
 
 namespace {
 using namespace tribol;
@@ -95,7 +96,7 @@ TEST_P( EnergyMortarDefinitionTest, guards_area_before_dividing_and_keeps_zero_g
   const auto input = cases.view();
   const auto output = results.view();
   forAllExec( GetParam(), cases.size(), [=] TRIBOL_HOST_DEVICE( IndexT i ) {
-    output[i] = EnergyMortarNodal<>::penaltyPartials( input[i].gap, input[i].area, 4.0, area_tolerance );
+    output[i] = EnergyMortarNodalPartials::evaluate( input[i].gap, input[i].area, 4.0, area_tolerance );
   } );
   const ArrayT<NodalPartialsCase, 1, MemorySpace::Host> host_cases( cases );
   const ArrayT<EnergyMortarNodalPartials, 1, MemorySpace::Host> host_results( results );
@@ -314,8 +315,8 @@ void checkRuleDerivatives()
   using Gap = OffsetGap<OpposingNormalGap>;
   const Rule rule;
   const Gap gap{ {}, 0.05 };
-  const EnergyMortarEnergy<Rule, Gap> energy{ rule, 7.0, EnergyMortarPenalty{ gap } };
-  const EnergyMortarNodalEnergy<Rule, Gap> nodal{ rule, EnergyMortarNodal{ gap } };
+  const EnergyMortarEnergy<Rule, Gap> energy{ rule, 7.0, gap };
+  const EnergyMortarNodalEnergy<Rule, Gap> nodal{ rule, gap };
   const MdArray<RealT, decltype( energy )::dof_count> coordinates{ 0.0, 0.0, 2.0, 0.15, 1.7, 0.35, 0.3, 0.15 };
   const auto check = [&]( const auto& selected_energy, const auto& selected_nodal ) {
     using SelectedEnergy = std::remove_cvref_t<decltype( selected_energy )>;
@@ -332,7 +333,10 @@ void checkRuleDerivatives()
   }
   {
     SCOPED_TRACE( "frozen quadrature" );
-    check( energy.withFrozenQuadrature( coordinates.view() ), nodal.withFrozenQuadrature( coordinates.view() ) );
+    using FrozenRule = detail::FrozenPairQuadratureRule<Rule>;
+    const FrozenRule frozen_rule{ rule, coordinates.view() };
+    check( EnergyMortarEnergy<FrozenRule, Gap>{ frozen_rule, 7.0, gap },
+           EnergyMortarNodalEnergy<FrozenRule, Gap>{ frozen_rule, gap } );
   }
 }
 

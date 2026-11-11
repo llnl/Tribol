@@ -4,14 +4,14 @@
 // SPDX-License-Identifier: (MIT)
 
 /** @file @brief Shared implementation for transferring packed element blocks to MFEM assembly storage. */
-#ifndef SRC_TRIBOL_MESH_MFEMELEMENTASSEMBLY_HPP_
-#define SRC_TRIBOL_MESH_MFEMELEMENTASSEMBLY_HPP_
+#ifndef SRC_TRIBOL_ASSEMBLY_MFEMELEMENTASSEMBLY_HPP_
+#define SRC_TRIBOL_ASSEMBLY_MFEMELEMENTASSEMBLY_HPP_
 #include "tribol/config.hpp"
 #ifdef BUILD_REDECOMP
 #include <limits>
 #include <stdexcept>
 #include "tribol/mesh/MfemData.hpp"
-#include "tribol/physics/PairContribution.hpp"
+#include "tribol/assembly/PairContribution.hpp"
 namespace tribol {
 namespace detail {
 
@@ -53,4 +53,4 @@ void appendElementBlocks( PackedPairJacobianContribs& destination,
 
 }  // namespace tribol
 #endif  // BUILD_REDECOMP
-#endif  // SRC_TRIBOL_MESH_MFEMELEMENTASSEMBLY_HPP_
+#endif  // SRC_TRIBOL_ASSEMBLY_MFEMELEMENTASSEMBLY_HPP_

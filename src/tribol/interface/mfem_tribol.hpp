@@ -52,6 +52,8 @@ namespace tribol {
  *
  * Quadrature-point ENERGY_MORTAR uses parent-only Jacobian transfer and creates no pressure/gap fields. Nodal
  * enforcement creates those fields when selected; switching locations rebuilds the formulation and transfer data.
+ * Penalty Energy Mortar is registered without a formulation until setMfemKinematicConstantPenalty() supplies the
+ * required constants. Nodal LM formulations are available immediately after registration.
  */
 void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, const mfem::ParMesh& mesh,
                                  const mfem::ParGridFunction& current_coords, std::set<int> b_attributes_1,
@@ -119,6 +121,13 @@ void setMfemRedecompTriggerDisplacement( IndexT cs_id, RealT val );
  * @param cs_id The ID of the coupling scheme with the MFEM mesh
  * @param mesh1_penalty Penalty parameter for the first contact surface mesh
  * @param mesh2_penalty Penalty parameter for the second contact surface mesh
+ *
+ * For penalty Energy Mortar, constructs or replaces the formulation with the arithmetic mean of these constants.
+ * For the opt-in Common Plane formulation, replaces it using these constants as springs in series. Existing penalty
+ * scales are cleared; call setMfemKinematicPenaltyScale() after this setter to apply scales to the new constants.
+ * The formulation keeps that effective stiffness until replaced. Construction requires no decomposition refresh;
+ * call updateMfemParallelDecomposition() with current coordinates before calculating contact.
+ * @throws std::invalid_argument A composed formulation's penalty is nonpositive or nonfinite.
  */
 void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT mesh2_penalty );
 
@@ -174,6 +183,10 @@ void setMfemRatePercentPenalty( IndexT cs_id, RealT mesh1_ratio, RealT mesh2_rat
  * @param cs_id The ID of the coupling scheme with the MFEM mesh
  * @param mesh1_scale Scaling coefficient of the kinematic penalty for the first contact surface mesh
  * @param mesh2_scale Scaling coefficient of the kinematic penalty for the second contact surface mesh
+ *
+ * Replaces an enabled Common Plane formulation using the scaled mesh constants, without a decomposition refresh.
+ * Its effective stiffness stays fixed until the formulation is replaced. Energy Mortar does not apply these scales.
+ * @throws std::invalid_argument A Common Plane scaled mesh penalty is nonpositive or nonfinite.
  */
 void setMfemKinematicPenaltyScale( IndexT cs_id, RealT mesh1_scale, RealT mesh2_scale );
 

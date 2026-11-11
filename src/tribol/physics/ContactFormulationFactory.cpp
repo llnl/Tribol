@@ -17,6 +17,7 @@
 #include <stdexcept>
 #include "tribol/physics/CommonPlaneFormulation.hpp"
 #include "tribol/physics/EnergyMortar.hpp"
+#include "tribol/physics/PenaltyStiffness.hpp"
 
 namespace tribol {
 
@@ -102,6 +103,14 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
   if ( !cs->hasMfemJacobianData() ) {
     throw std::invalid_argument( "Common Plane requires parent Jacobian transfer data." );
   }
+  const auto& data = *cs->getMfemMeshData();
+  const auto* scale1 = data.GetMesh1KinematicPenaltyScale();
+  const auto* scale2 = data.GetMesh2KinematicPenaltyScale();
+  const RealT penalty1 =
+      detail::checkedPenaltyStiffness( *data.GetMesh1KinematicConstantPenalty() * ( scale1 ? *scale1 : 1.0 ) );
+  const RealT penalty2 =
+      detail::checkedPenaltyStiffness( *data.GetMesh2KinematicConstantPenalty() * ( scale2 ? *scale2 : 1.0 ) );
+  const RealT penalty = SeriesPenaltyStiffness{}( penalty1, penalty2 );
   return createWithQuadratureRule(
       cs->getParameters().quadrature_order, CommonPlaneEdgeMapping{},
       [&]( auto quadrature ) -> std::unique_ptr<ContactFormulation> {
@@ -113,7 +122,7 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
         return std::make_unique<CommonPlaneFormulation<BaseRule>>(
             *cs->getMfemMeshData(), *cs->getMfemJacobianData(), cs->getExecutionMode(),
             PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( quadrature ),
-            OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap }, ScaledMeshPenaltyInputs<>{} );
+            OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap }, penalty );
       } );
 }
 
@@ -130,19 +139,20 @@ std::unique_ptr<ContactFormulation> createEnergyMortarForRule( CouplingScheme* c
   auto coarse_search = createCoarseSearch( cs->spatialDimension(), binning_method, execution_mode,
                                            binning_proximity_scale, residual_gap );
   auto refined_search = std::make_unique<ProjectedEdgeSearch>( execution_mode, cs->getContactCase() == AUTO );
-  const bool use_penalty = cs->getEnforcementOptions().penalty_options.kinematic_calc_set;
+  const bool use_penalty = cs->getEnforcementMethod() == PENALTY;
+  const auto& data = *cs->getMfemMeshData();
+  const RealT penalty = use_penalty ? AveragePenaltyStiffness{}( *data.GetMesh1KinematicConstantPenalty(),
+                                                                 *data.GetMesh2KinematicConstantPenalty() )
+                                    : 0.0;
   PairListBuilder pair_builder{ std::move( coarse_search ), std::move( refined_search ) };
   if ( cs->getParameters().enforcement_location == EnforcementLocation::QuadraturePoint ) {
-    QuadraturePointContactEnforcement<> enforcement =
-        use_penalty ? QuadraturePointContactEnforcement<>{ RegisteredPenaltyEnforcement<>{} }
-                    : QuadraturePointContactEnforcement<>{ UnconfiguredPenaltyEnforcement{} };
     return std::make_unique<QuadraturePointEnergyMortar<QuadratureRule>>(
         *cs->getMfemMeshData(), *cs->getMfemJacobianData(), execution_mode, std::move( pair_builder ),
-        std::move( quadrature_rule ), OffsetGap{ OpposingNormalGap{}, residual_gap }, std::move( enforcement ) );
+        std::move( quadrature_rule ), OffsetGap{ OpposingNormalGap{}, residual_gap }, penalty );
   }
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "Nodal Energy Mortar requires pressure/gap data." );
-  NodalContactEnforcement<> enforcement = use_penalty ? NodalContactEnforcement<>{ RegisteredPenaltyEnforcement<>{} }
-                                                      : NodalContactEnforcement<>{ LagrangeMultiplierEnforcement{} };
+  NodalContactEnforcement enforcement = use_penalty ? NodalContactEnforcement{ PenaltyEnforcement{ penalty } }
+                                                    : NodalContactEnforcement{ LagrangeMultiplierEnforcement{} };
   return std::make_unique<NodalEnergyMortar<QuadratureRule>>(
       *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), execution_mode,
       std::move( pair_builder ), std::move( quadrature_rule ), OffsetGap{ OpposingNormalGap{}, residual_gap },
@@ -151,6 +161,23 @@ std::unique_ptr<ContactFormulation> createEnergyMortarForRule( CouplingScheme* c
 
 std::unique_ptr<ContactFormulation> createEnergyMortar( CouplingScheme* cs )
 {
+  if ( !cs->hasMfemData() ) {
+    throw std::invalid_argument( "ENERGY_MORTAR requires MFEM mesh data." );
+  }
+  if ( cs->getEnforcementMethod() == PENALTY ) {
+    const auto& options = cs->getEnforcementOptions().penalty_options;
+    const auto& data = *cs->getMfemMeshData();
+    if ( !options.kinematic_calc_set || !data.GetMesh1KinematicConstantPenalty() ||
+         !data.GetMesh2KinematicConstantPenalty() ) {
+      return nullptr;
+    }
+    if ( options.kinematic_calculation != KINEMATIC_CONSTANT ) {
+      throw std::invalid_argument( "Energy Mortar requires constant penalty stiffness." );
+    }
+  } else if ( cs->getEnforcementMethod() != LAGRANGE_MULTIPLIER ||
+              cs->getParameters().enforcement_location != EnforcementLocation::Nodal ) {
+    throw std::invalid_argument( "Energy Mortar requires penalty enforcement or nodal Lagrange multipliers." );
+  }
   const SmoothedProjectedEdgeMapping mapping{};
   return createWithQuadratureRule( cs->getParameters().quadrature_order, mapping,
                                    [&]( auto quadrature_rule ) -> std::unique_ptr<ContactFormulation> {

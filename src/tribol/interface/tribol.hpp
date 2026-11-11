@@ -554,6 +554,7 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* mesh_id1, I
  * \param [in/out] dt the simulation timestep input with Tribol timestep vote output
  *
  * \return rc return code, a non-zero return code indicates an error.
+ * @throws std::logic_error Energy Mortar penalty settings are incomplete; no contact is calculated for that scheme.
  */
 int update( int cycle, RealT t, RealT& dt );
 

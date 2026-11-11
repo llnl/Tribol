@@ -18,15 +18,15 @@ struct CommonPlaneGap {
    * @brief Project the separation between physical quadrature points onto the common normal.
    * @param point1 Point on the first edge.
    * @param point2 Point on the second edge.
-   * @param frame Common-line frame calculated from those same current edges.
+   * @param line Common line calculated from those same current edges.
    * @return (point1-point2).normal, negative in compression under the Common Plane orientation convention.
    * @pre Both edges are nondegenerate and their directed normals oppose each other.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT operator()( const LinearEdgeGeometry::Point& point1,
                                                             const LinearEdgeGeometry::Point& point2,
-                                                            const CommonPlaneEdgeMapping::Frame& frame ) const
+                                                            const CommonPlaneEdgeMapping::CommonPlaneLine& line ) const
   {
-    return LinearEdgeGeometry::Vector( point2, point1 ).dot( frame.normal );
+    return LinearEdgeGeometry::Vector( point2, point1 ).dot( line.normal );
   }
 };
 }  // namespace tribol

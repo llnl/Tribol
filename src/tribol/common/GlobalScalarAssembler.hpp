@@ -3,9 +3,9 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-/** @file @brief Execution-space reduction and MPI assembly for scalar pair contributions. */
-#ifndef SRC_TRIBOL_PHYSICS_GLOBALSCALARASSEMBLER_HPP_
-#define SRC_TRIBOL_PHYSICS_GLOBALSCALARASSEMBLER_HPP_
+/** @file @brief Execution-space reduction and MPI assembly for scalar contributions. */
+#ifndef SRC_TRIBOL_COMMON_GLOBALSCALARASSEMBLER_HPP_
+#define SRC_TRIBOL_COMMON_GLOBALSCALARASSEMBLER_HPP_
 
 #include <mpi.h>
 #include <stdexcept>
@@ -80,4 +80,4 @@ class GlobalScalarAssembler {
 
 }  // namespace tribol
 
-#endif  // SRC_TRIBOL_PHYSICS_GLOBALSCALARASSEMBLER_HPP_
+#endif  // SRC_TRIBOL_COMMON_GLOBALSCALARASSEMBLER_HPP_

@@ -11,12 +11,21 @@ endif()
 ## list of headers
 set(tribol_headers
 
+    assembly/MfemElementAssembly.hpp
+    assembly/MfemFieldAssembler.hpp
+    assembly/MfemPairAssembler.hpp
+    assembly/PairContribution.hpp
+    assembly/PairEvaluation.hpp
+    assembly/PairEvaluationAssembly.hpp
+    assembly/PairKernel.hpp
+
     common/ArrayTypes.hpp
     common/Atomics.hpp
     common/BasicTypes.hpp
     common/Containers.hpp
     common/Enzyme.hpp
     common/ExecModel.hpp
+    common/GlobalScalarAssembler.hpp
     common/LoopExec.hpp
     common/MdArray.hpp
     common/MdSpan.hpp
@@ -50,9 +59,6 @@ set(tribol_headers
     mesh/InterfacePairs.hpp
     mesh/MeshData.hpp
     mesh/MethodCouplingData.hpp
-    mesh/MfemElementAssembly.hpp
-    mesh/MfemPairAssembler.hpp
-    mesh/MfemFieldAssembler.hpp
     mesh/MfemData.hpp
 
     physics/AlignedMortar.hpp
@@ -63,10 +69,6 @@ set(tribol_headers
     physics/ContactFormulationFactory.hpp
     physics/Mortar.hpp
     physics/EnergyMortarEnergy.hpp
-    physics/GlobalScalarAssembler.hpp
-    physics/PairEvaluation.hpp
-    physics/PairContribution.hpp
-    physics/PairKernel.hpp
     physics/PenaltyStiffness.hpp
     physics/EnergyMortar.hpp
     physics/Physics.hpp
@@ -91,6 +93,9 @@ set(tribol_headers
 
 ## list of sources
 set(tribol_sources
+
+    assembly/MfemFieldAssembler.cpp
+    assembly/MfemPairAssembler.cpp
      
     geom/CompGeom.cpp
     geom/GeomUtilities.cpp
@@ -107,8 +112,6 @@ set(tribol_sources
     mesh/CouplingScheme.cpp
     mesh/MeshData.cpp
     mesh/MethodCouplingData.cpp
-    mesh/MfemPairAssembler.cpp
-    mesh/MfemFieldAssembler.cpp
     mesh/MfemData.cpp
 
     physics/AlignedMortar.cpp

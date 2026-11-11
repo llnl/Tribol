@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include "tribol/mesh/MfemPairAssembler.hpp"
+#include "tribol/assembly/MfemPairAssembler.hpp"
 #ifdef BUILD_REDECOMP
 #include <algorithm>
 #include <limits>

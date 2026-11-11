@@ -4,8 +4,8 @@
 // SPDX-License-Identifier: (MIT)
 
 /** @file @brief Assemble scalar nodal fields and their coordinate Jacobians on MFEM spaces. */
-#ifndef SRC_TRIBOL_MESH_MFEMFIELDASSEMBLER_HPP_
-#define SRC_TRIBOL_MESH_MFEMFIELDASSEMBLER_HPP_
+#ifndef SRC_TRIBOL_ASSEMBLY_MFEMFIELDASSEMBLER_HPP_
+#define SRC_TRIBOL_ASSEMBLY_MFEMFIELDASSEMBLER_HPP_
 #include "tribol/config.hpp"
 #ifdef BUILD_REDECOMP
 #include <array>
@@ -15,7 +15,7 @@
 #include "tribol/common/MdArray.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/mesh/MfemElementAssembly.hpp"
+#include "tribol/assembly/MfemElementAssembly.hpp"
 
 namespace tribol {
 
@@ -151,4 +151,4 @@ class MfemFieldAssembler {
 };
 }  // namespace tribol
 #endif  // BUILD_REDECOMP
-#endif  // SRC_TRIBOL_MESH_MFEMFIELDASSEMBLER_HPP_
+#endif  // SRC_TRIBOL_ASSEMBLY_MFEMFIELDASSEMBLER_HPP_

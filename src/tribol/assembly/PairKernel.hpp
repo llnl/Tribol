@@ -4,8 +4,8 @@
 // SPDX-License-Identifier: (MIT)
 
 /** @file @brief Bulk pair evaluation into preallocated execution-space buffers. */
-#ifndef SRC_TRIBOL_PHYSICS_PAIRKERNEL_HPP_
-#define SRC_TRIBOL_PHYSICS_PAIRKERNEL_HPP_
+#ifndef SRC_TRIBOL_ASSEMBLY_PAIRKERNEL_HPP_
+#define SRC_TRIBOL_ASSEMBLY_PAIRKERNEL_HPP_
 
 #include <stdexcept>
 
@@ -15,8 +15,8 @@
 #include "tribol/common/MdArray.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/physics/PairContribution.hpp"
-#include "tribol/physics/PairEvaluation.hpp"
+#include "tribol/assembly/PairContribution.hpp"
+#include "tribol/assembly/PairEvaluation.hpp"
 
 namespace tribol {
 namespace detail {
@@ -201,4 +201,4 @@ void evaluatePairEnergiesAndHessians( ExecutionMode execution_mode, ArrayViewT<c
 
 }  // namespace tribol
 
-#endif  // SRC_TRIBOL_PHYSICS_PAIRKERNEL_HPP_
+#endif  // SRC_TRIBOL_ASSEMBLY_PAIRKERNEL_HPP_

@@ -10,12 +10,16 @@
  * One- and two-rank runs also check parent-only storage, switching locations, and changed penalties; decomposition
  * onto one rank covers a contact rank with no elements. Directional differences check global energy and coordinate
  * derivatives. Signed nodal gaps check penalty activation separately from scalar field assembly. Local quadrature
- * accuracy is checked in tribol_pair_quadrature; gap and force derivatives have separate tests.
+ * accuracy is checked in tribol_pair_quadrature; gap and force derivatives have separate tests. Registration may
+ * precede penalty configuration, but no penalty formulation is constructed until the settings are complete. Each
+ * formulation retains its construction stiffness until replaced.
+ * Direct force, Jacobian, and energy scaling checks use Sequential and OpenMP when enabled, with host mesh storage.
  */
 #include <gtest/gtest.h>
 #include <cmath>
 #include <array>
 #include <optional>
+#include <limits>
 #include "axom/slic/core/SimpleLogger.hpp"
 #include "mfem.hpp"
 #include "shared/mesh/MeshBuilder.hpp"
@@ -25,6 +29,7 @@
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/physics/ContactFormulationFactory.hpp"
 #include "tribol/physics/EnergyMortar.hpp"
+#include "tribol/physics/PenaltyStiffness.hpp"
 #include "tribol/integ/QuadratureRuleFactory.hpp"
 #include "tribol/search/CoarseSearchFactory.hpp"
 #include "tribol/search/ProjectedEdgeSearch.hpp"
@@ -40,9 +45,9 @@ class EnergyMortarQuadratureSettingsTest : public testing::TestWithParam<std::tu
    */
   int quadratureOrder() const { return std::get<1>( GetParam() ); }
   /**
-   * @brief Register the MFEM coupling scheme and configure its enforcement location and quadrature order.
+   * @brief Create the parent fields and register the scheme before penalty settings are supplied.
    */
-  void SetUp() override
+  void registerScheme()
   {
     mesh_ = std::make_unique<mfem::ParMesh>( static_cast<const mfem::ParMesh&>(
         shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::SquareMesh( 2, 1 ) ) ) );
@@ -54,6 +59,11 @@ class EnergyMortarQuadratureSettingsTest : public testing::TestWithParam<std::tu
                                         tribol::NO_SLIDING, tribol::ENERGY_MORTAR, tribol::FRICTIONLESS,
                                         tribol::PENALTY, tribol::BINNING_GRID, tribol::ExecutionMode::Sequential );
     EXPECT_EQ( tribol::CouplingSchemeManager::getInstance().findData( 0 )->getParameters().quadrature_order, 5 );
+  }
+  /** @brief Register the scheme and configure the requested quadrature and penalty settings. */
+  void SetUp() override
+  {
+    registerScheme();
     tribol::setEnforcementLocation( 0, std::get<0>( GetParam() ) );
     tribol::setQuadratureOrder( 0, quadratureOrder() );
     tribol::setMfemKinematicConstantPenalty( 0, 100.0, 100.0 );
@@ -181,7 +191,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, returns_owned_outputs_for_each_calcu
   EXPECT_TRUE( std::isfinite( action.Norml2() ) );
 }
 
-// Changing only the combination to springs in series must scale energy and force for either location and Gauss count.
+// Springs in series must scale force, Jacobian, and energy on each host backend for either location and Gauss count.
 TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
 {
   using namespace tribol;
@@ -190,31 +200,48 @@ TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
   auto& cs = CouplingSchemeManager::getInstance().at( 0 );
   const auto baseline =
       cs.getContactFormulation()->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView() );
-  auto alternate = createWithQuadratureRule(
-      quadratureOrder(), SmoothedProjectedEdgeMapping{}, [&]( auto rule ) -> std::unique_ptr<ContactFormulation> {
-        auto coarse = createCoarseSearch( cs.spatialDimension(), cs.getBinningMethod(), cs.getExecutionMode(),
-                                          cs.getEffectiveBinningProximityScale(), 0.0 );
-        auto refined = std::make_unique<ProjectedEdgeSearch>( cs.getExecutionMode(), false );
-        PairListBuilder pair_builder{ std::move( coarse ), std::move( refined ) };
-        if ( std::get<0>( GetParam() ) == EnforcementLocation::Nodal ) {
-          return std::make_unique<NodalEnergyMortar<decltype( rule ), SeriesPenaltyStiffness>>(
-              *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), cs.getExecutionMode(),
-              std::move( pair_builder ), std::move( rule ), OffsetGap{ OpposingNormalGap{}, 0.0 },
-              RegisteredPenaltyEnforcement<SeriesPenaltyStiffness>{} );
-        }
-        return std::make_unique<QuadraturePointEnergyMortar<decltype( rule ), SeriesPenaltyStiffness>>(
-            *cs.getMfemMeshData(), *cs.getMfemJacobianData(), cs.getExecutionMode(), std::move( pair_builder ),
-            std::move( rule ), OffsetGap{ OpposingNormalGap{}, 0.0 },
-            RegisteredPenaltyEnforcement<SeriesPenaltyStiffness>{} );
-      } );
-  auto result = alternate->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView() );
-  ASSERT_NE( result.force, nullptr );
-  ASSERT_TRUE( result.energy.has_value() );
-  // The stiffnesses 2 and 6 give series stiffness 1.5 instead of the default arithmetic mean 4.
-  constexpr RealT stiffness_ratio = 1.5 / 4.0;
-  result.force->Add( -stiffness_ratio, *baseline.force );
-  EXPECT_LT( result.force->Norml2(), 1.0e-11 );
-  EXPECT_NEAR( *result.energy, stiffness_ratio * *baseline.energy, 1.0e-11 );
+  mfem::Vector direction( baseline.df_dx->Width() ), reference_action( baseline.df_dx->Height() );
+  for ( int dof = 0; dof < direction.Size(); ++dof ) {
+    direction[dof] = 1.0 + 0.1 * dof;
+  }
+  baseline.df_dx->Mult( direction, reference_action );
+  for ( const auto execution_mode : { ExecutionMode::Sequential
+#ifdef TRIBOL_USE_OPENMP
+                                      ,
+                                      ExecutionMode::OpenMP
+#endif
+        } ) {
+    SCOPED_TRACE( static_cast<int>( execution_mode ) );
+    auto alternate = createWithQuadratureRule(
+        quadratureOrder(), SmoothedProjectedEdgeMapping{}, [&]( auto rule ) -> std::unique_ptr<ContactFormulation> {
+          auto coarse = createCoarseSearch( cs.spatialDimension(), cs.getBinningMethod(), execution_mode,
+                                            cs.getEffectiveBinningProximityScale(), 0.0 );
+          auto refined = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
+          PairListBuilder pair_builder{ std::move( coarse ), std::move( refined ) };
+          if ( std::get<0>( GetParam() ) == EnforcementLocation::Nodal ) {
+            return std::make_unique<NodalEnergyMortar<decltype( rule )>>(
+                *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), execution_mode,
+                std::move( pair_builder ), std::move( rule ), OffsetGap{ OpposingNormalGap{}, 0.0 },
+                PenaltyEnforcement{ SeriesPenaltyStiffness{}( 2.0, 6.0 ) } );
+          }
+          return std::make_unique<QuadraturePointEnergyMortar<decltype( rule )>>(
+              *cs.getMfemMeshData(), *cs.getMfemJacobianData(), execution_mode, std::move( pair_builder ),
+              std::move( rule ), OffsetGap{ OpposingNormalGap{}, 0.0 }, SeriesPenaltyStiffness{}( 2.0, 6.0 ) );
+        } );
+    auto result = alternate->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView() );
+    ASSERT_NE( result.force, nullptr );
+    ASSERT_NE( result.df_dx, nullptr );
+    ASSERT_TRUE( result.energy.has_value() );
+    // The stiffnesses 2 and 6 give series stiffness 1.5 instead of the default arithmetic mean 4.
+    constexpr RealT stiffness_ratio = 1.5 / 4.0;
+    result.force->Add( -stiffness_ratio, *baseline.force );
+    EXPECT_LT( result.force->Norml2(), 1.0e-11 );
+    EXPECT_NEAR( *result.energy, stiffness_ratio * *baseline.energy, 1.0e-11 );
+    mfem::Vector action( result.df_dx->Height() );
+    result.df_dx->Mult( direction, action );
+    action.Add( -stiffness_ratio, reference_action );
+    EXPECT_LT( action.Norml2(), 1.0e-11 );
+  }
 }
 
 // Unsupported locations must leave the selected formulation and its transfer fields unchanged.
@@ -239,10 +266,113 @@ TEST_P( EnergyMortarQuadratureSettingsTest, rejects_unconfigured_pair_penalty )
   auto& cs = tribol::CouplingSchemeManager::getInstance().at( 0 );
   cs.getEnforcementOptions().penalty_options.kinematic_calc_set = false;
   cs.updateContactFormulation();
-  EXPECT_THROW( cs.getContactFormulation()->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView() ),
-                std::invalid_argument );
+  EXPECT_FALSE( cs.hasContactFormulation() );
+  tribol::RealT dt = 1.0;
+  EXPECT_THROW( tribol::update( 0, 0.0, dt ), std::logic_error );
   EXPECT_FALSE( cs.hasMfemSubmeshData() );
 }
+
+// Existing penalty calculations retain their construction stiffness even if registered constants change or disappear.
+TEST_P( EnergyMortarQuadratureSettingsTest, keeps_penalty_fixed_until_formulation_is_rebuilt )
+{
+  tribol::updateMfemParallelDecomposition( 1, true );
+  auto& cs = tribol::CouplingSchemeManager::getInstance().at( 0 );
+  auto& mesh_data = *cs.getMfemMeshData();
+  const auto calculate = [&] {
+    return cs.getContactFormulation()->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView() );
+  };
+  const auto initial = calculate();
+  const auto check_unchanged = [&] {
+    auto result = calculate();
+    result.force->Add( -1.0, *initial.force );
+    EXPECT_LT( result.force->Norml2(), 1.0e-12 );
+    EXPECT_EQ( result.energy, initial.energy );
+  };
+  mesh_data.ClearAllPenaltyData();
+  check_unchanged();
+  EXPECT_EQ( tribol::createContactFormulation( &cs ), nullptr );
+  mesh_data.SetMesh1KinematicConstantPenalty( 100.0 );
+  check_unchanged();
+  EXPECT_EQ( tribol::createContactFormulation( &cs ), nullptr );
+  mesh_data.ClearAllPenaltyData();
+  mesh_data.SetMesh2KinematicConstantPenalty( 100.0 );
+  check_unchanged();
+  EXPECT_EQ( tribol::createContactFormulation( &cs ), nullptr );
+  mesh_data.SetMesh1KinematicConstantPenalty( 300.0 );
+  check_unchanged();
+  // The public setter builds a new formulation using the new mean stiffness, without refreshing the decomposition.
+  tribol::setMfemKinematicConstantPenalty( 0, 300.0, 100.0 );
+  auto rebuilt = calculate();
+  rebuilt.force->Add( -2.0, *initial.force );
+  EXPECT_LT( rebuilt.force->Norml2(), 1.0e-12 );
+  EXPECT_NEAR( *rebuilt.energy, 2.0 * *initial.energy, 1.0e-12 );
+}
+
+/** @brief Start tests with a coupling scheme registered before its penalty settings are supplied. */
+class EnergyMortarRegistrationTest : public EnergyMortarQuadratureSettingsTest {
+ protected:
+  /** @brief Register the scheme while leaving penalty selection and constants unset. */
+  void SetUp() override { registerScheme(); }
+};
+
+// The penalty setter constructs a complete formulation before decomposition refresh and update().
+TEST_P( EnergyMortarRegistrationTest, constructs_formulation_before_decomposition )
+{
+  auto& cs = tribol::CouplingSchemeManager::getInstance().at( 0 );
+  EXPECT_FALSE( cs.hasContactFormulation() );
+  tribol::setEnforcementLocation( 0, std::get<0>( GetParam() ) );
+  tribol::setQuadratureOrder( 0, quadratureOrder() );
+  EXPECT_FALSE( cs.hasContactFormulation() );
+  tribol::RealT dt = 1.0;
+  EXPECT_THROW( tribol::update( 0, 0.0, dt ), std::logic_error );
+  tribol::setMfemKinematicConstantPenalty( 0, 100.0, 100.0 );
+  ASSERT_TRUE( cs.hasContactFormulation() );
+  const auto location = std::get<0>( GetParam() );
+  if ( quadratureOrder() == 1 ) {
+    EXPECT_TRUE( usesPointCount<1>( cs.getContactFormulation(), location ) );
+  } else if ( quadratureOrder() == 3 ) {
+    EXPECT_TRUE( usesPointCount<2>( cs.getContactFormulation(), location ) );
+  } else {
+    EXPECT_TRUE( usesPointCount<3>( cs.getContactFormulation(), location ) );
+  }
+  tribol::updateMfemParallelDecomposition( 1, true );
+  ASSERT_EQ( tribol::update( 0, 0.0, dt ), 0 );
+  EXPECT_GT( tribol::getMfemContactForce( 0 ).Norml2(), 0.0 );
+}
+
+// Configuring after decomposition also initializes the correct field rows and requires no further refresh.
+TEST_P( EnergyMortarRegistrationTest, constructs_formulation_on_existing_decomposition )
+{
+  auto& cs = tribol::CouplingSchemeManager::getInstance().at( 0 );
+  tribol::setEnforcementLocation( 0, std::get<0>( GetParam() ) );
+  tribol::setQuadratureOrder( 0, quadratureOrder() );
+  tribol::updateMfemParallelDecomposition( 1, true );
+  EXPECT_FALSE( cs.hasContactFormulation() );
+  tribol::setMfemKinematicConstantPenalty( 0, 100.0, 100.0 );
+  ASSERT_TRUE( cs.hasContactFormulation() );
+  const bool nodal = std::get<0>( GetParam() ) == tribol::EnforcementLocation::Nodal;
+  EXPECT_EQ( cs.getMesh1().getNodalFields().m_is_node_gap_set, nodal );
+  EXPECT_FALSE( cs.getMesh2().getNodalFields().m_is_node_gap_set );
+  const auto result =
+      cs.getContactFormulation()->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView() );
+  ASSERT_NE( result.force, nullptr );
+  ASSERT_TRUE( result.energy.has_value() );
+  EXPECT_GT( result.force->Norml2(), 0.0 );
+}
+
+// Invalid fixed stiffness is rejected before a penalty enforcement value can be constructed.
+TEST( EnergyMortarPenalty, rejects_invalid_fixed_stiffness )
+{
+  EXPECT_THROW( tribol::PenaltyEnforcement{ 0.0 }, std::invalid_argument );
+  EXPECT_THROW( tribol::PenaltyEnforcement{ -1.0 }, std::invalid_argument );
+  EXPECT_THROW( tribol::PenaltyEnforcement{ std::numeric_limits<tribol::RealT>::infinity() }, std::invalid_argument );
+  EXPECT_EQ( tribol::PenaltyEnforcement{ 2.0 }.stiffness(), 2.0 );
+}
+
+INSTANTIATE_TEST_SUITE_P( enforcement, EnergyMortarRegistrationTest,
+                          testing::Combine( testing::Values( tribol::EnforcementLocation::Nodal,
+                                                             tribol::EnforcementLocation::QuadraturePoint ),
+                                            testing::Values( 1, 3, 5 ) ) );
 
 // Parent-only pair enforcement must never allocate or register pressure/gap fields, including after decomposition.
 TEST_P( EnergyMortarQuadratureSettingsTest, creates_only_the_required_transfer_fields )

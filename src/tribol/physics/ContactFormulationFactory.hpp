@@ -18,7 +18,9 @@ class CouplingScheme;
  * @brief Factory function to create a ContactFormulation based on the CouplingScheme settings.
  *
  * @param cs Pointer to the CouplingScheme
- * @return std::unique_ptr<ContactFormulation> The created formulation, or nullptr if no formulation applies.
+ * @return The created formulation, or nullptr if no formulation applies or Energy Mortar penalty settings are
+ * incomplete.
+ * @throws std::invalid_argument A supplied formulation setting or effective penalty is invalid.
  */
 std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs );
 

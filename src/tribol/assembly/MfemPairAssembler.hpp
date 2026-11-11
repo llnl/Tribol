@@ -7,8 +7,8 @@
  * @file
  * @brief Assemble element-pair residuals and Jacobians on MFEM parent true degrees of freedom.
  */
-#ifndef SRC_TRIBOL_MESH_MFEMPAIRASSEMBLER_HPP_
-#define SRC_TRIBOL_MESH_MFEMPAIRASSEMBLER_HPP_
+#ifndef SRC_TRIBOL_ASSEMBLY_MFEMPAIRASSEMBLER_HPP_
+#define SRC_TRIBOL_ASSEMBLY_MFEMPAIRASSEMBLER_HPP_
 
 #include "tribol/config.hpp"
 #ifdef BUILD_REDECOMP
@@ -20,9 +20,9 @@
 #include "tribol/common/MdArray.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MfemData.hpp"
-#include "tribol/mesh/MfemElementAssembly.hpp"
+#include "tribol/assembly/MfemElementAssembly.hpp"
 #include "tribol/physics/ContactFormulation.hpp"
-#include "tribol/physics/PairContribution.hpp"
+#include "tribol/assembly/PairContribution.hpp"
 
 namespace tribol {
 /**
@@ -226,4 +226,4 @@ class MfemPairAssembler {
 
 }  // namespace tribol
 #endif  // BUILD_REDECOMP
-#endif  // SRC_TRIBOL_MESH_MFEMPAIRASSEMBLER_HPP_
+#endif  // SRC_TRIBOL_ASSEMBLY_MFEMPAIRASSEMBLER_HPP_

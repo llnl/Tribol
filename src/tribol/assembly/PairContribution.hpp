@@ -7,8 +7,8 @@
  * @file
  * @brief Preallocated pair-local values and coordinate derivatives for bulk contact assembly.
  */
-#ifndef SRC_TRIBOL_PHYSICS_PAIRCONTRIBUTION_HPP_
-#define SRC_TRIBOL_PHYSICS_PAIRCONTRIBUTION_HPP_
+#ifndef SRC_TRIBOL_ASSEMBLY_PAIRCONTRIBUTION_HPP_
+#define SRC_TRIBOL_ASSEMBLY_PAIRCONTRIBUTION_HPP_
 
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/BasicTypes.hpp"
@@ -297,4 +297,4 @@ class ElementBlockBuffer {
 
 }  // namespace tribol
 
-#endif  // SRC_TRIBOL_PHYSICS_PAIRCONTRIBUTION_HPP_
+#endif  // SRC_TRIBOL_ASSEMBLY_PAIRCONTRIBUTION_HPP_

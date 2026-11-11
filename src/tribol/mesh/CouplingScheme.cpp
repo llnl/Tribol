@@ -1035,6 +1035,9 @@ void CouplingScheme::performBinning()
 //------------------------------------------------------------------------------
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
+  if ( m_contactMethod == ENERGY_MORTAR && !m_formulation ) {
+    throw std::logic_error( "Configure Energy Mortar penalty settings before calculating contact." );
+  }
   if ( m_formulation ) {
     if ( m_parameters.use_common_plane_formulation ) {
       detail::validateCommonPlaneFormulation( *this );
@@ -1252,6 +1255,9 @@ void CouplingScheme::updateContactFormulation()
 //------------------------------------------------------------------------------
 bool CouplingScheme::init()
 {
+  if ( m_contactMethod == ENERGY_MORTAR && !m_formulation ) {
+    throw std::logic_error( "Configure Energy Mortar penalty settings before calling update()." );
+  }
   if ( m_formulation ) {
     // validity checks are done in the constructors of ContactFormulations
     this->m_isValid = true;

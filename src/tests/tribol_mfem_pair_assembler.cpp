@@ -18,8 +18,8 @@
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/mesh/MfemFieldAssembler.hpp"
-#include "tribol/mesh/MfemPairAssembler.hpp"
+#include "tribol/assembly/MfemFieldAssembler.hpp"
+#include "tribol/assembly/MfemPairAssembler.hpp"
 
 namespace {
 using namespace tribol;

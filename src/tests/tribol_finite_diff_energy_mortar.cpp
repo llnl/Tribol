@@ -10,11 +10,12 @@
 #include <gtest/gtest.h>
 
 #include "axom/slic/core/SimpleLogger.hpp"
+#include "FrozenPairQuadratureRule.hpp"
 #include "tribol/geom/OffsetGap.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
 #include "tribol/physics/EnergyMortarEnergy.hpp"
-#include "tribol/physics/PairEvaluation.hpp"
+#include "tribol/assembly/PairEvaluation.hpp"
 
 namespace {
 using namespace tribol;
@@ -70,8 +71,8 @@ void checkRule()
   using Gap = OffsetGap<OpposingNormalGap>;
   const Rule rule;
   const Gap gap{ {}, 0.05 };
-  const EnergyMortarEnergy<Rule, Gap> energy{ rule, 7.0, EnergyMortarPenalty{ gap } };
-  const EnergyMortarNodalEnergy<Rule, Gap> nodal{ rule, EnergyMortarNodal{ gap } };
+  const EnergyMortarEnergy<Rule, Gap> energy{ rule, 7.0, gap };
+  const EnergyMortarNodalEnergy<Rule, Gap> nodal{ rule, gap };
   const MdArray<RealT, decltype( energy )::dof_count> coordinates{ 0.0, 0.0, 2.0, 0.15, 1.7, 0.35, 0.3, 0.15 };
   const auto check = [&]( const auto& selected_energy, const auto& selected_nodal ) {
     using SelectedEnergy = std::remove_cvref_t<decltype( selected_energy )>;
@@ -83,7 +84,10 @@ void checkRule()
 
   SCOPED_TRACE( testing::Message() << "Gauss points: " << PointCount );
   check( energy, nodal );
-  check( energy.withFrozenQuadrature( coordinates.view() ), nodal.withFrozenQuadrature( coordinates.view() ) );
+  using FrozenRule = detail::FrozenPairQuadratureRule<Rule>;
+  const FrozenRule frozen_rule{ rule, coordinates.view() };
+  check( EnergyMortarEnergy<FrozenRule, Gap>{ frozen_rule, 7.0, gap },
+         EnergyMortarNodalEnergy<FrozenRule, Gap>{ frozen_rule, gap } );
 }
 
 TEST( EnergyMortarFiniteDifference, varying_and_frozen_quadrature )
@@ -96,7 +100,7 @@ TEST( EnergyMortarFiniteDifference, varying_and_frozen_quadrature )
 TEST( EnergyMortarFiniteDifference, invalid_geometry_reports_status_before_derivatives )
 {
   using Rule = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
-  const EnergyMortarEnergy<Rule> energy{ Rule{}, 1.0, EnergyMortarPenalty{} };
+  const EnergyMortarEnergy<Rule> energy{ Rule{}, 1.0 };
   const MdArray<RealT, decltype( energy )::dof_count> coordinates{ 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0 };
   EXPECT_NE( energy.evaluate( coordinates.view() ).quadrature_result.status, QuadratureStatus::Success );
 }

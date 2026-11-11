@@ -441,7 +441,7 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
   cs->getMfemMeshData()->SetMesh1KinematicConstantPenalty( mesh1_penalty );
   cs->getMfemMeshData()->SetMesh2KinematicConstantPenalty( mesh2_penalty );
 
-  if ( cs->hasContactFormulation() ) {
+  if ( cs->getContactMethod() == ENERGY_MORTAR || cs->hasContactFormulation() ) {
     cs->updateContactFormulation();
   }
 }
@@ -533,6 +533,9 @@ void setMfemKinematicPenaltyScale( IndexT cs_id, RealT mesh1_scale, RealT mesh2_
                       "setMfemKinematicElementPenalty() first." );
   cs->getMfemMeshData()->SetMesh1KinematicPenaltyScale( mesh1_scale );
   cs->getMfemMeshData()->SetMesh2KinematicPenaltyScale( mesh2_scale );
+  if ( cs->getParameters().use_common_plane_formulation ) {
+    cs->updateContactFormulation();
+  }
 }
 
 void updateMfemElemThickness( IndexT cs_id )
@@ -892,7 +895,8 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         // the new redecomp mesh
         submesh_data->UpdateMfemSubmeshData( mfem_data->GetRedecompMesh(), new_redecomp );
         // ContactFormulation uses mesh 1 as non-mortar; legacy mortar methods use mesh 2.
-        const auto nonmortar_mesh_id = mesh_ids[cs.hasContactFormulation() ? 0 : 1];
+        const auto nonmortar_mesh_id =
+            mesh_ids[cs.getContactMethod() == ENERGY_MORTAR || cs.hasContactFormulation() ? 0 : 1];
         auto g_ptrs = submesh_data->GetRedecompGapPtrs();
         registerMortarGaps( nonmortar_mesh_id, g_ptrs[0] );
         auto p_ptrs = submesh_data->GetRedecompPressurePtrs();

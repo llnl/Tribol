@@ -73,6 +73,41 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Moved pair evaluation, differentiation, contribution buffers, and MFEM vector/matrix assemblers into
+  `tribol/assembly/`. Includes for `PairContribution`, `PairEvaluation`, `PairKernel`, `PairEvaluationAssembly`,
+  `MfemPairAssembler`, `MfemFieldAssembler`, and `MfemElementAssembly` now use that directory.
+- Moved `GlobalScalarAssembler.hpp` from `tribol/physics/` to `tribol/common/`; it provides execution-space and MPI
+  scalar reductions independently of contact physics.
+- Nodal Energy Mortar selects penalty or Lagrange multiplier force calculation once at entry, with separate functions
+  sharing field and weighted-Hessian assembly. The LM calculation no longer allocates an unused area-weight vector.
+- Pair functions accept gap callables directly, replacing the `CommonPlaneResidual`, `EnergyMortarPenalty`, and
+  `EnergyMortarNodal` configuration wrappers. Nodal field partials are calculated by
+  `EnergyMortarNodalPartials::evaluate()` without a gap template parameter. Common Plane and Energy Mortar formulations
+  retain their configured pair functions instead of reconstructing them for each calculation.
+- Moved Energy Mortar's frozen-quadrature derivative support into a shared test helper and removed the
+  `withFrozenQuadrature()` and scalar `energy()` methods. Pair calculations use `evaluate()` and `values()` directly.
+- Removed the test-only `computeCommonPlaneResidual()`, `computeCommonPlanePair()`, and `CommonPlanePairData` interfaces
+  from the production header. Pair tests construct `CommonPlanePairFunction` and use the generic Enzyme derivatives.
+- Composed Common Plane clips crossing edges to their geometric interpenetrating overlap before generating quadrature
+  and uses uniform pressure from the overlap-centroid gap, matching legacy Common Plane. The configured base rule is
+  retained; residual-gap offsets affect pressure after geometric clipping.
+- Renamed `CommonPlaneEdgeMapping::Frame` to `CommonPlaneLine` and `makeFrame()` to `computeCommonPlaneLine()`.
+- Removed the `CommonPlaneQuadratureRule`, `CommonPlaneResidualData`, and `CommonPlaneFormulation::PairFunction` aliases;
+  use `PairQuadratureRule<CommonPlaneEdgeMapping, BaseRule>`, `PairResidualValue`, and `CommonPlanePairFunction` directly.
+- Common Plane and quadrature-point Energy Mortar use separate `evaluateAndAssembleResidualPairs()` and
+  `evaluateAndAssembleEnergyPairs()` helpers for pair evaluation and MFEM force/Jacobian assembly. The energy calculation
+  continues to reuse its gradient as the force.
+- Common Plane penalty stiffness is fixed at formulation construction, including MFEM penalty scales. The MFEM
+  constant and scale setters replace an enabled formulation without requiring a decomposition refresh. Direct
+  `CommonPlaneFormulation` constructors now take an effective scalar stiffness; the stiffness-combination template
+  parameter and `ScaledMeshPenaltyInputs` reader were removed. Low-level `setPenaltyScale()` calls leave a composed
+  formulation's stiffness unchanged; use `setMfemKinematicPenaltyScale()` to change Common Plane scales.
+- Energy Mortar penalty stiffness is fixed at formulation construction. `setMfemKinematicConstantPenalty()` constructs
+  the initial formulation once constants are available and replaces it on later changes. `update()` rejects incomplete
+  penalty settings. Nodal LM formulations remain available at registration. Direct Energy Mortar constructors now take
+  an effective scalar penalty or a fixed `PenaltyEnforcement`; their stiffness-combination template parameter and
+  `RegisteredPenaltyInputs`/`RegisteredPenaltyEnforcement` readers were removed. Fixed penalties must be positive and
+  finite, and no default stiffness is substituted for missing constants.
 - Replaced `MfemNodalAssembler` and `MfemNodalQuantityData` with `MfemFieldAssembler` and per-field `AssembledField`
   results. The assembler accumulates any configured number of scalar nodal fields sharing one submesh space in one
   batch kernel. Energy Mortar applies gap normalization and activation in the formulation and uses separate matrix-only

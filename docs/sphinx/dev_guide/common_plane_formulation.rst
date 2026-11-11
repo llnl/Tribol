@@ -37,21 +37,24 @@ Pair geometry and residual
 --------------------------
 
 The common-line normal is the normalized difference of the second and first directed edge normals. The line passes
-through the average of the edge midpoints. Both edges are projected onto the line, and their common interval is
-integrated using physical tangent coordinates. Points are mapped back onto both edges along the common normal.
-Weights measure length on the common line, without another edge-Jacobian factor.
+through the average of the edge midpoints. Both edges are projected onto the line. When the edges cross inside their
+overlap, the interval is clipped at the geometric zero gap to retain only its interpenetrating portion. Noncrossing
+edges retain the full projected overlap. The configured base rule generates points on this interval using physical
+tangent coordinates. Points are mapped back onto both edges along the common normal. Weights measure length on the
+common line, without another edge-Jacobian factor.
 
-At each point, ``CommonPlaneGap`` calculates ``dot(point1 - point2, normal)``. The factory wraps it in ``OffsetGap`` to
-subtract the configured ``residual_gap``. ``CommonPlaneResidual`` owns that gap object. A nonpositive gap activates
+The weighted parent coordinates of the generated points locate the overlap centroid. ``CommonPlaneGap`` calculates
+``dot(point1 - point2, normal)`` there. The factory wraps it in ``OffsetGap`` to subtract the configured ``residual_gap``
+after the geometric interval has been clipped. The pair function owns that gap object. A nonpositive gap activates
 penalty pressure ``penalty * gap``. The effective penalty combines both mesh spring stiffnesses, including their penalty
 scales, in series. The direct quadrature loop weights pressure times the common normal by both bases and forms the two residual
 blocks with opposite signs.
 At exactly zero gap, pressure vanishes but the compressive-side tangent remains active.
 
 Enzyme differentiates the direct residual, including the normals, overlap bounds, mapped points, and physical weights.
-The method does not derive forces from an energy. Unlike legacy Common Plane's uniform pair pressure, pressure and
-activation can differ between quadrature points. Parallel-edge constant-pressure results agree after converting the
-residual sign to physical force.
+The method does not derive forces from an energy. It uses uniform pair pressure from the overlap centroid, matching
+legacy Common Plane. The selected base rule integrates both bases over the contact interval; it is not replaced by a
+one-point rule. Results agree after converting the residual sign to physical force.
 
 Geometry and quadrature remain local to each pair calculation. The formulation retains only configuration and
 searches. Each ``computeNodalForces()`` call returns an owning ``ContactFormulationResult`` with force and Jacobian
@@ -63,10 +66,25 @@ whose output is discarded and reported before residual evaluation.
 Composition and GPU pipeline
 ----------------------------
 
+Generic pair evaluation, differentiation, contribution buffers, and MFEM assemblers live in ``tribol/assembly/``.
+Contact formulations and enforcement laws live in ``tribol/physics/``. Geometry and quadrature remain in
+``tribol/geom/`` and ``tribol/integ/``; mesh data and transfer relationships remain in ``tribol/mesh/``.
+
 ``CommonPlaneFormulation``, ``QuadraturePointEnergyMortar``, and ``NodalEnergyMortar`` derive directly from
 ``ContactFormulation``. They compose reusable search, derivative, contribution-buffer, and assembly components rather
 than inheriting pair-method behavior. ``PairListBuilder`` owns coarse and refined searches. Fixed-size pair functions
 contain only geometry-independent configuration and are statically dispatched inside device kernels.
+Each formulation owns its configured pair function, including its quadrature, gap definition, and fixed stiffness
+where applicable. Calculations pass that function to the evaluation kernels without reconstructing it on each call.
+The pair functions accept gap callables directly. Nodal penalty energy and its field partials are calculated by
+``EnergyMortarNodalPartials::evaluate()``, independently of the geometric gap definition.
+
+Common Plane calls ``detail::evaluateAndAssembleResidualPairs()`` with its pair function to evaluate residual values
+and Jacobians. Quadrature-point Energy Mortar calls ``detail::evaluateAndAssembleEnergyPairs()`` to evaluate scalar
+energies, gradients, and Hessians. Both helpers allocate pair buffers, evaluate derivatives, check quadrature status
+before assembly, and return force and coordinate Jacobian on parent true DOFs. The energy helper also sums the scalar
+energy over MPI ranks. Search and physics remain in each formulation. Nodal Energy Mortar assembles gap and area fields
+before calculating forces, so it uses the kernels and assemblers directly.
 
 Pair evaluation and assembly use separate kernels. ``evaluatePairValuesAndJacobians()`` and
 ``evaluatePairWeightedHessians()`` assign one pair to each execution-space thread and write structure-of-arrays
@@ -93,12 +111,30 @@ quadrature-point Energy Mortar use displacement-only transfer. Scalar energies u
 followed by one MPI scalar reduction. Sparse-matrix construction and transfer checks run on the host. Pair residuals,
 scalar fields, derivatives, and dense element-block calculations run on the selected backend.
 
-The enforcement value reads current settings on every calculation. Common Plane reads the registered MFEM constant
-penalties and current mesh scales and combines them with ``SeriesPenaltyStiffness``. Updating MFEM constants does not
-require another call to ``updateMfemParallelDecomposition()``. Energy Mortar defaults to registered constant penalties
-combined by ``AveragePenaltyStiffness``. Nodal penalty and Lagrange multiplier enforcement are represented by distinct
-value types.
-Changing a penalty between calls does not require retaining or regenerating a formulation's mesh views.
+Nodal force calculation selects penalty or Lagrange multiplier enforcement once at entry. Separate functions calculate
+each enforcement's energy, force, Jacobian, and returned fields. They share field evaluation and assembly, and weighted
+coordinate-Hessian assembly. Pair-value and field-assembly scratch is released after the fields are assembled. The LM
+function supplies zero area weights directly and allocates no nodal area-weight vector. Pair-weight scratch storage and
+separate weight-gathering and Hessian kernels are retained in the shared helper.
+
+Common Plane combines the registered MFEM constant penalties, including registered MFEM scales, with
+``SeriesPenaltyStiffness`` when constructing the formulation. Unset scales default to one. Energy Mortar combines its
+mesh constants with ``AveragePenaltyStiffness`` and does not apply these scales. Common Plane and quadrature-point
+Energy Mortar store the effective stiffness directly; nodal penalty enforcement stores it in ``PenaltyEnforcement``.
+These calculations keep their stiffness fixed. Direct callers supply an effective stiffness and construct a new
+formulation to change it; stiffness combination is independent of the formulation's template parameters.
+
+Penalty Energy Mortar registration initially leaves the coupling scheme without a formulation. Set the enforcement
+location and quadrature order, then call ``setMfemKinematicConstantPenalty()`` to construct it. The setter also replaces
+an existing formulation when changing the constants. Construction can precede ``updateMfemParallelDecomposition()``;
+refresh the decomposition before calculating contact with current coordinates. Calling ``update()`` before penalty
+settings are complete reports an error. Nodal LM formulations need no penalty constants and are constructed during
+registration. Fixed penalty stiffness must be positive and finite; no default stiffness is substituted for missing data.
+Changing registered constants directly leaves an existing formulation's stiffness unchanged. Public MFEM configuration
+setters rebuild formulations as needed and require no additional decomposition refresh solely for a penalty change.
+For Common Plane, ``setMfemKinematicPenaltyScale()`` also replaces an enabled formulation using the scaled mesh
+constants. Set these scales after ``setMfemKinematicConstantPenalty()``, which clears earlier penalty data, including
+scales. The low-level ``setPenaltyScale()`` changes mesh data and leaves the formulation's fixed stiffness unchanged.
 
 Nodal Energy Mortar uses the concrete energy ``0.5*k*min(weighted_gap,0)^2/area`` and its explicit gap/area partials.
 The coordinate residual and Jacobian combine those partials with assembled integral Jacobians and Enzyme weighted

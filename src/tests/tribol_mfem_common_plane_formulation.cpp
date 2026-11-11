@@ -8,10 +8,13 @@
  * @brief Check explicit MFEM Common Plane selection, nonmatching constant-traction patches, and parent Jacobians.
  * The same tests run on one and two ranks; decomposition onto rank zero exercises a rank without contact elements.
  * Direct calls check output availability and validity after destroying the formulation.
- * Penalty changes are checked without refreshing the decomposition. Local quadrature and full pair derivatives are
- * checked in tribol_common_plane_formulation.
+ * Fixed penalties and MFEM setters that rebuild formulations are checked without refreshing the decomposition.
+ * Direct force and Jacobian scaling checks use Sequential and OpenMP when enabled, with host mesh storage.
+ * Tilted nonmatching surfaces compare clipped-overlap forces against legacy Common Plane for every base rule.
+ * Local quadrature and full pair derivatives are checked in tribol_common_plane_formulation.
  */
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include "gtest/gtest.h"
 #include "axom/slic/core/SimpleLogger.hpp"
@@ -21,6 +24,7 @@
 #include "tribol/interface/mfem_tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/physics/CommonPlaneFormulation.hpp"
+#include "tribol/physics/PenaltyStiffness.hpp"
 #include "tribol/integ/QuadratureRuleFactory.hpp"
 #include "tribol/search/CoarseSearchFactory.hpp"
 #include "tribol/search/ProjectedEdgeSearch.hpp"
@@ -68,6 +72,23 @@ class MfemCommonPlaneTest : public testing::TestWithParam<int> {
   /** @brief Calculate a distributed vector norm. @param v Distributed true-DOF vector. @return Global Euclidean norm.
    */
   RealT norm( const mfem::Vector& v ) { return std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, v, v ) ); }
+  /** @brief Mark the upper body's finite-element nodes. @return One at upper-body nodes and zero elsewhere. */
+  mfem::Array<int> upperBodyNodes() const
+  {
+    mfem::Array<int> upper_nodes( fes_->GetNDofs() );
+    upper_nodes = 0;
+    for ( int element = 0; element < mesh_->GetNE(); ++element ) {
+      if ( mesh_->GetAttribute( element ) != 2 ) {
+        continue;
+      }
+      mfem::Array<int> nodes;
+      fes_->GetElementDofs( element, nodes );
+      for ( const auto node : nodes ) {
+        upper_nodes[node] = 1;
+      }
+    }
+    return upper_nodes;
+  }
   std::unique_ptr<mfem::ParMesh> mesh_;               ///< Borrowed by the registered coupling scheme.
   std::unique_ptr<mfem::H1_FECollection> fec_;        ///< Linear coordinate basis.
   std::unique_ptr<mfem::ParFiniteElementSpace> fes_;  ///< Parent vector-coordinate space.
@@ -120,31 +141,49 @@ TEST_P( MfemCommonPlaneTest, matches_nonmatching_constant_traction_patch )
                 std::logic_error );
 }
 
-// The same force definition must accept arithmetic averaging instead of springs in series, for each Gauss count.
+// Arithmetic averaging must scale forces and Jacobians on each host backend, for each Gauss count.
 TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
 {
   enable();
   evaluate();
   const auto baseline = getMfemContactForce( 0 );
-  auto alternate = createWithQuadratureRule(
-      GetParam(), CommonPlaneEdgeMapping{}, [&]( auto quadrature ) -> std::unique_ptr<ContactFormulation> {
-        using BaseRule = typename decltype( quadrature )::Generator;
-        auto coarse =
-            createCoarseSearch( scheme().spatialDimension(), scheme().getBinningMethod(), scheme().getExecutionMode(),
-                                scheme().getEffectiveBinningProximityScale(), 0.0 );
-        auto refined = std::make_unique<ProjectedEdgeSearch>( scheme().getExecutionMode(), false );
-        return std::make_unique<CommonPlaneFormulation<BaseRule, AveragePenaltyStiffness>>(
-            *scheme().getMfemMeshData(), *scheme().getMfemJacobianData(), scheme().getExecutionMode(),
-            PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( quadrature ),
-            OffsetGap{ CommonPlaneGap{}, 0.0 }, ScaledMeshPenaltyInputs<AveragePenaltyStiffness>{} );
-      } );
-  auto result = alternate->computeNodalForces( scheme().getMesh1().getView(), scheme().getMesh2().getView() );
-  ASSERT_NE( result.force, nullptr );
-  EXPECT_FALSE( result.energy.has_value() );
-  // The configured stiffnesses 2 and 6 have arithmetic mean 4 and series stiffness 1.5.
-  constexpr RealT stiffness_ratio = 4.0 / 1.5;
-  result.force->Add( -stiffness_ratio, baseline );
-  EXPECT_LT( norm( *result.force ), 1.0e-11 );
+  const auto jacobian = getMfemDfDx( 0 );
+  mfem::Vector direction( jacobian->Width() ), reference_action( jacobian->Height() );
+  for ( int dof = 0; dof < direction.Size(); ++dof ) {
+    direction[dof] = 1.0 + 0.1 * dof;
+  }
+  jacobian->Mult( direction, reference_action );
+  for ( const auto execution_mode : { ExecutionMode::Sequential
+#ifdef TRIBOL_USE_OPENMP
+                                      ,
+                                      ExecutionMode::OpenMP
+#endif
+        } ) {
+    SCOPED_TRACE( static_cast<int>( execution_mode ) );
+    auto alternate = createWithQuadratureRule(
+        GetParam(), CommonPlaneEdgeMapping{}, [&]( auto quadrature ) -> std::unique_ptr<ContactFormulation> {
+          using BaseRule = typename decltype( quadrature )::Generator;
+          auto coarse = createCoarseSearch( scheme().spatialDimension(), scheme().getBinningMethod(), execution_mode,
+                                            scheme().getEffectiveBinningProximityScale(), 0.0 );
+          auto refined = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
+          return std::make_unique<CommonPlaneFormulation<BaseRule>>(
+              *scheme().getMfemMeshData(), *scheme().getMfemJacobianData(), execution_mode,
+              PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( quadrature ),
+              OffsetGap{ CommonPlaneGap{}, 0.0 }, AveragePenaltyStiffness{}( 2.0, 6.0 ) );
+        } );
+    auto result = alternate->computeNodalForces( scheme().getMesh1().getView(), scheme().getMesh2().getView() );
+    ASSERT_NE( result.force, nullptr );
+    ASSERT_NE( result.df_dx, nullptr );
+    EXPECT_FALSE( result.energy.has_value() );
+    // The configured stiffnesses 2 and 6 have arithmetic mean 4 and series stiffness 1.5.
+    constexpr RealT stiffness_ratio = 4.0 / 1.5;
+    result.force->Add( -stiffness_ratio, baseline );
+    EXPECT_LT( norm( *result.force ), 1.0e-11 );
+    mfem::Vector action( result.df_dx->Height() );
+    result.df_dx->Mult( direction, action );
+    action.Add( -stiffness_ratio, reference_action );
+    EXPECT_LT( norm( action ), 1.0e-11 );
+  }
 }
 
 // Each direct call returns its own force and matrix, without changing earlier results or the coupling-scheme cache.
@@ -166,12 +205,10 @@ TEST_P( MfemCommonPlaneTest, returns_owned_outputs_without_retaining_results )
   const mfem::HypreParVector original( *first.force );
   ASSERT_GT( norm( original ), 0.0 );
 
-  setPenaltyScale( 0, 2.0 );
-  setPenaltyScale( 1, 2.0 );
   auto second = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
                                                                       scheme().getMesh2().getView() );
   auto error = *second.force;
-  error.Add( -2.0, original );
+  error -= original;
   EXPECT_LT( norm( error ), 1.0e-11 );
   scheme().setContactFormulation( nullptr );
   error = *first.force;
@@ -183,15 +220,43 @@ TEST_P( MfemCommonPlaneTest, returns_owned_outputs_without_retaining_results )
   EXPECT_TRUE( std::isfinite( norm( action ) ) );
 }
 
-// New MFEM constants and current mesh scales must affect direct calls and update() without changing the decomposition.
+// A formulation keeps its stiffness when registered constants and mesh scales change outside the MFEM setters.
+TEST_P( MfemCommonPlaneTest, keeps_penalty_fixed_until_formulation_is_rebuilt )
+{
+  enable();
+  evaluate();
+  const auto initial = getMfemContactForce( 0 );
+  auto& data = *scheme().getMfemMeshData();
+  data.SetMesh1KinematicConstantPenalty( 4.0 );
+  data.SetMesh2KinematicConstantPenalty( 12.0 );
+  data.SetMesh1KinematicPenaltyScale( 2.0 );
+  data.SetMesh2KinematicPenaltyScale( 2.0 );
+  setPenaltyScale( 0, 2.0 );
+  setPenaltyScale( 1, 2.0 );
+  auto unchanged = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
+                                                                         scheme().getMesh2().getView() );
+  unchanged.force->Add( -1.0, initial );
+  EXPECT_LT( norm( *unchanged.force ), 1.0e-11 );
+
+  scheme().updateContactFormulation();
+  auto rebuilt = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
+                                                                       scheme().getMesh2().getView() );
+  rebuilt.force->Add( -4.0, initial );
+  EXPECT_LT( norm( *rebuilt.force ), 1.0e-11 );
+}
+
+// Constants and scales set through the MFEM interface rebuild the formulation without changing the decomposition.
 TEST_P( MfemCommonPlaneTest, uses_changed_constants_without_decomposition_refresh )
 {
   enable();
   evaluate();
   const auto initial = getMfemContactForce( 0 );
-  setPenaltyScale( 0, 2.0 );
-  setPenaltyScale( 1, 2.0 );
   setMfemKinematicConstantPenalty( 0, 4.0, 12.0 );
+  auto changed_constants = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
+                                                                                 scheme().getMesh2().getView() );
+  changed_constants.force->Add( -2.0, initial );
+  EXPECT_LT( norm( *changed_constants.force ), 1.0e-11 );
+  setMfemKinematicPenaltyScale( 0, 2.0, 2.0 );
   auto direct = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
                                                                       scheme().getMesh2().getView() );
   // Doubling both constants and both scales multiplies the effective series stiffness by four.
@@ -204,23 +269,64 @@ TEST_P( MfemCommonPlaneTest, uses_changed_constants_without_decomposition_refres
   EXPECT_LT( norm( updated ), 1.0e-11 );
 }
 
+// Unequal scales configured before decomposition must multiply each constant before combining springs in series.
+TEST_P( MfemCommonPlaneTest, constructs_with_scales_before_decomposition )
+{
+  setMfemKinematicPenaltyScale( 0, 2.0, 3.0 );
+  enable();
+  evaluate();
+  const auto scaled = getMfemContactForce( 0 );
+  // Resetting constants clears registered scales even while the decomposed meshes still contain earlier scales.
+  setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
+  auto unscaled = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
+                                                                        scheme().getMesh2().getView() );
+  // Scaled constants 4 and 18 give stiffness 36/11; unscaled constants 2 and 6 give stiffness 1.5.
+  unscaled.force->Add( -11.0 / 24.0, scaled );
+  EXPECT_LT( norm( *unscaled.force ), 1.0e-11 );
+}
+
+// Each scaled mesh penalty must be positive and finite before a new formulation can be constructed.
+TEST_P( MfemCommonPlaneTest, rejects_invalid_scales_at_construction )
+{
+  enable();
+  EXPECT_THROW( setMfemKinematicPenaltyScale( 0, 0.0, 1.0 ), std::invalid_argument );
+  EXPECT_THROW( setMfemKinematicPenaltyScale( 0, 1.0, -1.0 ), std::invalid_argument );
+  EXPECT_THROW( setMfemKinematicPenaltyScale( 0, std::numeric_limits<RealT>::infinity(), 1.0 ), std::invalid_argument );
+  setMfemKinematicPenaltyScale( 0, 1.0, 1.0 );
+  evaluate();
+}
+
+// An interface crossing inside an element pair must use its penetrating portion and match legacy centroid pressure.
+TEST_P( MfemCommonPlaneTest, matches_legacy_for_interpenetrating_overlap )
+{
+  const auto upper_nodes = upperBodyNodes();
+  for ( int node = 0; node < upper_nodes.Size(); ++node ) {
+    if ( upper_nodes[node] ) {
+      const RealT x = ( *coords_ )[fes_->DofToVDof( node, 0 )];
+      // The upper boundary crosses y=1.0 at x=0.55, inside a nonmatching element pair whose full midpoint is open.
+      ( *coords_ )[fes_->DofToVDof( node, 1 )] += 0.04 * ( x - 0.3 );
+    }
+  }
+  evaluate();
+  mfem::Vector legacy( fes_->GetVSize() );
+  legacy = 0.0;
+  getMfemResponse( 0, legacy );
+  mfem::Vector true_legacy( fes_->GetTrueVSize() );
+  fes_->GetProlongationMatrix()->MultTranspose( legacy, true_legacy );
+  ASSERT_GT( norm( true_legacy ), 0.0 );
+  enable();
+  evaluate();
+  auto error = getMfemContactForce( 0 );
+  error += true_legacy;
+  EXPECT_LT( norm( error ), 1.0e-11 );
+}
+
 // Parent Jacobians differentiate assembled residuals through nonmatching pair maps and MPI transfers.
 TEST_P( MfemCommonPlaneTest, assembled_jacobian_matches_finite_difference )
 {
   // Shift only the upper body so projection endpoints do not coincide. Rotating either edge under perturbation
   // then tests normal and overlap derivatives without switching which endpoints limit the overlap.
-  mfem::Array<int> upper_nodes( fes_->GetNDofs() );
-  upper_nodes = 0;
-  for ( int element = 0; element < mesh_->GetNE(); ++element ) {
-    if ( mesh_->GetAttribute( element ) != 2 ) {
-      continue;
-    }
-    mfem::Array<int> nodes;
-    fes_->GetElementDofs( element, nodes );
-    for ( const auto node : nodes ) {
-      upper_nodes[node] = 1;
-    }
-  }
+  const auto upper_nodes = upperBodyNodes();
   for ( int node = 0; node < upper_nodes.Size(); ++node ) {
     if ( upper_nodes[node] ) {
       ( *coords_ )[node] += 0.13;

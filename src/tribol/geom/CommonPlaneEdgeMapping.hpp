@@ -16,7 +16,7 @@
 namespace tribol {
 
 /**
- * @brief Project two edges onto a common line and map points back along its normal.
+ * @brief Project two edges' contact interval onto a common line and map points back along its normal.
  *
  * Integration coordinates measure physical distance along a unit tangent. Reference weights therefore already
  * include the physical line measure. No element Jacobian is applied during reverse mapping.
@@ -29,21 +29,21 @@ struct CommonPlaneEdgeMapping {
   using IntegrationSurface = EdgeQuadratureInterval;  ///< Physical tangent-coordinate interval.
 
   /** @brief Geometry of the common line, local to the current element pair. */
-  struct Frame {
+  struct CommonPlaneLine {
     Point origin;    ///< Average of the two edge midpoints.
     Vector normal;   ///< Unit direction of normal2 minus normal1.
     Vector tangent;  ///< Unit direction along the integration line.
   };
 
   /**
-   * @brief Construct the same common-line frame used for projection and contact tractions.
+   * @brief Compute the common line used for projection and contact tractions.
    * @param edge1 First current edge.
    * @param edge2 Second current edge.
    * @pre Both edges are nondegenerate and have opposing normals.
    * @return Owning origin and unit directions; no geometry is retained.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static Frame makeFrame( const FirstGeometry& edge1,
-                                                                  const SecondGeometry& edge2 )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static CommonPlaneLine computeCommonPlaneLine( const FirstGeometry& edge1,
+                                                                                         const SecondGeometry& edge2 )
   {
     auto normal = edge2.normal() - edge1.normal();
     normal /= std::sqrt( normal.dot( normal ) );
@@ -52,11 +52,12 @@ struct CommonPlaneEdgeMapping {
   }
 
   /**
-   * @brief Intersect the two edges' projections onto the common line.
+   * @brief Intersect the two edges' projections and keep the interpenetrating interval for crossing edges.
    * @param edge1 First current edge.
    * @param edge2 Second current edge.
    * @return Physical tangent bounds; invalid edges return valid=false and zero bounds. Nonopposing normals and
-   * disjoint or touching intervals return valid collapsed bounds and contribute no points.
+   * disjoint or touching intervals return valid collapsed bounds and contribute no points. Noncrossing edges retain
+   * their full projected overlap, allowing the pressure law to apply a prescribed residual gap.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurface makeIntegrationSurface( const FirstGeometry& edge1,
                                                                                      const SecondGeometry& edge2 ) const
@@ -67,18 +68,32 @@ struct CommonPlaneEdgeMapping {
     if ( !opposingNormals( edge1, edge2 ) ) {
       return { MdArray<RealT, 2>{ 0.0, 0.0 }, true };
     }
-    const auto frame = makeFrame( edge1, edge2 );
-    const RealT a0 = Vector( frame.origin, edge1.origin() ).dot( frame.tangent );
-    const RealT a1 = Vector( frame.origin, edge1.position( 1.0 ) ).dot( frame.tangent );
-    const RealT b0 = Vector( frame.origin, edge2.origin() ).dot( frame.tangent );
-    const RealT b1 = Vector( frame.origin, edge2.position( 1.0 ) ).dot( frame.tangent );
-    const RealT lower1 = a0 < a1 ? a0 : a1;
-    const RealT upper1 = a0 < a1 ? a1 : a0;
-    const RealT lower2 = b0 < b1 ? b0 : b1;
-    const RealT upper2 = b0 < b1 ? b1 : b0;
-    const RealT lower = lower1 > lower2 ? lower1 : lower2;
-    const RealT upper = upper1 < upper2 ? upper1 : upper2;
-    return { MdArray<RealT, 2>{ lower, upper > lower ? upper : lower }, true };
+    const auto line = computeCommonPlaneLine( edge1, edge2 );
+    const RealT a0 = Vector( line.origin, edge1.origin() ).dot( line.tangent );
+    const RealT a1 = Vector( line.origin, edge1.position( 1.0 ) ).dot( line.tangent );
+    const RealT b0 = Vector( line.origin, edge2.origin() ).dot( line.tangent );
+    const RealT b1 = Vector( line.origin, edge2.position( 1.0 ) ).dot( line.tangent );
+    // With opposing normals, the tangent follows edge1 and opposes edge2, so a0 < a1 and b1 < b0.
+    RealT lower = a0 > b1 ? a0 : b1;
+    RealT upper = a1 < b0 ? a1 : b0;
+    if ( upper <= lower ) {
+      return { MdArray<RealT, 2>{ lower, lower }, true };
+    }
+
+    // The gap is affine along straight edges. Opposite endpoint signs locate an intersection inside both edges.
+    // Clip at the geometric zero gap before applying any residual-gap offset in the pressure calculation.
+    const auto point1_lower = edge1.position( 2.0 * ( lower - a0 ) / ( a1 - a0 ) - 1.0 );
+    const auto point2_lower = edge2.position( 2.0 * ( lower - b0 ) / ( b1 - b0 ) - 1.0 );
+    const auto point1_upper = edge1.position( 2.0 * ( upper - a0 ) / ( a1 - a0 ) - 1.0 );
+    const auto point2_upper = edge2.position( 2.0 * ( upper - b0 ) / ( b1 - b0 ) - 1.0 );
+    const RealT lower_gap = Vector( point2_lower, point1_lower ).dot( line.normal );
+    const RealT upper_gap = Vector( point2_upper, point1_upper ).dot( line.normal );
+    if ( lower_gap < 0.0 && upper_gap > 0.0 ) {
+      upper = lower + ( upper - lower ) * lower_gap / ( lower_gap - upper_gap );
+    } else if ( lower_gap > 0.0 && upper_gap < 0.0 ) {
+      lower = lower + ( upper - lower ) * lower_gap / ( lower_gap - upper_gap );
+    }
+    return { MdArray<RealT, 2>{ lower, upper }, true };
   }
 
   /**
@@ -108,15 +123,15 @@ struct CommonPlaneEdgeMapping {
     if ( count == 0 ) {
       return { QuadratureStatus::Success, 0 };
     }
-    const auto frame = makeFrame( edge1, edge2 );
-    const RealT determinant1 = Vector::cross_product( edge1.direction(), frame.normal )[2];
-    const RealT determinant2 = Vector::cross_product( edge2.direction(), frame.normal )[2];
+    const auto line = computeCommonPlaneLine( edge1, edge2 );
+    const RealT determinant1 = Vector::cross_product( edge1.direction(), line.normal )[2];
+    const RealT determinant2 = Vector::cross_product( edge2.direction(), line.normal )[2];
     for ( IndexT q = 0; q < count; ++q ) {
-      const auto point = frame.origin + reference.coords( q, 0 ) * frame.tangent;
+      const auto point = line.origin + reference.coords( q, 0 ) * line.tangent;
       output.geometry1_coords( q, 0 ) =
-          2.0 * Vector::cross_product( Vector( edge1.origin(), point ), frame.normal )[2] / determinant1 - 1.0;
+          2.0 * Vector::cross_product( Vector( edge1.origin(), point ), line.normal )[2] / determinant1 - 1.0;
       output.geometry2_coords( q, 0 ) =
-          2.0 * Vector::cross_product( Vector( edge2.origin(), point ), frame.normal )[2] / determinant2 - 1.0;
+          2.0 * Vector::cross_product( Vector( edge2.origin(), point ), line.normal )[2] / determinant2 - 1.0;
       output.weights[q] = reference.weights[q];
     }
     return { QuadratureStatus::Success, count };

@@ -7,8 +7,8 @@
  * @file
  * @brief Local residuals, gradients, Jacobians, and Hessians from pair definitions, with default Enzyme derivatives.
  */
-#ifndef SRC_TRIBOL_PHYSICS_PAIREVALUATION_HPP_
-#define SRC_TRIBOL_PHYSICS_PAIREVALUATION_HPP_
+#ifndef SRC_TRIBOL_ASSEMBLY_PAIREVALUATION_HPP_
+#define SRC_TRIBOL_ASSEMBLY_PAIREVALUATION_HPP_
 
 #include <utility>
 #include "tribol/common/Enzyme.hpp"
@@ -180,4 +180,4 @@ class EnzymePairDerivative {
 #endif  // TRIBOL_USE_ENZYME
 
 }  // namespace tribol
-#endif  // SRC_TRIBOL_PHYSICS_PAIREVALUATION_HPP_
+#endif  // SRC_TRIBOL_ASSEMBLY_PAIREVALUATION_HPP_

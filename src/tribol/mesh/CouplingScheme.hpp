@@ -605,6 +605,7 @@ class CouplingScheme {
    * @brief Initializes the coupling scheme
    *
    * @return true if the coupling scheme was successfully initialized
+   * @throws std::logic_error Energy Mortar has no configured formulation.
    */
   bool init();
 
@@ -626,6 +627,7 @@ class CouplingScheme {
    * @param [in/out] dt the simulation dt at the given cycle sent back as Tribol timestep vote
    *
    * @return 0 if successful apply
+   * @throws std::logic_error Energy Mortar has no configured formulation.
    */
   int apply( int cycle, RealT t, RealT& dt );
 
@@ -739,7 +741,8 @@ class CouplingScheme {
   void setContactFormulation( std::unique_ptr<ContactFormulation> formulation );
 
   /**
-   * @brief Rebuilds the contact formulation based on the current scheme parameters
+   * @brief Rebuilds the contact formulation based on the current scheme parameters.
+   * Energy Mortar penalty schemes have no formulation until penalty selection and both constants are supplied.
    */
   void updateContactFormulation();
 
