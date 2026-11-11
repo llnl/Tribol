@@ -23,7 +23,7 @@
 namespace tribol {
 
 /**
- * @brief Fixed-size Common Plane residual function used by Enzyme pair differentiation.
+ * @brief Fixed-size Common Plane residual function for direct evaluation and optional Enzyme differentiation.
  * @tparam BaseRule Reference Gauss rule.
  * @tparam GapDefinition Geometric or offset common-plane gap.
  */
@@ -92,9 +92,9 @@ class CommonPlanePairFunction {
   GapDefinition gap_;      ///< Owned gap definition.
 };
 
-#if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
+#ifdef BUILD_REDECOMP
 /**
- * @brief Common Plane formulation composed from pair search, differentiation, buffers, and MFEM assembly.
+ * @brief Common Plane pair search and force assembly, with optional Enzyme Jacobians.
  * @tparam BaseRule Reference Gauss rule.
  */
 template <typename BaseRule>
@@ -110,8 +110,29 @@ class CommonPlaneFormulation final : public ContactFormulation {
    * @param gap Offset common-plane gap.
    * @param penalty Effective stiffness, fixed for this formulation's lifetime.
    * @throws std::invalid_argument Stiffness is nonpositive or nonfinite; no formulation is constructed.
+   * @throws std::runtime_error Enzyme support is unavailable; no formulation is constructed.
    */
   CommonPlaneFormulation( MfemMeshData& mesh_data, MfemJacobianData& jacobian_data, ExecutionMode execution_mode,
+                          PairListBuilder pair_builder, PairQuadratureRule<CommonPlaneEdgeMapping, BaseRule> quadrature,
+                          OffsetGap<CommonPlaneGap> gap, RealT penalty )
+      : CommonPlaneFormulation( mesh_data, &jacobian_data, execution_mode, std::move( pair_builder ),
+                                std::move( quadrature ), std::move( gap ), penalty )
+  {
+  }
+
+  /**
+   * @brief Construct Common Plane with optional coordinate Jacobian calculation.
+   * @param mesh_data Borrowed displacement transfer data.
+   * @param jacobian_data Borrowed Jacobian transfer data, or nullptr to calculate forces only.
+   * @param execution_mode Host or device execution policy.
+   * @param pair_builder Owned pair search composition.
+   * @param quadrature Owned common-line quadrature.
+   * @param gap Owned gap definition.
+   * @param penalty Fixed effective stiffness.
+   * @throws std::invalid_argument Stiffness is nonpositive or nonfinite.
+   * @throws std::runtime_error Jacobian calculation was requested without Enzyme support.
+   */
+  CommonPlaneFormulation( MfemMeshData& mesh_data, const MfemJacobianData* jacobian_data, ExecutionMode execution_mode,
                           PairListBuilder pair_builder, PairQuadratureRule<CommonPlaneEdgeMapping, BaseRule> quadrature,
                           OffsetGap<CommonPlaneGap> gap, RealT penalty )
       : mesh_data_( mesh_data ),
@@ -120,17 +141,22 @@ class CommonPlaneFormulation final : public ContactFormulation {
         pair_builder_( std::move( pair_builder ) ),
         function_( std::move( quadrature ), detail::checkedPenaltyStiffness( penalty ), std::move( gap ) )
   {
+#ifndef TRIBOL_USE_ENZYME
+    if ( jacobian_data_ ) {
+      throw std::runtime_error( "Common Plane Jacobian calculation requires Enzyme." );
+    }
+#endif
   }
 
-  /** @brief Compute Common Plane force and Jacobian. @param mesh1 First mesh. @param mesh2 Second mesh.
-   * @return Caller-owned force and Jacobian. */
+  /** @brief Compute Common Plane force and the optional Jacobian. @param mesh1 First mesh. @param mesh2 Second mesh.
+   * @return Owned force; df_dx is absent when Jacobian calculation was disabled at construction. */
   ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override;
 
  private:
-  MfemMeshData& mesh_data_;          ///< Borrowed displacement transfer data.
-  MfemJacobianData& jacobian_data_;  ///< Borrowed Jacobian transfer data.
-  ExecutionMode execution_mode_;     ///< Pair kernel execution policy.
-  PairListBuilder pair_builder_;     ///< Owned search composition.
+  MfemMeshData& mesh_data_;                ///< Borrowed displacement transfer data.
+  const MfemJacobianData* jacobian_data_;  ///< Borrowed Jacobian transfers, or nullptr for force-only calculation.
+  ExecutionMode execution_mode_;           ///< Pair kernel execution policy.
+  PairListBuilder pair_builder_;           ///< Owned search composition.
   /// Owned pair quadrature, fixed stiffness, and gap definition.
   const CommonPlanePairFunction<BaseRule, OffsetGap<CommonPlaneGap>> function_;
 };

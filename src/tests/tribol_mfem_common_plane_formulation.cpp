@@ -12,6 +12,8 @@
  * Direct force and Jacobian scaling checks use Sequential and OpenMP when enabled, with host mesh storage.
  * Tilted nonmatching surfaces compare clipped-overlap forces against legacy Common Plane for every base rule.
  * Local quadrature and full pair derivatives are checked in tribol_common_plane_formulation.
+ * Force-only selection and mode changes run without Enzyme as well, checking that no Jacobian transfers or outputs
+ * are created. Nonmatching legacy forces provide an independent reference for force-only assembly.
  */
 #include <cmath>
 #include <limits>
@@ -54,10 +56,11 @@ class MfemCommonPlaneTest : public testing::TestWithParam<int> {
   }
   /** @brief Release coupling data before destroying the borrowed parent mesh and coordinate field. */
   void TearDown() override { finalize(); }
-  /** @brief Enable the formulation and select the requested reference degree. */
-  void enable()
+  /** @brief Enable the formulation and select the requested reference degree.
+   * @param compute_jacobian Whether to calculate df_dx as well as forces. */
+  void enable( bool compute_jacobian = true )
   {
-    setMfemUseCommonPlaneFormulation( 0, true );
+    setMfemUseCommonPlaneFormulation( 0, true, compute_jacobian );
     setQuadratureOrder( 0, GetParam() );
   }
   /** @brief Refresh geometry on one contact rank and compute the current residual. */
@@ -95,6 +98,87 @@ class MfemCommonPlaneTest : public testing::TestWithParam<int> {
   std::unique_ptr<mfem::ParGridFunction> coords_;     ///< Current parent geometry.
 };
 
+// Force-only assembly must preserve nonmatching nodal loads and MPI transfers without any Jacobian resources.
+TEST_P( MfemCommonPlaneTest, force_only_matches_legacy_without_matrix_transfers )
+{
+  evaluate();
+  mfem::Vector legacy( fes_->GetVSize() );
+  legacy = 0.0;
+  getMfemResponse( 0, legacy );
+  mfem::Vector reference( fes_->GetTrueVSize() );
+  fes_->GetProlongationMatrix()->MultTranspose( legacy, reference );
+
+  enable( false );
+  EXPECT_FALSE( scheme().hasMfemJacobianData() );
+  evaluate();
+  ASSERT_NE( scheme().getContactFormulationResult().force, nullptr );
+  EXPECT_EQ( scheme().getContactFormulationResult().df_dx, nullptr );
+  EXPECT_EQ( getMfemDfDx( 0 ), nullptr );
+  auto force = getMfemContactForce( 0 );
+  EXPECT_GT( norm( force ), 0.0 );
+  force += reference;
+  EXPECT_LT( norm( force ), 1.0e-11 );
+
+  setMfemKinematicPenaltyScale( 0, 2.0, 2.0 );
+  evaluate();
+  EXPECT_FALSE( scheme().hasMfemJacobianData() );
+  auto scaled = getMfemContactForce( 0 );
+  scaled.Add( 2.0, reference );
+  EXPECT_LT( norm( scaled ), 1.0e-11 );
+}
+
+// Changing evaluation mode must rebuild the formulation and release matrix data; unavailable Enzyme must be rejected
+// before changing an active force-only formulation or clearing its outputs.
+TEST_P( MfemCommonPlaneTest, changes_jacobian_mode_without_changing_forces )
+{
+  enable( false );
+  evaluate();
+  const auto reference = getMfemContactForce( 0 );
+#ifdef TRIBOL_USE_ENZYME
+  setMfemUseCommonPlaneFormulation( 0, true );
+  EXPECT_TRUE( scheme().hasMfemJacobianData() );
+  evaluate();
+  ASSERT_NE( scheme().getContactFormulationResult().df_dx, nullptr );
+  auto difference = getMfemContactForce( 0 );
+  difference -= reference;
+  EXPECT_LT( norm( difference ), 1.0e-11 );
+  setMfemUseCommonPlaneFormulation( 0, true, false );
+#else
+  auto* formulation = scheme().getContactFormulation();
+  EXPECT_THROW( setMfemUseCommonPlaneFormulation( 0, true ), std::runtime_error );
+  EXPECT_EQ( scheme().getContactFormulation(), formulation );
+  EXPECT_FALSE( scheme().getParameters().common_plane_compute_jacobian );
+#endif
+  EXPECT_FALSE( scheme().hasMfemJacobianData() );
+  evaluate();
+  EXPECT_EQ( scheme().getContactFormulationResult().df_dx, nullptr );
+  auto unchanged = getMfemContactForce( 0 );
+  unchanged -= reference;
+  EXPECT_LT( norm( unchanged ), 1.0e-11 );
+  setMfemUseCommonPlaneFormulation( 0, false );
+  EXPECT_FALSE( scheme().hasContactFormulation() );
+  EXPECT_FALSE( scheme().hasMfemJacobianData() );
+}
+
+// Open contact must return an allocated zero force with no matrix, including ranks without any contact elements.
+TEST_P( MfemCommonPlaneTest, force_only_returns_zero_for_open_contact )
+{
+  enable( false );
+  evaluate();
+  const auto upper_nodes = upperBodyNodes();
+  for ( int node = 0; node < upper_nodes.Size(); ++node ) {
+    if ( upper_nodes[node] ) {
+      ( *coords_ )[fes_->DofToVDof( node, 1 )] += 0.1;
+    }
+  }
+  evaluate();
+  ASSERT_NE( scheme().getContactFormulationResult().force, nullptr );
+  EXPECT_EQ( scheme().getContactFormulationResult().df_dx, nullptr );
+  EXPECT_FALSE( scheme().hasMfemJacobianData() );
+  EXPECT_LT( norm( getMfemContactForce( 0 ) ), 1.0e-11 );
+}
+
+#ifdef TRIBOL_USE_ENZYME
 // Nonmatching pair assembly must reproduce uniform analytic boundary traction without any pressure or gap field.
 TEST_P( MfemCommonPlaneTest, matches_nonmatching_constant_traction_patch )
 {
@@ -401,16 +485,18 @@ TEST_P( MfemCommonPlaneTest, rebuilds_and_restores_legacy_response )
   EXPECT_GT( norm( getMfemContactForce( 0 ) ), 0.0 );
 }
 
+#endif  // TRIBOL_USE_ENZYME
+
 // Rejected configuration must leave the legacy selection and its resources intact.
 TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
 {
   const auto check = [&]() {
-    EXPECT_THROW( setMfemUseCommonPlaneFormulation( 0, true ), std::invalid_argument );
+    EXPECT_THROW( setMfemUseCommonPlaneFormulation( 0, true, false ), std::invalid_argument );
     EXPECT_FALSE( scheme().getParameters().use_common_plane_formulation );
     EXPECT_FALSE( scheme().hasContactFormulation() );
     EXPECT_FALSE( scheme().hasMfemJacobianData() );
   };
-  EXPECT_THROW( setMfemUseCommonPlaneFormulation( 1, true ), std::invalid_argument );
+  EXPECT_THROW( setMfemUseCommonPlaneFormulation( 1, true, false ), std::invalid_argument );
   setMfemKinematicConstantPenalty( 0, 0.0, 6.0 );
   check();
   setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
@@ -426,7 +512,7 @@ TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
   check();
   penalty.rate_calc_set = false;
   EXPECT_THROW( setQuadratureOrder( 0, 3 ), std::invalid_argument );
-  enable();
+  enable( false );
   for ( int order = 0; order <= 5; ++order ) {
     setQuadratureOrder( 0, order );
     auto* formulation = scheme().getContactFormulation();
@@ -464,7 +550,7 @@ TEST( CommonPlaneSelection, rejects_unsupported_methods_models_and_cases )
     registerMfemCouplingScheme( 0, 0, 1, mesh, coordinates, { 1 }, { 3 }, SURFACE_TO_SURFACE, test.contact_case,
                                 test.method, test.model, test.enforcement, BINNING_GRID, ExecutionMode::Sequential );
     setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
-    EXPECT_THROW( setMfemUseCommonPlaneFormulation( 0, true ), std::invalid_argument );
+    EXPECT_THROW( setMfemUseCommonPlaneFormulation( 0, true, false ), std::invalid_argument );
     const auto& cs = CouplingSchemeManager::getInstance().at( 0 );
     EXPECT_FALSE( cs.hasContactFormulation() );
     EXPECT_FALSE( cs.hasMfemJacobianData() );
@@ -487,13 +573,13 @@ TEST( CommonPlaneSelection, rejects_higher_order_and_three_dimensional_geometry 
     registerMfemCouplingScheme( 0, 0, 1, mesh, coordinates, { 1 }, { 3 }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE,
                                 FRICTIONLESS, PENALTY, BINNING_GRID, ExecutionMode::Sequential );
     setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
-    EXPECT_THROW( setMfemUseCommonPlaneFormulation( 0, true ), std::invalid_argument );
+    EXPECT_THROW( setMfemUseCommonPlaneFormulation( 0, true, false ), std::invalid_argument );
     auto& cs = CouplingSchemeManager::getInstance().at( 0 );
     EXPECT_FALSE( cs.hasContactFormulation() );
     EXPECT_FALSE( cs.hasMfemJacobianData() );
     if ( dimension == 2 ) {
       setMfemLORFactor( 0, 2 );
-      EXPECT_THROW( setMfemUseCommonPlaneFormulation( 0, true ), std::invalid_argument );
+      EXPECT_THROW( setMfemUseCommonPlaneFormulation( 0, true, false ), std::invalid_argument );
     }
     finalize();
   }

@@ -16,6 +16,56 @@
 
 namespace tribol {
 
+/** @brief Device-copyable pair values and quadrature state without derivatives. @tparam ValueCount Values per pair. */
+template <IndexT ValueCount>
+struct PairValueView {
+  RealT* values{ nullptr };                 ///< Values in `[value][pair]` order.
+  QuadratureResult* quadrature{ nullptr };  ///< Pair quadrature status and point count.
+  IndexT* has_active_points{ nullptr };     ///< Nonzero when a pair contains an active contact point.
+  IndexT pair_count{ 0 };                   ///< Number of writable pair slots.
+
+  /** @brief Store one value. @param pair Pair slot. @param value Value component. @param result Numerical value. */
+  TRIBOL_HOST_DEVICE void setValue( IndexT pair, IndexT value, RealT result ) const
+  {
+    values[value * pair_count + pair] = result;
+  }
+  /** @brief Read one value. @param pair Pair slot. @param value Value component. @return Numerical value. */
+  TRIBOL_HOST_DEVICE RealT value( IndexT pair, IndexT value ) const { return values[value * pair_count + pair]; }
+};
+
+/** @brief Own pair values and quadrature state without derivative storage. @tparam ValueCount Values per pair. */
+template <IndexT ValueCount>
+class PairValueBuffer {
+ public:
+  /** @brief Allocate the supplied pair slots. @param pair_count Pair count. @param allocator_id Execution allocator. */
+  PairValueBuffer( IndexT pair_count, int allocator_id )
+      : pair_count_( pair_count ),
+        values_( ValueCount * pair_count, ValueCount * pair_count, allocator_id ),
+        quadrature_( pair_count, pair_count, allocator_id ),
+        has_active_points_( pair_count, pair_count, allocator_id )
+  {
+  }
+  /** @brief Return a writable view. @return View borrowing this buffer's arrays. */
+  PairValueView<ValueCount> view()
+  {
+    return { values_.data(), quadrature_.data(), has_active_points_.data(), pair_count_ };
+  }
+  /** @brief Return pair slots. @return Number of pairs allocated. */
+  IndexT pairCount() const { return pair_count_; }
+  /** @brief Return the owning values. @return Values in `[value][pair]` order. */
+  const Array1D<RealT>& values() const { return values_; }
+  /** @brief Return quadrature results. @return One result per pair. */
+  const Array1D<QuadratureResult>& quadratureResults() const { return quadrature_; }
+  /** @brief Return activation flags. @return One flag per pair. */
+  const Array1D<IndexT>& activePoints() const { return has_active_points_; }
+
+ private:
+  IndexT pair_count_;                     ///< Allocated pair slots.
+  Array1D<RealT> values_;                 ///< Numerical values in structure-of-arrays order.
+  Array1D<QuadratureResult> quadrature_;  ///< Quadrature status for each pair.
+  Array1D<IndexT> has_active_points_;     ///< Contact activation for each pair.
+};
+
 /**
  * @brief Device-copyable view of pair values and their first coordinate derivatives.
  *

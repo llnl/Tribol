@@ -27,7 +27,7 @@ IndexT checkedProduct( IndexT count, IndexT size )
 }
 }  // namespace
 
-MfemPairAssembler::MfemPairAssembler( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
+MfemPairAssembler::MfemPairAssembler( const MfemMeshData& mesh_data, const MfemJacobianData* jacobian_data,
                                       MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT pair_capacity,
                                       bool assemble_residual )
     : mesh_data_( mesh_data ),
@@ -49,6 +49,13 @@ MfemPairAssembler::MfemPairAssembler( const MfemMeshData& mesh_data, const MfemJ
   dof_offsets_ = MdArray<IndexT, 3>{ 0, dofs1, dofs1 + dofs2 };
   const auto& surface_fes = mesh_data.GetLORMesh() ? *mesh_data.GetLORMeshFESpace() : mesh_data.GetSubmeshFESpace();
   const auto& redecomp_fes = *mesh_data.GetRedecompResponse().FESpace();
+  if ( assemble_residual ) {
+    redecomp_residual_.SetSpace( const_cast<mfem::FiniteElementSpace*>( &redecomp_fes ) );
+    redecomp_residual_ = 0.0;
+  }
+  if ( !jacobian_data_ ) {
+    return;
+  }
   const std::array<const Array1D<int>*, 2> element_maps{ &mesh_data.GetElemMap1(), &mesh_data.GetElemMap2() };
   constexpr int pair_size = 2;
   jacobian_contributions_.reserve( pair_size * pair_size );
@@ -64,15 +71,14 @@ MfemPairAssembler::MfemPairAssembler( const MfemMeshData& mesh_data, const MfemJ
   }
   const IndexT max_element_dofs = std::max( dofs1, dofs2 );
   block_.resize( checkedProduct( max_element_dofs, max_element_dofs ) );
-  if ( assemble_residual ) {
-    redecomp_residual_.SetSpace( const_cast<mfem::FiniteElementSpace*>( &redecomp_fes ) );
-    redecomp_residual_ = 0.0;
-  }
 }
 
 void MfemPairAssembler::addPair( InterfacePair pair, ArrayViewT<const RealT> residual,
                                  ArrayViewT<const RealT, 2> jacobian )
 {
+  if ( !jacobian_data_ ) {
+    throw std::logic_error( "Jacobian assembly was not enabled for this pair assembler." );
+  }
   if ( !redecomp_residual_.FESpace() ) {
     throw std::logic_error( "Residual assembly was not enabled for this pair assembler." );
   }
@@ -97,6 +103,9 @@ void MfemPairAssembler::addPair( InterfacePair pair, ArrayViewT<const RealT> res
 
 void MfemPairAssembler::addPairJacobian( InterfacePair pair, ArrayViewT<const RealT, 2> jacobian )
 {
+  if ( !jacobian_data_ ) {
+    throw std::logic_error( "Jacobian assembly was not enabled for this pair assembler." );
+  }
   if ( jacobian.shape()[0] != dof_offsets_[2] || jacobian.shape()[1] != dof_offsets_[2] ) {
     throw std::invalid_argument( "Pair Jacobian must match the two elements' displacement DOFs." );
   }
@@ -133,17 +142,21 @@ ContactFormulationResult MfemPairAssembler::assemble() const
   parent_residual = 0.0;
   mesh_data_.GetParentRedecompTransfer().RedecompToParent( redecomp_residual_, parent_residual );
   parent_fes->GetProlongationMatrix()->MultTranspose( parent_residual, residual.get() );
-  auto jacobian = assembleJacobian();
   ContactFormulationResult result;
   result.force.reset( residual.release() );
-  result.df_dx.reset( jacobian.release() );
+  if ( jacobian_data_ ) {
+    result.df_dx.reset( assembleJacobian().release() );
+  }
   return result;
 }
 
 shared::ParSparseMat MfemPairAssembler::assembleJacobian() const
 {
+  if ( !jacobian_data_ ) {
+    throw std::logic_error( "Jacobian assembly was not enabled for this pair assembler." );
+  }
   auto* parent_fes = mesh_data_.GetParentCoords().ParFESpace();
-  return jacobian_data_.GetMfemJacobian( parent_fes, parent_fes, jacobian_contributions_ );
+  return jacobian_data_->GetMfemJacobian( parent_fes, parent_fes, jacobian_contributions_ );
 }
 
 }  // namespace tribol

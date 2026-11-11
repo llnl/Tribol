@@ -10,6 +10,7 @@
  * transfers, three independent fields with signed values, and all matrix blocks. Tests run on one and two ranks, with
  * contact data on rank zero. Batch tests check accumulation after host calls, repeated batches, and an empty batch on
  * Sequential and OpenMP backends. Physics and Enzyme derivatives are checked by the formulation tests.
+ * Force-only batches check shared-node accumulation without Jacobian transfer data and reject matrix operations.
  */
 #include <cmath>
 #include "gtest/gtest.h"
@@ -373,6 +374,12 @@ TEST_P( MfemBatchAssemblerTest, accumulates_residuals_and_jacobians_across_batch
   MfemPairAssembler reference( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2, 0 );
   MfemPairAssembler batched( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2, 0 );
   MfemPairAssembler matrix_only( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2, 0, false );
+  MfemPairAssembler force_only( *cs.getMfemMeshData(), nullptr, mesh1, mesh2, 0 );
+  const auto initial_force = force_only.assemble();
+  ASSERT_NE( initial_force.force, nullptr );
+  EXPECT_EQ( initial_force.df_dx, nullptr );
+  EXPECT_EQ( norm( *initial_force.force ), 0.0 );
+  EXPECT_THROW( force_only.assembleJacobian(), std::logic_error );
   const ArrayT<InterfacePair> empty( 0, 0, pair_list.getAllocatorID() );
   for ( int batch = 0; batch < 3; ++batch ) {
     const RealT scale = batch + 1.0;
@@ -393,8 +400,11 @@ TEST_P( MfemBatchAssemblerTest, accumulates_residuals_and_jacobians_across_batch
                          { jacobian.data(), { pair_dofs, pair_dofs } } );
       }
     }
+    const auto read_residual = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT row ) { return scale * ( row + 1.0 ); };
+    force_only.addPairResiduals<pair_dofs>( GetParam(), empty, read_residual );
+    force_only.addPairResiduals<pair_dofs>( GetParam(), pair_list, read_residual );
+    EXPECT_THROW( matrix_only.addPairResiduals<pair_dofs>( GetParam(), empty, read_residual ), std::logic_error );
     if ( batch != 0 ) {
-      const auto read_residual = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT row ) { return scale * ( row + 1.0 ); };
       const auto read_jacobian = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT row, IndexT column ) {
         return scale * ( row + 1.0 ) * ( column + 2.0 );
       };
@@ -406,6 +416,11 @@ TEST_P( MfemBatchAssemblerTest, accumulates_residuals_and_jacobians_across_batch
   }
   auto expected = reference.assemble();
   auto result = batched.assemble();
+  auto force_result = force_only.assemble();
+  EXPECT_EQ( force_result.df_dx, nullptr );
+  force_result.force->Add( -1.0, *expected.force );
+  EXPECT_LT( norm( *force_result.force ), tolerance );
+  EXPECT_EQ( norm( *initial_force.force ), 0.0 );
   EXPECT_GT( norm( *expected.force ), 0.0 );
   result.force->Add( -1.0, *expected.force );
   EXPECT_LT( norm( *result.force ), tolerance );

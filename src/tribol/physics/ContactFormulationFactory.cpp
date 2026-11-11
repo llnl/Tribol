@@ -21,10 +21,12 @@
 
 namespace tribol {
 
-#if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
+#ifdef BUILD_REDECOMP
 namespace {
-std::unique_ptr<ContactFormulation> createEnergyMortar( CouplingScheme* cs );
 std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs );
+#ifdef TRIBOL_USE_ENZYME
+std::unique_ptr<ContactFormulation> createEnergyMortar( CouplingScheme* cs );
+#endif
 }  // namespace
 #endif
 
@@ -36,8 +38,8 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
   }
 
   if ( cs->getContactMethod() == COMMON_PLANE && cs->getParameters().use_common_plane_formulation ) {
-    detail::validateCommonPlaneFormulation( *cs );
-#if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
+    detail::validateCommonPlaneFormulation( *cs, cs->getParameters().common_plane_compute_jacobian );
+#ifdef BUILD_REDECOMP
     return createCommonPlane( cs );
 #endif
   }
@@ -55,9 +57,16 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
 }
 
 namespace detail {
-void validateCommonPlaneFormulation( CouplingScheme& cs )
+void validateCommonPlaneFormulation( CouplingScheme& cs, bool compute_jacobian )
 {
-#if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
+#ifndef TRIBOL_USE_ENZYME
+  if ( compute_jacobian ) {
+    throw std::runtime_error( "Common Plane Jacobian calculation requires Enzyme." );
+  }
+#else
+  (void)compute_jacobian;
+#endif
+#ifdef BUILD_REDECOMP
   const auto& options = cs.getEnforcementOptions().penalty_options;
   if ( cs.getContactMethod() != COMMON_PLANE || !cs.hasMfemData() || cs.getContactModel() != FRICTIONLESS ||
        cs.getEnforcementMethod() != PENALTY ||
@@ -86,12 +95,12 @@ void validateCommonPlaneFormulation( CouplingScheme& cs )
   }
 #else
   (void)cs;
-  throw std::runtime_error( "Common Plane requires Enzyme and Redecomp." );
+  throw std::runtime_error( "Common Plane requires Redecomp." );
 #endif
 }
 }  // namespace detail
 
-#if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
+#ifdef BUILD_REDECOMP
 namespace {
 /**
  * @brief Build the requested common-plane specialization using current search settings.
@@ -100,7 +109,7 @@ namespace {
  */
 std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
 {
-  if ( !cs->hasMfemJacobianData() ) {
+  if ( cs->getParameters().common_plane_compute_jacobian && !cs->hasMfemJacobianData() ) {
     throw std::invalid_argument( "Common Plane requires parent Jacobian transfer data." );
   }
   const auto& data = *cs->getMfemMeshData();
@@ -120,12 +129,14 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
                                           cs->getEffectiveBinningProximityScale(), cs->getParameters().residual_gap );
         auto refined = std::make_unique<ProjectedEdgeSearch>( cs->getExecutionMode(), cs->getContactCase() == AUTO );
         return std::make_unique<CommonPlaneFormulation<BaseRule>>(
-            *cs->getMfemMeshData(), *cs->getMfemJacobianData(), cs->getExecutionMode(),
-            PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( quadrature ),
-            OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap }, penalty );
+            *cs->getMfemMeshData(),
+            cs->getParameters().common_plane_compute_jacobian ? cs->getMfemJacobianData() : nullptr,
+            cs->getExecutionMode(), PairListBuilder{ std::move( coarse ), std::move( refined ) },
+            std::move( quadrature ), OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap }, penalty );
       } );
 }
 
+#ifdef TRIBOL_USE_ENZYME
 template <typename QuadratureRule>
 std::unique_ptr<ContactFormulation> createEnergyMortarForRule( CouplingScheme* cs, QuadratureRule quadrature_rule )
 {
@@ -185,7 +196,8 @@ std::unique_ptr<ContactFormulation> createEnergyMortar( CouplingScheme* cs )
                                    } );
 }
 
+#endif  // TRIBOL_USE_ENZYME
 }  // namespace
-#endif
+#endif  // BUILD_REDECOMP
 
 }  // namespace tribol

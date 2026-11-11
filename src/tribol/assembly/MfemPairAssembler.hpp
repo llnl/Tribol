@@ -46,6 +46,23 @@ class MfemPairAssembler {
    * @throws std::length_error Required array sizes exceed the supported index range.
    */
   MfemPairAssembler( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data, MeshData::Viewer mesh1,
+                     MeshData::Viewer mesh2, IndexT pair_capacity, bool assemble_residual = true )
+      : MfemPairAssembler( mesh_data, &jacobian_data, mesh1, mesh2, pair_capacity, assemble_residual )
+  {
+  }
+
+  /**
+   * @brief Prepare pair assembly, optionally omitting all Jacobian storage and transfers.
+   * @param mesh_data Borrowed displacement transfer data.
+   * @param jacobian_data Borrowed Jacobian transfer data, or nullptr for force-only assembly.
+   * @param mesh1 First mesh with host-accessible connectivity; coordinates are not retained.
+   * @param mesh2 Second mesh with host-accessible connectivity; coordinates are not retained.
+   * @param pair_capacity Expected contributing pairs, used only for Jacobian storage.
+   * @param assemble_residual Whether to allocate residual storage.
+   * @throws std::invalid_argument Dimensions, node counts, or pair capacity are invalid.
+   * @throws std::length_error Required array sizes exceed the supported index range.
+   */
+  MfemPairAssembler( const MfemMeshData& mesh_data, const MfemJacobianData* jacobian_data, MeshData::Viewer mesh1,
                      MeshData::Viewer mesh2, IndexT pair_capacity, bool assemble_residual = true );
 
   /**
@@ -55,7 +72,7 @@ class MfemPairAssembler {
    * @param jacobian Host-accessible matrix with residual rows and coordinate columns in that same DOF order.
    * The view uses row-major indexing; no symmetry is assumed.
    * @throws std::invalid_argument Array dimensions do not match the pair DOF count; no contributions are added.
-   * @throws std::logic_error Residual assembly was disabled; no contributions are added.
+   * @throws std::logic_error Residual or Jacobian assembly was disabled; no contributions are added.
    */
   void addPair( InterfacePair pair, ArrayViewT<const RealT> residual, ArrayViewT<const RealT, 2> jacobian );
 
@@ -64,8 +81,56 @@ class MfemPairAssembler {
    * @param pair Valid element IDs in the supplied meshes.
    * @param jacobian Host-accessible matrix with residual rows and coordinate columns in pair DOF order.
    * @throws std::invalid_argument Matrix dimensions do not match the pair DOF count; no contributions are added.
+   * @throws std::logic_error Jacobian assembly was disabled; no contributions are added.
    */
   void addPairJacobian( InterfacePair pair, ArrayViewT<const RealT, 2> jacobian );
+
+  /**
+   * @brief Scatter residual values without allocating or packing matrix blocks.
+   * @tparam DofCount Pair residual count; each linear edge contributes half.
+   * @tparam ResidualReader Device-callable `(pair, row) -> RealT` reader.
+   * @param execution_mode Host or device execution policy.
+   * @param pairs Pair list in execution-accessible memory.
+   * @param residual_reader Pair residual reader in element/node/component order.
+   * @throws std::invalid_argument Pair DOFs do not match the configured layout; no contributions are added.
+   * @throws std::logic_error Residual assembly was disabled; no contributions are added.
+   */
+  template <IndexT DofCount, typename ResidualReader>
+  void addPairResiduals( ExecutionMode execution_mode, const ArrayT<InterfacePair>& pairs,
+                         ResidualReader residual_reader )
+  {
+    static_assert( DofCount % 2 == 0, "Pair residual assembly requires equal element DOF counts." );
+    constexpr IndexT element_dofs = DofCount / 2;
+    if ( dof_offsets_[1] != element_dofs || dof_offsets_[2] != DofCount ) {
+      throw std::invalid_argument( "Pair residual DOFs must match the MFEM element layouts." );
+    }
+    if ( !redecomp_residual_.FESpace() ) {
+      throw std::logic_error( "Residual assembly was not enabled for this pair assembler." );
+    }
+    const bool use_device = isOnDevice( execution_mode );
+    redecomp_residual_.UseDevice( use_device );
+    auto* residual = redecomp_residual_.ReadWrite( use_device );
+    const int scalar_size = redecomp_residual_.FESpace()->GetNDofs();
+    const auto connectivity0 = connectivity_[0];
+    const auto connectivity1 = connectivity_[1];
+    const int dimension = dimension_;
+    const auto input = pairs.view();
+    forAllExec( execution_mode, pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
+      const auto pair = input[pair_index];
+      for ( IndexT node = 0; node < connectivity0.shape()[1]; ++node ) {
+        for ( int component = 0; component < dimension; ++component ) {
+          atomicAdd( residual + connectivity0( pair.element_id1_, node ) + component * scalar_size,
+                     residual_reader( pair_index, node * dimension + component ) );
+        }
+      }
+      for ( IndexT node = 0; node < connectivity1.shape()[1]; ++node ) {
+        for ( int component = 0; component < dimension; ++component ) {
+          atomicAdd( residual + connectivity1( pair.element_id2_, node ) + component * scalar_size,
+                     residual_reader( pair_index, element_dofs + node * dimension + component ) );
+        }
+      }
+    } );
+  }
 
   /**
    * @brief Scatter and pack a complete pair batch in the selected execution space.
@@ -83,7 +148,7 @@ class MfemPairAssembler {
    * @param residual_reader Pair residual reader.
    * @param jacobian_reader Pair Jacobian reader.
    * @throws std::invalid_argument Pair DOFs do not match the configured layout; no contributions are added.
-   * @throws std::logic_error Residual assembly was disabled; no contributions are added.
+   * @throws std::logic_error Residual or Jacobian assembly was disabled; no contributions are added.
    */
   template <IndexT DofCount, typename ResidualReader, typename JacobianReader>
   void addPairs( ExecutionMode execution_mode, const ArrayT<InterfacePair>& pairs, ResidualReader residual_reader,
@@ -114,7 +179,8 @@ class MfemPairAssembler {
 
   /**
    * @brief Return assembled residual and Jacobian on parent true DOFs.
-   * @return Owned force and df_dx; other outputs are absent. No pairs produce allocated zero outputs.
+   * @return Owned force and, when enabled, df_dx; other outputs are absent. No pairs produce allocated zero outputs.
+   * Without Jacobian transfer data df_dx is absent.
    * Results remain valid after this assembler is destroyed, while their MFEM spaces and communicator remain alive.
    * @throws std::logic_error Residual assembly was disabled; use assembleJacobian() instead.
    */
@@ -123,6 +189,7 @@ class MfemPairAssembler {
   /**
    * @brief Return the assembled Jacobian on parent displacement true DOFs.
    * @return Owned parent true-DOF sparse matrix; zero pairs produce an allocated zero matrix.
+   * @throws std::logic_error Jacobian assembly was disabled.
    */
   shared::ParSparseMat assembleJacobian() const;
 
@@ -143,6 +210,9 @@ class MfemPairAssembler {
   void addPairsImpl( ExecutionMode execution_mode, const ArrayT<InterfacePair>& pairs, ResidualReader residual_reader,
                      JacobianReader jacobian_reader )
   {
+    if ( !jacobian_data_ ) {
+      throw std::logic_error( "Jacobian assembly was not enabled for this pair assembler." );
+    }
     static_assert( DofCount % 2 == 0, "Pair block assembly requires equal element DOF counts." );
     constexpr IndexT element_dofs = DofCount / 2;
     if ( dof_offsets_[1] != element_dofs || dof_offsets_[2] != DofCount ) {
@@ -215,7 +285,7 @@ class MfemPairAssembler {
 
  private:
   const MfemMeshData& mesh_data_;                          ///< Borrowed displacement mesh and field transfers.
-  const MfemJacobianData& jacobian_data_;                  ///< Borrowed displacement Jacobian transfers.
+  const MfemJacobianData* jacobian_data_;                  ///< Borrowed Jacobian transfers; nullptr for forces only.
   std::array<Array2DView<const IndexT>, 2> connectivity_;  ///< Borrowed connectivity for each mesh.
   int dimension_;                                          ///< Spatial components per node.
   MdArray<IndexT, 3> dof_offsets_{};      ///< Pair DOF offsets before, between, and after the two elements.

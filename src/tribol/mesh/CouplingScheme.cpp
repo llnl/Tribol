@@ -1040,7 +1040,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   }
   if ( m_formulation ) {
     if ( m_parameters.use_common_plane_formulation ) {
-      detail::validateCommonPlaneFormulation( *this );
+      detail::validateCommonPlaneFormulation( *this, m_parameters.common_plane_compute_jacobian );
     }
     // The formulation performs the search and gap calculations needed to compute forces from the current mesh data.
 #ifdef BUILD_REDECOMP

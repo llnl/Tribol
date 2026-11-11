@@ -9,7 +9,7 @@
 
 #include "tribol/config.hpp"
 
-#if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
+#ifdef BUILD_REDECOMP
 #include "tribol/assembly/MfemPairAssembler.hpp"
 #include "tribol/common/GlobalScalarAssembler.hpp"
 #include "tribol/assembly/PairContribution.hpp"
@@ -18,6 +18,40 @@
 namespace tribol {
 namespace detail {
 
+/**
+ * @brief Evaluate pair residual values and assemble forces without derivatives or matrix storage.
+ * @tparam Function Function with one residual entry per coordinate in element/node/component order.
+ * @param execution_mode Host or device execution policy.
+ * @param pairs Accepted element pairs in execution-accessible memory.
+ * @param mesh1 Current first mesh.
+ * @param mesh2 Current second mesh.
+ * @param function Fixed pair residual configuration.
+ * @param mesh_data Borrowed MFEM displacement transfer data.
+ * @return Owned force on parent true DOFs; df_dx and other outputs are absent. Empty or inactive pairs contribute zero.
+ * Scratch arrays remain alive until evaluation and assembly finish.
+ * @throws std::invalid_argument Geometry, execution mode, or assembly dimensions are invalid; no result is returned.
+ * @throws std::length_error Quadrature capacity or the supported index range is exceeded; no result is returned.
+ */
+template <PairKernelFunctionType Function>
+ContactFormulationResult evaluateAndAssembleResidualValues( ExecutionMode execution_mode,
+                                                            const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
+                                                            MeshData::Viewer mesh2, const Function& function,
+                                                            const MfemMeshData& mesh_data )
+{
+  static_assert( Function::value_count == Function::dof_count, "Pair residuals must match coordinate DOFs." );
+  PairValueBuffer<Function::value_count> contributions( pairs.size(), pairs.getAllocatorID() );
+  const auto view = contributions.view();
+  evaluatePairValues( execution_mode, pairs.view(), mesh1, mesh2, function, view );
+  checkPairQuadratureResults( execution_mode, contributions.quadratureResults() );
+  MfemPairAssembler assembler( mesh_data, nullptr, mesh1, mesh2, pairs.size() );
+  assembler.addPairResiduals<Function::dof_count>(
+      execution_mode, pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
+        return view.has_active_points[pair] ? view.value( pair, row ) : 0.0;
+      } );
+  return assembler.assemble();
+}
+
+#ifdef TRIBOL_USE_ENZYME
 /**
  * @brief Evaluate pair residuals and assemble their values as forces and their Jacobians as df_dx.
  *
@@ -115,8 +149,9 @@ ContactFormulationResult evaluateAndAssembleEnergyPairs( ExecutionMode execution
   return result;
 }
 
+#endif  // TRIBOL_USE_ENZYME
 }  // namespace detail
 }  // namespace tribol
-#endif  // TRIBOL_USE_ENZYME && BUILD_REDECOMP
+#endif  // BUILD_REDECOMP
 
 #endif  // SRC_TRIBOL_ASSEMBLY_PAIREVALUATIONASSEMBLY_HPP_

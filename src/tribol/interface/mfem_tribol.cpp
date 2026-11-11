@@ -342,7 +342,7 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
   }
 }
 
-void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled )
+void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_jacobian )
 {
   auto* cs = CouplingSchemeManager::getInstance().findData( cs_id );
   if ( !cs || cs->getContactMethod() != COMMON_PLANE || !cs->hasMfemData() ) {
@@ -360,16 +360,21 @@ void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled )
     }
     return;
   }
-  detail::validateCommonPlaneFormulation( *cs );
-  if ( cs->getParameters().use_common_plane_formulation ) {
+  detail::validateCommonPlaneFormulation( *cs, compute_jacobian );
+  if ( cs->getParameters().use_common_plane_formulation &&
+       cs->getParameters().common_plane_compute_jacobian == compute_jacobian ) {
     return;
   }
-  auto jacobian = std::make_unique<MfemJacobianData>( *cs->getMfemMeshData() );
+  auto jacobian = compute_jacobian ? std::make_unique<MfemJacobianData>( *cs->getMfemMeshData() ) : nullptr;
+  cs->setContactFormulation( nullptr );
   cs->setMfemJacobianData( std::move( jacobian ) );
   cs->getParameters().use_common_plane_formulation = true;
+  cs->getParameters().common_plane_compute_jacobian = compute_jacobian;
   try {
     cs->updateContactFormulation();
-    cs->getMfemJacobianData()->UpdateJacobianXfer();
+    if ( cs->hasMfemJacobianData() ) {
+      cs->getMfemJacobianData()->UpdateJacobianXfer();
+    }
   } catch ( ... ) {
     cs->setContactFormulation( nullptr );
     cs->getParameters().use_common_plane_formulation = false;

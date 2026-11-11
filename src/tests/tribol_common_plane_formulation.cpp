@@ -8,6 +8,7 @@
  * @brief Test common-line quadrature and direct penalty residuals on every enabled backend. Host Enzyme checks compare
  * the full pair Jacobian with finite differences; MFEM assembly and selection have separate integration tests.
  * Crossing edges check clipped interval bounds, point locations, and uniform centroid pressure for every base rule.
+ * Value-only pair kernels check activation, quadrature failures, and buffer sizes on every enabled execution backend.
  */
 #include <cmath>
 #include "gtest/gtest.h"
@@ -17,6 +18,7 @@
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/physics/CommonPlane.hpp"
 #include "tribol/physics/CommonPlaneFormulation.hpp"
+#include "tribol/assembly/PairKernel.hpp"
 
 namespace {
 using namespace tribol;
@@ -325,6 +327,48 @@ TEST_P( CommonPlaneTest, integrates_interpenetrating_overlap_with_configured_rul
   checkInterpenetratingOverlap<1>();
   checkInterpenetratingOverlap<2>();
   checkInterpenetratingOverlap<3>();
+}
+// A force-only kernel must keep pair slots distinct and preserve active zero-gap and invalid-geometry state.
+TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_derivatives )
+{
+  using Function = CommonPlanePairFunction<EdgeQuadratureRuleGenerator<2>>;
+  const Function function{ {}, 1.0 };
+  const auto x1 = copyToExecutionSpace<RealT>( { 0.0, 2.0 } );
+  const auto y1 = copyToExecutionSpace<RealT>( { 0.0, 0.0 } );
+  const auto conn1 = copyToExecutionSpace<IndexT>( { 0, 1 } );
+  const auto x2 = copyToExecutionSpace<RealT>( { 2.0, 0.0, 2.0, 0.0, 2.0, 0.0, 0.0, 0.0 } );
+  const auto y2 = copyToExecutionSpace<RealT>( { 0.1, 0.1, -0.1, -0.1, 0.0, 0.0, 0.0, 0.0 } );
+  const auto conn2 = copyToExecutionSpace<IndexT>( { 0, 1, 2, 3, 4, 5, 6, 7 } );
+  MeshData mesh1( 0, 1, x1.size(), conn1.data(), EDGE, LINEAR_LAGRANGE, x1.data(), y1.data(), nullptr, memorySpace() );
+  MeshData mesh2( 1, 4, x2.size(), conn2.data(), EDGE, LINEAR_LAGRANGE, x2.data(), y2.data(), nullptr, memorySpace() );
+  const auto pairs = copyToExecutionSpace<InterfacePair>( { { 0, 0 }, { 0, 1 }, { 0, 2 }, { 0, 3 } } );
+  PairValueBuffer<Function::value_count> buffer( pairs.size(), allocatorId() );
+  evaluatePairValues( GetParam(), pairs.view(), mesh1.getView(), mesh2.getView(), function, buffer.view() );
+  const Array1D<RealT, MemorySpace::Host> values( buffer.values() );
+  const Array1D<QuadratureResult, MemorySpace::Host> status( buffer.quadratureResults() );
+  const Array1D<IndexT, MemorySpace::Host> active( buffer.activePoints() );
+  for ( IndexT pair = 0; pair < pairs.size(); ++pair ) {
+    EXPECT_EQ( status[pair].status, pair == 3 ? QuadratureStatus::InvalidGeometry : QuadratureStatus::Success );
+    EXPECT_EQ( status[pair].required_point_count, pair == 3 ? 0 : 2 );
+    EXPECT_EQ( active[pair], pair == 0 || pair == 2 );
+    for ( IndexT row = 0; row < Function::value_count; ++row ) {
+      const RealT expected = pair == 0 && row % 2 == 1 ? ( row < Function::first_dofs ? -0.1 : 0.1 ) : 0.0;
+      EXPECT_NEAR( values[row * pairs.size() + pair], expected, tolerance );
+    }
+  }
+  EXPECT_THROW( checkPairQuadratureResults( GetParam(), buffer.quadratureResults() ), std::invalid_argument );
+  auto mismatched = buffer.view();
+  --mismatched.pair_count;
+  EXPECT_THROW( evaluatePairValues( GetParam(), pairs.view(), mesh1.getView(), mesh2.getView(), function, mismatched ),
+                std::invalid_argument );
+  const Array1D<RealT, MemorySpace::Host> unchanged( buffer.values() );
+  for ( IndexT i = 0; i < values.size(); ++i ) {
+    EXPECT_EQ( unchanged[i], values[i] );
+  }
+  const ArrayT<InterfacePair> empty_pairs( 0, 0, allocatorId() );
+  PairValueBuffer<Function::value_count> empty( 0, allocatorId() );
+  EXPECT_NO_THROW(
+      evaluatePairValues( GetParam(), empty_pairs.view(), mesh1.getView(), mesh2.getView(), function, empty.view() ) );
 }
 INSTANTIATE_TEST_SUITE_P( execution, CommonPlaneTest, tribol::detail::enabledExecutionModes() );
 

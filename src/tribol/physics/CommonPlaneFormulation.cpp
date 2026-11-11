@@ -5,7 +5,7 @@
 
 #include "tribol/physics/CommonPlaneFormulation.hpp"
 
-#if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
+#ifdef BUILD_REDECOMP
 #include "tribol/assembly/PairEvaluationAssembly.hpp"
 
 namespace tribol {
@@ -15,8 +15,15 @@ ContactFormulationResult CommonPlaneFormulation<BaseRule>::computeNodalForces( M
                                                                                MeshData::Viewer mesh2 ) const
 {
   const auto pairs = pair_builder_.build( mesh1, mesh2 );
+  if ( !jacobian_data_ ) {
+    return detail::evaluateAndAssembleResidualValues( execution_mode_, pairs, mesh1, mesh2, function_, mesh_data_ );
+  }
+#ifdef TRIBOL_USE_ENZYME
   return detail::evaluateAndAssembleResidualPairs( execution_mode_, pairs, mesh1, mesh2, function_, mesh_data_,
-                                                   jacobian_data_ );
+                                                   *jacobian_data_ );
+#else
+  throw std::logic_error( "Common Plane Jacobian calculation requires Enzyme." );
+#endif
 }
 
 template class CommonPlaneFormulation<EdgeQuadratureRuleGenerator<1>>;

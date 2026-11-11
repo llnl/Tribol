@@ -87,6 +87,45 @@ concept PairKernelFunctionType = PairFunctionType<PairFunction> && requires {
   requires( PairFunction::first_dofs > 0 && PairFunction::first_dofs < PairFunction::dof_count );
 };
 
+/**
+ * @brief Evaluate each pair's values and quadrature state without calculating derivatives.
+ *
+ * Each pair is evaluated once. This kernel requires no derivative provider or Enzyme support. Failed, empty, and
+ * inactive values follow the pair function's evaluate() behavior; callers must check quadrature before assembly.
+ * For example, Common Plane explicit contact could call evaluatePairValues() into a PairValueBuffer, check its
+ * quadratureResults(), and assemble its active residual values as nodal forces.
+ * @tparam PairFunction Function evaluating one pair from packed coordinates.
+ * @param execution_mode Host or device execution policy.
+ * @param pairs Supplied element pairs in execution-accessible memory.
+ * @param mesh1 Current first mesh.
+ * @param mesh2 Current second mesh.
+ * @param pair_function Fixed pair configuration.
+ * @param output Preallocated values, quadrature results, and activation flags, with one slot per pair.
+ * @throws std::invalid_argument Buffer size does not match the pair list; no outputs are written.
+ */
+template <PairKernelFunctionType PairFunction>
+void evaluatePairValues( ExecutionMode execution_mode, ArrayViewT<const InterfacePair> pairs, MeshData::Viewer mesh1,
+                         MeshData::Viewer mesh2, PairFunction pair_function,
+                         PairValueView<PairFunction::value_count> output )
+{
+  if ( output.pair_count != pairs.size() ) {
+    throw std::invalid_argument( "Pair value buffer size must match the pair list." );
+  }
+  forAllExec( execution_mode, pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
+    const auto pair = pairs[pair_index];
+    MdArray<RealT, PairFunction::dof_count> coordinates{};
+    mesh1.getFaceCoords( pair.element_id1_, coordinates.data() );
+    mesh2.getFaceCoords( pair.element_id2_, coordinates.data() + PairFunction::first_dofs );
+    const auto pair_values = pair_function.evaluate( coordinates.view() );
+    const auto values = pair_values.values();
+    output.quadrature[pair_index] = pair_values.quadrature_result;
+    output.has_active_points[pair_index] = pair_values.has_active_points;
+    for ( IndexT value = 0; value < PairFunction::value_count; ++value ) {
+      output.setValue( pair_index, value, values[value] );
+    }
+  } );
+}
+
 #ifdef TRIBOL_USE_ENZYME
 /**
  * @brief Evaluate each pair's values and coordinate Jacobian into preallocated buffers.

@@ -175,6 +175,7 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 
   set( combined_tests
       tribol_mfem_pair_assembler.cpp
+      tribol_mfem_common_plane_formulation.cpp
       tribol_mfem_data.cpp
       tribol_mfem_common_plane.cpp
       tribol_mfem_mortar_lm.cpp
@@ -215,6 +216,11 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
   endforeach()
 
   blt_add_test(NAME tribol_mfem_pair_assembler COMMAND tribol_mfem_pair_assembler_test NUM_MPI_TASKS 1)
+  blt_add_test(NAME tribol_mfem_common_plane_formulation
+      COMMAND tribol_mfem_common_plane_formulation_test NUM_MPI_TASKS 1)
+  if (ENABLE_CUDA)
+    set_target_properties(tribol_mfem_common_plane_formulation_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
+  endif()
 
 endif()
 
@@ -229,7 +235,6 @@ if( TRIBOL_USE_ENZYME )
       tribol_enzyme_nodal_normal.cpp
       tribol_enzyme_mortar_assembled.cpp
       tribol_enzyme_poly_intersect.cpp
-      tribol_mfem_common_plane_formulation.cpp
       tribol_energy_mortar_quadrature_settings.cpp
       tribol_energy_mortar_patch.cpp
       tribol_energy_mortar_patch_LM.cpp
@@ -291,9 +296,6 @@ if( MFEM_FOUND )
 endif()
 
 if( TRIBOL_USE_ENZYME )
-
-  blt_add_test(NAME tribol_mfem_common_plane_formulation_2rank
-      COMMAND tribol_mfem_common_plane_formulation_test NUM_MPI_TASKS 2)
 
   blt_add_test(NAME tribol_energy_mortar_quadrature_settings_2rank
       COMMAND tribol_energy_mortar_quadrature_settings_test NUM_MPI_TASKS 2)

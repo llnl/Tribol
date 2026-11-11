@@ -8,6 +8,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Common Plane supports force-only MFEM evaluation without Enzyme through
+  `setMfemUseCommonPlaneFormulation(cs_id, true, false)`. This evaluates pair residuals directly and allocates no
+  Jacobian buffers or matrix transfer data; `df_dx` is absent. Existing two-argument calls still calculate forces and
+  an Enzyme Jacobian. Switching the third argument rebuilds the formulation and updates its transfer data.
 - Added opt-in linear 2D Common Plane contact through `setMfemUseCommonPlaneFormulation()`. `CommonPlaneFormulation`,
   `NodalEnergyMortar`, and `QuadraturePointEnergyMortar` derive directly from `ContactFormulation` and compose shared
   pair search, Enzyme derivative, contribution-buffer, and MFEM assembly components. Common Plane supports frictionless
