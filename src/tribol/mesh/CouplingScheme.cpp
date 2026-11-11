@@ -1036,7 +1036,9 @@ void CouplingScheme::performBinning()
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
   if ( m_formulation ) {
-    if ( m_parameters.use_common_plane_formulation ) detail::validateCommonPlaneFormulation( *this );
+    if ( m_parameters.use_common_plane_formulation ) {
+      detail::validateCommonPlaneFormulation( *this );
+    }
     // The formulation performs the search and gap calculations needed to compute forces from the current mesh data.
 #ifdef BUILD_REDECOMP
     if ( m_contact_multiplier ) {
@@ -1044,7 +1046,9 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
     }
 #endif
     m_formulation_result = m_formulation->computeNodalForces( getMesh1().getView(), getMesh2().getView() );
-    if ( m_formulation_result.time_step ) dt = *m_formulation_result.time_step;
+    if ( m_formulation_result.time_step ) {
+      dt = *m_formulation_result.time_step;
+    }
     return 0;
   }
 
@@ -1176,22 +1180,29 @@ void CouplingScheme::setContactFormulation( std::unique_ptr<ContactFormulation> 
 void CouplingScheme::updateEnergyMortarTransferData()
 {
   const bool nodal = m_parameters.enforcement_location == EnforcementLocation::Nodal;
-  if ( hasMfemJacobianData() && hasMfemSubmeshData() == nodal ) return;
+  if ( hasMfemJacobianData() && hasMfemSubmeshData() == nodal ) {
+    return;
+  }
   auto& mesh_data = *getMfemMeshData();
   std::unique_ptr<MfemSubmeshData> dual_data;
   if ( nodal ) {
-    if ( m_contactModel != FRICTIONLESS )
+    if ( m_contactModel != FRICTIONLESS ) {
       throw std::invalid_argument( "Nodal Energy Mortar requires frictionless contact." );
+    }
     const auto* parent_fes = mesh_data.GetParentCoords().ParFESpace();
     auto pressure_fec = std::make_unique<mfem::H1_FECollection>( parent_fes->FEColl()->GetOrder(),
                                                                  parent_fes->GetParMesh()->SpaceDimension() );
     dual_data = std::make_unique<MfemSubmeshData>( mesh_data.GetSubmesh(), mesh_data.GetLORMesh(),
                                                    std::move( pressure_fec ), 1, isOnDevice( m_exec_mode ) );
-    if ( mesh_data.HasRedecompMesh() ) dual_data->UpdateMfemSubmeshData( mesh_data.GetRedecompMesh(), true );
+    if ( mesh_data.HasRedecompMesh() ) {
+      dual_data->UpdateMfemSubmeshData( mesh_data.GetRedecompMesh(), true );
+    }
   }
   auto jacobian_data = nodal ? std::make_unique<MfemJacobianData>( mesh_data, *dual_data )
                              : std::make_unique<MfemJacobianData>( mesh_data );
-  if ( mesh_data.HasRedecompMesh() ) jacobian_data->UpdateJacobianXfer();
+  if ( mesh_data.HasRedecompMesh() ) {
+    jacobian_data->UpdateJacobianXfer();
+  }
 
   // Release outputs and formulations before the transfer spaces and fields they borrow.
   setContactFormulation( nullptr );
@@ -1228,7 +1239,9 @@ void CouplingScheme::updateContactFormulation()
       return;
     }
 #ifdef BUILD_REDECOMP
-    if ( m_contactMethod == ENERGY_MORTAR && hasMfemData() ) updateEnergyMortarTransferData();
+    if ( m_contactMethod == ENERGY_MORTAR && hasMfemData() ) {
+      updateEnergyMortarTransferData();
+    }
 #endif
     this->setContactFormulation( createContactFormulation( this ) );
   } else {

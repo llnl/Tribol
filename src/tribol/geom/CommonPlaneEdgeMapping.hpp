@@ -61,8 +61,12 @@ struct CommonPlaneEdgeMapping {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurface makeIntegrationSurface( const FirstGeometry& edge1,
                                                                                      const SecondGeometry& edge2 ) const
   {
-    if ( !validEdges( edge1, edge2 ) ) return { MdArray<RealT, 2>{ 0.0, 0.0 }, false };
-    if ( !opposingNormals( edge1, edge2 ) ) return { MdArray<RealT, 2>{ 0.0, 0.0 }, true };
+    if ( !validEdges( edge1, edge2 ) ) {
+      return { MdArray<RealT, 2>{ 0.0, 0.0 }, false };
+    }
+    if ( !opposingNormals( edge1, edge2 ) ) {
+      return { MdArray<RealT, 2>{ 0.0, 0.0 }, true };
+    }
     const auto frame = makeFrame( edge1, edge2 );
     const RealT a0 = Vector( frame.origin, edge1.origin() ).dot( frame.tangent );
     const RealT a1 = Vector( frame.origin, edge1.position( 1.0 ) ).dot( frame.tangent );
@@ -91,11 +95,19 @@ struct CommonPlaneEdgeMapping {
                                                                           IntegrationSurfaceRuleView<1> reference,
                                                                           PairQuadratureView<1, 1> output ) const
   {
-    if ( !validEdges( edge1, edge2 ) ) return { QuadratureStatus::InvalidGeometry, 0 };
-    if ( !opposingNormals( edge1, edge2 ) ) return { QuadratureStatus::Success, 0 };
+    if ( !validEdges( edge1, edge2 ) ) {
+      return { QuadratureStatus::InvalidGeometry, 0 };
+    }
+    if ( !opposingNormals( edge1, edge2 ) ) {
+      return { QuadratureStatus::Success, 0 };
+    }
     const auto count = reference.numberOfPoints();
-    if ( output.capacity() < count ) return { QuadratureStatus::InsufficientCapacity, count };
-    if ( count == 0 ) return { QuadratureStatus::Success, 0 };
+    if ( output.capacity() < count ) {
+      return { QuadratureStatus::InsufficientCapacity, count };
+    }
+    if ( count == 0 ) {
+      return { QuadratureStatus::Success, 0 };
+    }
     const auto frame = makeFrame( edge1, edge2 );
     const RealT determinant1 = Vector::cross_product( edge1.direction(), frame.normal )[2];
     const RealT determinant2 = Vector::cross_product( edge2.direction(), frame.normal )[2];

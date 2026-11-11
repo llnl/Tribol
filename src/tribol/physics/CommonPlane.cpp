@@ -4,8 +4,6 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "CommonPlane.hpp"
-#include "tribol/physics/PairEvaluation.hpp"
-#include <stdexcept>
 
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/Atomics.hpp"
@@ -18,60 +16,6 @@
 #include "tribol/utils/Math.hpp"
 
 namespace tribol {
-
-#ifdef TRIBOL_USE_ENZYME
-template <typename BaseRule, typename GapDefinition>
-CommonPlanePairData computeCommonPlanePair( LinearEdgeGeometry::Coords coordinates1,
-                                            LinearEdgeGeometry::Coords coordinates2,
-                                            const CommonPlaneQuadratureRule<BaseRule>& quadrature_rule, RealT penalty,
-                                            GapDefinition gap )
-{
-  if ( !std::isfinite( penalty ) || penalty <= 0.0 ) {
-    throw std::invalid_argument( "Common-plane penalty must be positive and finite." );
-  }
-  constexpr IndexT count = CommonPlaneResidualData::coordinate_count;
-  constexpr IndexT edge_dofs = LinearEdgeGeometry::Coords::size();
-  MdArray<RealT, count> coordinates{};
-  for ( IndexT i = 0; i < edge_dofs; ++i ) {
-    coordinates[i] = coordinates1[i];
-    coordinates[edge_dofs + i] = coordinates2[i];
-  }
-  using Definition = CommonPlaneForce<BaseRule, GapDefinition>;
-  const Definition definition{ quadrature_rule, penalty, CommonPlaneResidual{ gap } };
-  const auto primal = definition.evaluate( coordinates.view() );
-  if ( primal.quadrature_result.status != QuadratureStatus::Success )
-    reportQuadratureFailure( primal.quadrature_result.status );
-  CommonPlanePairData result{};
-  result.residual = primal.residual;
-  result.quadrature_result = primal.quadrature_result;
-  result.has_active_points = primal.has_active_points;
-  if ( !primal.has_active_points ) return result;
-  const auto derivatives =
-      ForcePairEvaluator<Definition>::evaluate( coordinates.view(), definition, primal.residual.view() );
-  result.jacobian = derivatives.jacobian;
-  return result;
-}
-
-template CommonPlanePairData computeCommonPlanePair<EdgeQuadratureRuleGenerator<1>, CommonPlaneGap>(
-    LinearEdgeGeometry::Coords, LinearEdgeGeometry::Coords,
-    const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<1>>&, RealT, CommonPlaneGap );
-template CommonPlanePairData computeCommonPlanePair<EdgeQuadratureRuleGenerator<1>, OffsetGap<CommonPlaneGap>>(
-    LinearEdgeGeometry::Coords, LinearEdgeGeometry::Coords,
-    const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<1>>&, RealT, OffsetGap<CommonPlaneGap> );
-template CommonPlanePairData computeCommonPlanePair<EdgeQuadratureRuleGenerator<2>, CommonPlaneGap>(
-    LinearEdgeGeometry::Coords, LinearEdgeGeometry::Coords,
-    const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<2>>&, RealT, CommonPlaneGap );
-template CommonPlanePairData computeCommonPlanePair<EdgeQuadratureRuleGenerator<2>, OffsetGap<CommonPlaneGap>>(
-    LinearEdgeGeometry::Coords, LinearEdgeGeometry::Coords,
-    const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<2>>&, RealT, OffsetGap<CommonPlaneGap> );
-template CommonPlanePairData computeCommonPlanePair<EdgeQuadratureRuleGenerator<3>, CommonPlaneGap>(
-    LinearEdgeGeometry::Coords, LinearEdgeGeometry::Coords,
-    const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<3>>&, RealT, CommonPlaneGap );
-template CommonPlanePairData computeCommonPlanePair<EdgeQuadratureRuleGenerator<3>, OffsetGap<CommonPlaneGap>>(
-    LinearEdgeGeometry::Coords, LinearEdgeGeometry::Coords,
-    const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<3>>&, RealT, OffsetGap<CommonPlaneGap> );
-
-#endif
 
 TRIBOL_HOST_DEVICE RealT ComputeGapRatePressure( CommonPlanePair& plane, const MeshData::Viewer& m1,
                                                  const MeshData::Viewer& m2, RealT element_penalty,

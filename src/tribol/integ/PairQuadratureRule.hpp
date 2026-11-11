@@ -94,6 +94,7 @@ template <ElementPairMapping Mapping, typename IntegrationSurfaceRuleGenerator>
   requires PairQuadratureComponentsAreCompatible<Mapping, IntegrationSurfaceRuleGenerator>
 class PairQuadratureRule {
  public:
+  using Generator = IntegrationSurfaceRuleGenerator;        ///< Integration-surface quadrature generator.
   using FirstGeometry = typename Mapping::FirstGeometry;    ///< Geometry type of the first element.
   using SecondGeometry = typename Mapping::SecondGeometry;  ///< Geometry type of the second element.
   /// Maximum number of points in a successfully generated rule.

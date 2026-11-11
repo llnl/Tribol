@@ -78,6 +78,11 @@ foreach( test ${tribol_tests} )
 
 endforeach()
 
+if(TRIBOL_USE_ENZYME)
+  # Enzyme rejects the aggregate-heavy edge geometry IR produced at -O0.
+  target_compile_options(tribol_energy_mortar_definition_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
+endif()
+
 #------------------------------------------------------------------------------
 # Add shared tests
 #------------------------------------------------------------------------------
@@ -260,6 +265,9 @@ if( TRIBOL_USE_ENZYME )
     endif()
 
   endforeach()
+
+  # Enzyme rejects the aggregate-heavy edge geometry IR produced at -O0.
+  target_compile_options(tribol_finite_diff_energy_mortar_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
 
 endif()
 

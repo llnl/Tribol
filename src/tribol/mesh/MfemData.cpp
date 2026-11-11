@@ -91,7 +91,9 @@ shared::ParSparseMat BuildTrueDofExtract( const mfem::ParFiniteElementSpace& vec
   auto* I = new int[nrows + 1];
   auto* J = new int[nrows];
   auto* data = new RealT[nrows];
-  for ( int i = 0; i < nrows + 1; ++i ) I[i] = i;
+  for ( int i = 0; i < nrows + 1; ++i ) {
+    I[i] = i;
+  }
   for ( int r = 0; r < nrows; ++r ) {
     J[r] = tdofs_list[r];
     data[r] = 1.0;
@@ -129,10 +131,14 @@ shared::ParSparseMat BuildTrueDofInject( const mfem::ParFiniteElementSpace& vec_
   const int nnz = I[nrows];
   auto* J = new int[nnz];
   auto* data = new RealT[nnz];
-  for ( int k = 0; k < nnz; ++k ) data[k] = 1.0;
+  for ( int k = 0; k < nnz; ++k ) {
+    data[k] = 1.0;
+  }
 
   std::vector<int> next( static_cast<size_t>( nrows ), 0 );
-  for ( int r = 0; r < nrows; ++r ) next[static_cast<size_t>( r )] = I[r];
+  for ( int r = 0; r < nrows; ++r ) {
+    next[static_cast<size_t>( r )] = I[r];
+  }
 
   for ( int c = 0; c < ncols; ++c ) {
     const int r = tdofs_list[c];

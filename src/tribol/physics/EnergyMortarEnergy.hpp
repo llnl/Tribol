@@ -47,7 +47,9 @@ struct EnergyMortarNodal {
   TRIBOL_HOST_DEVICE static EnergyMortarNodalPartials penaltyPartials( RealT weighted_gap, RealT area, RealT penalty,
                                                                        RealT area_tolerance )
   {
-    if ( std::abs( area ) <= area_tolerance || weighted_gap > 0.0 ) return {};
+    if ( std::abs( area ) <= area_tolerance || weighted_gap > 0.0 ) {
+      return {};
+    }
     const RealT inverse_area = 1.0 / area;
     const RealT pressure = penalty * weighted_gap * inverse_area;
     return { 0.5 * pressure * weighted_gap,
@@ -91,6 +93,7 @@ class EnergyMortarEnergy {
   using Quadrature = QuadratureRule;                   ///< Owned pair generator type.
   using Physics = EnergyMortarPenalty<GapDefinition>;  ///< Fixed gap configuration.
   using PrimalResult = PairEnergyValue;                ///< Energy, activation, and quadrature status.
+  static constexpr IndexT value_count = 1;             ///< Scalar pair energy output.
   static constexpr IndexT first_dofs = Quadrature::FirstGeometry::Coords::size();  ///< First-element coordinates.
   static constexpr IndexT dof_count = first_dofs + Quadrature::SecondGeometry::Coords::size();  ///< Pair coordinates.
   /** @brief Store fixed inputs. @param rule Pair generator. @param penalty Stiffness. @param physics Gap definition. */
@@ -109,12 +112,16 @@ class EnergyMortarEnergy {
     const typename Quadrature::SecondGeometry geometry2( { coordinates.data() + first_dofs, dof_count - first_dofs } );
     const auto points = quadrature_.generate( geometry1, geometry2 );
     PrimalResult result{ 0.0, false, points.result };
-    if ( points.result.status != QuadratureStatus::Success || points.result.required_point_count == 0 ) return result;
+    if ( points.result.status != QuadratureStatus::Success || points.result.required_point_count == 0 ) {
+      return result;
+    }
     const auto normal1 = geometry1.normal(), normal2 = geometry2.normal();
     for ( IndexT q = 0; q < points.result.required_point_count; ++q ) {
       const RealT gap = physics_.gap( geometry1.position( points.geometry1_coords( q, 0 ) ),
                                       geometry2.position( points.geometry2_coords( q, 0 ) ), normal1, normal2 );
-      if ( gap > 0.0 ) continue;
+      if ( gap > 0.0 ) {
+        continue;
+      }
       result.has_active_points = true;
       result.energy += 0.5 * penalty_ * gap * gap * points.weights[q];
     }
@@ -126,6 +133,13 @@ class EnergyMortarEnergy {
   {
     return evaluate( coordinates ).energy;
   }
+  /** @brief Vector entry shared with other pair functions. @param coordinates Current coordinates.
+   * @return Single-entry pair energy vector. */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE MdArray<RealT, value_count> values(
+      MdSpan<const RealT, dof_count> coordinates ) const
+  {
+    return MdArray<RealT, value_count>( energy( coordinates ) );
+  }
   /**
    * @brief Freeze integration-surface points for a derivative request.
    * @param coordinates Geometry at which reference coordinates and weights are selected.
@@ -135,7 +149,9 @@ class EnergyMortarEnergy {
   {
     const auto reference = quadrature_.generateIntegrationSurfaceRule(
         { coordinates.data(), first_dofs }, { coordinates.data() + first_dofs, dof_count - first_dofs } );
-    if ( reference.result.status != QuadratureStatus::Success ) reportQuadratureFailure( reference.result.status );
+    if ( reference.result.status != QuadratureStatus::Success ) {
+      reportQuadratureFailure( reference.result.status );
+    }
     using FrozenRule = detail::FrozenEnergyMortarRule<Quadrature>;
     return EnergyMortarEnergy<FrozenRule, GapDefinition>{ FrozenRule{ quadrature_, reference }, penalty_, physics_ };
   }
@@ -184,7 +200,9 @@ class EnergyMortarNodalEnergy {
     const typename Quadrature::SecondGeometry geometry2( { coordinates.data() + first_dofs, dof_count - first_dofs } );
     const auto points = quadrature_.generate( geometry1, geometry2 );
     PrimalResult result{ {}, false, points.result };
-    if ( points.result.status != QuadratureStatus::Success || points.result.required_point_count == 0 ) return result;
+    if ( points.result.status != QuadratureStatus::Success || points.result.required_point_count == 0 ) {
+      return result;
+    }
     const auto normal1 = geometry1.normal(), normal2 = geometry2.normal();
     result.has_active_points = true;
     for ( IndexT q = 0; q < points.result.required_point_count; ++q ) {
@@ -206,36 +224,15 @@ class EnergyMortarNodalEnergy {
   {
     return evaluate( coordinates ).value;
   }
-  /** @brief Scalar contraction for coordinate Hessians; weights stay fixed during differentiation. */
-  struct Weighted {
-    EnergyMortarNodalEnergy definition;       ///< Owned integral configuration, with no borrowed geometry.
-    MdArray<RealT, node_count> gap_weights;   ///< Fixed weighted-gap partials.
-    MdArray<RealT, node_count> area_weights;  ///< Fixed area partials.
-    static constexpr IndexT dof_count = EnergyMortarNodalEnergy::dof_count;  ///< Pair coordinate count.
-    /** @brief Evaluate weighted integrals. @param coordinates Active coordinates. @return Scalar weighted integral. */
-    TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT energy( CoordinateView coordinates ) const
-    {
-      const auto quantities = definition.values( coordinates );
-      RealT result = 0.0;
-      for ( IndexT node = 0; node < node_count; ++node )
-        result += gap_weights[node] * quantities[node] + area_weights[node] * quantities[node_count + node];
-      return result;
-    }
-  };
-  /** @brief Bind fixed field partials. @param gap_weights Gap partials. @param area_weights Area partials.
-   * @return Scalar definition for weighted geometric Hessians. */
-  TRIBOL_HOST_DEVICE auto withWeights( MdArray<RealT, node_count> gap_weights,
-                                       MdArray<RealT, node_count> area_weights = {} ) const
-  {
-    return Weighted{ *this, gap_weights, area_weights };
-  }
   /** @brief Freeze integration-surface points. @param coordinates Current reference geometry.
    * @return Owned definition with current reverse mapping and physical weights. */
   auto withFrozenQuadrature( CoordinateView coordinates ) const
   {
     const auto reference = quadrature_.generateIntegrationSurfaceRule(
         { coordinates.data(), first_dofs }, { coordinates.data() + first_dofs, dof_count - first_dofs } );
-    if ( reference.result.status != QuadratureStatus::Success ) reportQuadratureFailure( reference.result.status );
+    if ( reference.result.status != QuadratureStatus::Success ) {
+      reportQuadratureFailure( reference.result.status );
+    }
     using FrozenRule = detail::FrozenEnergyMortarRule<Quadrature>;
     return EnergyMortarNodalEnergy<FrozenRule, GapDefinition>{ FrozenRule{ quadrature_, reference }, physics_ };
   }

@@ -5,7 +5,9 @@ Common Plane through ContactFormulation
 
 The opt-in Common Plane formulation evaluates frictionless penalty contact between straight two-dimensional edges.
 It requires MFEM, Redecomp, and Enzyme, linear coordinate elements, constant positive mesh penalties, quadrature-point
-enforcement, and host execution. It does not support LOR subdivision, rate penalties, tied contact, or device assembly.
+enforcement, and a Sequential, OpenMP, CUDA, or HIP execution policy. CUDA builds that enable Enzyme must use
+Clang-CUDA because NVCC cannot apply the LLVM Enzyme plugin to device code. It does not support LOR subdivision, rate
+penalties, or tied contact.
 
 Selecting and using the formulation
 -----------------------------------
@@ -58,32 +60,30 @@ retrieval functions. Displacement Jacobian transfer uses no pressure or gap fini
 nonopposing normals produce successful zero-point rules; invalid geometry and insufficient capacity are failures
 whose output is discarded and reported before residual evaluation.
 
-Shared formulation and method arguments
----------------------------------------
+Composition and GPU pipeline
+----------------------------
 
-Common Plane, quadrature-point Energy Mortar, and nodal Energy Mortar share ``PairContactFormulation<PairMethod>``.
-It owns the searches and method configuration and gathers current pair coordinates for each request. The method
-argument selects a concrete calculation, local derivative evaluator, penalty inputs, and assembly location:
+``CommonPlaneFormulation``, ``QuadraturePointEnergyMortar``, and ``NodalEnergyMortar`` derive directly from
+``ContactFormulation``. They compose reusable search, derivative, contribution-buffer, and assembly components rather
+than inheriting pair-method behavior. ``PairListBuilder`` owns coarse and refined searches. Fixed-size pair functions
+contain only geometry-independent configuration and are statically dispatched inside device kernels.
 
-* ``CommonPlanePairMethod`` integrates the direct Common Plane residual and selects ``ForcePairEvaluator``.
-* ``EnergyMortarQuadraturePointMethod`` evaluates penalty energy at quadrature points, integrates it per element pair,
-  and selects ``EnergyPairEvaluator``.
-* ``EnergyMortarAssembledMethod`` uses ``AssembledEnergyMethod`` to evaluate energy from assembled nodal gap/area
-  integrals.
+Pair evaluation and assembly use two numerical stages. ``evaluatePairValuesAndJacobians()`` and
+``evaluatePairWeightedHessians()`` assign one pair to each execution-space thread and write structure-of-arrays
+``PairValueJacobianBuffer`` or ``PairHessianBuffer`` storage allocated before launch. ``EnzymePairDerivative`` supplies
+the common ``valuesAndJacobian()`` and ``weightedHessian()`` operations for all three formulations. Pair kernels do not
+allocate, call MFEM, throw, or dispatch virtual functions. A device reduction checks quadrature status after launch.
 
-``AssembledEnergyMethod`` describes when the energy is evaluated: element-pair quadrature produces integrals, those
-integrals are assembled across pairs, and the energy is evaluated from the assembled quantities. This does not imply
-node-to-segment contact. Energy Mortar's assembled quantities are nodal fields; its contact integration is over element
-pairs.
+``MfemPairAssembler`` and ``MfemNodalAssembler`` scatter vectors and pack dense element blocks in execution-space
+kernels. Common Plane and quadrature-point Energy Mortar use displacement-only transfer; nodal Energy Mortar also
+assembles dual gap and area fields. Scalar energies use an execution-space reduction followed by one MPI scalar
+reduction. Sparse matrix ownership and transfer validation remain host orchestration, while pair-proportional residual,
+gap, area, derivative, and element-block calculations remain on the selected backend.
 
-Method calculations use direct quadrature loops. Common Plane and quadrature-point Energy Mortar use displacement-only
-Jacobian transfer and ``MfemPairAssembler``. Nodal Energy Mortar uses dual submesh fields and ``MfemNodalAssembler``.
-Search, coordinate gathering, and result ownership are shared; there is no global AD or integral-expression API.
-
-The penalty-input argument reads current settings on every calculation. Common Plane defaults to scaled mesh penalties
+The enforcement value reads current settings on every calculation. Common Plane defaults to scaled mesh penalties
 combined by ``SeriesPenaltyStiffness``. Energy Mortar defaults to registered constant penalties combined by
-``AveragePenaltyStiffness``. These combinations can be supplied as template arguments independently of the pair
-calculation. Changing a penalty between calls does not require retaining or regenerating a formulation's mesh views.
+``AveragePenaltyStiffness``. Nodal penalty and Lagrange multiplier enforcement are represented by distinct value types.
+Changing a penalty between calls does not require retaining or regenerating a formulation's mesh views.
 
 Nodal Energy Mortar uses the concrete energy ``0.5*k*min(weighted_gap,0)^2/area`` and its explicit gap/area partials.
 The coordinate residual and Jacobian combine those partials with assembled integral Jacobians and Enzyme weighted

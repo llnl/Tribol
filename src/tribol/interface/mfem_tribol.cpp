@@ -361,7 +361,9 @@ void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled )
     return;
   }
   detail::validateCommonPlaneFormulation( *cs );
-  if ( cs->getParameters().use_common_plane_formulation ) return;
+  if ( cs->getParameters().use_common_plane_formulation ) {
+    return;
+  }
   auto jacobian = std::make_unique<MfemJacobianData>( *cs->getMfemMeshData() );
   cs->setMfemJacobianData( std::move( jacobian ) );
   cs->getParameters().use_common_plane_formulation = true;
@@ -392,7 +394,9 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
   const bool rebuild_formulation = cs->hasContactFormulation();
   const auto* previous_lor = cs->getMfemMeshData()->GetLORMesh();
   cs->getMfemMeshData()->SetLORFactor( lor_factor );
-  if ( previous_lor == cs->getMfemMeshData()->GetLORMesh() ) return;
+  if ( previous_lor == cs->getMfemMeshData()->GetLORMesh() ) {
+    return;
+  }
   cs->setContactFormulation( nullptr );
 
   if ( cs->getMfemSubmeshData() ) {
@@ -619,7 +623,9 @@ mfem::HypreParVector getMfemContactForce( IndexT cs_id )
       !cs->hasContactFormulation(),
       "Coupling scheme does not contain a contact formulation. Forces are returned using getMfemResponse() instead." );
   const auto& force = cs->getContactFormulationResult().force;
-  if ( !force ) throw std::logic_error( "No contact force is available; call update() first." );
+  if ( !force ) {
+    throw std::logic_error( "No contact force is available; call update() first." );
+  }
   return *force;
 }
 
@@ -637,7 +643,9 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
 
   if ( cs->hasContactFormulation() ) {
     auto& result = cs->getContactFormulationResult();
-    if ( !result.df_dx ) throw std::logic_error( "No contact Jacobian is available; call update() first." );
+    if ( !result.df_dx ) {
+      throw std::logic_error( "No contact Jacobian is available; call update() first." );
+    }
     auto DfDx = std::move( result.df_dx );
     auto DfDp = std::move( result.df_dp );
     auto DgDx = std::move( result.dg_dx );
@@ -649,9 +657,15 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
     offsets[2] = offsets[1] + ( DfDp ? DfDp->Width() : DgDx ? DgDx->Height() : 0 );  // Pressure cols (pressure dofs)
 
     auto blockOp = std::make_unique<mfem::BlockOperator>( offsets );
-    if ( DfDx ) blockOp->SetBlock( 0, 0, DfDx.release() );
-    if ( DfDp ) blockOp->SetBlock( 0, 1, DfDp.release() );
-    if ( DgDx ) blockOp->SetBlock( 1, 0, DgDx.release() );
+    if ( DfDx ) {
+      blockOp->SetBlock( 0, 0, DfDx.release() );
+    }
+    if ( DfDp ) {
+      blockOp->SetBlock( 0, 1, DfDp.release() );
+    }
+    if ( DgDx ) {
+      blockOp->SetBlock( 1, 0, DgDx.release() );
+    }
     // 1,1 block (DgDp) is implicitly zero for standard contact
 
     // Manually set ownership to avoid leaks, as BlockOperator owns nothing by default
@@ -780,7 +794,9 @@ mfem::HypreParVector getMfemContactGap( IndexT cs_id )
                               cs_id ) );
   SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
   const auto& gap = cs->getContactFormulationResult().gap;
-  if ( !gap ) throw std::logic_error( "No nodal contact gap is available." );
+  if ( !gap ) {
+    throw std::logic_error( "No nodal contact gap is available." );
+  }
   return *gap;
 }
 
@@ -809,10 +825,13 @@ mfem::HypreParVector& getMfemContactPressure( IndexT cs_id )
                               cs_id ) );
   SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
   if ( cs->getEnforcementMethod() == LAGRANGE_MULTIPLIER &&
-       cs->getParameters().enforcement_location == EnforcementLocation::Nodal )
+       cs->getParameters().enforcement_location == EnforcementLocation::Nodal ) {
     return cs->getContactMultiplier();
+  }
   const auto& pressure = cs->getContactFormulationResult().pressure;
-  if ( !pressure ) throw std::logic_error( "No nodal contact pressure is available." );
+  if ( !pressure ) {
+    throw std::logic_error( "No nodal contact pressure is available." );
+  }
   return *pressure;
 }
 

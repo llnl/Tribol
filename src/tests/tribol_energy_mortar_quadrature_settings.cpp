@@ -24,7 +24,7 @@
 #include "tribol/interface/tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/physics/ContactFormulationFactory.hpp"
-#include "tribol/physics/PairContactFormulation.hpp"
+#include "tribol/physics/EnergyMortar.hpp"
 #include "tribol/integ/QuadratureRuleFactory.hpp"
 #include "tribol/search/CoarseSearchFactory.hpp"
 #include "tribol/search/ProjectedEdgeSearch.hpp"
@@ -71,11 +71,11 @@ class EnergyMortarQuadratureSettingsTest : public testing::TestWithParam<std::tu
 };
 
 /**
- * @brief Check the selected adapter specialization without exposing generated quadrature as a public API.
+ * @brief Check the selected formulation specialization without exposing generated quadrature as a public API.
  * @tparam Count Expected Gauss point count.
  * @param formulation Factory-created contact formulation.
  * @param location Selected enforcement location.
- * @return Whether the adapter has the expected rule and enforcement types.
+ * @return Whether the formulation has the expected rule and enforcement types.
  */
 template <int Count>
 bool usesPointCount( tribol::ContactFormulation* formulation, tribol::EnforcementLocation location )
@@ -83,11 +83,9 @@ bool usesPointCount( tribol::ContactFormulation* formulation, tribol::Enforcemen
   using Rule =
       tribol::PairQuadratureRule<tribol::SmoothedProjectedEdgeMapping, tribol::EdgeQuadratureRuleGenerator<Count>>;
   if ( location == tribol::EnforcementLocation::Nodal ) {
-    return dynamic_cast<tribol::PairContactFormulation<tribol::EnergyMortarAssembledMethod<Rule>>*>( formulation ) !=
-           nullptr;
+    return dynamic_cast<tribol::NodalEnergyMortar<Rule>*>( formulation ) != nullptr;
   }
-  return dynamic_cast<tribol::PairContactFormulation<tribol::EnergyMortarQuadraturePointMethod<Rule>>*>(
-             formulation ) != nullptr;
+  return dynamic_cast<tribol::QuadraturePointEnergyMortar<Rule>*>( formulation ) != nullptr;
 }
 
 // The default uses three points; changing order selects the requested specialization for either enforcement location.
@@ -99,15 +97,18 @@ TEST_P( EnergyMortarQuadratureSettingsTest, selects_and_rebuilds_adapter )
     tribol::setQuadratureOrder( 0, order );
     auto* formulation = cs->getContactFormulation();
     ASSERT_NE( formulation, nullptr );
-    if ( order <= 1 )
+    if ( order <= 1 ) {
       EXPECT_TRUE( usesPointCount<1>( formulation, location ) );
-    else if ( order <= 3 )
+    } else if ( order <= 3 ) {
       EXPECT_TRUE( usesPointCount<2>( formulation, location ) );
-    else
+    } else {
       EXPECT_TRUE( usesPointCount<3>( formulation, location ) );
+    }
   };
   check( quadratureOrder() );
-  for ( int order = 0; order <= 5; ++order ) check( order );
+  for ( int order = 0; order <= 5; ++order ) {
+    check( order );
+  }
   for ( int invalid : { -1, 6 } ) {
     auto* before = cs->getContactFormulation();
     EXPECT_THROW( tribol::setQuadratureOrder( 0, invalid ), std::invalid_argument );
@@ -194,19 +195,17 @@ TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
         auto coarse = createCoarseSearch( cs.spatialDimension(), cs.getBinningMethod(), cs.getExecutionMode(),
                                           cs.getEffectiveBinningProximityScale(), 0.0 );
         auto refined = std::make_unique<ProjectedEdgeSearch>( cs.getExecutionMode(), false );
+        PairListBuilder pair_builder{ std::move( coarse ), std::move( refined ) };
         if ( std::get<0>( GetParam() ) == EnforcementLocation::Nodal ) {
-          using Method = EnergyMortarAssembledMethod<decltype( rule ), SeriesPenaltyStiffness>;
-          return std::make_unique<PairContactFormulation<Method>>(
-              *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), std::move( coarse ),
-              std::move( refined ),
-              Method{ std::move( rule ), EnergyMortarNodal{ OffsetGap{ OpposingNormalGap{}, 0.0 } },
-                      RegisteredPenaltyInputs<SeriesPenaltyStiffness>{ true } } );
+          return std::make_unique<NodalEnergyMortar<decltype( rule ), SeriesPenaltyStiffness>>(
+              *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), cs.getExecutionMode(),
+              std::move( pair_builder ), std::move( rule ), OffsetGap{ OpposingNormalGap{}, 0.0 },
+              RegisteredPenaltyEnforcement<SeriesPenaltyStiffness>{} );
         }
-        using Method = EnergyMortarQuadraturePointMethod<decltype( rule ), SeriesPenaltyStiffness>;
-        return std::make_unique<PairContactFormulation<Method>>(
-            *cs.getMfemMeshData(), *cs.getMfemJacobianData(), std::move( coarse ), std::move( refined ),
-            Method{ std::move( rule ), EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, 0.0 } },
-                    RegisteredPenaltyInputs<SeriesPenaltyStiffness>{ true } } );
+        return std::make_unique<QuadraturePointEnergyMortar<decltype( rule ), SeriesPenaltyStiffness>>(
+            *cs.getMfemMeshData(), *cs.getMfemJacobianData(), cs.getExecutionMode(), std::move( pair_builder ),
+            std::move( rule ), OffsetGap{ OpposingNormalGap{}, 0.0 },
+            RegisteredPenaltyEnforcement<SeriesPenaltyStiffness>{} );
       } );
   auto result = alternate->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView() );
   ASSERT_NE( result.force, nullptr );

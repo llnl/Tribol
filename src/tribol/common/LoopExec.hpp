@@ -10,6 +10,7 @@
 #include <type_traits>
 
 // Tribol includes
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/ExecModel.hpp"
 
 // Axom includes

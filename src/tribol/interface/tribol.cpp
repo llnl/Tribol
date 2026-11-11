@@ -210,7 +210,9 @@ void setQuadratureOrder( IndexT cs_id, int order )
         "setQuadratureOrder requires ENERGY_MORTAR or opted-in COMMON_PLANE and an order from 0 through 5." );
   }
   cs->getParameters().quadrature_order = order;
-  if ( cs->hasContactFormulation() ) cs->updateContactFormulation();
+  if ( cs->hasContactFormulation() ) {
+    cs->updateContactFormulation();
+  }
 }
 
 //------------------------------------------------------------------------------

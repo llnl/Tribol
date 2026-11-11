@@ -103,7 +103,9 @@ TEST_F( MfemPairAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_ja
   MdArray<RealT, pair_size> local_column_sums{}, column_sums{};
   for ( int boundary = 0; boundary < mesh_->GetNBE(); ++boundary ) {
     const int attribute = mesh_->GetBdrAttribute( boundary );
-    if ( attribute != 3 && attribute != 5 ) continue;
+    if ( attribute != 3 && attribute != 5 ) {
+      continue;
+    }
     const int side = attribute == 3 ? 0 : 1;
     ++local_counts[side];
     mfem::Array<int> nodes;
@@ -111,8 +113,9 @@ TEST_F( MfemPairAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_ja
     for ( const int node : nodes ) {
       const RealT x = ( *coords_ )[fes_->DofToVDof( node, 0 )];
       const RealT y = ( *coords_ )[fes_->DofToVDof( node, 1 )];
-      for ( int component = 0; component < dimension; ++component )
+      for ( int component = 0; component < dimension; ++component ) {
         local_column_sums[side] += columnValue( x, y, component ) * direction[fes_->DofToVDof( node, component )];
+      }
     }
   }
   MPI_Allreduce( local_counts.data(), counts.data(), pair_size, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
@@ -122,7 +125,9 @@ TEST_F( MfemPairAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_ja
   expected_action = 0.0;
   for ( int boundary = 0; boundary < mesh_->GetNBE(); ++boundary ) {
     const int attribute = mesh_->GetBdrAttribute( boundary );
-    if ( attribute != 3 && attribute != 5 ) continue;
+    if ( attribute != 3 && attribute != 5 ) {
+      continue;
+    }
     const int side = attribute == 3 ? 0 : 1;
     mfem::Array<int> nodes;
     fes_->GetBdrElementDofs( boundary, nodes );
@@ -130,8 +135,9 @@ TEST_F( MfemPairAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_ja
     for ( const int node : nodes ) {
       const RealT x = ( *coords_ )[fes_->DofToVDof( node, 0 )];
       const RealT y = ( *coords_ )[fes_->DofToVDof( node, 1 )];
-      for ( int component = 0; component < dimension; ++component )
+      for ( int component = 0; component < dimension; ++component ) {
         element_column_sum += columnValue( x, y, component ) * direction[fes_->DofToVDof( node, component )];
+      }
     }
     const RealT pair_column_sum = counts[1 - side] * element_column_sum + column_sums[1 - side];
     for ( const int node : nodes ) {
@@ -160,16 +166,20 @@ TEST_F( MfemPairAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_ja
         std::array<MdArray<RealT, nodes_per_edge, dimension>, pair_size> coords;
         mesh1.getFaceCoords( element1, coords[0].data() );
         mesh2.getFaceCoords( element2, coords[1].data() );
-        for ( int side = 0; side < pair_size; ++side )
-          for ( int node = 0; node < nodes_per_edge; ++node )
+        for ( int side = 0; side < pair_size; ++side ) {
+          for ( int node = 0; node < nodes_per_edge; ++node ) {
             for ( int component = 0; component < dimension; ++component ) {
               const int dof = ( side * nodes_per_edge + node ) * dimension + component;
               residual[dof] = rowValue( coords[side]( node, 0 ), coords[side]( node, 1 ), component );
               columns[dof] = columnValue( coords[side]( node, 0 ), coords[side]( node, 1 ), component );
             }
-        for ( int row = 0; row < pair_dofs; ++row )
-          for ( int column = 0; column < pair_dofs; ++column )
+          }
+        }
+        for ( int row = 0; row < pair_dofs; ++row ) {
+          for ( int column = 0; column < pair_dofs; ++column ) {
             jacobian( row, column ) = residual[row] * columns[column];
+          }
+        }
         assembler.addPair( { element1, element2 }, { residual.data(), residual.size() },
                            { jacobian.data(), { pair_dofs, pair_dofs } } );
       }
@@ -196,7 +206,9 @@ TEST_F( MfemPairAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_ja
   int rank = 0, ranks = 0;
   MPI_Comm_rank( MPI_COMM_WORLD, &rank );
   MPI_Comm_size( MPI_COMM_WORLD, &ranks );
-  if ( ranks == 2 && rank == 1 ) EXPECT_EQ( mesh1.numberOfElements() + mesh2.numberOfElements(), 0 );
+  if ( ranks == 2 && rank == 1 ) {
+    EXPECT_EQ( mesh1.numberOfElements() + mesh2.numberOfElements(), 0 );
+  }
 }
 
 // Empty assembly must return usable zero outputs, and rejected input shapes must not add any partial contribution.
@@ -275,12 +287,14 @@ TEST_F( MfemPairAssemblerTest, assembles_nodal_quantities_and_dual_transfers )
       MdArray<RealT, nodes_per_edge, pair_dofs> gap_grads{}, area_grads{};
       MdArray<RealT, pair_dofs> columns{};
 
-      for ( int side = 0; side < pair_size; ++side )
-        for ( int node = 0; node < nodes_per_edge; ++node )
+      for ( int side = 0; side < pair_size; ++side ) {
+        for ( int node = 0; node < nodes_per_edge; ++node ) {
           for ( int component = 0; component < dimension; ++component ) {
             const int dof = ( side * nodes_per_edge + node ) * dimension + component;
             columns[dof] = columnValue( coords[side]( node, 0 ), coords[side]( node, 1 ), component );
           }
+        }
+      }
 
       for ( int node = 0; node < nodes_per_edge; ++node ) {
         const RealT x = coords[0]( node, 0 );

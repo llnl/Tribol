@@ -35,6 +35,12 @@ if (ENZYME_DIR)
   set(Enzyme_DIR ${ENZYME_DIR})
   find_dependency(Enzyme REQUIRED PATHS "${ENZYME_DIR}")
 
+  if(TRIBOL_USE_CUDA AND NOT CMAKE_CUDA_COMPILER_ID STREQUAL "Clang")
+    message(FATAL_ERROR
+      "Tribol's Enzyme contact formulations require Clang-CUDA. NVCC cannot run the LLVM Enzyme plugin on device "
+      "code and leaves the derivative intrinsics unresolved during device linking.")
+  endif()
+
   set(TRIBOL_USE_ENZYME TRUE)
 else()
   message(STATUS "Enzyme support is OFF")

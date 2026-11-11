@@ -19,7 +19,7 @@
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/physics/PairContactFormulation.hpp"
+#include "tribol/physics/CommonPlaneFormulation.hpp"
 #include "tribol/integ/QuadratureRuleFactory.hpp"
 #include "tribol/search/CoarseSearchFactory.hpp"
 #include "tribol/search/ProjectedEdgeSearch.hpp"
@@ -110,8 +110,9 @@ TEST_P( MfemCommonPlaneTest, matches_nonmatching_constant_traction_patch )
   int rank = 0, size = 0;
   MPI_Comm_rank( MPI_COMM_WORLD, &rank );
   MPI_Comm_size( MPI_COMM_WORLD, &size );
-  if ( size == 2 && rank == 1 )
+  if ( size == 2 && rank == 1 ) {
     EXPECT_EQ( scheme().getMesh1().numberOfElements() + scheme().getMesh2().numberOfElements(), 0 );
+  }
   EXPECT_FALSE( scheme().getContactFormulationResult().energy.has_value() );
   EXPECT_THROW( scheme().getContactFormulation()->computeNodalGaps( scheme().getMesh1().getView(),
                                                                     scheme().getMesh2().getView() ),
@@ -124,17 +125,17 @@ TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
   enable();
   evaluate();
   const auto baseline = getMfemContactForce( 0 );
-  auto alternate =
-      createWithQuadratureRule( GetParam(), [&]<typename BaseRule>() -> std::unique_ptr<ContactFormulation> {
-        using Method = CommonPlanePairMethod<BaseRule, AveragePenaltyStiffness>;
+  auto alternate = createWithQuadratureRule(
+      GetParam(), CommonPlaneEdgeMapping{}, [&]( auto quadrature ) -> std::unique_ptr<ContactFormulation> {
+        using BaseRule = typename decltype( quadrature )::Generator;
         auto coarse =
             createCoarseSearch( scheme().spatialDimension(), scheme().getBinningMethod(), scheme().getExecutionMode(),
                                 scheme().getEffectiveBinningProximityScale(), 0.0 );
         auto refined = std::make_unique<ProjectedEdgeSearch>( scheme().getExecutionMode(), false );
-        return std::make_unique<PairContactFormulation<Method>>(
-            *scheme().getMfemMeshData(), *scheme().getMfemJacobianData(), std::move( coarse ), std::move( refined ),
-            Method{ CommonPlaneQuadratureRule<BaseRule>{}, CommonPlaneResidual{ OffsetGap{ CommonPlaneGap{}, 0.0 } },
-                    ScaledMeshPenaltyInputs<AveragePenaltyStiffness>{} } );
+        return std::make_unique<CommonPlaneFormulation<BaseRule, AveragePenaltyStiffness>>(
+            *scheme().getMfemMeshData(), *scheme().getMfemJacobianData(), scheme().getExecutionMode(),
+            PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( quadrature ),
+            OffsetGap{ CommonPlaneGap{}, 0.0 }, ScaledMeshPenaltyInputs<AveragePenaltyStiffness>{} );
       } );
   auto result = alternate->computeNodalForces( scheme().getMesh1().getView(), scheme().getMesh2().getView() );
   ASSERT_NE( result.force, nullptr );
@@ -189,13 +190,20 @@ TEST_P( MfemCommonPlaneTest, assembled_jacobian_matches_finite_difference )
   mfem::Array<int> upper_nodes( fes_->GetNDofs() );
   upper_nodes = 0;
   for ( int element = 0; element < mesh_->GetNE(); ++element ) {
-    if ( mesh_->GetAttribute( element ) != 2 ) continue;
+    if ( mesh_->GetAttribute( element ) != 2 ) {
+      continue;
+    }
     mfem::Array<int> nodes;
     fes_->GetElementDofs( element, nodes );
-    for ( const auto node : nodes ) upper_nodes[node] = 1;
+    for ( const auto node : nodes ) {
+      upper_nodes[node] = 1;
+    }
   }
-  for ( int node = 0; node < upper_nodes.Size(); ++node )
-    if ( upper_nodes[node] ) ( *coords_ )[node] += 0.13;
+  for ( int node = 0; node < upper_nodes.Size(); ++node ) {
+    if ( upper_nodes[node] ) {
+      ( *coords_ )[node] += 0.13;
+    }
+  }
   enable();
   evaluate();
   auto jacobian = getMfemDfDx( 0 );
@@ -294,18 +302,13 @@ TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
   for ( int order = 0; order <= 5; ++order ) {
     setQuadratureOrder( 0, order );
     auto* formulation = scheme().getContactFormulation();
-    if ( order <= 1 )
-      EXPECT_NE(
-          dynamic_cast<PairContactFormulation<CommonPlanePairMethod<EdgeQuadratureRuleGenerator<1>>>*>( formulation ),
-          nullptr );
-    else if ( order <= 3 )
-      EXPECT_NE(
-          dynamic_cast<PairContactFormulation<CommonPlanePairMethod<EdgeQuadratureRuleGenerator<2>>>*>( formulation ),
-          nullptr );
-    else
-      EXPECT_NE(
-          dynamic_cast<PairContactFormulation<CommonPlanePairMethod<EdgeQuadratureRuleGenerator<3>>>*>( formulation ),
-          nullptr );
+    if ( order <= 1 ) {
+      EXPECT_NE( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<1>>*>( formulation ), nullptr );
+    } else if ( order <= 3 ) {
+      EXPECT_NE( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<2>>*>( formulation ), nullptr );
+    } else {
+      EXPECT_NE( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<3>>*>( formulation ), nullptr );
+    }
   }
   EXPECT_THROW( setQuadratureOrder( 0, 6 ), std::invalid_argument );
   EXPECT_EQ( scheme().getParameters().quadrature_order, 5 );

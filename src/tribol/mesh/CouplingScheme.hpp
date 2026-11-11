@@ -770,7 +770,9 @@ class CouplingScheme {
    */
   mfem::HypreParVector& getContactMultiplier()
   {
-    if ( !m_contact_multiplier ) throw std::logic_error( "No contact multiplier input is available." );
+    if ( !m_contact_multiplier ) {
+      throw std::logic_error( "No contact multiplier input is available." );
+    }
     return *m_contact_multiplier;
   }
 #endif

@@ -3,16 +3,15 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-/**
- * @file
- * @brief Read current penalty inputs and validate fixed parameters before preparing a pair definition.
- */
-#ifndef SRC_TRIBOL_PHYSICS_PAIRMETHODINPUTS_HPP_
-#define SRC_TRIBOL_PHYSICS_PAIRMETHODINPUTS_HPP_
+/** @file @brief Explicit contact enforcement values and their current penalty inputs. */
+#ifndef SRC_TRIBOL_PHYSICS_CONTACTENFORCEMENT_HPP_
+#define SRC_TRIBOL_PHYSICS_CONTACTENFORCEMENT_HPP_
 
 #include <cmath>
 #include <stdexcept>
 #include <utility>
+#include <variant>
+
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/physics/PenaltyStiffness.hpp"
@@ -20,28 +19,34 @@
 namespace tribol {
 #ifdef BUILD_REDECOMP
 
+/** @brief Select nodal Lagrange multiplier enforcement without penalty parameters. */
+struct LagrangeMultiplierEnforcement {};
+
+/** @brief Preserve an invalid quadrature-point configuration until a calculation reports the missing penalty. */
+struct UnconfiguredPenaltyEnforcement {
+  /**
+   * @brief Report that quadrature-point Energy Mortar requires penalty enforcement.
+   * @param mesh_data Current MFEM mesh data.
+   * @param mesh1 Current first mesh.
+   * @param mesh2 Current second mesh.
+   * @throws std::invalid_argument Always.
+   */
+  RealT prepare( [[maybe_unused]] const MfemMeshData& mesh_data, [[maybe_unused]] MeshData::Viewer mesh1,
+                 [[maybe_unused]] MeshData::Viewer mesh2 ) const
+  {
+    throw std::invalid_argument( "Quadrature-point Energy Mortar requires configured penalty enforcement." );
+  }
+};
+
 /**
- * @brief Read registered MFEM constant penalties on every request, with a fallback stiffness when absent.
+ * @brief Read registered MFEM constant penalties on every request.
  * @tparam PenaltyStiffness Callable combining the two registered constants; no mesh scales are applied.
  */
 template <typename PenaltyStiffness = AveragePenaltyStiffness>
 class RegisteredPenaltyInputs {
  public:
-  /**
-   * @brief Store penalty selection and combination configuration; retain no data pointers.
-   * @param enabled Whether kinematic penalty enforcement has been configured.
-   * @param combination Owned stiffness combination.
-   */
-  explicit RegisteredPenaltyInputs( bool enabled, PenaltyStiffness combination = {} )
-      : enabled_( enabled ), combination_( std::move( combination ) )
-  {
-  }
-
-  /**
-   * @brief Report whether kinematic penalty enforcement is enabled.
-   * @return True when penalty enforcement is active; false when Lagrange multiplier enforcement is active.
-   */
-  bool isEnabled() const noexcept { return enabled_; }
+  /** @brief Store the stiffness combination. @param combination Owned stiffness combination. */
+  explicit RegisteredPenaltyInputs( PenaltyStiffness combination = {} ) : combination_( std::move( combination ) ) {}
 
   /**
    * @brief Read and combine current registered constant penalties.
@@ -49,12 +54,10 @@ class RegisteredPenaltyInputs {
    * @param mesh1 Current first mesh, unused by this input provider.
    * @param mesh2 Current second mesh, unused by this input provider.
    * @return Combined stiffness, or fallback stiffness 1000.0 if either constant is absent.
-   * @throws std::invalid_argument Penalty enforcement has not been configured; no parameters are returned.
    */
   RealT prepare( const MfemMeshData& mesh_data, [[maybe_unused]] MeshData::Viewer mesh1,
                  [[maybe_unused]] MeshData::Viewer mesh2 ) const
   {
-    if ( !enabled_ ) throw std::invalid_argument( "Registered penalty inputs require configured penalty enforcement." );
     constexpr RealT default_penalty = 1000.0;
     const auto* penalty1 = mesh_data.GetMesh1KinematicConstantPenalty();
     const auto* penalty2 = mesh_data.GetMesh2KinematicConstantPenalty();
@@ -62,9 +65,40 @@ class RegisteredPenaltyInputs {
   }
 
  private:
-  bool enabled_;                  ///< Whether this configuration can prepare penalty parameters.
   PenaltyStiffness combination_;  ///< Owned combination; no mesh data is retained.
 };
+
+/** @brief Select penalty enforcement and own its current-input reader. @tparam Inputs Penalty input provider. */
+template <typename Inputs>
+struct PenaltyEnforcement {
+  Inputs inputs{};  ///< Current penalty input provider.
+
+  /**
+   * @brief Prepare current penalty parameters.
+   * @param mesh_data Current MFEM mesh data.
+   * @param mesh1 Current first mesh.
+   * @param mesh2 Current second mesh.
+   * @return Current effective stiffness.
+   */
+  RealT prepare( const MfemMeshData& mesh_data, MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
+  {
+    return inputs.prepare( mesh_data, mesh1, mesh2 );
+  }
+};
+
+/** @brief Registered penalty enforcement value. @tparam PenaltyStiffness Stiffness combination. */
+template <typename PenaltyStiffness = AveragePenaltyStiffness>
+using RegisteredPenaltyEnforcement = PenaltyEnforcement<RegisteredPenaltyInputs<PenaltyStiffness>>;
+
+/** @brief Runtime selection between the two supported nodal enforcement equations. */
+template <typename PenaltyStiffness = AveragePenaltyStiffness>
+using NodalContactEnforcement =
+    std::variant<RegisteredPenaltyEnforcement<PenaltyStiffness>, LagrangeMultiplierEnforcement>;
+
+/** @brief Runtime selection between valid and missing quadrature-point penalty configuration. */
+template <typename PenaltyStiffness = AveragePenaltyStiffness>
+using QuadraturePointContactEnforcement =
+    std::variant<RegisteredPenaltyEnforcement<PenaltyStiffness>, UnconfiguredPenaltyEnforcement>;
 
 /**
  * @brief Read mesh penalties, apply current mesh scales, and validate them for each request.
@@ -97,6 +131,8 @@ class ScaledMeshPenaltyInputs {
  private:
   PenaltyStiffness combination_;  ///< Owned combination; no mesh data is retained.
 };
+
 #endif  // BUILD_REDECOMP
 }  // namespace tribol
-#endif  // SRC_TRIBOL_PHYSICS_PAIRMETHODINPUTS_HPP_
+
+#endif  // SRC_TRIBOL_PHYSICS_CONTACTENFORCEMENT_HPP_

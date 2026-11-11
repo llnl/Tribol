@@ -8,14 +8,17 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
-- Added opt-in linear 2D Common Plane contact through `setMfemUseCommonPlaneFormulation()`, sharing
-  `PairContactFormulation` with nodal and quadrature-point Energy Mortar. It supports host MFEM/Redecomp frictionless
-  constant-penalty contact, orders 0-5, and Enzyme residual Jacobians. No nodal gap, energy, or timestep is defined.
-- `EnergyMortarQuadraturePointMethod` and `EnergyMortarAssembledMethod` share `PairContactFormulation`, with separate
-  method and penalty-input arguments. `AssembledEnergyMethod` evaluates energy after element-pair integrals are assembled;
-  it does not imply node-to-segment contact. Pair calculations use direct quadrature loops and local Enzyme derivatives.
-  Nodal penalty assembly uses explicit gap/area partials, returning zero for unsupported area before division.
-  Quadrature-point enforcement needs no pressure/gap field. Contact energy is globally summed for both locations.
+- Added opt-in linear 2D Common Plane contact through `setMfemUseCommonPlaneFormulation()`. `CommonPlaneFormulation`,
+  `NodalEnergyMortar`, and `QuadraturePointEnergyMortar` derive directly from `ContactFormulation` and compose shared
+  pair search, Enzyme derivative, contribution-buffer, and MFEM assembly components. Common Plane supports frictionless
+  constant-penalty contact, orders 0-5, and Sequential, OpenMP, CUDA, and HIP pair evaluation and numerical packing.
+  CUDA Enzyme builds require Clang-CUDA so the derivative plugin can transform device code. No nodal gap, energy, or
+  timestep is defined for Common Plane.
+- Added a two-stage execution pipeline that evaluates pairs into preallocated structure-of-arrays buffers and then
+  assembles vectors and element blocks in separate backend kernels. One `EnzymePairDerivative` supplies value/Jacobian
+  and weighted-Hessian operations to all formulations. Nodal penalty assembly uses explicit gap/area partials and
+  distinct penalty and Lagrange multiplier enforcement values. Quadrature-point enforcement needs no pressure/gap
+  field, and execution-space reductions globally sum Energy Mortar energy for both locations.
 - Contact formulations return caller-owned results through `computeNodalGaps()` and `computeNodalForces()`. MFEM
   pair and nodal assemblers share the transfer of numerical contact contributions without retaining results.
 - Added `ProjectedEdgeSearch` to reject self-pairs, optionally reject shared-node pairs, and require opposing edge
@@ -73,8 +76,9 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Nodal penalty Energy Mortar uses `0.5*k*min(weighted_gap,0)^2/area` with consistent coordinate derivatives,
   including area coupling. This includes the one-half factor missing from the previous nodal penalty energy.
 - `ContactFormulation` now returns caller-owned results from `computeNodalGaps()` and `computeNodalForces()` instead
-  of retaining outputs behind update methods and getters. `PairContactFormulation` replaces `EnergyMortarAdapter`.
-  Energy Mortar energies are globally summed; callers must not reduce them again across MPI ranks.
+  of retaining outputs behind update methods and getters. Direct Common Plane and Energy Mortar formulations replace
+  the adapter and pair-method hierarchy. Energy Mortar energies are globally summed; callers must not reduce them again
+  across MPI ranks.
 - Numerical coordinates, fields, matrix entries, and parameters consistently use `RealT` across Tribol, shared helpers,
   Redecomp, examples, and tests. Public C++ declarations retain their existing types because `RealT` aliases `double`;
   generated C/Fortran interfaces retain their concrete types. Single precision remains unsupported.
@@ -108,11 +112,11 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   residual-gap forces.
   Failed quadrature generation reports an exception before Energy Mortar consumes the data, including differentiated
   calculations; invalid geometry is not treated as a valid zero-point rule.
-- `EnergyMortarAdapter` owns its configured pair rule, and its calculator keeps a reference to that generator.
-  The mapping owns smoothing settings; refined search leaves overlap determination to quadrature generation.
+- Energy Mortar pair functions own their configured pair rules and fixed gap settings. The mapping owns smoothing
+  settings; refined search leaves overlap determination to quadrature generation.
   `ContactParams` no longer carries a runtime quadrature count or smoothing length. Frozen integration-surface
   quadrature points are mapped to both current elements, preserving the varying and frozen derivative modes.
-  Assembly remains host-only; the generators are device-callable.
+  Pair evaluation, field scatter, element-block packing, and scalar reduction are device-callable.
 - Energy Mortar calculates straight-edge normal gaps from the corresponding element points. Very short nondegenerate mortar
   edges retain their normal gap instead of depending on a line-intersection tolerance. The calculator's unused
   `compute_projection_bounds()` helper was removed. Surface-region representations beyond edge intervals remain future

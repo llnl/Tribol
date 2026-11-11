@@ -13,18 +13,23 @@
 #include "tribol/config.hpp"
 #ifdef BUILD_REDECOMP
 #include <array>
+#include <stdexcept>
+#include "tribol/common/ArrayTypes.hpp"
+#include "tribol/common/Atomics.hpp"
+#include "tribol/common/LoopExec.hpp"
 #include "tribol/common/MdArray.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/physics/ContactFormulation.hpp"
+#include "tribol/physics/PairContribution.hpp"
 
 namespace tribol {
 
 /**
  * @brief Accumulate local pair residuals and Jacobians and transfer them to the parent displacement space.
  *
- * This host-only assembler handles numerical arrays independently of the contact definition or derivative method.
- * It owns scratch arrays for one calculation and copies each pair's contributions. Mesh connectivity and MFEM
+ * Batch operations scatter residuals and pack element blocks in the selected execution space independently of the
+ * contact definition or derivative method. Host overloads remain for legacy callers. Mesh connectivity and MFEM
  * transfer data must remain valid until assembly finishes; create a new assembler after mesh re-registration.
  */
 class MfemPairAssembler {
@@ -61,6 +66,89 @@ class MfemPairAssembler {
   void addPairJacobian( InterfacePair pair, ArrayViewT<const RealT, 2> jacobian );
 
   /**
+   * @brief Scatter and pack a complete pair batch in the selected execution space.
+   *
+   * The numerical stage performs no allocation and no MFEM sparse-matrix calls inside the pair kernel. Four dense
+   * element blocks per pair are packed into preallocated execution-space buffers, then copied in bulk into the
+   * Redecomp transfer representation.
+   *
+   * @tparam DofCount Pair coordinate and residual count; both linear edges must contribute half.
+   * @tparam ResidualReader Device-callable `(pair, row) -> RealT` reader.
+   * @tparam JacobianReader Device-callable `(pair, row, column) -> RealT` reader.
+   * @param execution_mode Host or device execution policy.
+   * @param pairs Pair list in execution-accessible memory.
+   * @param residual_reader Pair residual reader.
+   * @param jacobian_reader Pair Jacobian reader.
+   */
+  template <IndexT DofCount, typename ResidualReader, typename JacobianReader>
+  void addPairs( ExecutionMode execution_mode, const ArrayT<InterfacePair>& pairs, ResidualReader residual_reader,
+                 JacobianReader jacobian_reader )
+  {
+    static_assert( DofCount % 2 == 0, "Pair block assembly requires equal element DOF counts." );
+    constexpr IndexT element_dofs = DofCount / 2;
+    if ( dof_offsets_[1] != element_dofs || dof_offsets_[2] != DofCount ) {
+      throw std::invalid_argument( "Pair buffer DOFs must match the MFEM element layouts." );
+    }
+    const IndexT pair_count = pairs.size();
+    const int allocator_id = pairs.getAllocatorID();
+    ElementBlockBuffer<element_dofs, element_dofs> block00( pair_count, allocator_id );
+    ElementBlockBuffer<element_dofs, element_dofs> block01( pair_count, allocator_id );
+    ElementBlockBuffer<element_dofs, element_dofs> block10( pair_count, allocator_id );
+    ElementBlockBuffer<element_dofs, element_dofs> block11( pair_count, allocator_id );
+    const auto pairs_view = pairs.view();
+    const auto connectivity0 = connectivity_[0];
+    const auto connectivity1 = connectivity_[1];
+    const IndexT nodes0 = connectivity0.shape()[1];
+    const IndexT nodes1 = connectivity1.shape()[1];
+    const int dimension = dimension_;
+    const int scalar_size = redecomp_residual_.FESpace()->GetNDofs();
+    const bool use_device = isOnDevice( execution_mode );
+    redecomp_residual_.UseDevice( use_device );
+    auto* residual = redecomp_residual_.ReadWrite( use_device );
+    const auto output00 = block00.view();
+    const auto output01 = block01.view();
+    const auto output10 = block10.view();
+    const auto output11 = block11.view();
+    forAllExec( execution_mode, pair_count, [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
+      const auto pair = pairs_view[pair_index];
+      output00.setElements( pair_index, pair.element_id1_, pair.element_id1_ );
+      output01.setElements( pair_index, pair.element_id1_, pair.element_id2_ );
+      output10.setElements( pair_index, pair.element_id2_, pair.element_id1_ );
+      output11.setElements( pair_index, pair.element_id2_, pair.element_id2_ );
+      for ( IndexT node = 0; node < nodes0; ++node ) {
+        for ( int component = 0; component < dimension; ++component ) {
+          const IndexT row = node * dimension + component;
+          atomicAdd( residual + connectivity0( pair.element_id1_, node ) + component * scalar_size,
+                     residual_reader( pair_index, row ) );
+        }
+      }
+      for ( IndexT node = 0; node < nodes1; ++node ) {
+        for ( int component = 0; component < dimension; ++component ) {
+          const IndexT row = element_dofs + node * dimension + component;
+          atomicAdd( residual + connectivity1( pair.element_id2_, node ) + component * scalar_size,
+                     residual_reader( pair_index, row ) );
+        }
+      }
+      for ( IndexT column = 0; column < element_dofs; ++column ) {
+        const IndexT column0 = ( column % nodes0 ) * dimension + column / nodes0;
+        const IndexT column1 = element_dofs + ( column % nodes1 ) * dimension + column / nodes1;
+        for ( IndexT row = 0; row < element_dofs; ++row ) {
+          const IndexT row0 = ( row % nodes0 ) * dimension + row / nodes0;
+          const IndexT row1 = element_dofs + ( row % nodes1 ) * dimension + row / nodes1;
+          output00.setValue( pair_index, row, column, jacobian_reader( pair_index, row0, column0 ) );
+          output01.setValue( pair_index, row, column, jacobian_reader( pair_index, row0, column1 ) );
+          output10.setValue( pair_index, row, column, jacobian_reader( pair_index, row1, column0 ) );
+          output11.setValue( pair_index, row, column, jacobian_reader( pair_index, row1, column1 ) );
+        }
+      }
+    } );
+    assignBlock( jacobian_contributions_[0], block00 );
+    assignBlock( jacobian_contributions_[1], block01 );
+    assignBlock( jacobian_contributions_[2], block10 );
+    assignBlock( jacobian_contributions_[3], block11 );
+  }
+
+  /**
    * @brief Return assembled residual and Jacobian on parent true DOFs.
    * @return Owned force and df_dx; other outputs are absent. No pairs produce allocated zero outputs.
    * Results remain valid after this assembler is destroyed, while their MFEM spaces and communicator remain alive.
@@ -74,6 +162,17 @@ class MfemPairAssembler {
   shared::ParSparseMat assembleJacobian() const;
 
  private:
+  /** @brief Bulk-copy a packed execution buffer into the current Redecomp transfer representation. */
+  template <IndexT RowDofs, IndexT ColumnDofs>
+  static void assignBlock( PackedPairJacobianContribs& destination,
+                           const ElementBlockBuffer<RowDofs, ColumnDofs>& source )
+  {
+    destination.row_elem_ids = Array1D<IndexT, MemorySpace::Host>( source.rowElementIds() );
+    destination.col_elem_ids = Array1D<IndexT, MemorySpace::Host>( source.columnElementIds() );
+    destination.value_offsets = Array1D<IndexT, MemorySpace::Host>( source.valueOffsets() );
+    destination.jacobian_data = Array1D<RealT, MemorySpace::Host>( source.values() );
+  }
+
   const MfemMeshData& mesh_data_;                          ///< Borrowed displacement mesh and field transfers.
   const MfemJacobianData& jacobian_data_;                  ///< Borrowed displacement Jacobian transfers.
   std::array<Array2DView<const IndexT>, 2> connectivity_;  ///< Borrowed connectivity for each mesh.

@@ -15,7 +15,8 @@
 #include <utility>
 #include <cmath>
 #include <stdexcept>
-#include "tribol/physics/PairContactFormulation.hpp"
+#include "tribol/physics/CommonPlaneFormulation.hpp"
+#include "tribol/physics/EnergyMortar.hpp"
 
 namespace tribol {
 
@@ -60,13 +61,12 @@ void validateCommonPlaneFormulation( CouplingScheme& cs )
   if ( cs.getContactMethod() != COMMON_PLANE || !cs.hasMfemData() || cs.getContactModel() != FRICTIONLESS ||
        cs.getEnforcementMethod() != PENALTY ||
        cs.getParameters().enforcement_location != EnforcementLocation::QuadraturePoint ||
-       cs.getContactCase() == TIED_NORMAL || cs.getContactCase() == TIED_FULL || isOnDevice( cs.getExecutionMode() ) ||
-       !options.kinematic_calc_set || options.kinematic_calculation != KINEMATIC_CONSTANT ||
-       !options.constraint_type_set || options.constraint_type != KINEMATIC ||
+       cs.getContactCase() == TIED_NORMAL || cs.getContactCase() == TIED_FULL || !options.kinematic_calc_set ||
+       options.kinematic_calculation != KINEMATIC_CONSTANT || !options.constraint_type_set ||
+       options.constraint_type != KINEMATIC ||
        ( options.rate_calc_set && options.rate_calculation != NO_RATE_PENALTY ) ) {
     throw std::invalid_argument(
-        "Common Plane requires host MFEM frictionless common-plane constant-penalty quadrature-point "
-        "contact." );
+        "Common Plane requires MFEM frictionless common-plane constant-penalty quadrature-point contact." );
   }
   const auto& data = *cs.getMfemMeshData();
   if ( data.GetParentCoords().ParFESpace()->GetParMesh()->SpaceDimension() != 2 ||
@@ -99,19 +99,21 @@ namespace {
  */
 std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
 {
-  if ( !cs->hasMfemJacobianData() )
+  if ( !cs->hasMfemJacobianData() ) {
     throw std::invalid_argument( "Common Plane requires parent Jacobian transfer data." );
+  }
   return createWithQuadratureRule(
-      cs->getParameters().quadrature_order, [&]<typename BaseRule>() -> std::unique_ptr<ContactFormulation> {
+      cs->getParameters().quadrature_order, CommonPlaneEdgeMapping{},
+      [&]( auto quadrature ) -> std::unique_ptr<ContactFormulation> {
+        using Quadrature = decltype( quadrature );
+        using BaseRule = typename Quadrature::Generator;
         auto coarse = createCoarseSearch( cs->spatialDimension(), cs->getBinningMethod(), cs->getExecutionMode(),
                                           cs->getEffectiveBinningProximityScale(), cs->getParameters().residual_gap );
         auto refined = std::make_unique<ProjectedEdgeSearch>( cs->getExecutionMode(), cs->getContactCase() == AUTO );
-        return std::make_unique<PairContactFormulation<CommonPlanePairMethod<BaseRule>>>(
-            *cs->getMfemMeshData(), *cs->getMfemJacobianData(), std::move( coarse ), std::move( refined ),
-            CommonPlanePairMethod<BaseRule>{
-                CommonPlaneQuadratureRule<BaseRule>{},
-                CommonPlaneResidual{ OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap } },
-                ScaledMeshPenaltyInputs<>{} } );
+        return std::make_unique<CommonPlaneFormulation<BaseRule>>(
+            *cs->getMfemMeshData(), *cs->getMfemJacobianData(), cs->getExecutionMode(),
+            PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( quadrature ),
+            OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap }, ScaledMeshPenaltyInputs<>{} );
       } );
 }
 
@@ -129,20 +131,22 @@ std::unique_ptr<ContactFormulation> createEnergyMortarForRule( CouplingScheme* c
                                            binning_proximity_scale, residual_gap );
   auto refined_search = std::make_unique<ProjectedEdgeSearch>( execution_mode, cs->getContactCase() == AUTO );
   const bool use_penalty = cs->getEnforcementOptions().penalty_options.kinematic_calc_set;
+  PairListBuilder pair_builder{ std::move( coarse_search ), std::move( refined_search ) };
   if ( cs->getParameters().enforcement_location == EnforcementLocation::QuadraturePoint ) {
-    using Method = EnergyMortarQuadraturePointMethod<QuadratureRule>;
-    return std::make_unique<PairContactFormulation<Method>>(
-        *cs->getMfemMeshData(), *cs->getMfemJacobianData(), std::move( coarse_search ), std::move( refined_search ),
-        Method{ std::move( quadrature_rule ), EnergyMortarPenalty{ OffsetGap{ OpposingNormalGap{}, residual_gap } },
-                RegisteredPenaltyInputs<>{ use_penalty } } );
+    QuadraturePointContactEnforcement<> enforcement =
+        use_penalty ? QuadraturePointContactEnforcement<>{ RegisteredPenaltyEnforcement<>{} }
+                    : QuadraturePointContactEnforcement<>{ UnconfiguredPenaltyEnforcement{} };
+    return std::make_unique<QuadraturePointEnergyMortar<QuadratureRule>>(
+        *cs->getMfemMeshData(), *cs->getMfemJacobianData(), execution_mode, std::move( pair_builder ),
+        std::move( quadrature_rule ), OffsetGap{ OpposingNormalGap{}, residual_gap }, std::move( enforcement ) );
   }
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "Nodal Energy Mortar requires pressure/gap data." );
-  using Method = EnergyMortarAssembledMethod<QuadratureRule>;
-  return std::make_unique<PairContactFormulation<Method>>(
-      *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( coarse_search ),
-      std::move( refined_search ),
-      Method{ std::move( quadrature_rule ), EnergyMortarNodal{ OffsetGap{ OpposingNormalGap{}, residual_gap } },
-              RegisteredPenaltyInputs<>{ use_penalty } } );
+  NodalContactEnforcement<> enforcement = use_penalty ? NodalContactEnforcement<>{ RegisteredPenaltyEnforcement<>{} }
+                                                      : NodalContactEnforcement<>{ LagrangeMultiplierEnforcement{} };
+  return std::make_unique<NodalEnergyMortar<QuadratureRule>>(
+      *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), execution_mode,
+      std::move( pair_builder ), std::move( quadrature_rule ), OffsetGap{ OpposingNormalGap{}, residual_gap },
+      std::move( enforcement ) );
 }
 
 std::unique_ptr<ContactFormulation> createEnergyMortar( CouplingScheme* cs )

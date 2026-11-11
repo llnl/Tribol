@@ -152,13 +152,19 @@ class BvhSearch : public CoarseSearch {
     return candidate_pairs;
   }
 
- private:
+ public:
   /**
    * @brief Bound every finite-element node and expand by a node-based element size
    *
    * Quadratic nodes participate in both the box and nodal-radius calculations. Assuming the curved element remains in
    * their convex hull, the unexpanded box contains its geometry. Isotropic expansion avoids requiring a face normal,
    * which belongs to the formulation-specific geometry rather than coarse search.
+   *
+   * NVCC requires the enclosing function of an extended device lambda to be public, so this implementation helper is
+   * visible even though callers only need @ref findCandidatePairs.
+   *
+   * @param bounding_boxes Preallocated output with one entry per mesh element.
+   * @param mesh Current mesh coordinates and connectivity.
    */
   void buildMeshBoundingBoxes( ArrayT<BoundingBox>& bounding_boxes, const MeshData::Viewer& mesh ) const
   {
@@ -206,6 +212,7 @@ class BvhSearch : public CoarseSearch {
     } );
   }
 
+ private:
   RealT binning_proximity_scale_;
   RealT residual_gap_;
 };

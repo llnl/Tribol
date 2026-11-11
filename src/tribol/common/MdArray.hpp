@@ -52,6 +52,27 @@ class MdArray {
     return span_type::template extent<Dimension>();
   }
 
+ private:
+  /**
+   * @brief Check rank-two row constructor types without forming a second extent for rank-one arrays.
+   * @tparam Rows Candidate row types.
+   * @return Whether every row matches the rank-two shape.
+   */
+  template <typename... Rows>
+  static consteval bool rowsMatchShape()
+  {
+    if constexpr ( rank() != 2 ) {
+      return false;
+    } else {
+      return sizeof...( Rows ) == extent<0>() &&
+             ( ( std::same_as<std::remove_cvref_t<Rows>, MdArray<T, extent<1>()>> ||
+                 std::same_as<std::remove_cvref_t<Rows>, MdSpan<T, extent<1>()>> ||
+                 std::same_as<std::remove_cvref_t<Rows>, MdSpan<const T, extent<1>()>> ) &&
+               ... );
+    }
+  }
+
+ public:
   TRIBOL_DEFAULT_HOST_DEVICE MdArray() = default;
   TRIBOL_DEFAULT_HOST_DEVICE ~MdArray() = default;
 
@@ -78,11 +99,7 @@ class MdArray {
    * intermediate owning row when the values already exist in caller storage.
    */
   template <typename... Rows>
-    requires( rank() == 2 && sizeof...( Rows ) == extent<0>() &&
-              ( ( std::same_as<std::remove_cvref_t<Rows>, MdArray<T, extent<1>()>> ||
-                  std::same_as<std::remove_cvref_t<Rows>, MdSpan<T, extent<1>()>> ||
-                  std::same_as<std::remove_cvref_t<Rows>, MdSpan<const T, extent<1>()>> ) &&
-                ... ) )
+    requires( rowsMatchShape<Rows...>() )
   TRIBOL_HOST_DEVICE constexpr explicit MdArray( const Rows&... rows )
   {
     IndexT row_index = 0;

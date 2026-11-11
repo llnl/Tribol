@@ -16,6 +16,7 @@
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/physics/CommonPlane.hpp"
+#include "tribol/physics/CommonPlaneFormulation.hpp"
 
 namespace {
 using namespace tribol;
@@ -105,7 +106,9 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
       second_moment += values( q, Weight ) * values( q, Point1X ) * values( q, Point1X );
     }
     EXPECT_NEAR( measure, 2.0, tolerance );
-    if constexpr ( Count >= 2 ) EXPECT_NEAR( second_moment, 26.0 / 3.0, tolerance );
+    if constexpr ( Count >= 2 ) {
+      EXPECT_NEAR( second_moment, 26.0 / 3.0, tolerance );
+    }
   }
 };
 
@@ -136,7 +139,9 @@ TEST_P( CommonPlaneTest, balances_rotated_pair_forces_and_moments )
     const Coordinates edge2{ MdArray<RealT, 2>{ 3.8, 6.15 }, MdArray<RealT, 2>{ 0.8, 2.15 } };
     const CommonPlaneQuadratureRule<EdgeQuadratureRuleGenerator<3>> rule;
     const auto result = computeCommonPlaneResidual( edge1.view(), edge2.view(), rule, 2.0 );
-    for ( int i = 0; i < CommonPlaneResidualData::coordinate_count; ++i ) output[i] = result.residual[i];
+    for ( int i = 0; i < CommonPlaneResidualData::coordinate_count; ++i ) {
+      output[i] = result.residual[i];
+    }
   } );
   const ArrayT<RealT, 1, MemorySpace::Host> values( records );
   const RealT x[] = { 1.0, 4.0, 3.8, 0.8 }, y[] = { 2.0, 6.0, 6.15, 2.15 };
@@ -184,7 +189,9 @@ TEST_P( CommonPlaneTest, reports_geometry_and_capacity_without_writing )
     output[Disjoint] = rule.generate( edge1.view(), disjoint.view() ).result;
     output[Cooriented] = rule.generate( edge1.view(), cooriented.view() ).result;
     output[Perpendicular] = rule.generate( edge1.view(), perpendicular.view() ).result;
-    for ( int i = 0; i < values.size(); ++i ) values[i] = unwritten;
+    for ( int i = 0; i < values.size(); ++i ) {
+      values[i] = unwritten;
+    }
     const PairQuadratureView<1, 1> bounded{
         { values.data() + 1, { 2, 1 } }, { values.data() + 1, { 2, 1 } }, { values.data() + 1, 2 } };
     output[Overflow] = rule.generate( edge1.view(), edge2.view(), bounded );
@@ -201,7 +208,9 @@ TEST_P( CommonPlaneTest, reports_geometry_and_capacity_without_writing )
   }
   EXPECT_EQ( results[Overflow].status, QuadratureStatus::InsufficientCapacity );
   EXPECT_EQ( results[Overflow].required_point_count, 3 );
-  for ( const auto value : host ) EXPECT_EQ( value, unwritten );
+  for ( const auto value : host ) {
+    EXPECT_EQ( value, unwritten );
+  }
 }
 
 // Crossing oblique edges have both open and penetrating points; activation is decided at each point.
@@ -223,7 +232,9 @@ TEST_P( CommonPlaneTest, activates_only_penetrating_quadrature_points )
     }
     const auto result = computeCommonPlaneResidual( edge1.view(), edge2.view(), rule, 1.0 );
     output[2] = 0.0;
-    for ( int node = 0; node < 2; ++node ) output[2] += result.residual[2 * node + 1];
+    for ( int node = 0; node < 2; ++node ) {
+      output[2] += result.residual[2 * node + 1];
+    }
   } );
   const ArrayT<RealT, 1, MemorySpace::Host> values( records );
   EXPECT_LT( values[0] * values[1], 0.0 );

@@ -56,14 +56,16 @@ set(tribol_headers
 
     physics/AlignedMortar.hpp
     physics/CommonPlane.hpp
+    physics/CommonPlaneFormulation.hpp
+    physics/ContactEnforcement.hpp
     physics/ContactFormulation.hpp
     physics/ContactFormulationFactory.hpp
     physics/Mortar.hpp
     physics/EnergyMortarEnergy.hpp
-    physics/PairContactFormulation.hpp
-    physics/PairMethod.hpp
-    physics/PairMethodInputs.hpp
+    physics/GlobalScalarAssembler.hpp
     physics/PairEvaluation.hpp
+    physics/PairContribution.hpp
+    physics/PairKernel.hpp
     physics/PenaltyStiffness.hpp
     physics/EnergyMortar.hpp
     physics/Physics.hpp
@@ -76,6 +78,7 @@ set(tribol_headers
     search/InterfacePairFinder.hpp
     search/RefinedSearch.hpp
     search/ProjectedEdgeSearch.hpp
+    search/PairListBuilder.hpp
 
     utils/Algorithm.hpp
     utils/ContactPlaneOutput.hpp
@@ -109,9 +112,9 @@ set(tribol_sources
 
     physics/AlignedMortar.cpp
     physics/CommonPlane.cpp
+    physics/CommonPlaneFormulation.cpp
     physics/ContactFormulationFactory.cpp
     physics/Mortar.cpp
-    physics/PairContactFormulation.cpp
     physics/EnergyMortar.cpp
     physics/Physics.cpp
      
@@ -154,7 +157,14 @@ message(STATUS "Tribol library dependencies: ${tribol_depends}")
 if(TRIBOL_USE_ENZYME)
     # At -O0, Enzyme rejects Clang 19's aggregate-heavy IR or silently generates incorrect fixed-rule derivatives.
     # Optimize only the translation unit that generates those derivatives so every other Debug source remains at -O0.
-    set_property(SOURCE physics/EnergyMortar.cpp APPEND PROPERTY COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")
+    set_property(SOURCE physics/EnergyMortar.cpp physics/CommonPlaneFormulation.cpp APPEND PROPERTY COMPILE_OPTIONS
+        "$<$<CONFIG:Debug>:-O2>")
+
+    # Optimized CUDA geometry contains PHI nodes whose pointer provenance is no longer explicit. Enzyme's loose mode
+    # uses the surrounding floating-point operations to recover those types instead of rejecting valid device IR.
+    set_property(SOURCE physics/EnergyMortar.cpp physics/CommonPlaneFormulation.cpp APPEND PROPERTY COMPILE_OPTIONS
+        "$<$<COMPILE_LANG_AND_ID:CUDA,Clang>:-mllvm>"
+        "$<$<COMPILE_LANG_AND_ID:CUDA,Clang>:-enzyme-loose-types>")
 endif()
 
 ## create the library

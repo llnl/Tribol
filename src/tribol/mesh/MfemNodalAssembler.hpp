@@ -34,9 +34,9 @@ struct MfemNodalQuantityData {
  * @brief Accumulate nodal gap/area integrals, their gradients, and weighted pair Hessians across MFEM transfer spaces.
  *
  * Mesh1 is the non-mortar integration side whose nodes carry scalar dual degrees of freedom; mesh2 is the mortar side.
- * This host-only assembler owns scratch storage for one calculation and copies each pair's contributions. Mesh
- * connectivity and MFEM transfer data must remain valid until assembly finishes; create a new assembler after mesh
- * re-registration.
+ * Batch operations scatter nodal fields and pack gradient blocks in the selected execution space. Host overloads
+ * remain for legacy callers. Mesh connectivity and MFEM transfer data must remain valid until assembly finishes;
+ * create a new assembler after mesh re-registration.
  */
 class MfemNodalAssembler {
  public:
@@ -66,6 +66,77 @@ class MfemNodalAssembler {
    */
   void addPairQuantities( InterfacePair pair, ArrayViewT<const RealT> weighted_gaps, ArrayViewT<const RealT> areas,
                           ArrayViewT<const RealT, 2> gap_gradients, ArrayViewT<const RealT, 2> area_gradients );
+
+  /**
+   * @brief Scatter nodal values and pack their coordinate gradients for a complete pair batch.
+   * @tparam NodeCount Number of integration-side nodes per pair.
+   * @tparam DofCount Pair coordinate count.
+   * @tparam ValueReader Device-callable `(pair, value) -> RealT` reader; gaps precede areas.
+   * @tparam GradientReader Device-callable `(pair, value, coordinate) -> RealT` reader.
+   * @param execution_mode Host or device execution policy.
+   * @param pairs Current pair list.
+   * @param value_reader Pair nodal-value reader.
+   * @param gradient_reader Pair nodal-gradient reader.
+   */
+  template <IndexT NodeCount, IndexT DofCount, typename ValueReader, typename GradientReader>
+  void addPairQuantities( ExecutionMode execution_mode, const ArrayT<InterfacePair>& pairs, ValueReader value_reader,
+                          GradientReader gradient_reader )
+  {
+    static_assert( DofCount % 2 == 0, "Nodal pair assembly requires equal element displacement DOF counts." );
+    constexpr IndexT element_dofs = DofCount / 2;
+    if ( nodes1_ != NodeCount || dof_offsets_[1] != element_dofs || dof_offsets_[2] != DofCount ) {
+      throw std::invalid_argument( "Nodal pair buffer layout must match the MFEM element layouts." );
+    }
+    const IndexT pair_count = pairs.size();
+    const int allocator_id = pairs.getAllocatorID();
+    ElementBlockBuffer<NodeCount, element_dofs> gap0( pair_count, allocator_id );
+    ElementBlockBuffer<NodeCount, element_dofs> gap1( pair_count, allocator_id );
+    ElementBlockBuffer<NodeCount, element_dofs> area0( pair_count, allocator_id );
+    ElementBlockBuffer<NodeCount, element_dofs> area1( pair_count, allocator_id );
+    const bool use_device = isOnDevice( execution_mode );
+    redecomp_gap_.UseDevice( use_device );
+    redecomp_area_.UseDevice( use_device );
+    auto* gaps = redecomp_gap_.ReadWrite( use_device );
+    auto* areas = redecomp_area_.ReadWrite( use_device );
+    const auto pairs_view = pairs.view();
+    const auto connectivity0 = connectivity_[0];
+    const auto connectivity1 = connectivity_[1];
+    const IndexT nodes0 = connectivity0.shape()[1];
+    const IndexT nodes1 = connectivity1.shape()[1];
+    const int dimension = dimension_;
+    const auto gap_output0 = gap0.view();
+    const auto gap_output1 = gap1.view();
+    const auto area_output0 = area0.view();
+    const auto area_output1 = area1.view();
+    forAllExec( execution_mode, pair_count, [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
+      const auto pair = pairs_view[pair_index];
+      gap_output0.setElements( pair_index, pair.element_id1_, pair.element_id1_ );
+      gap_output1.setElements( pair_index, pair.element_id1_, pair.element_id2_ );
+      area_output0.setElements( pair_index, pair.element_id1_, pair.element_id1_ );
+      area_output1.setElements( pair_index, pair.element_id1_, pair.element_id2_ );
+      for ( IndexT node = 0; node < NodeCount; ++node ) {
+        const IndexT redecomp_dof = connectivity0( pair.element_id1_, node );
+        atomicAdd( gaps + redecomp_dof, value_reader( pair_index, node ) );
+        atomicAdd( areas + redecomp_dof, value_reader( pair_index, NodeCount + node ) );
+      }
+      for ( IndexT column = 0; column < element_dofs; ++column ) {
+        const IndexT coordinate0 = ( column % nodes0 ) * dimension + column / nodes0;
+        const IndexT coordinate1 = element_dofs + ( column % nodes1 ) * dimension + column / nodes1;
+        for ( IndexT node = 0; node < NodeCount; ++node ) {
+          gap_output0.setValue( pair_index, node, column, gradient_reader( pair_index, node, coordinate0 ) );
+          gap_output1.setValue( pair_index, node, column, gradient_reader( pair_index, node, coordinate1 ) );
+          area_output0.setValue( pair_index, node, column,
+                                 gradient_reader( pair_index, NodeCount + node, coordinate0 ) );
+          area_output1.setValue( pair_index, node, column,
+                                 gradient_reader( pair_index, NodeCount + node, coordinate1 ) );
+        }
+      }
+    } );
+    assignBlock( gap_gradient_contributions_[0], gap0 );
+    assignBlock( gap_gradient_contributions_[1], gap1 );
+    assignBlock( area_gradient_contributions_[0], area0 );
+    assignBlock( area_gradient_contributions_[1], area1 );
+  }
 
   /**
    * @brief Transfer accumulated nodal integrals and gradients to dual submesh and parent displacement true DOFs.
@@ -105,12 +176,39 @@ class MfemNodalAssembler {
   }
 
   /**
+   * @brief Pack a complete batch of weighted pair Hessians in the selected execution space.
+   * @tparam DofCount Pair coordinate count.
+   * @tparam JacobianReader Device-callable `(pair, row, column) -> RealT` reader.
+   * @param execution_mode Host or device execution policy.
+   * @param pairs Current pair list.
+   * @param jacobian_reader Weighted Hessian reader.
+   */
+  template <IndexT DofCount, typename JacobianReader>
+  void addPairJacobians( ExecutionMode execution_mode, const ArrayT<InterfacePair>& pairs,
+                         JacobianReader jacobian_reader )
+  {
+    pair_assembler_.addPairs<DofCount>(
+        execution_mode, pairs, [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; }, jacobian_reader );
+  }
+
+  /**
    * @brief Return the assembled weighted-Hessian contribution on parent displacement true DOFs.
    * @return Owned parent true-DOF sparse matrix; zero pairs produce an allocated zero matrix.
    */
   shared::ParSparseMat assembleHessians() const;
 
  private:
+  /** @brief Bulk-copy a packed execution buffer into the current Redecomp transfer representation. */
+  template <IndexT RowDofs, IndexT ColumnDofs>
+  static void assignBlock( PackedPairJacobianContribs& destination,
+                           const ElementBlockBuffer<RowDofs, ColumnDofs>& source )
+  {
+    destination.row_elem_ids = Array1D<IndexT, MemorySpace::Host>( source.rowElementIds() );
+    destination.col_elem_ids = Array1D<IndexT, MemorySpace::Host>( source.columnElementIds() );
+    destination.value_offsets = Array1D<IndexT, MemorySpace::Host>( source.valueOffsets() );
+    destination.jacobian_data = Array1D<RealT, MemorySpace::Host>( source.values() );
+  }
+
   /**
    * @brief Pack one nodal gradient matrix into column-major element blocks and append to the two pair contributions.
    * @param pair Element IDs in mesh1 and mesh2.
