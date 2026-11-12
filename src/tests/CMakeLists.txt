@@ -216,6 +216,11 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
   endforeach()
 
   blt_add_test(NAME tribol_mfem_vector_assembler COMMAND tribol_mfem_vector_assembler_test NUM_MPI_TASKS 1)
+  if(TRIBOL_USE_ENZYME)
+    # Direct residual evaluators instantiate Enzyme's geometry derivatives in this translation unit.
+    target_compile_options(tribol_mfem_common_plane_formulation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
+  endif()
+
   blt_add_test(NAME tribol_mfem_common_plane_formulation
       COMMAND tribol_mfem_common_plane_formulation_test NUM_MPI_TASKS 1)
   if (ENABLE_CUDA)

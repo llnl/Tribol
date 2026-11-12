@@ -6,43 +6,26 @@
 #include "tribol/physics/CommonPlaneFormulation.hpp"
 
 #ifdef BUILD_REDECOMP
-#include "tribol/assembly/PairEvaluationAssembly.hpp"
+#include <stdexcept>
+#include <utility>
 
 namespace tribol {
 
-template <typename BaseRuleGenerator, ExecutionMode Exec, typename Evaluation>
-ContactFormulationResult CommonPlaneFormulation<BaseRuleGenerator, Exec, Evaluation>::computeNodalForces(
-    MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
+CommonPlaneFormulation::CommonPlaneFormulation( std::unique_ptr<ResidualEvaluation> evaluation,
+                                                PairListBuilder pair_builder )
+    : evaluation_( std::move( evaluation ) ), pair_builder_( std::move( pair_builder ) )
 {
-  const auto pairs = pair_builder_.build( mesh1, mesh2 );
-  return detail::evaluateAndAssembleResidualPairs<Exec>( pairs, mesh1, mesh2, function_, evaluation_ );
+  if ( !evaluation_ ) {
+    throw std::invalid_argument( "Common Plane requires a residual evaluation." );
+  }
 }
 
-#define TRIBOL_INSTANTIATE_COMMON_PLANE_EVALUATION( Exec, Evaluation )                     \
-  template class CommonPlaneFormulation<EdgeQuadratureRuleGenerator<1>, Exec, Evaluation>; \
-  template class CommonPlaneFormulation<EdgeQuadratureRuleGenerator<2>, Exec, Evaluation>; \
-  template class CommonPlaneFormulation<EdgeQuadratureRuleGenerator<3>, Exec, Evaluation>
-#ifdef TRIBOL_USE_ENZYME
-#define TRIBOL_INSTANTIATE_COMMON_PLANE( Exec )                                \
-  TRIBOL_INSTANTIATE_COMMON_PLANE_EVALUATION( Exec, ResidualForceEvaluation ); \
-  TRIBOL_INSTANTIATE_COMMON_PLANE_EVALUATION( Exec, ResidualForceJacobianEvaluation )
-#else
-#define TRIBOL_INSTANTIATE_COMMON_PLANE( Exec ) \
-  TRIBOL_INSTANTIATE_COMMON_PLANE_EVALUATION( Exec, ResidualForceEvaluation )
-#endif
-
-TRIBOL_INSTANTIATE_COMMON_PLANE( ExecutionMode::Sequential );
-#ifdef TRIBOL_USE_OPENMP
-TRIBOL_INSTANTIATE_COMMON_PLANE( ExecutionMode::OpenMP );
-#endif
-#ifdef TRIBOL_USE_CUDA
-TRIBOL_INSTANTIATE_COMMON_PLANE( ExecutionMode::Cuda );
-#endif
-#ifdef TRIBOL_USE_HIP
-TRIBOL_INSTANTIATE_COMMON_PLANE( ExecutionMode::Hip );
-#endif
-#undef TRIBOL_INSTANTIATE_COMMON_PLANE
-#undef TRIBOL_INSTANTIATE_COMMON_PLANE_EVALUATION
+ContactFormulationResult CommonPlaneFormulation::computeNodalForces( MeshData::Viewer mesh1,
+                                                                     MeshData::Viewer mesh2 ) const
+{
+  const auto pairs = pair_builder_.build( mesh1, mesh2 );
+  return evaluation_->evaluateAndAssemble( pairs, mesh1, mesh2 );
+}
 
 }  // namespace tribol
 #endif

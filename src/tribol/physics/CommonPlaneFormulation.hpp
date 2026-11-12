@@ -14,9 +14,8 @@
 #include "tribol/integ/BasisFunction.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
 #include "tribol/integ/PairQuadratureRuleGenerator.hpp"
-#include "tribol/mesh/MfemData.hpp"
-#include "tribol/physics/ContactEnforcement.hpp"
 #include "tribol/physics/ContactFormulation.hpp"
+#include "tribol/assembly/ResidualEvaluation.hpp"
 #include "tribol/assembly/PairEvaluation.hpp"
 #include "tribol/search/PairListBuilder.hpp"
 
@@ -103,43 +102,25 @@ class CommonPlanePairFunction {
 };
 
 #ifdef BUILD_REDECOMP
-/**
- * @brief Common Plane pair search and force assembly, with optional Enzyme Jacobians.
- * @tparam BaseRuleGenerator Reference Gauss rule generator.
- * @tparam Exec Concrete execution mode for evaluation and numerical assembly.
- * @tparam Evaluation ResidualForceEvaluation or ResidualForceJacobianEvaluation prerequisites.
- */
-template <typename BaseRuleGenerator, ExecutionMode Exec, typename Evaluation>
+/** @brief Common Plane pair search followed by the configured residual evaluation and assembly. */
 class CommonPlaneFormulation final : public ContactFormulation {
  public:
   /**
-   * @brief Store fixed search and physics settings and references to transfer data.
-   * @param evaluation Transfer-data references selecting force-only or force/Jacobian calculation. The referenced
-   * data must remain valid for this formulation's lifetime.
+   * @brief Own the pair search and the selected residual evaluation.
+   * @param evaluation Non-null evaluator owning the fixed pair function and referencing its transfer data. The
+   * transfer data must remain valid for this formulation's lifetime.
    * @param pair_builder Owned pair search composition.
-   * @param rule_generator Owned common-line quadrature rule generator.
-   * @param gap Owned gap definition.
-   * @param penalty Positive, finite effective stiffness fixed for this formulation's lifetime.
-   * @throws std::invalid_argument Stiffness is nonpositive or nonfinite; no formulation is constructed.
+   * @throws std::invalid_argument The evaluator is null; no formulation is constructed.
    */
-  CommonPlaneFormulation( Evaluation evaluation, PairListBuilder pair_builder,
-                          PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, BaseRuleGenerator> rule_generator,
-                          OffsetGap<CommonPlaneGap> gap, RealT penalty )
-      : evaluation_( evaluation ),
-        pair_builder_( std::move( pair_builder ) ),
-        function_( std::move( rule_generator ), detail::checkedPenaltyStiffness( penalty ), std::move( gap ) )
-  {
-  }
+  CommonPlaneFormulation( std::unique_ptr<ResidualEvaluation> evaluation, PairListBuilder pair_builder );
 
   /** @brief Compute Common Plane force and the optional Jacobian. @param mesh1 First mesh. @param mesh2 Second mesh.
-   * @return Owned force; df_dx is absent when Jacobian calculation was disabled at construction. */
+   * @return Owned force; df_dx is absent when the evaluator calculates forces only. */
   ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override;
 
  private:
-  Evaluation evaluation_;         ///< References to transfer data used by the selected calculation.
-  PairListBuilder pair_builder_;  ///< Owned search composition.
-  /// Owned pair quadrature rule generator, fixed stiffness, and gap definition.
-  const CommonPlanePairFunction<BaseRuleGenerator, OffsetGap<CommonPlaneGap>> function_;
+  std::unique_ptr<ResidualEvaluation> evaluation_;  ///< Owned residual function, transfer references, and calculation.
+  PairListBuilder pair_builder_;                    ///< Owned search composition.
 };
 #endif
 

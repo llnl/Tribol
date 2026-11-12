@@ -258,10 +258,13 @@ TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
             auto coarse = createCoarseSearch( scheme().spatialDimension(), scheme().getBinningMethod(), execution_mode,
                                               scheme().getEffectiveBinningProximityScale(), 0.0 );
             auto refined = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
-            return std::make_unique<CommonPlaneFormulation<BaseRuleGenerator, Exec, ResidualForceJacobianEvaluation>>(
-                ResidualForceJacobianEvaluation{ *scheme().getMfemMeshData(), *scheme().getMfemJacobianData() },
-                PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( rule_generator ),
-                OffsetGap{ CommonPlaneGap{}, 0.0 }, AveragePenaltyStiffness{}( 2.0, 6.0 ) );
+            CommonPlanePairFunction<BaseRuleGenerator, OffsetGap<CommonPlaneGap>> pair_function{
+                std::move( rule_generator ), AveragePenaltyStiffness{}( 2.0, 6.0 ),
+                OffsetGap{ CommonPlaneGap{}, 0.0 } };
+            auto evaluation = std::make_unique<ResidualForceJacobianEvaluation<Exec, decltype( pair_function )>>(
+                *scheme().getMfemMeshData(), *scheme().getMfemJacobianData(), std::move( pair_function ) );
+            return std::make_unique<CommonPlaneFormulation>(
+                std::move( evaluation ), PairListBuilder{ std::move( coarse ), std::move( refined ) } );
           } );
     } );
     auto result = alternate->computeNodalForces( scheme().getMesh1().getView(), scheme().getMesh2().getView() );
@@ -496,9 +499,10 @@ TEST_P( MfemCommonPlaneTest, rebuilds_and_restores_legacy_response )
 
 #endif  // TRIBOL_USE_ENZYME
 
-// Both force-only and Jacobian configurations must select the requested backend at factory construction.
-TEST_P( MfemCommonPlaneTest, selects_execution_specialization )
+// Factory-selected execution modes must preserve forces, and evaluator selection must control matrix availability.
+TEST_P( MfemCommonPlaneTest, execution_modes_preserve_forces_and_jacobian_selection )
 {
+  mfem::Vector reference;
   for ( const auto mode : { ExecutionMode::Sequential
 #ifdef TRIBOL_USE_OPENMP
                             ,
@@ -509,29 +513,35 @@ TEST_P( MfemCommonPlaneTest, selects_execution_specialization )
     finalize();
     registerScheme( mode );
     enable( false );
-    const auto check = [&]( bool compute_jacobian ) {
-      return dispatchExecutionMode( mode, [&]<ExecutionMode Exec>() {
-        return createWithQuadratureRuleGenerator( GetParam(), CommonPlaneEdgeMapping{}, [&]( auto rule_generator ) {
-          using BaseRuleGenerator = typename decltype( rule_generator )::BaseRuleGenerator;
-#ifdef TRIBOL_USE_ENZYME
-          if ( compute_jacobian ) {
-            return dynamic_cast<CommonPlaneFormulation<BaseRuleGenerator, Exec, ResidualForceJacobianEvaluation>*>(
-                       scheme().getContactFormulation() ) != nullptr;
-          }
-#else
-          (void)compute_jacobian;
-#endif
-          return dynamic_cast<CommonPlaneFormulation<BaseRuleGenerator, Exec, ResidualForceEvaluation>*>(
-                     scheme().getContactFormulation() ) != nullptr;
-        } );
-      } );
-    };
-    EXPECT_TRUE( check( false ) );
+    evaluate();
+    ASSERT_NE( dynamic_cast<CommonPlaneFormulation*>( scheme().getContactFormulation() ), nullptr );
+    EXPECT_FALSE( scheme().hasMfemJacobianData() );
+    EXPECT_EQ( scheme().getContactFormulationResult().df_dx, nullptr );
+    auto forces = getMfemContactForce( 0 );
+    if ( mode == ExecutionMode::Sequential ) {
+      reference.SetSize( forces.Size() );
+      reference = forces;
+    }
+    forces -= reference;
+    EXPECT_LT( norm( forces ), 1.0e-11 );
 #ifdef TRIBOL_USE_ENZYME
     enable();
-    EXPECT_TRUE( check( true ) );
+    evaluate();
+    ASSERT_NE( scheme().getContactFormulationResult().df_dx, nullptr );
+    forces = getMfemContactForce( 0 );
+    forces -= reference;
+    EXPECT_LT( norm( forces ), 1.0e-11 );
 #endif
   }
+}
+
+// A formulation must reject a missing evaluator before it can attempt a force calculation.
+TEST( CommonPlaneFormulation, rejects_null_residual_evaluation )
+{
+  auto coarse = createCoarseSearch( 2, BINNING_GRID, ExecutionMode::Sequential, 1.0, 0.0 );
+  auto refined = std::make_unique<ProjectedEdgeSearch>( ExecutionMode::Sequential, false );
+  EXPECT_THROW( ( CommonPlaneFormulation{ nullptr, PairListBuilder{ std::move( coarse ), std::move( refined ) } } ),
+                std::invalid_argument );
 }
 
 // Rejected configuration must leave the legacy selection and its resources intact.
@@ -563,19 +573,8 @@ TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
   for ( int order = 0; order <= 5; ++order ) {
     setQuadratureOrder( 0, order );
     auto* formulation = scheme().getContactFormulation();
-    if ( order <= 1 ) {
-      EXPECT_NE( ( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<1>, ExecutionMode::Sequential,
-                                                       ResidualForceEvaluation>*>( formulation ) ),
-                 nullptr );
-    } else if ( order <= 3 ) {
-      EXPECT_NE( ( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<2>, ExecutionMode::Sequential,
-                                                       ResidualForceEvaluation>*>( formulation ) ),
-                 nullptr );
-    } else {
-      EXPECT_NE( ( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<3>, ExecutionMode::Sequential,
-                                                       ResidualForceEvaluation>*>( formulation ) ),
-                 nullptr );
-    }
+    EXPECT_NE( dynamic_cast<CommonPlaneFormulation*>( formulation ), nullptr );
+    EXPECT_EQ( scheme().getParameters().quadrature_order, order );
   }
   EXPECT_THROW( setQuadratureOrder( 0, 6 ), std::invalid_argument );
   EXPECT_EQ( scheme().getParameters().quadrature_order, 5 );

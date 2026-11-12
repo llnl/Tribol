@@ -16,6 +16,8 @@
 #include "tribol/common/GlobalScalarAssembler.hpp"
 #include "tribol/assembly/PairContribution.hpp"
 #include "tribol/assembly/PairKernel.hpp"
+#include "tribol/assembly/ResidualEvaluation.hpp"
+#include <utility>
 #include "tribol/integ/QuadratureCommon.hpp"
 
 namespace tribol {
@@ -24,19 +26,6 @@ struct AssembledField {
   shared::ParVector values;         ///< Values on scalar submesh true DOFs, without normalization or activation.
   shared::ParSparseMat dvalues_dx;  ///< Scalar submesh rows and parent coordinate columns.
 };
-/** @brief Configure residual-force calculation without derivatives or Jacobian transfer data. */
-struct ResidualForceEvaluation {
-  const MfemMeshData& mesh_data;  ///< Displacement transfer data referenced by the evaluation.
-};
-
-#ifdef TRIBOL_USE_ENZYME
-/** @brief Configure residual-force and coordinate-Jacobian calculation with Enzyme. */
-struct ResidualForceJacobianEvaluation {
-  const MfemMeshData& mesh_data;          ///< Displacement transfer data referenced by the evaluation.
-  const MfemJacobianData& jacobian_data;  ///< Coordinate-matrix transfer data referenced by the evaluation.
-};
-#endif
-
 namespace detail {
 
 /**
@@ -133,81 +122,7 @@ ContactFormulationResult assemblePairForcesAndJacobian( const ArrayT<InterfacePa
   return result;
 }
 
-/**
- * @brief Evaluate pair residual values and assemble forces without derivatives or matrix storage.
- * @tparam Function Function with one residual entry per coordinate in element/node/component order.
- * @tparam Exec Concrete execution mode for numerical assembly.
- * @param pairs Accepted element pairs in execution-accessible memory.
- * @param mesh1 Current first mesh.
- * @param mesh2 Current second mesh.
- * @param function Fixed pair residual configuration.
- * @param evaluation Displacement transfer references for force-only calculation; referenced data must remain valid
- * until the call completes.
- * @return Owned force on parent true DOFs; df_dx and other outputs are absent. Empty or inactive pairs contribute zero.
- * Scratch arrays remain alive until evaluation and assembly finish.
- * @throws std::invalid_argument Geometry or assembly dimensions are invalid; no result is returned.
- * @throws std::length_error Quadrature capacity or the supported index range is exceeded; no result is returned.
- */
-template <ExecutionMode Exec, PairFunctionType Function>
-ContactFormulationResult evaluateAndAssembleResidualPairs( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
-                                                           MeshData::Viewer mesh2, const Function& function,
-                                                           ResidualForceEvaluation evaluation )
-{
-  static_assert( Function::num_values == Function::num_coords, "Pair residuals must match coordinate DOFs." );
-  auto contributions = evaluatePairValues<Exec>( pairs, mesh1, mesh2, function );
-  const auto contributions_view = contributions.view();
-  checkPairQuadratureResults<Exec>( contributions.quadratureResults() );
-  auto assembler = makeDisplacementVectorAssembler( evaluation.mesh_data, mesh1, mesh2 );
-  assembler.addPairs<Exec, Function::num_coords, 2>( pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
-    return contributions_view.has_active_points[pair] ? contributions_view.value( pair, row ) : 0.0;
-  } );
-  ContactFormulationResult result;
-  result.force.reset( assembler.assemble().release() );
-  return result;
-}
-
 #ifdef TRIBOL_USE_ENZYME
-/**
- * @brief Evaluate pair residuals and assemble their values as forces and their Jacobians as df_dx.
- *
- * Evaluation and assembly use separate kernels. Scratch arrays are allocated for the supplied pair list and remain
- * alive until all operations finish. Quadrature failures are reported before any contributions are assembled.
- *
- * @tparam Function Pair function with one residual entry per coordinate in element/node/component order.
- * @tparam Exec Concrete execution mode for evaluation and numerical assembly.
- * @param pairs Accepted element pairs in execution-accessible memory.
- * @param mesh1 Current first mesh with execution-accessible coordinates and connectivity.
- * @param mesh2 Current second mesh with execution-accessible coordinates and connectivity.
- * @param function Pair residual configuration; not retained after this call.
- * @param evaluation Displacement and Jacobian transfer references; referenced data must remain valid until the call
- * completes.
- * @return Owned parent true-DOF force and df_dx; other outputs are absent. Empty or inactive pairs contribute zero.
- * An empty list returns allocated zero force and df_dx.
- * @throws std::invalid_argument Pair geometry or assembly dimensions are invalid; no result is
- * returned.
- * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded; no result is
- * returned.
- */
-template <ExecutionMode Exec, typename Function>
-ContactFormulationResult evaluateAndAssembleResidualPairs( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
-                                                           MeshData::Viewer mesh2, const Function& function,
-                                                           ResidualForceJacobianEvaluation evaluation )
-{
-  static_assert( Function::num_values == Function::num_coords, "Pair residuals must match coordinate DOFs." );
-  auto contributions = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, function );
-  const auto contributions_view = contributions.view();
-  checkPairQuadratureResults<Exec>( contributions.quadratureResults() );
-
-  return assemblePairForcesAndJacobian<Exec, Function::num_coords>(
-      pairs, mesh1, mesh2, evaluation.mesh_data, evaluation.jacobian_data,
-      [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
-        return contributions_view.has_active_points[pair] ? contributions_view.value( pair, row ) : 0.0;
-      },
-      [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
-        return contributions_view.has_active_points[pair] ? contributions_view.jacobian( pair, row, column ) : 0.0;
-      } );
-}
-
 /**
  * @brief Evaluate scalar pair energies and assemble their Jacobians as forces and their Hessians as df_dx.
  *
@@ -258,6 +173,110 @@ ContactFormulationResult evaluateAndAssembleEnergyPairs( const ArrayT<InterfaceP
 
 #endif  // TRIBOL_USE_ENZYME
 }  // namespace detail
+
+/**
+ * @brief Evaluate pair residuals and assemble forces without calculating derivatives or allocating matrix storage.
+ * @tparam Exec Concrete execution mode for evaluation and assembly kernels.
+ * @tparam PairFunction Fixed pair function with one residual entry per coordinate.
+ */
+template <ExecutionMode Exec, PairFunctionType PairFunction>
+class ResidualForceEvaluation final : public ResidualEvaluation {
+ public:
+  /**
+   * @brief Store the fixed pair function and the displacement transfer data it uses.
+   * @param mesh_data Displacement transfer data; must outlive this evaluation.
+   * @param pair_function Configured residual function, retained by value.
+   */
+  ResidualForceEvaluation( const MfemMeshData& mesh_data, PairFunction pair_function )
+      : mesh_data_( mesh_data ), pair_function_( std::move( pair_function ) )
+  {
+  }
+
+  /**
+   * @brief Evaluate pair values, check quadrature, and assemble the force vector.
+   * @param pairs Accepted element pairs; not retained.
+   * @param mesh1 Current first mesh; not retained.
+   * @param mesh2 Current second mesh; not retained.
+   * @return Owned force; df_dx and other outputs are absent. Empty or inactive pairs produce zero force.
+   * @throws std::invalid_argument Pair geometry or assembly dimensions are invalid.
+   * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded.
+   */
+  ContactFormulationResult evaluateAndAssemble( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
+                                                MeshData::Viewer mesh2 ) const override
+  {
+    static_assert( PairFunction::num_values == PairFunction::num_coords, "Pair residuals must match coordinate DOFs." );
+    auto all_pair_values = evaluatePairValues<Exec>( pairs, mesh1, mesh2, pair_function_ );
+    checkPairQuadratureResults<Exec>( all_pair_values.quadratureResults() );
+    auto assembler = detail::makeDisplacementVectorAssembler( mesh_data_, mesh1, mesh2 );
+    const auto all_pair_values_view = all_pair_values.view();
+    assembler.addPairs<Exec, PairFunction::num_coords, 2>( pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
+      return all_pair_values_view.has_active_points[pair] ? all_pair_values_view.value( pair, row ) : 0.0;
+    } );
+    ContactFormulationResult result;
+    result.force.reset( assembler.assemble().release() );
+    return result;
+  }
+
+ private:
+  const MfemMeshData& mesh_data_;     ///< Displacement transfer data referenced for this evaluation's lifetime.
+  const PairFunction pair_function_;  ///< Owned, fixed residual function.
+};
+
+#ifdef TRIBOL_USE_ENZYME
+/**
+ * @brief Evaluate pair residuals and coordinate Jacobians with Enzyme and assemble both outputs.
+ * @tparam Exec Concrete execution mode for evaluation and assembly kernels.
+ * @tparam PairFunction Fixed pair function with one residual entry per coordinate.
+ */
+template <ExecutionMode Exec, PairFunctionType PairFunction>
+class ResidualForceJacobianEvaluation final : public ResidualEvaluation {
+ public:
+  /**
+   * @brief Store the fixed pair function and its displacement and matrix transfer data.
+   * @param mesh_data Displacement transfer data; must outlive this evaluation.
+   * @param jacobian_data Coordinate-matrix transfer data; must outlive this evaluation.
+   * @param pair_function Configured residual function, retained by value.
+   */
+  ResidualForceJacobianEvaluation( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
+                                   PairFunction pair_function )
+      : mesh_data_( mesh_data ), jacobian_data_( jacobian_data ), pair_function_( std::move( pair_function ) )
+  {
+  }
+
+  /**
+   * @brief Evaluate pair values and Jacobians, check quadrature, and assemble force and df_dx.
+   * @param pairs Accepted element pairs; not retained.
+   * @param mesh1 Current first mesh; not retained.
+   * @param mesh2 Current second mesh; not retained.
+   * @return Owned force and df_dx; other outputs are absent. Empty or inactive pairs produce allocated zero outputs.
+   * @throws std::invalid_argument Pair geometry or assembly dimensions are invalid.
+   * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded.
+   */
+  ContactFormulationResult evaluateAndAssemble( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
+                                                MeshData::Viewer mesh2 ) const override
+  {
+    static_assert( PairFunction::num_values == PairFunction::num_coords, "Pair residuals must match coordinate DOFs." );
+    auto contributions = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function_ );
+    const auto contributions_view = contributions.view();
+    checkPairQuadratureResults<Exec>( contributions.quadratureResults() );
+
+    return detail::assemblePairForcesAndJacobian<Exec, PairFunction::num_coords>(
+        pairs, mesh1, mesh2, mesh_data_, jacobian_data_,
+        [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
+          return contributions_view.has_active_points[pair] ? contributions_view.value( pair, row ) : 0.0;
+        },
+        [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
+          return contributions_view.has_active_points[pair] ? contributions_view.jacobian( pair, row, column ) : 0.0;
+        } );
+  }
+
+ private:
+  const MfemMeshData& mesh_data_;          ///< Displacement transfer data referenced for this evaluation's lifetime.
+  const MfemJacobianData& jacobian_data_;  ///< Matrix transfer data referenced for this evaluation's lifetime.
+  const PairFunction pair_function_;       ///< Owned, fixed residual function.
+};
+#endif  // TRIBOL_USE_ENZYME
+
 }  // namespace tribol
 #endif  // BUILD_REDECOMP
 

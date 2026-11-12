@@ -17,6 +17,7 @@ set(tribol_headers
     assembly/PairEvaluation.hpp
     assembly/PairEvaluationAssembly.hpp
     assembly/PairKernel.hpp
+    assembly/ResidualEvaluation.hpp
 
     common/ArrayTypes.hpp
     common/Atomics.hpp
@@ -160,8 +161,8 @@ message(STATUS "Tribol library dependencies: ${tribol_depends}")
 
 if(TRIBOL_USE_ENZYME)
     # At -O0, Enzyme rejects Clang 19's aggregate-heavy IR or silently generates incorrect fixed-rule derivatives.
-    # Optimize only the translation unit that generates those derivatives so every other Debug source remains at -O0.
-    set_property(SOURCE physics/EnergyMortar.cpp physics/CommonPlaneFormulation.cpp APPEND PROPERTY COMPILE_OPTIONS
+    # Optimize the translation units that generate those derivatives; other Debug sources remain at -O0.
+    set_property(SOURCE physics/EnergyMortar.cpp physics/ContactFormulationFactory.cpp APPEND PROPERTY COMPILE_OPTIONS
         "$<$<CONFIG:Debug>:-O2>")
 endif()
 
