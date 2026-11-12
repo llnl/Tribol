@@ -27,6 +27,7 @@
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/physics/CommonPlaneFormulation.hpp"
 #include "tribol/physics/PenaltyStiffness.hpp"
+#include "tribol/common/LoopExec.hpp"
 #include "tribol/integ/QuadratureRuleFactory.hpp"
 #include "tribol/search/CoarseSearchFactory.hpp"
 #include "tribol/search/ProjectedEdgeSearch.hpp"
@@ -50,8 +51,13 @@ class MfemCommonPlaneTest : public testing::TestWithParam<int> {
     fes_ = std::make_unique<mfem::ParFiniteElementSpace>( mesh_.get(), fec_.get(), 2, mfem::Ordering::byVDIM );
     coords_ = std::make_unique<mfem::ParGridFunction>( fes_.get() );
     mesh_->GetNodes( *coords_ );
+    registerScheme( ExecutionMode::Sequential );
+  }
+  /** @brief Register the existing patch and fixed penalties. @param execution_mode Requested backend. */
+  void registerScheme( ExecutionMode execution_mode )
+  {
     registerMfemCouplingScheme( 0, 0, 1, *mesh_, *coords_, { 3 }, { 5 }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE,
-                                FRICTIONLESS, PENALTY, BINNING_GRID, ExecutionMode::Sequential );
+                                FRICTIONLESS, PENALTY, BINNING_GRID, execution_mode );
     setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
   }
   /** @brief Release coupling data before destroying the borrowed parent mesh and coordinate field. */
@@ -244,17 +250,19 @@ TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
 #endif
         } ) {
     SCOPED_TRACE( static_cast<int>( execution_mode ) );
-    auto alternate = createWithQuadratureRule(
-        GetParam(), CommonPlaneEdgeMapping{}, [&]( auto quadrature ) -> std::unique_ptr<ContactFormulation> {
-          using BaseRule = typename decltype( quadrature )::Generator;
-          auto coarse = createCoarseSearch( scheme().spatialDimension(), scheme().getBinningMethod(), execution_mode,
-                                            scheme().getEffectiveBinningProximityScale(), 0.0 );
-          auto refined = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
-          return std::make_unique<CommonPlaneFormulation<BaseRule>>(
-              *scheme().getMfemMeshData(), *scheme().getMfemJacobianData(), execution_mode,
-              PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( quadrature ),
-              OffsetGap{ CommonPlaneGap{}, 0.0 }, AveragePenaltyStiffness{}( 2.0, 6.0 ) );
-        } );
+    auto alternate = dispatchExecutionMode( execution_mode, [&]<ExecutionMode Exec>() {
+      return createWithQuadratureRule(
+          GetParam(), CommonPlaneEdgeMapping{}, [&]( auto quadrature ) -> std::unique_ptr<ContactFormulation> {
+            using BaseRule = typename decltype( quadrature )::Generator;
+            auto coarse = createCoarseSearch( scheme().spatialDimension(), scheme().getBinningMethod(), execution_mode,
+                                              scheme().getEffectiveBinningProximityScale(), 0.0 );
+            auto refined = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
+            return std::make_unique<CommonPlaneFormulation<BaseRule, Exec>>(
+                *scheme().getMfemMeshData(), *scheme().getMfemJacobianData(),
+                PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( quadrature ),
+                OffsetGap{ CommonPlaneGap{}, 0.0 }, AveragePenaltyStiffness{}( 2.0, 6.0 ) );
+          } );
+    } );
     auto result = alternate->computeNodalForces( scheme().getMesh1().getView(), scheme().getMesh2().getView() );
     ASSERT_NE( result.force, nullptr );
     ASSERT_NE( result.df_dx, nullptr );
@@ -487,6 +495,35 @@ TEST_P( MfemCommonPlaneTest, rebuilds_and_restores_legacy_response )
 
 #endif  // TRIBOL_USE_ENZYME
 
+// Both force-only and Jacobian configurations must select the requested backend at factory construction.
+TEST_P( MfemCommonPlaneTest, selects_execution_specialization )
+{
+  for ( const auto mode : { ExecutionMode::Sequential
+#ifdef TRIBOL_USE_OPENMP
+                            ,
+                            ExecutionMode::OpenMP
+#endif
+        } ) {
+    SCOPED_TRACE( static_cast<int>( mode ) );
+    finalize();
+    registerScheme( mode );
+    enable( false );
+    const auto check = [&]() {
+      return dispatchExecutionMode( mode, [&]<ExecutionMode Exec>() {
+        return createWithQuadratureRule( GetParam(), CommonPlaneEdgeMapping{}, [&]( auto rule ) {
+          using BaseRule = typename decltype( rule )::Generator;
+          return dynamic_cast<CommonPlaneFormulation<BaseRule, Exec>*>( scheme().getContactFormulation() ) != nullptr;
+        } );
+      } );
+    };
+    EXPECT_TRUE( check() );
+#ifdef TRIBOL_USE_ENZYME
+    enable();
+    EXPECT_TRUE( check() );
+#endif
+  }
+}
+
 // Rejected configuration must leave the legacy selection and its resources intact.
 TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
 {
@@ -517,11 +554,17 @@ TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
     setQuadratureOrder( 0, order );
     auto* formulation = scheme().getContactFormulation();
     if ( order <= 1 ) {
-      EXPECT_NE( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<1>>*>( formulation ), nullptr );
+      EXPECT_NE( ( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<1>, ExecutionMode::Sequential>*>(
+                     formulation ) ),
+                 nullptr );
     } else if ( order <= 3 ) {
-      EXPECT_NE( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<2>>*>( formulation ), nullptr );
+      EXPECT_NE( ( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<2>, ExecutionMode::Sequential>*>(
+                     formulation ) ),
+                 nullptr );
     } else {
-      EXPECT_NE( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<3>>*>( formulation ), nullptr );
+      EXPECT_NE( ( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<3>, ExecutionMode::Sequential>*>(
+                     formulation ) ),
+                 nullptr );
     }
   }
   EXPECT_THROW( setQuadratureOrder( 0, 6 ), std::invalid_argument );

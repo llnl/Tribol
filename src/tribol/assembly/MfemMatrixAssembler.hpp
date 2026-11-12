@@ -269,19 +269,20 @@ class MfemMatrixAssembler {
    * @brief Pack and append matrices in a dedicated kernel; earlier contributions accumulate.
    * @tparam RowDofs Rows per block. @tparam ColumnDofs Columns per block. @tparam BlockCount Blocks per pair.
    * @tparam MatrixReader Device-callable `(pair, row, column) -> RealT` reader.
-   * @param execution_mode Host or device execution policy. @param pairs Supplied execution-accessible pairs.
+   * @tparam Exec Concrete execution mode.
+   * @param pairs Supplied execution-accessible pairs.
    * @param read_matrix Matrix reader in node/component order.
    * @throws std::invalid_argument Batch dimensions do not match the configuration; nothing is appended.
    * @throws std::length_error Required storage exceeds the supported index range.
    */
-  template <IndexT RowDofs, IndexT ColumnDofs, IndexT BlockCount, typename MatrixReader>
-  void addPairs( ExecutionMode execution_mode, const ArrayT<InterfacePair>& pairs, MatrixReader read_matrix )
+  template <ExecutionMode Exec, IndexT RowDofs, IndexT ColumnDofs, IndexT BlockCount, typename MatrixReader>
+  void addPairs( const ArrayT<InterfacePair>& pairs, MatrixReader read_matrix )
   {
     auto batch = makeBatch<RowDofs, ColumnDofs, BlockCount>( pairs.size(), pairs.getAllocatorID() );
     const auto output = batch.view();
     const auto input = pairs.view();
-    forAllExec( execution_mode, pairs.size(),
-                [=] TRIBOL_HOST_DEVICE( IndexT pair ) { output.packPair( pair, input[pair], read_matrix ); } );
+    forAllExec<Exec>( pairs.size(),
+                      [=] TRIBOL_HOST_DEVICE( IndexT pair ) { output.packPair( pair, input[pair], read_matrix ); } );
     addBatch( batch );
   }
 

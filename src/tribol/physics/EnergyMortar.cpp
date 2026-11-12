@@ -30,7 +30,7 @@ struct EnergyMortarNodalQuantities {
 /**
  * @brief Evaluate and assemble weighted gaps, tributary areas, and their coordinate Jacobians.
  * @tparam Function Pair function returning weighted gaps followed by areas.
- * @param execution_mode Host or device execution mode.
+ * @tparam Exec Concrete execution mode for evaluation and numerical assembly.
  * @param pairs Current accepted pair list.
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
@@ -39,12 +39,11 @@ struct EnergyMortarNodalQuantities {
  * @param submesh_data Scalar field transfer data.
  * @param jacobian_data Parent and scalar-field Jacobian transfer data.
  * @return Unmodified weighted gaps, areas, and their coordinate Jacobians, including allocated zeros for empty pairs.
- * @throws std::invalid_argument Geometry, execution mode, or assembly dimensions are invalid; no result is returned.
+ * @throws std::invalid_argument Geometry or assembly dimensions are invalid; no result is returned.
  * @throws std::length_error Quadrature capacity or the assembly index range is exceeded; no result is returned.
  */
-template <typename Function>
-EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( ExecutionMode execution_mode,
-                                                                const ArrayT<InterfacePair>& pairs,
+template <ExecutionMode Exec, typename Function>
+EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<InterfacePair>& pairs,
                                                                 MeshData::Viewer mesh1, MeshData::Viewer mesh2,
                                                                 const Function& function, const MfemMeshData& mesh_data,
                                                                 const MfemSubmeshData& submesh_data,
@@ -55,8 +54,8 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( ExecutionMode ex
   static_assert( Function::value_count == 2 * node_count );
   PairValueJacobianBuffer<Function::value_count, dof_count> buffer( pairs.size(), pairs.getAllocatorID() );
   const auto view = buffer.view();
-  evaluatePairValuesAndJacobians( execution_mode, pairs.view(), mesh1, mesh2, function, view );
-  checkPairQuadratureResults( execution_mode, buffer.quadratureResults() );
+  evaluatePairValuesAndJacobians<Exec>( pairs.view(), mesh1, mesh2, function, view );
+  checkPairQuadratureResults<Exec>( buffer.quadratureResults() );
   constexpr IndexT field_count = 2;
   std::vector<MfemVectorAssembler> vectors;
   std::vector<MfemMatrixAssembler> matrices;
@@ -67,8 +66,8 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( ExecutionMode ex
     matrices.push_back( detail::makeNodalCoordinateMatrixAssembler( mesh_data, submesh_data, jacobian_data, mesh1,
                                                                     mesh2, pairs.size() ) );
   }
-  detail::addNodalValuesAndJacobians<field_count, node_count, dof_count>(
-      execution_mode, pairs, vectors, matrices,
+  detail::addNodalValuesAndJacobians<Exec, field_count, node_count, dof_count>(
+      pairs, vectors, matrices,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node ) {
         return view.has_active_points[pair] ? view.value( pair, field * node_count + node ) : 0.0;
       },
@@ -82,7 +81,7 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( ExecutionMode ex
  * @brief Assemble the coordinate Hessian of fixed nodal weights contracted with pair gap and area integrals.
  * @tparam Function Pair function returning weighted gaps followed by areas.
  * @tparam WeightReader Device-callable node reader returning gap and area weights in that order.
- * @param execution_mode Host or device execution mode.
+ * @tparam Exec Concrete execution mode for evaluation and numerical assembly.
  * @param pairs Current accepted pair list.
  * @param mesh1 Current first mesh, whose scalar finite-element nodes carry the weights.
  * @param mesh2 Current second mesh.
@@ -91,14 +90,14 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( ExecutionMode ex
  * @param jacobian_data Current Jacobian transfer data.
  * @param read_weights Callable with signature MdArray<RealT, 2>(IndexT) reading redecomposed scalar node weights.
  * @return Owned parent coordinate Hessian; an empty pair list returns an allocated zero matrix.
- * @throws std::invalid_argument Execution mode or assembly dimensions are invalid; no matrix is returned.
+ * @throws std::invalid_argument Assembly dimensions are invalid; no matrix is returned.
  * @throws std::length_error Assembly storage exceeds the supported index range; no matrix is returned.
  */
-template <typename Function, typename WeightReader>
-shared::ParSparseMat assembleWeightedNodalHessian( ExecutionMode execution_mode, const ArrayT<InterfacePair>& pairs,
-                                                   MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                                                   const Function& function, const MfemMeshData& mesh_data,
-                                                   const MfemJacobianData& jacobian_data, WeightReader read_weights )
+template <ExecutionMode Exec, typename Function, typename WeightReader>
+shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
+                                                   MeshData::Viewer mesh2, const Function& function,
+                                                   const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
+                                                   WeightReader read_weights )
 {
   constexpr IndexT node_count = Function::node_count;
   static_assert( Function::value_count == 2 * node_count );
@@ -108,7 +107,7 @@ shared::ParSparseMat assembleWeightedNodalHessian( ExecutionMode execution_mode,
   const auto pair_view = pairs.view();
   const auto connectivity = mesh1.getConnectivity();
   auto* weight_data = pair_weights.data();
-  forAllExec( execution_mode, pair_count, [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
+  forAllExec<Exec>( pair_count, [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto nodes = connectivity( pair_view[pair_index].element_id1_ );
     for ( IndexT node = 0; node < node_count; ++node ) {
       const auto weights = read_weights( nodes[node] );
@@ -118,8 +117,8 @@ shared::ParSparseMat assembleWeightedNodalHessian( ExecutionMode execution_mode,
   } );
 
   PairHessianBuffer<Function::dof_count> hessians( pair_count, allocator_id );
-  evaluatePairWeightedJacobiansAndHessians(
-      execution_mode, pairs.view(), mesh1, mesh2, function,
+  evaluatePairWeightedJacobiansAndHessians<Exec>(
+      pairs.view(), mesh1, mesh2, function,
       [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
         MdArray<RealT, Function::value_count> weights{};
         for ( IndexT value = 0; value < Function::value_count; ++value ) {
@@ -130,8 +129,8 @@ shared::ParSparseMat assembleWeightedNodalHessian( ExecutionMode execution_mode,
       hessians.view() );
   const auto hessian_view = hessians.view();
   auto assembler = detail::makeCoordinateMatrixAssembler( mesh_data, jacobian_data, mesh1, mesh2, pair_count );
-  assembler.addPairs<Function::dof_count / 2, Function::dof_count / 2, 4>(
-      execution_mode, pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
+  assembler.addPairs<Exec, Function::dof_count / 2, Function::dof_count / 2, 4>(
+      pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
         return hessian_view.hessian( pair, row, column );
       } );
   return assembler.assemble();
@@ -175,31 +174,30 @@ ContactFormulationResult takeLagrangeMultiplierGapResult( EnergyMortarNodalQuant
 
 }  // namespace
 
-template <typename QuadratureRule>
-ContactFormulationResult QuadraturePointEnergyMortar<QuadratureRule>::computeNodalForces( MeshData::Viewer mesh1,
-                                                                                          MeshData::Viewer mesh2 ) const
+template <typename QuadratureRule, ExecutionMode Exec>
+ContactFormulationResult QuadraturePointEnergyMortar<QuadratureRule, Exec>::computeNodalForces(
+    MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
 {
   const auto pairs = pair_builder_.build( mesh1, mesh2 );
-  return detail::evaluateAndAssembleEnergyPairs( execution_mode_, pairs, mesh1, mesh2, function_, mesh_data_,
-                                                 jacobian_data_ );
+  return detail::evaluateAndAssembleEnergyPairs<Exec>( pairs, mesh1, mesh2, function_, mesh_data_, jacobian_data_ );
 }
 
-template <typename QuadratureRule>
-ContactFormulationResult NodalEnergyMortar<QuadratureRule>::computeNodalGaps( MeshData::Viewer mesh1,
-                                                                              MeshData::Viewer mesh2 ) const
+template <typename QuadratureRule, ExecutionMode Exec>
+ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec>::computeNodalGaps( MeshData::Viewer mesh1,
+                                                                                    MeshData::Viewer mesh2 ) const
 {
   const auto pairs = pair_builder_.build( mesh1, mesh2 );
-  auto quantities = evaluateAndAssembleNodalQuantities( execution_mode_, pairs, mesh1, mesh2, function_, mesh_data_,
-                                                        submesh_data_, jacobian_data_ );
+  auto quantities = evaluateAndAssembleNodalQuantities<Exec>( pairs, mesh1, mesh2, function_, mesh_data_, submesh_data_,
+                                                              jacobian_data_ );
   if ( std::holds_alternative<PenaltyEnforcement>( enforcement_ ) ) {
     return takePenaltyGapResult( quantities, area_tolerance );
   }
   return takeLagrangeMultiplierGapResult( quantities );
 }
 
-template <typename QuadratureRule>
-ContactFormulationResult NodalEnergyMortar<QuadratureRule>::computeNodalForces( MeshData::Viewer mesh1,
-                                                                                MeshData::Viewer mesh2 ) const
+template <typename QuadratureRule, ExecutionMode Exec>
+ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec>::computeNodalForces( MeshData::Viewer mesh1,
+                                                                                      MeshData::Viewer mesh2 ) const
 {
   if ( const auto* penalty = std::get_if<PenaltyEnforcement>( &enforcement_ ) ) {
     return computePenaltyForces( mesh1, mesh2, penalty->stiffness() );
@@ -207,14 +205,14 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule>::computeNodalForces( 
   return computeLagrangeMultiplierForces( mesh1, mesh2 );
 }
 
-template <typename QuadratureRule>
-ContactFormulationResult NodalEnergyMortar<QuadratureRule>::computePenaltyForces( MeshData::Viewer mesh1,
-                                                                                  MeshData::Viewer mesh2,
-                                                                                  RealT stiffness ) const
+template <typename QuadratureRule, ExecutionMode Exec>
+ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec>::computePenaltyForces( MeshData::Viewer mesh1,
+                                                                                        MeshData::Viewer mesh2,
+                                                                                        RealT stiffness ) const
 {
   const auto pairs = pair_builder_.build( mesh1, mesh2 );
-  auto quantities = evaluateAndAssembleNodalQuantities( execution_mode_, pairs, mesh1, mesh2, function_, mesh_data_,
-                                                        submesh_data_, jacobian_data_ );
+  auto quantities = evaluateAndAssembleNodalQuantities<Exec>( pairs, mesh1, mesh2, function_, mesh_data_, submesh_data_,
+                                                              jacobian_data_ );
   const auto make_vector = [&] {
     shared::ParVector vector( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
     vector.fill( 0.0 );
@@ -227,7 +225,7 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule>::computePenaltyForces
   auto area_area = make_vector();
   const int allocator_id = pairs.getAllocatorID();
   Array1D<RealT> nodal_energy( gap_weights.size(), gap_weights.size(), allocator_id );
-  const bool use_device = isOnDevice( execution_mode_ );
+  const bool use_device = isOnDevice( Exec );
   const auto* weighted_gap = quantities.weighted_gap.values.get().Read( use_device );
   const auto* area = quantities.area.values.get().Read( use_device );
   auto* gap_weight = gap_weights.get().Write( use_device );
@@ -236,7 +234,7 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule>::computePenaltyForces
   auto* gap_area_data = gap_area.get().Write( use_device );
   auto* area_area_data = area_area.get().Write( use_device );
   auto* nodal_energy_data = nodal_energy.data();
-  forAllExec( execution_mode_, gap_weights.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) {
+  forAllExec<Exec>( gap_weights.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) {
     const auto partials =
         EnergyMortarNodalPartials::evaluate( weighted_gap[node], area[node], stiffness, area_tolerance );
     nodal_energy_data[node] = partials.energy;
@@ -246,8 +244,8 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule>::computePenaltyForces
     gap_area_data[node] = partials.gap_area;
     area_area_data[node] = partials.area_area;
   } );
-  const RealT energy = GlobalScalarAssembler::sum(
-      execution_mode_, gap_weights.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) { return nodal_energy_data[node]; },
+  const RealT energy = GlobalScalarAssembler::sum<Exec>(
+      gap_weights.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) { return nodal_energy_data[node]; },
       gap_weights.get().GetComm() );
   auto force = gap_weights * quantities.weighted_gap.dvalues_dx;
   force += area_weights * quantities.area.dvalues_dx;
@@ -256,8 +254,8 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule>::computePenaltyForces
   const auto redecomp_area_weights = submesh_data_.TransferTrueDofsToRedecomp( area_weights.get() );
   const auto* gap_data = redecomp_gap_weights.Read( use_device );
   const auto* area_data = redecomp_area_weights.Read( use_device );
-  auto jacobian = assembleWeightedNodalHessian(
-      execution_mode_, pairs, mesh1, mesh2, function_, mesh_data_, jacobian_data_,
+  auto jacobian = assembleWeightedNodalHessian<Exec>(
+      pairs, mesh1, mesh2, function_, mesh_data_, jacobian_data_,
       [=] TRIBOL_HOST_DEVICE( IndexT node ) { return MdArray<RealT, 2>{ gap_data[node], area_data[node] }; } );
   const auto make_diagonal = [&]( const shared::ParVector& values ) {
     const auto& fes = submesh_data_.GetSubmeshFESpace();
@@ -281,13 +279,13 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule>::computePenaltyForces
   return result;
 }
 
-template <typename QuadratureRule>
-ContactFormulationResult NodalEnergyMortar<QuadratureRule>::computeLagrangeMultiplierForces(
+template <typename QuadratureRule, ExecutionMode Exec>
+ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec>::computeLagrangeMultiplierForces(
     MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
 {
   const auto pairs = pair_builder_.build( mesh1, mesh2 );
-  auto quantities = evaluateAndAssembleNodalQuantities( execution_mode_, pairs, mesh1, mesh2, function_, mesh_data_,
-                                                        submesh_data_, jacobian_data_ );
+  auto quantities = evaluateAndAssembleNodalQuantities<Exec>( pairs, mesh1, mesh2, function_, mesh_data_, submesh_data_,
+                                                              jacobian_data_ );
   shared::ParVector pressure( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
   submesh_data_.GetSubmeshPressure().GetTrueDofs( pressure.get() );
   if ( pressure.size() != quantities.weighted_gap.values.size() ) {
@@ -296,9 +294,9 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule>::computeLagrangeMulti
   const RealT energy = pressure.dot( quantities.weighted_gap.values );
   auto force = pressure * quantities.weighted_gap.dvalues_dx;
   const auto redecomp_pressure = submesh_data_.TransferTrueDofsToRedecomp( pressure.get() );
-  const auto* pressure_data = redecomp_pressure.Read( isOnDevice( execution_mode_ ) );
-  auto jacobian = assembleWeightedNodalHessian(
-      execution_mode_, pairs, mesh1, mesh2, function_, mesh_data_, jacobian_data_,
+  const auto* pressure_data = redecomp_pressure.Read( isOnDevice( Exec ) );
+  auto jacobian = assembleWeightedNodalHessian<Exec>(
+      pairs, mesh1, mesh2, function_, mesh_data_, jacobian_data_,
       [=] TRIBOL_HOST_DEVICE( IndexT node ) { return MdArray<RealT, 2>{ pressure_data[node], 0.0 }; } );
   auto df_dp = quantities.weighted_gap.dvalues_dx.transpose();
 
@@ -311,18 +309,30 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule>::computeLagrangeMulti
   return result;
 }
 
-#define TRIBOL_INSTANTIATE_ENERGY_MORTAR( Rule )    \
-  template class QuadraturePointEnergyMortar<Rule>; \
-  template class NodalEnergyMortar<Rule>
-
 using EnergyRule1 = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>;
 using EnergyRule2 = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
 using EnergyRule3 = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>;
-TRIBOL_INSTANTIATE_ENERGY_MORTAR( EnergyRule1 );
-TRIBOL_INSTANTIATE_ENERGY_MORTAR( EnergyRule2 );
-TRIBOL_INSTANTIATE_ENERGY_MORTAR( EnergyRule3 );
 
+#define TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE( Rule, Exec ) \
+  template class QuadraturePointEnergyMortar<Rule, Exec>;   \
+  template class NodalEnergyMortar<Rule, Exec>
+#define TRIBOL_INSTANTIATE_ENERGY_MORTAR( Exec )              \
+  TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE( EnergyRule1, Exec ); \
+  TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE( EnergyRule2, Exec ); \
+  TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE( EnergyRule3, Exec )
+
+TRIBOL_INSTANTIATE_ENERGY_MORTAR( ExecutionMode::Sequential );
+#ifdef TRIBOL_USE_OPENMP
+TRIBOL_INSTANTIATE_ENERGY_MORTAR( ExecutionMode::OpenMP );
+#endif
+#ifdef TRIBOL_USE_CUDA
+TRIBOL_INSTANTIATE_ENERGY_MORTAR( ExecutionMode::Cuda );
+#endif
+#ifdef TRIBOL_USE_HIP
+TRIBOL_INSTANTIATE_ENERGY_MORTAR( ExecutionMode::Hip );
+#endif
 #undef TRIBOL_INSTANTIATE_ENERGY_MORTAR
+#undef TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE
 
 }  // namespace tribol
 #endif

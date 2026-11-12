@@ -276,7 +276,8 @@ TEST_P( EnergyMortarDefinitionTest, contribution_buffers_use_backend_accessible_
 #ifdef TRIBOL_USE_ENZYME
 /** @brief Check whether a mesh kernel accepts a scalar pair function. @tparam Function Candidate pair function. */
 template <typename Function>
-concept CanEvaluateScalarPairKernel = requires { &evaluatePairValuesJacobiansAndHessians<Function>; };
+concept CanEvaluateScalarPairKernel =
+    requires { &evaluatePairValuesJacobiansAndHessians<ExecutionMode::Sequential, Function>; };
 
 // The scalar kernel accepts energy outputs and rejects vector nodal integrals at its interface.
 static_assert( CanEvaluateScalarPairKernel<
@@ -303,11 +304,15 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_h
   const auto pairs = copyToExecutionSpace<InterfacePair>( { { 0, 0 }, { 0, 1 }, { 0, 2 }, { 0, 3 } } );
   PairEnergyHessianBuffer<Function::dof_count> buffer( pairs.size(), allocatorId() );
   const auto output = buffer.view();
-  evaluatePairValuesJacobiansAndHessians( GetParam(), pairs.view(), mesh1.getView(), mesh2.getView(), function,
-                                          output );
+  dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    return evaluatePairValuesJacobiansAndHessians<Exec>( pairs.view(), mesh1.getView(), mesh2.getView(), function,
+                                                         output );
+  } );
   PairValueJacobianBuffer<Function::value_count, Function::dof_count> value_jacobian( pairs.size(), allocatorId() );
-  evaluatePairValuesAndJacobians( GetParam(), pairs.view(), mesh1.getView(), mesh2.getView(), function,
-                                  value_jacobian.view() );
+  dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    return evaluatePairValuesAndJacobians<Exec>( pairs.view(), mesh1.getView(), mesh2.getView(), function,
+                                                 value_jacobian.view() );
+  } );
 
   ArrayT<RealT, 2> summaries( axom::StackArray<axom::IndexType, 2>{ pairs.size(), 4 }, allocatorId() );
   const auto summary = summaries.view();
@@ -357,7 +362,11 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_h
       EXPECT_EQ( jacobians[coordinate * pairs.size() + pair], 0.0 );
     }
   }
-  EXPECT_THROW( checkPairQuadratureResults( GetParam(), buffer.quadratureResults() ), std::invalid_argument );
+  EXPECT_THROW( dispatchExecutionMode( GetParam(),
+                                       [&]<ExecutionMode Exec>() {
+                                         return checkPairQuadratureResults<Exec>( buffer.quadratureResults() );
+                                       } ),
+                std::invalid_argument );
 }
 
 /** @brief Small fixed-size pair function used to compile and execute both Enzyme operations on every backend. */

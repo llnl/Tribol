@@ -96,15 +96,15 @@ class CommonPlanePairFunction {
 /**
  * @brief Common Plane pair search and force assembly, with optional Enzyme Jacobians.
  * @tparam BaseRule Reference Gauss rule.
+ * @tparam Exec Concrete execution mode for evaluation and numerical assembly.
  */
-template <typename BaseRule>
+template <typename BaseRule, ExecutionMode Exec>
 class CommonPlaneFormulation final : public ContactFormulation {
  public:
   /**
    * @brief Borrow transfer data and own search and formulation configuration.
    * @param mesh_data Parent displacement transfer data.
    * @param jacobian_data Parent Jacobian transfer data.
-   * @param execution_mode Pair evaluation and numerical assembly execution mode.
    * @param pair_builder Owned pair search composition.
    * @param quadrature Owned common-line quadrature.
    * @param gap Offset common-plane gap.
@@ -112,11 +112,11 @@ class CommonPlaneFormulation final : public ContactFormulation {
    * @throws std::invalid_argument Stiffness is nonpositive or nonfinite; no formulation is constructed.
    * @throws std::runtime_error Enzyme support is unavailable; no formulation is constructed.
    */
-  CommonPlaneFormulation( MfemMeshData& mesh_data, MfemJacobianData& jacobian_data, ExecutionMode execution_mode,
-                          PairListBuilder pair_builder, PairQuadratureRule<CommonPlaneEdgeMapping, BaseRule> quadrature,
+  CommonPlaneFormulation( MfemMeshData& mesh_data, MfemJacobianData& jacobian_data, PairListBuilder pair_builder,
+                          PairQuadratureRule<CommonPlaneEdgeMapping, BaseRule> quadrature,
                           OffsetGap<CommonPlaneGap> gap, RealT penalty )
-      : CommonPlaneFormulation( mesh_data, &jacobian_data, execution_mode, std::move( pair_builder ),
-                                std::move( quadrature ), std::move( gap ), penalty )
+      : CommonPlaneFormulation( mesh_data, &jacobian_data, std::move( pair_builder ), std::move( quadrature ),
+                                std::move( gap ), penalty )
   {
   }
 
@@ -124,7 +124,6 @@ class CommonPlaneFormulation final : public ContactFormulation {
    * @brief Construct Common Plane with optional coordinate Jacobian calculation.
    * @param mesh_data Borrowed displacement transfer data.
    * @param jacobian_data Borrowed Jacobian transfer data, or nullptr to calculate forces only.
-   * @param execution_mode Host or device execution policy.
    * @param pair_builder Owned pair search composition.
    * @param quadrature Owned common-line quadrature.
    * @param gap Owned gap definition.
@@ -132,12 +131,11 @@ class CommonPlaneFormulation final : public ContactFormulation {
    * @throws std::invalid_argument Stiffness is nonpositive or nonfinite.
    * @throws std::runtime_error Jacobian calculation was requested without Enzyme support.
    */
-  CommonPlaneFormulation( MfemMeshData& mesh_data, const MfemJacobianData* jacobian_data, ExecutionMode execution_mode,
-                          PairListBuilder pair_builder, PairQuadratureRule<CommonPlaneEdgeMapping, BaseRule> quadrature,
+  CommonPlaneFormulation( MfemMeshData& mesh_data, const MfemJacobianData* jacobian_data, PairListBuilder pair_builder,
+                          PairQuadratureRule<CommonPlaneEdgeMapping, BaseRule> quadrature,
                           OffsetGap<CommonPlaneGap> gap, RealT penalty )
       : mesh_data_( mesh_data ),
         jacobian_data_( jacobian_data ),
-        execution_mode_( execution_mode ),
         pair_builder_( std::move( pair_builder ) ),
         function_( std::move( quadrature ), detail::checkedPenaltyStiffness( penalty ), std::move( gap ) )
   {
@@ -155,7 +153,6 @@ class CommonPlaneFormulation final : public ContactFormulation {
  private:
   MfemMeshData& mesh_data_;                ///< Borrowed displacement transfer data.
   const MfemJacobianData* jacobian_data_;  ///< Borrowed Jacobian transfers, or nullptr for force-only calculation.
-  ExecutionMode execution_mode_;           ///< Pair kernel execution policy.
   PairListBuilder pair_builder_;           ///< Owned search composition.
   /// Owned pair quadrature, fixed stiffness, and gap definition.
   const CommonPlanePairFunction<BaseRule, OffsetGap<CommonPlaneGap>> function_;

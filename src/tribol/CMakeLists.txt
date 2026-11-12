@@ -30,6 +30,7 @@ set(tribol_headers
     common/MdArray.hpp
     common/MdSpan.hpp
     common/Parameters.hpp
+    common/Reductions.hpp
 
     geom/CompGeom.hpp
     geom/ElementNormal.hpp

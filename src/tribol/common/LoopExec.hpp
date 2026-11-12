@@ -8,6 +8,8 @@
 
 // C++ includes
 #include <type_traits>
+#include <stdexcept>
+#include <utility>
 
 // Tribol includes
 #include "tribol/common/BasicTypes.hpp"
@@ -23,6 +25,42 @@
 #endif
 
 namespace tribol {
+
+/**
+ * @brief Select an enabled compile-time execution mode for a host operation.
+ *
+ * Use at construction or another runtime entry point, then carry Exec through the selected calculation's kernels.
+ * For example, a formulation factory can pass a lambda with template parameter ExecutionMode Exec to construct
+ * a formulation specialized for that mode.
+ * @tparam Function Host callable with a templated operator()<ExecutionMode>(); every specialization has the same
+ * return type, which may be void.
+ * @param execution_mode Concrete execution mode to select.
+ * @param function Operation called exactly once for the selected mode; not retained.
+ * @return The selected operation's result, preserving references and ownership.
+ * @throws std::invalid_argument Mode is Dynamic or unsupported by this build; function is not called.
+ */
+template <typename Function>
+decltype( auto ) dispatchExecutionMode( ExecutionMode execution_mode, Function&& function )
+{
+  switch ( execution_mode ) {
+    case ExecutionMode::Sequential:
+      return std::forward<Function>( function ).template operator()<ExecutionMode::Sequential>();
+#ifdef TRIBOL_USE_OPENMP
+    case ExecutionMode::OpenMP:
+      return std::forward<Function>( function ).template operator()<ExecutionMode::OpenMP>();
+#endif
+#ifdef TRIBOL_USE_CUDA
+    case ExecutionMode::Cuda:
+      return std::forward<Function>( function ).template operator()<ExecutionMode::Cuda>();
+#endif
+#ifdef TRIBOL_USE_HIP
+    case ExecutionMode::Hip:
+      return std::forward<Function>( function ).template operator()<ExecutionMode::Hip>();
+#endif
+    default:
+      throw std::invalid_argument( "Execution mode must be concrete and enabled in this build." );
+  }
+}
 
 // Check Tribol has RAJA if we are using CUDA, HIP, or OpenMP.
 #if defined( TRIBOL_USE_CUDA ) && !defined( TRIBOL_USE_RAJA )

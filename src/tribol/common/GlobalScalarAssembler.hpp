@@ -8,10 +8,9 @@
 #define SRC_TRIBOL_COMMON_GLOBALSCALARASSEMBLER_HPP_
 
 #include <mpi.h>
-#include <stdexcept>
 
-#include "axom/core/execution/reductions.hpp"
 #include "tribol/common/LoopExec.hpp"
+#include "tribol/common/Reductions.hpp"
 
 namespace tribol {
 
@@ -21,38 +20,16 @@ class GlobalScalarAssembler {
   /**
    * @brief Sum local contributions and then sum the local result over an MPI communicator.
    * @tparam Reader Device-callable `(IndexT) -> RealT` contribution reader.
-   * @param execution_mode Execution policy for the local reduction.
+   * @tparam Exec Concrete execution mode for the local reduction.
    * @param contribution_count Number of local contributions.
    * @param reader Scalar contribution reader.
    * @param communicator Communicator over which local sums are combined.
    * @return Global scalar sum.
    */
-  template <typename Reader>
-  static RealT sum( ExecutionMode execution_mode, IndexT contribution_count, Reader reader, MPI_Comm communicator )
+  template <ExecutionMode Exec, typename Reader>
+  static RealT sum( IndexT contribution_count, Reader reader, MPI_Comm communicator )
   {
-    RealT local_sum = 0.0;
-    switch ( execution_mode ) {
-      case ExecutionMode::Sequential:
-        local_sum = localSum<ExecutionMode::Sequential>( contribution_count, reader );
-        break;
-#ifdef TRIBOL_USE_OPENMP
-      case ExecutionMode::OpenMP:
-        local_sum = localSum<ExecutionMode::OpenMP>( contribution_count, reader );
-        break;
-#endif
-#ifdef TRIBOL_USE_CUDA
-      case ExecutionMode::Cuda:
-        local_sum = localSum<ExecutionMode::Cuda>( contribution_count, reader );
-        break;
-#endif
-#ifdef TRIBOL_USE_HIP
-      case ExecutionMode::Hip:
-        local_sum = localSum<ExecutionMode::Hip>( contribution_count, reader );
-        break;
-#endif
-      default:
-        throw std::invalid_argument( "Global scalar assembly requires a concrete execution mode." );
-    }
+    const RealT local_sum = localSum<Exec>( contribution_count, reader );
     RealT global_sum = 0.0;
     MPI_Allreduce( &local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM, communicator );
     return global_sum;
@@ -70,8 +47,7 @@ class GlobalScalarAssembler {
   template <ExecutionMode Exec, typename Reader>
   static RealT localSum( IndexT contribution_count, Reader reader )
   {
-    using ExecSpace = typename toAxomExecSpace<Exec>::type;
-    axom::ReduceSum<ExecSpace, RealT> sum( 0.0 );
+    ReduceSum<Exec, RealT> sum( 0.0 );
     forAllExec<Exec>( contribution_count,
                       [=] TRIBOL_HOST_DEVICE( IndexT contribution ) { sum += reader( contribution ); } );
     return sum.get();

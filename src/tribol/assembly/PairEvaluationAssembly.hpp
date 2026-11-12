@@ -31,7 +31,8 @@ namespace detail {
  * @tparam DofCount Pair coordinates; both geometries contribute half.
  * @tparam ValueReader Device-callable `(pair, field, node) -> RealT` reader.
  * @tparam JacobianReader Device-callable `(pair, field, node, coordinate) -> RealT` reader.
- * @param execution_mode Host or device execution policy. @param pairs Supplied execution-accessible pairs.
+ * @tparam Exec Concrete execution mode for numerical assembly.
+ * @param pairs Supplied execution-accessible pairs.
  * @param vectors Scalar-vector components, each configured for geometry1.
  * @param matrices Matrix components with scalar rows and both geometries' coordinate columns.
  * @param read_values Scalar values. @param read_jacobian Coordinate Jacobian entries.
@@ -39,10 +40,11 @@ namespace detail {
  * @throws std::length_error Required storage exceeds the supported index range.
  * Scratch remains alive until all kernel operations finish and their matrix blocks have been copied.
  */
-template <IndexT FieldCount, IndexT NodeCount, IndexT DofCount, typename ValueReader, typename JacobianReader>
-void addNodalValuesAndJacobians( ExecutionMode execution_mode, const ArrayT<InterfacePair>& pairs,
-                                 std::vector<MfemVectorAssembler>& vectors, std::vector<MfemMatrixAssembler>& matrices,
-                                 ValueReader read_values, JacobianReader read_jacobian )
+template <ExecutionMode Exec, IndexT FieldCount, IndexT NodeCount, IndexT DofCount, typename ValueReader,
+          typename JacobianReader>
+void addNodalValuesAndJacobians( const ArrayT<InterfacePair>& pairs, std::vector<MfemVectorAssembler>& vectors,
+                                 std::vector<MfemMatrixAssembler>& matrices, ValueReader read_values,
+                                 JacobianReader read_jacobian )
 {
   static_assert( FieldCount > 0 && DofCount % 2 == 0 );
   constexpr IndexT element_dofs = DofCount / 2;
@@ -57,12 +59,12 @@ void addNodalValuesAndJacobians( ExecutionMode execution_mode, const ArrayT<Inte
     if ( vectors[field].valueCount() != NodeCount ) {
       throw std::invalid_argument( "Nodal vector input extent does not match the scalar row count." );
     }
-    value_views[field] = vectors[field].view<1>( execution_mode );
+    value_views[field] = vectors[field].view<Exec, 1>();
     batches.push_back( matrices[field].makeBatch<NodeCount, element_dofs, 2>( pairs.size(), pairs.getAllocatorID() ) );
     matrix_views[field] = batches.back().view();
   }
   const auto input = pairs.view();
-  forAllExec( execution_mode, pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
+  forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
     for ( IndexT field = 0; field < FieldCount; ++field ) {
       value_views[field].addPair( pair, input[pair], read_values, field );
       matrix_views[field].packPair( pair, input[pair], read_jacobian, field );
@@ -78,7 +80,7 @@ void addNodalValuesAndJacobians( ExecutionMode execution_mode, const ArrayT<Inte
  * @tparam DofCount Pair DOF count; both elements must contribute half.
  * @tparam ForceReader Device-callable `(pair, row) -> RealT` force reader.
  * @tparam JacobianReader Device-callable `(pair, row, column) -> RealT` matrix reader.
- * @param execution_mode Host or device execution policy.
+ * @tparam Exec Concrete execution mode for numerical assembly.
  * @param pairs Supplied execution-accessible pairs.
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
@@ -88,12 +90,11 @@ void addNodalValuesAndJacobians( ExecutionMode execution_mode, const ArrayT<Inte
  * @param read_jacobian Pair Jacobians in that same row and column order.
  * @return Owned force and df_dx; empty pairs produce allocated zero outputs. Other outputs are absent.
  * Scratch remains alive until the combined kernel and matrix packing finish.
- * @throws std::invalid_argument Layouts or execution mode are invalid; no result is returned.
+ * @throws std::invalid_argument Layouts are invalid; no result is returned.
  * @throws std::length_error Required storage exceeds the supported index range; no result is returned.
  */
-template <IndexT DofCount, typename ForceReader, typename JacobianReader>
-ContactFormulationResult assemblePairForcesAndJacobian( ExecutionMode execution_mode,
-                                                        const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
+template <ExecutionMode Exec, IndexT DofCount, typename ForceReader, typename JacobianReader>
+ContactFormulationResult assemblePairForcesAndJacobian( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
                                                         MeshData::Viewer mesh2, const MfemMeshData& mesh_data,
                                                         const MfemJacobianData& jacobian_data, ForceReader read_force,
                                                         JacobianReader read_jacobian )
@@ -103,10 +104,10 @@ ContactFormulationResult assemblePairForcesAndJacobian( ExecutionMode execution_
   auto forces = makeDisplacementVectorAssembler( mesh_data, mesh1, mesh2 );
   auto jacobian = makeCoordinateMatrixAssembler( mesh_data, jacobian_data, mesh1, mesh2, pairs.size() );
   auto batch = jacobian.makeBatch<element_dofs, element_dofs, 4>( pairs.size(), pairs.getAllocatorID() );
-  const auto force_view = forces.view<2>( execution_mode );
+  const auto force_view = forces.view<Exec, 2>();
   const auto matrix_view = batch.view();
   const auto input = pairs.view();
-  forAllExec( execution_mode, pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
+  forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = input[pair_index];
     force_view.addPair( pair_index, pair, read_force );
     matrix_view.packPair( pair_index, pair, read_jacobian );
@@ -121,7 +122,7 @@ ContactFormulationResult assemblePairForcesAndJacobian( ExecutionMode execution_
 /**
  * @brief Evaluate pair residual values and assemble forces without derivatives or matrix storage.
  * @tparam Function Function with one residual entry per coordinate in element/node/component order.
- * @param execution_mode Host or device execution policy.
+ * @tparam Exec Concrete execution mode for numerical assembly.
  * @param pairs Accepted element pairs in execution-accessible memory.
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
@@ -129,22 +130,21 @@ ContactFormulationResult assemblePairForcesAndJacobian( ExecutionMode execution_
  * @param mesh_data Borrowed MFEM displacement transfer data.
  * @return Owned force on parent true DOFs; df_dx and other outputs are absent. Empty or inactive pairs contribute zero.
  * Scratch arrays remain alive until evaluation and assembly finish.
- * @throws std::invalid_argument Geometry, execution mode, or assembly dimensions are invalid; no result is returned.
+ * @throws std::invalid_argument Geometry or assembly dimensions are invalid; no result is returned.
  * @throws std::length_error Quadrature capacity or the supported index range is exceeded; no result is returned.
  */
-template <PairKernelFunctionType Function>
-ContactFormulationResult evaluateAndAssembleResidualValues( ExecutionMode execution_mode,
-                                                            const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
+template <ExecutionMode Exec, PairKernelFunctionType Function>
+ContactFormulationResult evaluateAndAssembleResidualValues( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
                                                             MeshData::Viewer mesh2, const Function& function,
                                                             const MfemMeshData& mesh_data )
 {
   static_assert( Function::value_count == Function::dof_count, "Pair residuals must match coordinate DOFs." );
   PairValueBuffer<Function::value_count> contributions( pairs.size(), pairs.getAllocatorID() );
   const auto view = contributions.view();
-  evaluatePairValues( execution_mode, pairs.view(), mesh1, mesh2, function, view );
-  checkPairQuadratureResults( execution_mode, contributions.quadratureResults() );
+  evaluatePairValues<Exec>( pairs.view(), mesh1, mesh2, function, view );
+  checkPairQuadratureResults<Exec>( contributions.quadratureResults() );
   auto assembler = makeDisplacementVectorAssembler( mesh_data, mesh1, mesh2 );
-  assembler.addPairs<Function::dof_count, 2>( execution_mode, pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
+  assembler.addPairs<Exec, Function::dof_count, 2>( pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
     return view.has_active_points[pair] ? view.value( pair, row ) : 0.0;
   } );
   ContactFormulationResult result;
@@ -160,7 +160,7 @@ ContactFormulationResult evaluateAndAssembleResidualValues( ExecutionMode execut
  * alive until all operations finish. Quadrature failures are reported before any contributions are assembled.
  *
  * @tparam Function Pair function with one residual entry per coordinate in element/node/component order.
- * @param execution_mode Concrete host or device execution mode for evaluation and numerical assembly.
+ * @tparam Exec Concrete execution mode for evaluation and numerical assembly.
  * @param pairs Accepted element pairs in execution-accessible memory.
  * @param mesh1 Current first mesh with execution-accessible coordinates and connectivity.
  * @param mesh2 Current second mesh with execution-accessible coordinates and connectivity.
@@ -169,14 +169,13 @@ ContactFormulationResult evaluateAndAssembleResidualValues( ExecutionMode execut
  * @param jacobian_data Current MFEM Jacobian transfer data; borrowed for this call.
  * @return Owned parent true-DOF force and df_dx; other outputs are absent. Empty or inactive pairs contribute zero.
  * An empty list returns allocated zero force and df_dx.
- * @throws std::invalid_argument Pair geometry, execution mode, or assembly dimensions are invalid; no result is
+ * @throws std::invalid_argument Pair geometry or assembly dimensions are invalid; no result is
  * returned.
  * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded; no result is
  * returned.
  */
-template <typename Function>
-ContactFormulationResult evaluateAndAssembleResidualPairs( ExecutionMode execution_mode,
-                                                           const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
+template <ExecutionMode Exec, typename Function>
+ContactFormulationResult evaluateAndAssembleResidualPairs( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
                                                            MeshData::Viewer mesh2, const Function& function,
                                                            const MfemMeshData& mesh_data,
                                                            const MfemJacobianData& jacobian_data )
@@ -185,11 +184,11 @@ ContactFormulationResult evaluateAndAssembleResidualPairs( ExecutionMode executi
   PairValueJacobianBuffer<Function::value_count, Function::dof_count> contributions( pairs.size(),
                                                                                      pairs.getAllocatorID() );
   const auto view = contributions.view();
-  evaluatePairValuesAndJacobians( execution_mode, pairs.view(), mesh1, mesh2, function, view );
-  checkPairQuadratureResults( execution_mode, contributions.quadratureResults() );
+  evaluatePairValuesAndJacobians<Exec>( pairs.view(), mesh1, mesh2, function, view );
+  checkPairQuadratureResults<Exec>( contributions.quadratureResults() );
 
-  return assemblePairForcesAndJacobian<Function::dof_count>(
-      execution_mode, pairs, mesh1, mesh2, mesh_data, jacobian_data,
+  return assemblePairForcesAndJacobian<Exec, Function::dof_count>(
+      pairs, mesh1, mesh2, mesh_data, jacobian_data,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
         return view.has_active_points[pair] ? view.value( pair, row ) : 0.0;
       },
@@ -206,7 +205,7 @@ ContactFormulationResult evaluateAndAssembleResidualPairs( ExecutionMode executi
  * failures are reported before any contributions are assembled.
  *
  * @tparam Function Scalar energy function with coordinates in element/node/component order.
- * @param execution_mode Concrete host or device execution mode for evaluation and numerical assembly.
+ * @tparam Exec Concrete execution mode for evaluation and numerical assembly.
  * @param pairs Accepted element pairs in execution-accessible memory.
  * @param mesh1 Current first mesh with execution-accessible coordinates and connectivity.
  * @param mesh2 Current second mesh with execution-accessible coordinates and connectivity.
@@ -216,14 +215,13 @@ ContactFormulationResult evaluateAndAssembleResidualPairs( ExecutionMode executi
  * @return Owned parent true-DOF force and df_dx and energy summed over the parent communicator; other outputs are
  * absent. Empty or inactive pairs contribute zero. An empty list returns allocated zero force and df_dx and zero
  * energy.
- * @throws std::invalid_argument Pair geometry, execution mode, or assembly dimensions are invalid; no result is
+ * @throws std::invalid_argument Pair geometry or assembly dimensions are invalid; no result is
  * returned.
  * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded; no result is
  * returned.
  */
-template <typename Function>
-ContactFormulationResult evaluateAndAssembleEnergyPairs( ExecutionMode execution_mode,
-                                                         const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
+template <ExecutionMode Exec, typename Function>
+ContactFormulationResult evaluateAndAssembleEnergyPairs( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
                                                          MeshData::Viewer mesh2, const Function& function,
                                                          const MfemMeshData& mesh_data,
                                                          const MfemJacobianData& jacobian_data )
@@ -231,18 +229,17 @@ ContactFormulationResult evaluateAndAssembleEnergyPairs( ExecutionMode execution
   static_assert( Function::value_count == 1, "Pair energies must have one scalar output." );
   PairEnergyHessianBuffer<Function::dof_count> contributions( pairs.size(), pairs.getAllocatorID() );
   const auto view = contributions.view();
-  evaluatePairValuesJacobiansAndHessians( execution_mode, pairs.view(), mesh1, mesh2, function, view );
-  checkPairQuadratureResults( execution_mode, contributions.quadratureResults() );
+  evaluatePairValuesJacobiansAndHessians<Exec>( pairs.view(), mesh1, mesh2, function, view );
+  checkPairQuadratureResults<Exec>( contributions.quadratureResults() );
 
-  auto result = assemblePairForcesAndJacobian<Function::dof_count>(
-      execution_mode, pairs, mesh1, mesh2, mesh_data, jacobian_data,
+  auto result = assemblePairForcesAndJacobian<Exec, Function::dof_count>(
+      pairs, mesh1, mesh2, mesh_data, jacobian_data,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) { return view.derivatives.gradient( pair, row ); },
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
         return view.derivatives.hessian( pair, row, column );
       } );
-  result.energy = GlobalScalarAssembler::sum(
-      execution_mode, pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) { return view.energies[pair]; },
-      result.force->GetComm() );
+  result.energy = GlobalScalarAssembler::sum<Exec>(
+      pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) { return view.energies[pair]; }, result.force->GetComm() );
   return result;
 }
 

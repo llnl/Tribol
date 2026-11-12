@@ -9,10 +9,10 @@
 
 #include <stdexcept>
 
-#include "axom/core/execution/reductions.hpp"
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/MdArray.hpp"
+#include "tribol/common/Reductions.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/assembly/PairContribution.hpp"
@@ -30,8 +30,7 @@ namespace detail {
 template <ExecutionMode Exec>
 QuadratureStatus reduceQuadratureStatus( ArrayViewT<const QuadratureResult> results )
 {
-  using ExecSpace = typename toAxomExecSpace<Exec>::type;
-  axom::ReduceMax<ExecSpace, int> status( static_cast<int>( QuadratureStatus::Success ) );
+  ReduceMax<Exec, int> status( static_cast<int>( QuadratureStatus::Success ) );
   forAllExec<Exec>( results.size(),
                     [=] TRIBOL_HOST_DEVICE( IndexT pair ) { status.max( static_cast<int>( results[pair].status ) ); } );
   return static_cast<QuadratureStatus>( status.get() );
@@ -41,34 +40,16 @@ QuadratureStatus reduceQuadratureStatus( ArrayViewT<const QuadratureResult> resu
 
 /**
  * @brief Check the quadrature rules produced for all pairs and throw if any rule reports an error.
- * @param execution_mode Execution policy used to populate the results.
+ * @tparam Exec Concrete execution mode used to populate the results.
  * @param results One preallocated result per pair.
+ * Empty results pass the check.
+ * @throws std::invalid_argument A rule reports invalid geometry.
+ * @throws std::length_error A rule reports insufficient quadrature capacity.
  */
-inline void checkPairQuadratureResults( ExecutionMode execution_mode, const Array1D<QuadratureResult>& results )
+template <ExecutionMode Exec>
+void checkPairQuadratureResults( const Array1D<QuadratureResult>& results )
 {
-  QuadratureStatus status = QuadratureStatus::Success;
-  switch ( execution_mode ) {
-    case ExecutionMode::Sequential:
-      status = detail::reduceQuadratureStatus<ExecutionMode::Sequential>( results.view() );
-      break;
-#ifdef TRIBOL_USE_OPENMP
-    case ExecutionMode::OpenMP:
-      status = detail::reduceQuadratureStatus<ExecutionMode::OpenMP>( results.view() );
-      break;
-#endif
-#ifdef TRIBOL_USE_CUDA
-    case ExecutionMode::Cuda:
-      status = detail::reduceQuadratureStatus<ExecutionMode::Cuda>( results.view() );
-      break;
-#endif
-#ifdef TRIBOL_USE_HIP
-    case ExecutionMode::Hip:
-      status = detail::reduceQuadratureStatus<ExecutionMode::Hip>( results.view() );
-      break;
-#endif
-    default:
-      throw std::invalid_argument( "Pair status reduction requires a concrete execution mode." );
-  }
+  const auto status = detail::reduceQuadratureStatus<Exec>( results.view() );
   if ( status != QuadratureStatus::Success ) {
     reportQuadratureFailure( status );
   }
@@ -95,7 +76,7 @@ concept PairKernelFunctionType = PairFunctionType<PairFunction> && requires {
  * For example, Common Plane explicit contact could call evaluatePairValues() into a PairValueBuffer, check its
  * quadratureResults(), and assemble its active residual values as nodal forces.
  * @tparam PairFunction Function evaluating one pair from packed coordinates.
- * @param execution_mode Host or device execution policy.
+ * @tparam Exec Concrete execution mode for pair evaluation.
  * @param pairs Supplied element pairs in execution-accessible memory.
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
@@ -103,15 +84,14 @@ concept PairKernelFunctionType = PairFunctionType<PairFunction> && requires {
  * @param output Preallocated values, quadrature results, and activation flags, with one slot per pair.
  * @throws std::invalid_argument Buffer size does not match the pair list; no outputs are written.
  */
-template <PairKernelFunctionType PairFunction>
-void evaluatePairValues( ExecutionMode execution_mode, ArrayViewT<const InterfacePair> pairs, MeshData::Viewer mesh1,
-                         MeshData::Viewer mesh2, PairFunction pair_function,
-                         PairValueView<PairFunction::value_count> output )
+template <ExecutionMode Exec, PairKernelFunctionType PairFunction>
+void evaluatePairValues( ArrayViewT<const InterfacePair> pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                         PairFunction pair_function, PairValueView<PairFunction::value_count> output )
 {
   if ( output.pair_count != pairs.size() ) {
     throw std::invalid_argument( "Pair value buffer size must match the pair list." );
   }
-  forAllExec( execution_mode, pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
+  forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = pairs[pair_index];
     MdArray<RealT, PairFunction::dof_count> coordinates{};
     mesh1.getFaceCoords( pair.element_id1_, coordinates.data() );
@@ -140,14 +120,14 @@ void evaluatePairValues( ExecutionMode execution_mode, ArrayViewT<const Interfac
  * @code
  * PairValueJacobianBuffer<PairFunction::value_count, PairFunction::dof_count> results(
  *     pairs.size(), pairs.getAllocatorID() );
- * evaluatePairValuesAndJacobians( execution_mode, pairs.view(), mesh1, mesh2, pair_function, results.view() );
- * checkPairQuadratureResults( execution_mode, results.quadratureResults() );
+ * evaluatePairValuesAndJacobians<Exec>( pairs.view(), mesh1, mesh2, pair_function, results.view() );
+ * checkPairQuadratureResults<Exec>( results.quadratureResults() );
  * @endcode
  * After the check succeeds, the caller could assemble the values into a force vector and the Jacobians into a matrix.
  * This kernel stores each pair's contribution separately, including when pairs share nodes.
  *
  * @tparam PairFunction Pair function whose evaluate() result supplies the fixed-size vector f(x) and quadrature state.
- * @param execution_mode Host or device execution policy.
+ * @tparam Exec Concrete execution mode for pair evaluation.
  * @param pairs Current pair list in execution-accessible memory.
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
@@ -155,9 +135,9 @@ void evaluatePairValues( ExecutionMode execution_mode, ArrayViewT<const Interfac
  * @param output Preallocated values, Jacobians, quadrature results, and activation flags, with one slot per pair.
  * @throws std::invalid_argument Buffer size does not match the pair list; no outputs are written.
  */
-template <PairKernelFunctionType PairFunction>
-void evaluatePairValuesAndJacobians( ExecutionMode execution_mode, ArrayViewT<const InterfacePair> pairs,
-                                     MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function,
+template <ExecutionMode Exec, PairKernelFunctionType PairFunction>
+void evaluatePairValuesAndJacobians( ArrayViewT<const InterfacePair> pairs, MeshData::Viewer mesh1,
+                                     MeshData::Viewer mesh2, PairFunction pair_function,
                                      PairValueJacobianView<PairFunction::value_count, PairFunction::dof_count> output )
 {
   constexpr IndexT first_dofs = PairFunction::first_dofs;
@@ -165,7 +145,7 @@ void evaluatePairValuesAndJacobians( ExecutionMode execution_mode, ArrayViewT<co
   if ( output.pair_count != pairs.size() ) {
     throw std::invalid_argument( "Pair value buffer size must match the pair list." );
   }
-  forAllExec( execution_mode, pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
+  forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = pairs[pair_index];
     MdArray<RealT, dof_count> coordinates{};
     mesh1.getFaceCoords( pair.element_id1_, coordinates.data() );
@@ -196,8 +176,8 @@ void evaluatePairValuesAndJacobians( ExecutionMode execution_mode, ArrayViewT<co
  * + 3.0*G1:
  * @code
  * PairHessianBuffer<PairFunction::dof_count> derivatives( pairs.size(), pairs.getAllocatorID() );
- * evaluatePairWeightedJacobiansAndHessians(
- *     execution_mode, pairs.view(), mesh1, mesh2, pair_function,
+ * evaluatePairWeightedJacobiansAndHessians<Exec>(
+ *     pairs.view(), mesh1, mesh2, pair_function,
  *     [] TRIBOL_HOST_DEVICE( IndexT ) {
  *       return MdArray<RealT, PairFunction::value_count>{ 2.0, 3.0, 0.0, 0.0 };
  *     },
@@ -209,7 +189,7 @@ void evaluatePairValuesAndJacobians( ExecutionMode execution_mode, ArrayViewT<co
  *
  * @tparam PairFunction Pair function whose evaluate() result supplies the fixed-size vector f(x) and quadrature state.
  * @tparam WeightReader Device-callable object returning one pair's fixed value weights.
- * @param execution_mode Host or device execution policy.
+ * @tparam Exec Concrete execution mode for pair evaluation.
  * @param pairs Current pair list in execution-accessible memory.
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
@@ -219,10 +199,10 @@ void evaluatePairValuesAndJacobians( ExecutionMode execution_mode, ArrayViewT<co
  * @pre The caller has checked pair quadrature for errors at these coordinates.
  * @throws std::invalid_argument Buffer size does not match the pair list; no outputs are written.
  */
-template <PairKernelFunctionType PairFunction, typename WeightReader>
-void evaluatePairWeightedJacobiansAndHessians( ExecutionMode execution_mode, ArrayViewT<const InterfacePair> pairs,
-                                               MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                                               PairFunction pair_function, WeightReader read_weights,
+template <ExecutionMode Exec, PairKernelFunctionType PairFunction, typename WeightReader>
+void evaluatePairWeightedJacobiansAndHessians( ArrayViewT<const InterfacePair> pairs, MeshData::Viewer mesh1,
+                                               MeshData::Viewer mesh2, PairFunction pair_function,
+                                               WeightReader read_weights,
                                                PairHessianView<PairFunction::dof_count> output )
 {
   constexpr IndexT first_dofs = PairFunction::first_dofs;
@@ -230,7 +210,7 @@ void evaluatePairWeightedJacobiansAndHessians( ExecutionMode execution_mode, Arr
   if ( output.pair_count != pairs.size() ) {
     throw std::invalid_argument( "Pair Hessian buffer size must match the pair list." );
   }
-  forAllExec( execution_mode, pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
+  forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = pairs[pair_index];
     MdArray<RealT, dof_count> coordinates{};
     mesh1.getFaceCoords( pair.element_id1_, coordinates.data() );
@@ -259,8 +239,8 @@ void evaluatePairWeightedJacobiansAndHessians( ExecutionMode execution_mode, Arr
  * formulation could request its scalar energy E, Jacobian J_E, and Hessian H_E together:
  * @code
  * PairEnergyHessianBuffer<PairFunction::dof_count> results( pairs.size(), pairs.getAllocatorID() );
- * evaluatePairValuesJacobiansAndHessians( execution_mode, pairs.view(), mesh1, mesh2, pair_function, results.view() );
- * checkPairQuadratureResults( execution_mode, results.quadratureResults() );
+ * evaluatePairValuesJacobiansAndHessians<Exec>( pairs.view(), mesh1, mesh2, pair_function, results.view() );
+ * checkPairQuadratureResults<Exec>( results.quadratureResults() );
  * @endcode
  * After the check succeeds, the caller could sum E across pairs and MPI ranks, assemble J_E as the force vector,
  * and assemble H_E as its coordinate Jacobian. The first derivatives are those of the input energy E, not of the
@@ -268,7 +248,7 @@ void evaluatePairWeightedJacobiansAndHessians( ExecutionMode execution_mode, Arr
  *
  * @tparam PairFunction Scalar pair function whose evaluate() result supplies values(), activation, and quadrature
  * status.
- * @param execution_mode Host or device execution policy.
+ * @tparam Exec Concrete execution mode for pair evaluation.
  * @param pairs Current pair list in execution-accessible memory.
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
@@ -276,10 +256,10 @@ void evaluatePairWeightedJacobiansAndHessians( ExecutionMode execution_mode, Arr
  * @param output Preallocated scalar values, quadrature results, Jacobians, and Hessians, with one slot per pair.
  * @throws std::invalid_argument Buffer size does not match the pair list; no outputs are written.
  */
-template <PairKernelFunctionType PairFunction>
+template <ExecutionMode Exec, PairKernelFunctionType PairFunction>
   requires( PairFunction::value_count == 1 )
-void evaluatePairValuesJacobiansAndHessians( ExecutionMode execution_mode, ArrayViewT<const InterfacePair> pairs,
-                                             MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function,
+void evaluatePairValuesJacobiansAndHessians( ArrayViewT<const InterfacePair> pairs, MeshData::Viewer mesh1,
+                                             MeshData::Viewer mesh2, PairFunction pair_function,
                                              PairEnergyHessianView<PairFunction::dof_count> output )
 {
   constexpr IndexT first_dofs = PairFunction::first_dofs;
@@ -287,7 +267,7 @@ void evaluatePairValuesJacobiansAndHessians( ExecutionMode execution_mode, Array
   if ( output.derivatives.pair_count != pairs.size() ) {
     throw std::invalid_argument( "Pair energy buffer size must match the pair list." );
   }
-  forAllExec( execution_mode, pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
+  forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = pairs[pair_index];
     MdArray<RealT, dof_count> coordinates{};
     mesh1.getFaceCoords( pair.element_id1_, coordinates.data() );

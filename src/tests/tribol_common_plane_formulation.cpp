@@ -343,7 +343,9 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
   MeshData mesh2( 1, 4, x2.size(), conn2.data(), EDGE, LINEAR_LAGRANGE, x2.data(), y2.data(), nullptr, memorySpace() );
   const auto pairs = copyToExecutionSpace<InterfacePair>( { { 0, 0 }, { 0, 1 }, { 0, 2 }, { 0, 3 } } );
   PairValueBuffer<Function::value_count> buffer( pairs.size(), allocatorId() );
-  evaluatePairValues( GetParam(), pairs.view(), mesh1.getView(), mesh2.getView(), function, buffer.view() );
+  dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    return evaluatePairValues<Exec>( pairs.view(), mesh1.getView(), mesh2.getView(), function, buffer.view() );
+  } );
   const Array1D<RealT, MemorySpace::Host> values( buffer.values() );
   const Array1D<QuadratureResult, MemorySpace::Host> status( buffer.quadratureResults() );
   const Array1D<IndexT, MemorySpace::Host> active( buffer.activePoints() );
@@ -356,10 +358,18 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
       EXPECT_NEAR( values[row * pairs.size() + pair], expected, tolerance );
     }
   }
-  EXPECT_THROW( checkPairQuadratureResults( GetParam(), buffer.quadratureResults() ), std::invalid_argument );
+  EXPECT_THROW( dispatchExecutionMode( GetParam(),
+                                       [&]<ExecutionMode Exec>() {
+                                         return checkPairQuadratureResults<Exec>( buffer.quadratureResults() );
+                                       } ),
+                std::invalid_argument );
   auto mismatched = buffer.view();
   --mismatched.pair_count;
-  EXPECT_THROW( evaluatePairValues( GetParam(), pairs.view(), mesh1.getView(), mesh2.getView(), function, mismatched ),
+  EXPECT_THROW( dispatchExecutionMode( GetParam(),
+                                       [&]<ExecutionMode Exec>() {
+                                         return evaluatePairValues<Exec>( pairs.view(), mesh1.getView(),
+                                                                          mesh2.getView(), function, mismatched );
+                                       } ),
                 std::invalid_argument );
   const Array1D<RealT, MemorySpace::Host> unchanged( buffer.values() );
   for ( IndexT i = 0; i < values.size(); ++i ) {
@@ -367,8 +377,9 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
   }
   const ArrayT<InterfacePair> empty_pairs( 0, 0, allocatorId() );
   PairValueBuffer<Function::value_count> empty( 0, allocatorId() );
-  EXPECT_NO_THROW(
-      evaluatePairValues( GetParam(), empty_pairs.view(), mesh1.getView(), mesh2.getView(), function, empty.view() ) );
+  EXPECT_NO_THROW( dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    return evaluatePairValues<Exec>( empty_pairs.view(), mesh1.getView(), mesh2.getView(), function, empty.view() );
+  } ) );
 }
 INSTANTIATE_TEST_SUITE_P( execution, CommonPlaneTest, tribol::detail::enabledExecutionModes() );
 

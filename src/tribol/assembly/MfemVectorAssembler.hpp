@@ -131,19 +131,19 @@ class MfemVectorAssembler {
   /**
    * @brief Return a writable view for composing pair kernels with other vector or matrix views.
    * @tparam BlockCount Configured geometry blocks per pair.
-   * @param execution_mode Host or device policy using the view.
+   * @tparam Exec Concrete execution mode using the view.
    * @return View borrowing this vector and the supplied connectivity. Keep both alive until the kernel finishes;
    * do not request another memory space while a kernel is using the view.
    * @throws std::invalid_argument BlockCount does not match the configuration.
    */
-  template <IndexT BlockCount>
-  MfemVectorAssemblyView<BlockCount> view( ExecutionMode execution_mode )
+  template <ExecutionMode Exec, IndexT BlockCount>
+  MfemVectorAssemblyView<BlockCount> view()
   {
     static_assert( BlockCount > 0 );
     if ( blocks_.size() != static_cast<std::size_t>( BlockCount ) ) {
       throw std::invalid_argument( "Vector view block count does not match its configuration." );
     }
-    const bool use_device = isOnDevice( execution_mode );
+    const bool use_device = isOnDevice( Exec );
     redecomp_values_.UseDevice( use_device );
     const int components = space_.redecomp_fes.GetVDim();
     const bool by_nodes = space_.redecomp_fes.GetOrdering() == mfem::Ordering::byNODES;
@@ -162,20 +162,21 @@ class MfemVectorAssembler {
    * @brief Accumulate a batch of pair entries in the selected execution space.
    * @tparam ValueCount Input scalar entry count. @tparam BlockCount Geometry blocks per pair.
    * @tparam ValueReader Device-callable `(pair, row) -> RealT` reader.
-   * @param execution_mode Host or device execution policy. @param pairs Supplied execution-accessible pairs.
+   * @tparam Exec Concrete execution mode.
+   * @param pairs Supplied execution-accessible pairs.
    * @param read_value Input reader in node/component order.
    * @throws std::invalid_argument Template counts do not match the configuration; nothing is added.
    */
-  template <IndexT ValueCount, IndexT BlockCount, typename ValueReader>
-  void addPairs( ExecutionMode execution_mode, const ArrayT<InterfacePair>& pairs, ValueReader read_value )
+  template <ExecutionMode Exec, IndexT ValueCount, IndexT BlockCount, typename ValueReader>
+  void addPairs( const ArrayT<InterfacePair>& pairs, ValueReader read_value )
   {
     if ( ValueCount != value_count_ ) {
       throw std::invalid_argument( "Vector input count does not match its configured blocks." );
     }
-    const auto output = view<BlockCount>( execution_mode );
+    const auto output = view<Exec, BlockCount>();
     const auto input = pairs.view();
-    forAllExec( execution_mode, pairs.size(),
-                [=] TRIBOL_HOST_DEVICE( IndexT pair ) { output.addPair( pair, input[pair], read_value ); } );
+    forAllExec<Exec>( pairs.size(),
+                      [=] TRIBOL_HOST_DEVICE( IndexT pair ) { output.addPair( pair, input[pair], read_value ); } );
   }
 
   /**

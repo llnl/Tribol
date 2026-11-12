@@ -80,9 +80,15 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
-- `MfemPairAssembler` now assembles forces only and returns an owned `shared::ParVector`. Its constructor takes mesh
-  and displacement-transfer data, with no Jacobian argument or assembly-mode flags. Use `MfemMatrixAssembler` for
-  matrices; force-and-Jacobian callers compose their views in one kernel and collect the separate results.
+- Common Plane and both Energy Mortar formulations now take a concrete `ExecutionMode` template argument after their
+  quadrature type. The factory selects the specialization at construction; evaluation, assembly, and scalar reductions
+  carry that mode as a template argument. Direct callers must supply the mode in the type and remove the runtime
+  constructor argument. Pair kernels and MFEM batch assembly methods likewise take the mode as their first template
+  argument. `ContactFormulation` calls and runtime search configuration are unchanged.
+- Replaced `MfemPairAssembler` and `MfemFieldAssembler` with `MfemVectorAssembler` for scalar or vector nodal values.
+  Geometry blocks select input entries and connectivity; explicit FE spaces and a host transfer callback select the
+  destination. No Jacobian data or assembly-mode flags are required. Use `MfemMatrixAssembler` for matrices; callers
+  can compose vector and matrix views in one pair kernel and collect separate owned results.
 - Pair functions expose `evaluate()` as their single calculation interface. Removed their `values(coordinates)`
   wrappers; callers obtain numerical values through `evaluate(coordinates).values()`. `PairFunctionType` constrains
   evaluation sizes and result types, while `PairKernelFunctionType` also checks the coordinate split used by mesh
@@ -104,9 +110,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   the scalar-only requirement of the value/Jacobian/Hessian kernel.
 - Moved pair evaluation, differentiation, contribution buffers, and MFEM vector/matrix assemblers into
   `tribol/assembly/`. Includes for `PairContribution`, `PairEvaluation`, `PairKernel`, `PairEvaluationAssembly`,
-  `MfemPairAssembler`, `MfemFieldAssembler`, and `MfemElementAssembly` now use that directory.
+  `MfemVectorAssembler`, `MfemMatrixAssembler`, and `MfemElementAssembly` now use that directory.
 - Moved `GlobalScalarAssembler.hpp` from `tribol/physics/` to `tribol/common/`; it provides execution-space and MPI
   scalar reductions independently of contact physics.
+- Added `tribol/common/Reductions.hpp` with `ReduceMax` and `ReduceSum` aliases accepting a Tribol `ExecutionMode`.
 - Nodal Energy Mortar selects penalty or Lagrange multiplier force calculation once at entry, with separate functions
   sharing field and weighted-Hessian assembly. The LM calculation no longer allocates an unused area-weight vector.
 - Pair functions accept gap callables directly, replacing the `CommonPlaneResidual`, `EnergyMortarPenalty`, and
@@ -137,10 +144,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   an effective scalar penalty or a fixed `PenaltyEnforcement`; their stiffness-combination template parameter and
   `RegisteredPenaltyInputs`/`RegisteredPenaltyEnforcement` readers were removed. Fixed penalties must be positive and
   finite, and no default stiffness is substituted for missing constants.
-- Replaced `MfemNodalAssembler` and `MfemNodalQuantityData` with `MfemFieldAssembler` and per-field `AssembledField`
-  results. The assembler accumulates any configured number of scalar nodal fields sharing one submesh space in one
-  batch kernel. Energy Mortar applies gap normalization and activation in the formulation and uses separate matrix-only
-  pair assembly for weighted coordinate Hessians. Scalar true-DOF transfer is provided by `MfemSubmeshData`.
+- Replaced `MfemNodalAssembler` and `MfemNodalQuantityData` with separate vector and matrix assemblers and per-field
+  `AssembledField` results. Scalar nodal fields sharing one submesh space can accumulate in one batch kernel.
+  Energy Mortar applies gap normalization and activation in the formulation and uses matrix assembly for weighted
+  coordinate Hessians. Scalar true-DOF transfer is provided by `MfemSubmeshData`.
 - Nodal penalty Energy Mortar uses `0.5*k*min(weighted_gap,0)^2/area` with consistent coordinate derivatives,
   including area coupling. This includes the one-half factor missing from the previous nodal penalty energy.
 - `ContactFormulation` now returns caller-owned results from `computeNodalGaps()` and `computeNodalForces()` instead
