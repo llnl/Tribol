@@ -5,12 +5,9 @@
 
 /** @file @brief Finite-difference checks for the composed Energy Mortar pair functions. */
 
-#include <type_traits>
-
 #include <gtest/gtest.h>
 
 #include "axom/slic/core/SimpleLogger.hpp"
-#include "FrozenPairQuadratureRuleGenerator.hpp"
 #include "tribol/geom/OffsetGap.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
@@ -27,7 +24,7 @@ constexpr RealT hessian_tolerance = 2.0e-5;       ///< Second-derivative compari
 /**
  * @brief Check one vector pair function and weighted contraction against coordinate differences.
  * @tparam Function Fixed-size Energy Mortar pair function.
- * @param function Pair function with varying or frozen quadrature.
+ * @param function Production pair function with geometry-dependent quadrature.
  * @param coordinates Current pair coordinates in Jacobian column order, away from overlap and activation transitions.
  * @param weights Output weights used for the Hessian contraction.
  */
@@ -71,7 +68,7 @@ void checkFiniteDifferences( const Function& function, const MdArray<RealT, Func
   }
 }
 
-/** @brief Check varying and frozen quadrature derivatives. @tparam NumPoints Gauss point count. */
+/** @brief Check derivatives using production quadrature generation. @tparam NumPoints Gauss point count. */
 template <int NumPoints>
 void checkRuleGenerator()
 {
@@ -83,23 +80,12 @@ void checkRuleGenerator()
   const EnergyMortarEnergy<RuleGenerator, Gap> energy{ rule_generator, 7.0, gap };
   const EnergyMortarNodalEnergy<RuleGenerator, Gap> nodal{ rule_generator, gap };
   const MdArray<RealT, decltype( energy )::num_coords> coordinates{ 0.0, 0.0, 2.0, 0.15, 1.7, 0.35, 0.3, 0.15 };
-  const auto check = [&]( const auto& selected_energy, const auto& selected_nodal ) {
-    using SelectedEnergy = std::remove_cvref_t<decltype( selected_energy )>;
-    using SelectedNodal = std::remove_cvref_t<decltype( selected_nodal )>;
-    checkFiniteDifferences( selected_energy, coordinates, MdArray<RealT, SelectedEnergy::num_values>{ 1.0 } );
-    checkFiniteDifferences( selected_nodal, coordinates,
-                            MdArray<RealT, SelectedNodal::num_values>{ 0.3, -0.2, 0.4, 0.1 } );
-  };
-
   SCOPED_TRACE( testing::Message() << "Gauss points: " << NumPoints );
-  check( energy, nodal );
-  using FrozenRuleGenerator = detail::FrozenPairQuadratureRuleGenerator<RuleGenerator>;
-  const FrozenRuleGenerator frozen_rule_generator{ rule_generator, coordinates.view() };
-  check( EnergyMortarEnergy<FrozenRuleGenerator, Gap>{ frozen_rule_generator, 7.0, gap },
-         EnergyMortarNodalEnergy<FrozenRuleGenerator, Gap>{ frozen_rule_generator, gap } );
+  checkFiniteDifferences( energy, coordinates, MdArray<RealT, decltype( energy )::num_values>{ 1.0 } );
+  checkFiniteDifferences( nodal, coordinates, MdArray<RealT, decltype( nodal )::num_values>{ 0.3, -0.2, 0.4, 0.1 } );
 }
 
-TEST( EnergyMortarFiniteDifference, varying_and_frozen_quadrature )
+TEST( EnergyMortarFiniteDifference, production_quadrature )
 {
   checkRuleGenerator<1>();
   checkRuleGenerator<2>();

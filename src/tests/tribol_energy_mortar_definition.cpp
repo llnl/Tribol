@@ -6,21 +6,22 @@
 /**
  * @file
  * @brief Check direct Energy Mortar energies, nodal integrals, and explicit field partials on enabled backends.
- * Host Enzyme checks compare the new pair definitions with finite differences for each Gauss count and derivative
- * mode. The energy kernel checks active, open, zero-gap, and invalid pairs on every enabled backend, including the
- * compressive zero-gap Hessian. A pair with distinct geometry types and unequal coordinate counts checks that AD
- * includes nonlinear quantities cached during geometry construction. Forward AD checks values and quadrature state
- * without an extra value evaluation. Compile-time checks accept the supported pair interfaces and reject invalid sizes,
- * results, and coordinate splits. Returned buffers retain the pair allocator and remain valid after the input pair list
- * is destroyed. Weighted Jacobian/Hessian kernels check reordered pairs with unequal weights. MFEM tests separately
- * check assembly and shared-node normalization.
+ * Host Enzyme checks compare production pair Jacobians and Hessians with finite differences for each Gauss rule. The
+ * energy kernel checks active, open, zero-gap, and invalid pairs on every enabled backend, including the compressive
+ * zero-gap Hessian. A pair with distinct geometry types and unequal coordinate counts checks that AD includes nonlinear
+ * quantities cached during geometry construction. Forward AD checks values and quadrature state without an extra value
+ * evaluation. Compile-time checks accept the supported pair interfaces and reject invalid sizes, results, and
+ * coordinate splits. Returned buffers retain the pair allocator and remain valid after the input pair list is
+ * destroyed. Weighted Jacobian/Hessian kernels check reordered pairs with unequal weights. MFEM tests separately check
+ * assembly and shared-node normalization.
  */
-#include <type_traits>
+
+#include <cmath>
+#include <stdexcept>
 
 #include "gtest/gtest.h"
 #include "axom/slic/core/SimpleLogger.hpp"
 #include "ExecutionTest.hpp"
-#include "FrozenPairQuadratureRuleGenerator.hpp"
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
@@ -630,7 +631,7 @@ TEST_P( EnergyMortarDefinitionTest, scalar_derivatives_reuse_ad_values_and_state
 /**
  * @brief Compare a weighted pair function's derivatives with directional coordinate differences.
  * @tparam Function Vector pair function with fixed output and coordinate counts.
- * @param function Fixed configuration, possibly holding a frozen reference rule.
+ * @param function Production pair function with fixed configuration.
  * @param coordinates Current oblique coordinates in Jacobian column order, away from activation and overlap switches.
  * @param weights Scalar contraction used for the gradient and Hessian check.
  */
@@ -677,7 +678,7 @@ void checkPairDerivatives( const Function& function, const MdArray<RealT, Functi
   }
 }
 
-/** @brief Check both pair definitions for varying and frozen quadrature. @tparam NumPoints Gauss point count. */
+/** @brief Check both pair definitions using production quadrature generation. @tparam NumPoints Gauss point count. */
 template <int NumPoints>
 void checkRuleDerivatives()
 {
@@ -689,31 +690,15 @@ void checkRuleDerivatives()
   const EnergyMortarEnergy<RuleGenerator, Gap> energy{ rule_generator, 7.0, gap };
   const EnergyMortarNodalEnergy<RuleGenerator, Gap> nodal{ rule_generator, gap };
   const MdArray<RealT, decltype( energy )::num_coords> coordinates{ 0.0, 0.0, 2.0, 0.15, 1.7, 0.35, 0.3, 0.15 };
-  const auto check = [&]( const auto& selected_energy, const auto& selected_nodal ) {
-    using SelectedEnergy = std::remove_cvref_t<decltype( selected_energy )>;
-    using SelectedNodal = std::remove_cvref_t<decltype( selected_nodal )>;
-    ASSERT_EQ(
-        selected_nodal
-            .evaluate( { coordinates.data(), SelectedNodal::num_geom1_coords },
-                       { coordinates.data() + SelectedNodal::num_geom1_coords, SelectedNodal::num_geom2_coords } )
-            .quadrature_result.status,
-        QuadratureStatus::Success );
-    checkPairDerivatives( selected_energy, coordinates, MdArray<RealT, SelectedEnergy::num_values>{ 1.0 } );
-    checkPairDerivatives( selected_nodal, coordinates,
-                          MdArray<RealT, SelectedNodal::num_values>{ 0.3, -0.2, 0.4, 0.1 } );
-  };
   SCOPED_TRACE( testing::Message() << "points=" << NumPoints );
-  {
-    SCOPED_TRACE( "varying quadrature" );
-    check( energy, nodal );
-  }
-  {
-    SCOPED_TRACE( "frozen quadrature" );
-    using FrozenRuleGenerator = detail::FrozenPairQuadratureRuleGenerator<RuleGenerator>;
-    const FrozenRuleGenerator frozen_rule_generator{ rule_generator, coordinates.view() };
-    check( EnergyMortarEnergy<FrozenRuleGenerator, Gap>{ frozen_rule_generator, 7.0, gap },
-           EnergyMortarNodalEnergy<FrozenRuleGenerator, Gap>{ frozen_rule_generator, gap } );
-  }
+  ASSERT_EQ(
+      nodal
+          .evaluate( { coordinates.data(), decltype( nodal )::num_geom1_coords },
+                     { coordinates.data() + decltype( nodal )::num_geom1_coords, decltype( nodal )::num_geom2_coords } )
+          .quadrature_result.status,
+      QuadratureStatus::Success );
+  checkPairDerivatives( energy, coordinates, MdArray<RealT, decltype( energy )::num_values>{ 1.0 } );
+  checkPairDerivatives( nodal, coordinates, MdArray<RealT, decltype( nodal )::num_values>{ 0.3, -0.2, 0.4, 0.1 } );
 }
 
 // Perturbing every coordinate changes lengths and normals as well as overlap bounds for all supported rules.

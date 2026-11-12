@@ -165,8 +165,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   `EnergyMortarNodal` configuration wrappers. Nodal field partials are calculated by
   `EnergyMortarNodalPartials::evaluate()` without a gap template parameter. Common Plane and Energy Mortar formulations
   retain their configured pair functions instead of reconstructing them for each calculation.
-- Moved Energy Mortar's frozen-quadrature derivative support into a shared test helper and removed the
-  `withFrozenQuadrature()` and scalar `energy()` methods. Pair calculations use `evaluate()` and `values()` directly.
+- Removed the `withFrozenQuadrature()` and scalar `energy()` methods. Pair calculations use `evaluate()` directly.
+  Energy Mortar derivative tests use production quadrature generation.
 - Removed the test-only `computeCommonPlaneResidual()`, `computeCommonPlanePair()`, and `CommonPlanePairData` interfaces
   from the production header. Pair tests construct `CommonPlanePairFunction` and use the generic Enzyme derivatives.
 - Composed Common Plane clips crossing edges to their geometric interpenetrating overlap before generating quadrature
@@ -234,8 +234,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   calculations; invalid geometry is not treated as a valid zero-point rule.
 - Energy Mortar pair functions own their configured pair rules and fixed gap settings. The mapping owns smoothing
   settings; refined search leaves overlap determination to quadrature generation.
-  `ContactParams` no longer carries a runtime quadrature count or smoothing length. Frozen integration-surface
-  quadrature points are mapped to both current elements, preserving the varying and frozen derivative modes.
+  `ContactParams` no longer carries a runtime quadrature count or smoothing length. Each calculation generates
+  quadrature from the current geometry and maps the points to both elements.
   Pair evaluation, field scatter, element-block packing, and scalar reduction are device-callable.
 - Energy Mortar calculates straight-edge normal gaps from the corresponding element points. Very short nondegenerate mortar
   edges retain their normal gap instead of depending on a line-intersection tolerance. The calculator's unused

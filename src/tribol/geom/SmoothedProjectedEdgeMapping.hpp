@@ -70,7 +70,7 @@ struct SmoothedProjectedEdgeMapping {
   /**
    * @brief Map integration-surface quadrature points onto both current elements and scale their weights.
    *
-   * No overlap search is repeated. This also maps frozen edge1 parent points while geometry changes. Co-oriented
+   * No overlap search is repeated. Supplied edge1 parent points are mapped using the current geometry. Co-oriented
    * current geometry contributes zero points even when the supplied integration-surface quadrature is nonempty.
    * @param edge1 Current non-mortar integration edge.
    * @param edge2 Current mortar projection edge.

@@ -140,8 +140,7 @@ struct IntegrationSurfaceRuleView {
 };
 
 /**
- * @brief Own fixed-capacity integration-surface quadrature points and weights that can remain frozen as geometry
- * changes.
+ * @brief Own fixed-capacity integration-surface quadrature points and weights.
  *
  * Views refer to this object's arrays and must not outlive it.
  *
