@@ -27,7 +27,7 @@ MfemVectorAssembler::MfemVectorAssembler( MfemVectorSpace space, std::vector<Mfe
     if ( nodes > ( max_size - block.offset ) / components ) {
       throw std::length_error( "Vector input extent exceeds the supported index range." );
     }
-    value_count_ = std::max( value_count_, block.offset + nodes * components );
+    value_ct_ = std::max( value_ct_, block.offset + nodes * components );
   }
   redecomp_values_.SetSpace( const_cast<mfem::FiniteElementSpace*>( &space_.redecomp_fes ) );
   redecomp_values_ = 0.0;
@@ -35,7 +35,7 @@ MfemVectorAssembler::MfemVectorAssembler( MfemVectorSpace space, std::vector<Mfe
 
 void MfemVectorAssembler::addPair( InterfacePair pair, ArrayViewT<const RealT> values )
 {
-  if ( values.size() != value_count_ ) {
+  if ( values.size() != value_ct_ ) {
     throw std::invalid_argument( "Vector input size does not match the configured extent." );
   }
   addPairFromReader( pair, [=]( IndexT row ) { return values[row]; } );

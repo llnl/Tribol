@@ -37,15 +37,15 @@ struct MfemVectorBlock {
 
 /**
  * @brief Device-copyable view for scalar or vector nodal accumulation.
- * @tparam BlockCount Configured geometry blocks per pair.
+ * @tparam BlockCt Configured geometry blocks per pair.
  */
-template <IndexT BlockCount>
+template <IndexT BlockCt>
 struct MfemVectorAssemblyView {
-  MdArray<MfemVectorBlock, BlockCount> blocks;  ///< Geometry selection and nodal connectivity views.
-  RealT* values;                                ///< Writable Redecomp vector.
-  int components;                               ///< Entries per node in the vector's FE space.
-  IndexT node_stride;                           ///< Redecomp-vector stride between scalar nodal DOFs.
-  IndexT component_stride;                      ///< Redecomp-vector stride between components of one node.
+  MdArray<MfemVectorBlock, BlockCt> blocks;  ///< Geometry selection and nodal connectivity views.
+  RealT* values;                             ///< Writable Redecomp vector.
+  int components;                            ///< Entries per node in the vector's FE space.
+  IndexT node_stride;                        ///< Redecomp-vector stride between scalar nodal DOFs.
+  IndexT component_stride;                   ///< Redecomp-vector stride between components of one node.
 
   /**
    * @brief Add one pair's entries using atomic additions at shared nodal DOFs.
@@ -61,7 +61,7 @@ struct MfemVectorAssemblyView {
                                    Indices... indices ) const
   {
     const MdArray<IndexT, 2> elements{ pair.element_id1_, pair.element_id2_ };
-    for ( IndexT block = 0; block < BlockCount; ++block ) {
+    for ( IndexT block = 0; block < BlockCt; ++block ) {
       const auto layout = blocks[block];
       for ( IndexT node = 0; node < layout.connectivity.shape()[1]; ++node ) {
         const IndexT dof = layout.connectivity( elements[layout.geometry], node );
@@ -95,7 +95,7 @@ class MfemVectorAssembler {
   MfemVectorAssembler( MfemVectorSpace space, std::vector<MfemVectorBlock> blocks );
 
   /** @brief Return the required input extent. @return Scalar entry count, including configured block offsets. */
-  IndexT valueCount() const { return value_count_; }
+  IndexT valueCt() const { return value_ct_; }
 
   /**
    * @brief Add one host pair's entries without retaining its input storage.
@@ -131,29 +131,29 @@ class MfemVectorAssembler {
 
   /**
    * @brief Return a writable view for composing pair kernels with other vector or matrix views.
-   * @tparam BlockCount Configured geometry blocks per pair.
+   * @tparam BlockCt Configured geometry blocks per pair.
    * @tparam Exec Concrete execution mode using the view.
    * @return View into this vector and the supplied connectivity. Keep both alive until the kernel finishes;
    * do not request another memory space while a kernel is using the view.
-   * @throws std::invalid_argument BlockCount does not match the configuration.
+   * @throws std::invalid_argument BlockCt does not match the configuration.
    */
-  template <ExecutionMode Exec, IndexT BlockCount>
-  MfemVectorAssemblyView<BlockCount> view()
+  template <ExecutionMode Exec, IndexT BlockCt>
+  MfemVectorAssemblyView<BlockCt> view()
   {
-    static_assert( BlockCount > 0 );
-    if ( blocks_.size() != static_cast<std::size_t>( BlockCount ) ) {
+    static_assert( BlockCt > 0 );
+    if ( blocks_.size() != static_cast<std::size_t>( BlockCt ) ) {
       throw std::invalid_argument( "Vector view block count does not match its configuration." );
     }
     const bool use_device = isOnDevice( Exec );
     redecomp_values_.UseDevice( use_device );
     const int components = space_.redecomp_fes.GetVDim();
     const bool by_nodes = space_.redecomp_fes.GetOrdering() == mfem::Ordering::byNODES;
-    MfemVectorAssemblyView<BlockCount> result{ {},
-                                               redecomp_values_.ReadWrite( use_device ),
-                                               components,
-                                               by_nodes ? 1 : components,
-                                               by_nodes ? space_.redecomp_fes.GetNDofs() : 1 };
-    for ( IndexT block = 0; block < BlockCount; ++block ) {
+    MfemVectorAssemblyView<BlockCt> result{ {},
+                                            redecomp_values_.ReadWrite( use_device ),
+                                            components,
+                                            by_nodes ? 1 : components,
+                                            by_nodes ? space_.redecomp_fes.GetNDofs() : 1 };
+    for ( IndexT block = 0; block < BlockCt; ++block ) {
       result.blocks[block] = blocks_[block];
     }
     return result;
@@ -161,20 +161,20 @@ class MfemVectorAssembler {
 
   /**
    * @brief Accumulate a batch of pair entries in the selected execution space.
-   * @tparam ValueCount Input scalar entry count. @tparam BlockCount Geometry blocks per pair.
+   * @tparam ValueCt Input scalar entry count. @tparam BlockCt Geometry blocks per pair.
    * @tparam ValueReader Device-callable `(pair, row) -> RealT` reader.
    * @tparam Exec Concrete execution mode.
    * @param pairs Supplied execution-accessible pairs.
    * @param read_value Input reader in node/component order.
    * @throws std::invalid_argument Template counts do not match the configuration; nothing is added.
    */
-  template <ExecutionMode Exec, IndexT ValueCount, IndexT BlockCount, typename ValueReader>
+  template <ExecutionMode Exec, IndexT ValueCt, IndexT BlockCt, typename ValueReader>
   void addPairs( const ArrayT<InterfacePair>& pairs, ValueReader read_value )
   {
-    if ( ValueCount != value_count_ ) {
+    if ( ValueCt != value_ct_ ) {
       throw std::invalid_argument( "Vector input count does not match its configured blocks." );
     }
-    const auto vector_view = view<Exec, BlockCount>();
+    const auto vector_view = view<Exec, BlockCt>();
     const auto pairs_view = pairs.view();
     forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
       vector_view.addPair( pair, pairs_view[pair], read_value );
@@ -191,7 +191,7 @@ class MfemVectorAssembler {
  private:
   MfemVectorSpace space_;                ///< FE-space references and the host transfer operation.
   std::vector<MfemVectorBlock> blocks_;  ///< Geometry layout with nodal connectivity views.
-  IndexT value_count_ = 0;               ///< Input extent including block offsets.
+  IndexT value_ct_ = 0;                  ///< Input extent including block offsets.
   mfem::GridFunction redecomp_values_;   ///< Owned accumulated entries.
 };
 

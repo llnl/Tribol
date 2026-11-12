@@ -101,8 +101,8 @@ class MfemVectorAssemblerTest : public testing::Test {
   ArrayT<InterfacePair> pairs()
   {
     const auto mesh1 = scheme().getMesh1().getView(), mesh2 = scheme().getMesh2().getView();
-    const IndexT count = mesh1.numberOfElements() * mesh2.numberOfElements();
-    ArrayT<InterfacePair> result( count, count, mesh1.getAllocatorId() );
+    const IndexT ct = mesh1.numberOfElements() * mesh2.numberOfElements();
+    ArrayT<InterfacePair> result( ct, ct, mesh1.getAllocatorId() );
     IndexT index = 0;
     for ( IndexT element1 = 0; element1 < mesh1.numberOfElements(); ++element1 ) {
       for ( IndexT element2 = 0; element2 < mesh2.numberOfElements(); ++element2 ) {
@@ -123,13 +123,13 @@ class TestNodalAssembly {
  public:
   /** @brief Configure independent components for each field. @param data Displacement transfers.
    * @param dual Scalar transfers. @param jacobian Matrix transfers. @param mesh1 Field geometry.
-   * @param mesh2 Second coordinate geometry. @param field_count Independent fields. @param capacity Expected pairs. */
+   * @param mesh2 Second coordinate geometry. @param field_ct Independent fields. @param capacity Expected pairs. */
   TestNodalAssembly( const MfemMeshData& data, const MfemSubmeshData& dual, const MfemJacobianData& jacobian,
-                     MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT field_count, IndexT capacity )
+                     MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT field_ct, IndexT capacity )
   {
-    vectors_.reserve( field_count );
-    matrices_.reserve( field_count );
-    for ( IndexT field = 0; field < field_count; ++field ) {
+    vectors_.reserve( field_ct );
+    matrices_.reserve( field_ct );
+    for ( IndexT field = 0; field < field_ct; ++field ) {
       vectors_.push_back( detail::makeNodalVectorAssembler( dual, mesh1 ) );
       matrices_.push_back( detail::makeNodalCoordinateMatrixAssembler( data, dual, jacobian, mesh1, mesh2, capacity ) );
     }
@@ -182,7 +182,7 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
 
   // Every edge is paired with every edge on the other surface. Count each element's column contribution once;
   // each row element then receives its own column contribution once per opposite element plus that surface's sum.
-  MdArray<int, pair_size> local_counts{}, counts{};
+  MdArray<int, pair_size> local_cts{}, cts{};
   MdArray<RealT, pair_size> local_column_sums{}, column_sums{};
   for ( int boundary = 0; boundary < mesh_->GetNBE(); ++boundary ) {
     const int attribute = mesh_->GetBdrAttribute( boundary );
@@ -190,7 +190,7 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
       continue;
     }
     const int side = attribute == 3 ? 0 : 1;
-    ++local_counts[side];
+    ++local_cts[side];
     mfem::Array<int> nodes;
     fes_->GetBdrElementDofs( boundary, nodes );
     for ( const int node : nodes ) {
@@ -201,7 +201,7 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
       }
     }
   }
-  MPI_Allreduce( local_counts.data(), counts.data(), pair_size, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
+  MPI_Allreduce( local_cts.data(), cts.data(), pair_size, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
   MPI_Allreduce( local_column_sums.data(), column_sums.data(), pair_size, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
   mfem::ParLinearForm expected_residual( fes_.get() ), expected_action( fes_.get() );
   expected_residual = 0.0;
@@ -222,13 +222,13 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
         element_column_sum += columnValue( x, y, component ) * direction[fes_->DofToVDof( node, component )];
       }
     }
-    const RealT pair_column_sum = counts[1 - side] * element_column_sum + column_sums[1 - side];
+    const RealT pair_column_sum = cts[1 - side] * element_column_sum + column_sums[1 - side];
     for ( const int node : nodes ) {
       const RealT x = ( *coords_ )[fes_->DofToVDof( node, 0 )];
       const RealT y = ( *coords_ )[fes_->DofToVDof( node, 1 )];
       for ( int component = 0; component < dimension; ++component ) {
         const int dof = fes_->DofToVDof( node, component );
-        expected_residual[dof] += rowValue( x, y, component ) * counts[1 - side];
+        expected_residual[dof] += rowValue( x, y, component ) * cts[1 - side];
         expected_action[dof] += rowValue( x, y, component ) * pair_column_sum;
       }
     }
@@ -240,10 +240,10 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
   const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
   ContactFormulationResult result;
   {
-    const IndexT pair_count = mesh1.numberOfElements() * mesh2.numberOfElements();
+    const IndexT pair_ct = mesh1.numberOfElements() * mesh2.numberOfElements();
     auto assembler = detail::makeDisplacementVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
     auto matrix = detail::makeCoordinateMatrixAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2,
-                                                         pair_count );
+                                                         pair_ct );
     MdArray<RealT, pair_dofs> residual{}, columns{};
     MdArray<RealT, pair_dofs, pair_dofs> jacobian{};
     for ( IndexT element1 = 0; element1 < mesh1.numberOfElements(); ++element1 ) {
@@ -337,19 +337,19 @@ TEST_F( MfemVectorAssemblerTest, assembles_scalar_fields_and_dual_transfers )
   mfem::Vector wrong_size( dual_fes.GetTrueVSize() + 1 );
   EXPECT_THROW( dual_data.TransferTrueDofsToRedecomp( wrong_size ), std::invalid_argument );
 
-  constexpr IndexT field_count = 3;
-  const MdArray<RealT, field_count> factors{ 1.0, -2.0, 3.0 };
+  constexpr IndexT field_ct = 3;
+  const MdArray<RealT, field_ct> factors{ 1.0, -2.0, 3.0 };
   const auto pair_list = pairs();
   const int local_pairs = pair_list.size();
   int global_pairs = 0;
   MPI_Allreduce( &local_pairs, &global_pairs, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
   std::vector<AssembledField> result;
   {
-    TestNodalAssembly assembler( *cs.getMfemMeshData(), dual_data, *cs.getMfemJacobianData(), mesh1, mesh2, field_count,
+    TestNodalAssembly assembler( *cs.getMfemMeshData(), dual_data, *cs.getMfemJacobianData(), mesh1, mesh2, field_ct,
                                  pair_list.size() );
-    MdArray<RealT, field_count, nodes_per_edge> values{};
-    MdArray<RealT, field_count, nodes_per_edge, pair_dofs> gradients{};
-    for ( IndexT field_index = 0; field_index < field_count; ++field_index ) {
+    MdArray<RealT, field_ct, nodes_per_edge> values{};
+    MdArray<RealT, field_ct, nodes_per_edge, pair_dofs> gradients{};
+    for ( IndexT field_index = 0; field_index < field_ct; ++field_index ) {
       for ( IndexT node = 0; node < nodes_per_edge; ++node ) {
         values( field_index, node ) = factors[field_index] * ( node + 1.0 );
         for ( IndexT column = 0; column < pair_dofs; ++column ) {
@@ -358,20 +358,20 @@ TEST_F( MfemVectorAssemblerTest, assembles_scalar_fields_and_dual_transfers )
       }
     }
     for ( const auto pair : pair_list ) {
-      assembler.addPair( pair, { values.data(), { field_count, nodes_per_edge } },
-                         { gradients.data(), { field_count, nodes_per_edge, pair_dofs } } );
+      assembler.addPair( pair, { values.data(), { field_ct, nodes_per_edge } },
+                         { gradients.data(), { field_ct, nodes_per_edge, pair_dofs } } );
     }
     values[0] = 0.0;
     gradients[0] = 0.0;
     result = assembler.assemble();
   }
-  ASSERT_EQ( result.size(), field_count );
+  ASSERT_EQ( result.size(), field_ct );
   mfem::Vector direction( fes_->GetTrueVSize() ), action( dual_fes.GetTrueVSize() );
   direction = 1.0;
   // Local node weights sum to three, and the coordinate-column weights sum to 8*9/2.
   constexpr RealT node_weight_sum = 3.0;
   constexpr RealT column_weight_sum = pair_dofs * ( pair_dofs + 1 ) / 2.0;
-  for ( IndexT field_index = 0; field_index < field_count; ++field_index ) {
+  for ( IndexT field_index = 0; field_index < field_ct; ++field_index ) {
     SCOPED_TRACE( field_index );
     const RealT local_sum = result[field_index].values.get().Sum();
     RealT global_sum = 0.0;
@@ -612,17 +612,17 @@ TEST_P( MfemBatchAssemblerTest, accumulates_scalar_fields_and_gradients_across_b
     auto& cs = scheme();
     const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
     const auto pair_list = pairs();
-    constexpr IndexT field_count = 3;
+    constexpr IndexT field_ct = 3;
     TestNodalAssembly reference( *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), mesh1,
-                                 mesh2, field_count, 0 );
+                                 mesh2, field_ct, 0 );
     TestNodalAssembly batched( *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), mesh1, mesh2,
-                               field_count, 0 );
+                               field_ct, 0 );
     const ArrayT<InterfacePair> empty( 0, 0, pair_list.getAllocatorID() );
     for ( int batch = 0; batch < 3; ++batch ) {
       const RealT scale = batch + 1.0;
-      MdArray<RealT, field_count, nodes_per_edge> values{};
-      MdArray<RealT, field_count, nodes_per_edge, pair_dofs> gradients{};
-      for ( IndexT field = 0; field < field_count; ++field ) {
+      MdArray<RealT, field_ct, nodes_per_edge> values{};
+      MdArray<RealT, field_ct, nodes_per_edge, pair_dofs> gradients{};
+      for ( IndexT field = 0; field < field_ct; ++field ) {
         for ( IndexT node = 0; node < nodes_per_edge; ++node ) {
           values( field, node ) = scale * ( field + 1.0 ) * ( node + 1.0 );
           for ( IndexT column = 0; column < pair_dofs; ++column ) {
@@ -631,11 +631,11 @@ TEST_P( MfemBatchAssemblerTest, accumulates_scalar_fields_and_gradients_across_b
         }
       }
       for ( const auto pair : pair_list ) {
-        reference.addPair( pair, { values.data(), { field_count, nodes_per_edge } },
-                           { gradients.data(), { field_count, nodes_per_edge, pair_dofs } } );
+        reference.addPair( pair, { values.data(), { field_ct, nodes_per_edge } },
+                           { gradients.data(), { field_ct, nodes_per_edge, pair_dofs } } );
         if ( batch == 0 ) {
-          batched.addPair( pair, { values.data(), { field_count, nodes_per_edge } },
-                           { gradients.data(), { field_count, nodes_per_edge, pair_dofs } } );
+          batched.addPair( pair, { values.data(), { field_ct, nodes_per_edge } },
+                           { gradients.data(), { field_ct, nodes_per_edge, pair_dofs } } );
         }
       }
       if ( batch != 0 ) {
@@ -645,18 +645,18 @@ TEST_P( MfemBatchAssemblerTest, accumulates_scalar_fields_and_gradients_across_b
         const auto read_gradient = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node, IndexT column ) {
           return scale * ( field + 1.0 ) * ( node + 1.0 ) * ( column + 2.0 );
         };
-        batched.addPairs<Exec, field_count, nodes_per_edge, pair_dofs>( empty, read_value, read_gradient );
-        batched.addPairs<Exec, field_count, nodes_per_edge, pair_dofs>( pair_list, read_value, read_gradient );
+        batched.addPairs<Exec, field_ct, nodes_per_edge, pair_dofs>( empty, read_value, read_gradient );
+        batched.addPairs<Exec, field_ct, nodes_per_edge, pair_dofs>( pair_list, read_value, read_gradient );
       }
     }
     const auto expected = reference.assemble();
     const auto result = batched.assemble();
-    ASSERT_EQ( result.size(), field_count );
+    ASSERT_EQ( result.size(), field_ct );
     mfem::Vector direction( fes_->GetTrueVSize() );
     direction = 1.0;
     const int dual_size = cs.getMfemSubmeshData()->GetSubmeshFESpace().GetTrueVSize();
     mfem::Vector expected_action( dual_size ), action( dual_size );
-    for ( IndexT field = 0; field < field_count; ++field ) {
+    for ( IndexT field = 0; field < field_ct; ++field ) {
       SCOPED_TRACE( field );
       EXPECT_GT( norm( expected[field].values.get() ), 0.0 );
       auto error = result[field].values.get();

@@ -30,10 +30,13 @@ namespace tribol {
 template <typename BaseRuleGenerator, typename GapDefinition = CommonPlaneGap>
 class CommonPlanePairFunction {
  public:
-  static constexpr IndexT first_dofs = LinearEdgeGeometry::Coords::size();  ///< First edge coordinate count.
-  static constexpr IndexT dof_count = 2 * first_dofs;                       ///< Pair coordinate count.
-  static constexpr IndexT value_count = dof_count;                          ///< Residual entry count.
-  using PrimalResult = PairResidualValue<dof_count>;                        ///< Residual and quadrature state.
+  using FirstGeometry = LinearEdgeGeometry;                                 ///< Geometry of the first directed edge.
+  using SecondGeometry = LinearEdgeGeometry;                                ///< Geometry of the second directed edge.
+  static constexpr IndexT geom1_coord_ct = FirstGeometry::Coords::size();   ///< Geometry1 coordinate count.
+  static constexpr IndexT geom2_coord_ct = SecondGeometry::Coords::size();  ///< Geometry2 coordinate count.
+  static constexpr IndexT coord_ct = geom1_coord_ct + geom2_coord_ct;       ///< Combined coordinate count.
+  static constexpr IndexT value_ct = coord_ct;                              ///< Residual entry count.
+  using PrimalResult = PairResidualValue<coord_ct>;                         ///< Residual and quadrature state.
 
   /** @brief Store fixed configuration. @param rule_generator Pair quadrature rule generator. @param penalty Stiffness.
    * @param gap Gap callable.
@@ -45,11 +48,11 @@ class CommonPlanePairFunction {
   {
   }
 
-  /** @brief Evaluate one pair residual. @param coordinates Current pair coordinates. @return Residual and status. */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PrimalResult evaluate( MdSpan<const RealT, dof_count> coordinates ) const
+  /** @brief Evaluate one pair residual. @param geometry1 First current edge. @param geometry2 Second current edge.
+   * @return Residual and status; failed, empty, and open pairs return zero residual and inactive state. */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PrimalResult evaluate( const FirstGeometry& geometry1,
+                                                                 const SecondGeometry& geometry2 ) const
   {
-    const LinearEdgeGeometry geometry1( { coordinates.data(), first_dofs } );
-    const LinearEdgeGeometry geometry2( { coordinates.data() + first_dofs, first_dofs } );
     const auto points = rule_generator_.generate( geometry1, geometry2 );
     PrimalResult result{ {}, points.result, false };
     if ( points.result.status != QuadratureStatus::Success || points.result.required_point_count == 0 ) {
@@ -81,7 +84,7 @@ class CommonPlanePairFunction {
           const IndexT row = node * LinearEdgeGeometry::spatial_dimension + component;
           const RealT traction = points.weights[point] * pressure * line.normal[component];
           result.residual[row] += basis1[node] * traction;
-          result.residual[first_dofs + row] -= basis2[node] * traction;
+          result.residual[geom1_coord_ct + row] -= basis2[node] * traction;
         }
       }
     }

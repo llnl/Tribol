@@ -21,15 +21,15 @@ class GlobalScalarAssembler {
    * @brief Sum local contributions and then sum the local result over an MPI communicator.
    * @tparam Reader Device-callable `(IndexT) -> RealT` contribution reader.
    * @tparam Exec Concrete execution mode for the local reduction.
-   * @param contribution_count Number of local contributions.
+   * @param contribution_ct Number of local contributions.
    * @param reader Scalar contribution reader.
    * @param communicator Communicator over which local sums are combined.
    * @return Global scalar sum.
    */
   template <ExecutionMode Exec, typename Reader>
-  static RealT sum( IndexT contribution_count, Reader reader, MPI_Comm communicator )
+  static RealT sum( IndexT contribution_ct, Reader reader, MPI_Comm communicator )
   {
-    const RealT local_sum = localSum<Exec>( contribution_count, reader );
+    const RealT local_sum = localSum<Exec>( contribution_ct, reader );
     RealT global_sum = 0.0;
     MPI_Allreduce( &local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM, communicator );
     return global_sum;
@@ -40,15 +40,15 @@ class GlobalScalarAssembler {
    * @brief Reduce local contributions with a compile-time execution policy.
    * @tparam Exec Concrete execution policy.
    * @tparam Reader Device-callable scalar contribution reader.
-   * @param contribution_count Number of local contributions.
+   * @param contribution_ct Number of local contributions.
    * @param reader Scalar contribution reader.
    * @return Local scalar sum copied from the backend reduction object.
    */
   template <ExecutionMode Exec, typename Reader>
-  static RealT localSum( IndexT contribution_count, Reader reader )
+  static RealT localSum( IndexT contribution_ct, Reader reader )
   {
     ReduceSum<Exec, RealT> sum( 0.0 );
-    forAllExec<Exec>( contribution_count,
+    forAllExec<Exec>( contribution_ct,
                       [=] TRIBOL_HOST_DEVICE( IndexT contribution ) { sum += reader( contribution ); } );
     return sum.get();
   }

@@ -29,8 +29,9 @@ using Coordinates = MdArray<RealT, LinearEdgeGeometry::vertex_count, LinearEdgeG
 // Common Plane exposes the same values and quadrature state required by the shared pair derivative calculations.
 static_assert( PairFunctionType<CommonPlanePairFunction<EdgeQuadratureRuleGenerator<1>>> );
 
+#ifdef TRIBOL_USE_ENZYME
 /**
- * @brief Copy two edge-coordinate arrays into the pair function's input order.
+ * @brief Copy two edge-coordinate arrays into the coordinate adapter's input order.
  * @param coordinates1 First edge's vertex coordinates.
  * @param coordinates2 Second edge's vertex coordinates.
  * @return Owned coordinates ordered by edge, vertex, and component.
@@ -46,11 +47,13 @@ TRIBOL_HOST_DEVICE MdArray<RealT, 2 * Coordinates::size()> packPairCoordinates(
   return coordinates;
 }
 
+#endif
+
 /** @brief Execute local geometry and residual calculations using backend-accessible storage. */
 class CommonPlaneTest : public tribol::detail::ExecutionTest {
  protected:
-  /** @brief Check exact parallel-edge loads and activation. @tparam Count Gauss point count. */
-  template <int Count>
+  /** @brief Check exact parallel-edge loads and activation. @tparam Ct Gauss point count. */
+  template <int Ct>
   void checkParallelResiduals()
   {
     struct Case {
@@ -69,16 +72,16 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
       forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
         const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
         const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, test.separation }, MdArray<RealT, 2>{ 0.0, test.separation } };
-        const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<Count>> rule_generator;
-        const CommonPlanePairFunction<EdgeQuadratureRuleGenerator<Count>, OffsetGap<CommonPlaneGap>> function{
+        const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<Ct>> rule_generator;
+        const CommonPlanePairFunction<EdgeQuadratureRuleGenerator<Ct>, OffsetGap<CommonPlaneGap>> function{
             rule_generator, ComputePenaltyStiffnessPerArea( 2.0, 6.0 ),
             OffsetGap{ CommonPlaneGap{}, test.residual_gap } };
-        const auto coordinates = packPairCoordinates( edge1.view(), edge2.view() );
-        output[0] = function.evaluate( coordinates.view() );
+        const LinearEdgeGeometry geometry1( edge1.view() ), geometry2( edge2.view() );
+        output[0] = function.evaluate( geometry1, geometry2 );
       } );
       const ArrayT<PairResidualValue<2 * Coordinates::size()>, 1, MemorySpace::Host> host( results );
       ASSERT_EQ( host[0].quadrature_result.status, QuadratureStatus::Success );
-      EXPECT_EQ( host[0].quadrature_result.required_point_count, Count );
+      EXPECT_EQ( host[0].quadrature_result.required_point_count, Ct );
       EXPECT_EQ( host[0].has_active_points, test.active );
       for ( int node = 0; node < BasisFunction<EDGE, LINEAR_LAGRANGE>::node_count; ++node ) {
         EXPECT_NEAR( host[0].residual[2 * node], 0.0, tolerance );
@@ -89,8 +92,8 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
     }
   }
 
-  /** @brief Check partial overlap, reverse mapping, and physical line measure. @tparam Count Gauss point count. */
-  template <int Count>
+  /** @brief Check partial overlap, reverse mapping, and physical line measure. @tparam Ct Gauss point count. */
+  template <int Ct>
   void checkQuadrature()
   {
     enum Column
@@ -100,18 +103,18 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
       Weight,
       Point1X,
       Point2X,
-      ColumnCount
+      ColumnCt
     };
-    ArrayT<RealT, 2> records( axom::StackArray<axom::IndexType, 2>{ Count, ColumnCount }, allocatorId() );
+    ArrayT<RealT, 2> records( axom::StackArray<axom::IndexType, 2>{ Ct, ColumnCt }, allocatorId() );
     const auto output = records.view();
     forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
       const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } };
       const Coordinates edge2{ MdArray<RealT, 2>{ 3.0, 0.2 }, MdArray<RealT, 2>{ 1.0, 0.2 } };
       const LinearEdgeGeometry geometry1( edge1.view() ), geometry2( edge2.view() );
-      const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<Count>> rule_generator;
+      const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<Ct>> rule_generator;
       const auto generated = rule_generator.generate( geometry1, geometry2 );
       const auto points = generated.getView();
-      for ( int q = 0; q < Count; ++q ) {
+      for ( int q = 0; q < Ct; ++q ) {
         output( q, Parent1 ) = points.geometry1_coords( q, 0 );
         output( q, Parent2 ) = points.geometry2_coords( q, 0 );
         output( q, Weight ) = points.weights[q];
@@ -121,7 +124,7 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
     } );
     const ArrayT<RealT, 2, MemorySpace::Host> values( records );
     RealT measure = 0.0, second_moment = 0.0;
-    for ( int q = 0; q < Count; ++q ) {
+    for ( int q = 0; q < Ct; ++q ) {
       EXPECT_GE( values( q, Parent1 ), -0.5 );
       EXPECT_LE( values( q, Parent1 ), 0.5 );
       EXPECT_NEAR( values( q, Point1X ), values( q, Point2X ), tolerance );
@@ -131,13 +134,13 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
       second_moment += values( q, Weight ) * values( q, Point1X ) * values( q, Point1X );
     }
     EXPECT_NEAR( measure, 2.0, tolerance );
-    if constexpr ( Count >= 2 ) {
+    if constexpr ( Ct >= 2 ) {
       EXPECT_NEAR( second_moment, 26.0 / 3.0, tolerance );
     }
   }
 
-  /** @brief Check crossing-edge intervals and centroid-pressure loads. @tparam Count Configured Gauss point count. */
-  template <int Count>
+  /** @brief Check crossing-edge intervals and centroid-pressure loads. @tparam Ct Configured Gauss point count. */
+  template <int Ct>
   void checkInterpenetratingOverlap()
   {
     struct Case {
@@ -156,13 +159,13 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
     struct Sample {
       EdgeQuadratureInterval interval;                      ///< Calculated geometric bounds.
       PairResidualValue<2 * Coordinates::size()> residual;  ///< Pair loads and quadrature status.
-      MdArray<RealT, Count> x1{};                           ///< Point positions on edge1.
-      MdArray<RealT, Count> x2{};                           ///< Point positions on edge2.
-      MdArray<RealT, Count> gaps{};                         ///< Unshifted point gaps.
-      MdArray<RealT, Count> weights{};                      ///< Physical line weights.
+      MdArray<RealT, Ct> x1{};                              ///< Point positions on edge1.
+      MdArray<RealT, Ct> x2{};                              ///< Point positions on edge2.
+      MdArray<RealT, Ct> gaps{};                            ///< Unshifted point gaps.
+      MdArray<RealT, Ct> weights{};                         ///< Physical line weights.
     };
     for ( const auto test : cases ) {
-      SCOPED_TRACE( testing::Message() << "points=" << Count << ", slope=" << test.slope << ", separation="
+      SCOPED_TRACE( testing::Message() << "points=" << Ct << ", slope=" << test.slope << ", separation="
                                        << test.separation << ", residual_gap=" << test.residual_gap );
       ArrayT<Sample> samples( 1, 1, allocatorId() );
       const auto output = samples.view();
@@ -171,15 +174,14 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
         const Coordinates edge2{ MdArray<RealT, 2>{ 1.0, test.separation - test.slope },
                                  MdArray<RealT, 2>{ -1.0, test.separation + test.slope } };
         const LinearEdgeGeometry geometry1( edge1.view() ), geometry2( edge2.view() );
-        const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<Count>> rule_generator;
+        const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<Ct>> rule_generator;
         const auto points = rule_generator.generate( geometry1, geometry2 );
         const auto line = CommonPlaneEdgeMapping::computeCommonPlaneLine( geometry1, geometry2 );
         output[0].interval = CommonPlaneEdgeMapping{}.makeIntegrationSurface( geometry1, geometry2 );
-        const CommonPlanePairFunction<EdgeQuadratureRuleGenerator<Count>, OffsetGap<CommonPlaneGap>> function{
+        const CommonPlanePairFunction<EdgeQuadratureRuleGenerator<Ct>, OffsetGap<CommonPlaneGap>> function{
             rule_generator, 1.0, OffsetGap{ CommonPlaneGap{}, test.residual_gap } };
-        const auto coordinates = packPairCoordinates( edge1.view(), edge2.view() );
-        output[0].residual = function.evaluate( coordinates.view() );
-        for ( int point = 0; point < Count; ++point ) {
+        output[0].residual = function.evaluate( geometry1, geometry2 );
+        for ( int point = 0; point < Ct; ++point ) {
           const auto point1 = geometry1.position( points.geometry1_coords( point, 0 ) );
           const auto point2 = geometry2.position( points.geometry2_coords( point, 0 ) );
           output[0].x1[point] = point1[0];
@@ -194,11 +196,11 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
       EXPECT_NEAR( sample.interval.bounds[0], test.lower, tolerance );
       EXPECT_NEAR( sample.interval.bounds[1], test.upper, tolerance );
       ASSERT_EQ( sample.residual.quadrature_result.status, QuadratureStatus::Success );
-      EXPECT_EQ( sample.residual.quadrature_result.required_point_count, Count );
+      EXPECT_EQ( sample.residual.quadrature_result.required_point_count, Ct );
       EXPECT_TRUE( sample.residual.has_active_points );
       RealT measure = 0.0;
       RealT first_moment = 0.0;
-      for ( int point = 0; point < Count; ++point ) {
+      for ( int point = 0; point < Ct; ++point ) {
         EXPECT_GT( sample.x1[point], test.lower );
         EXPECT_LT( sample.x1[point], test.upper );
         EXPECT_NEAR( sample.x1[point], sample.x2[point], tolerance );
@@ -247,8 +249,8 @@ TEST_P( CommonPlaneTest, balances_rotated_pair_forces_and_moments )
     const Coordinates edge2{ MdArray<RealT, 2>{ 3.8, 6.15 }, MdArray<RealT, 2>{ 0.8, 2.15 } };
     const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>> rule_generator;
     const CommonPlanePairFunction<EdgeQuadratureRuleGenerator<3>> function{ rule_generator, 2.0 };
-    const auto coordinates = packPairCoordinates( edge1.view(), edge2.view() );
-    const auto result = function.evaluate( coordinates.view() );
+    const LinearEdgeGeometry geometry1( edge1.view() ), geometry2( edge2.view() );
+    const auto result = function.evaluate( geometry1, geometry2 );
     for ( int i = 0; i < 2 * Coordinates::size(); ++i ) {
       output[i] = result.residual[i];
     }
@@ -279,10 +281,10 @@ TEST_P( CommonPlaneTest, reports_geometry_and_capacity_without_writing )
     Cooriented,
     Perpendicular,
     Overflow,
-    ResultCount
+    ResultCt
   };
   constexpr RealT unwritten = -7.0;
-  ArrayT<QuadratureResult> records( ResultCount, ResultCount, allocatorId() );
+  ArrayT<QuadratureResult> records( ResultCt, ResultCt, allocatorId() );
   ArrayT<RealT> storage( 4, 4, allocatorId() );
   const auto output = records.view();
   const auto values = storage.view();
@@ -347,7 +349,7 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
   auto buffer = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
     return evaluatePairValues<Exec>( pairs, mesh1.getView(), mesh2.getView(), function );
   } );
-  EXPECT_EQ( buffer.pairCount(), pairs.size() );
+  EXPECT_EQ( buffer.pairCt(), pairs.size() );
   EXPECT_EQ( buffer.values().getAllocatorID(), pairs.getAllocatorID() );
   EXPECT_EQ( buffer.quadratureResults().getAllocatorID(), pairs.getAllocatorID() );
   EXPECT_EQ( buffer.activePoints().getAllocatorID(), pairs.getAllocatorID() );
@@ -358,8 +360,8 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
     EXPECT_EQ( status[pair].status, pair == 3 ? QuadratureStatus::InvalidGeometry : QuadratureStatus::Success );
     EXPECT_EQ( status[pair].required_point_count, pair == 3 ? 0 : 2 );
     EXPECT_EQ( active[pair], pair == 0 || pair == 2 );
-    for ( IndexT row = 0; row < Function::value_count; ++row ) {
-      const RealT expected = pair == 0 && row % 2 == 1 ? ( row < Function::first_dofs ? -0.1 : 0.1 ) : 0.0;
+    for ( IndexT row = 0; row < Function::value_ct; ++row ) {
+      const RealT expected = pair == 0 && row % 2 == 1 ? ( row < Function::geom1_coord_ct ? -0.1 : 0.1 ) : 0.0;
       EXPECT_NEAR( values[row * pairs.size() + pair], expected, tolerance );
     }
   }
@@ -382,7 +384,7 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
   auto empty = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
     return evaluatePairValues<Exec>( empty_pairs, mesh1.getView(), mesh2.getView(), function );
   } );
-  EXPECT_EQ( empty.pairCount(), 0 );
+  EXPECT_EQ( empty.pairCt(), 0 );
   EXPECT_EQ( empty.values().size(), 0 );
   EXPECT_EQ( empty.quadratureResults().size(), 0 );
   EXPECT_EQ( empty.activePoints().size(), 0 );
@@ -393,13 +395,15 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
 INSTANTIATE_TEST_SUITE_P( execution, CommonPlaneTest, tribol::detail::enabledExecutionModes() );
 
 #ifdef TRIBOL_USE_ENZYME
-/** @brief Compare active-geometry Jacobians with central differences. @tparam Count Gauss point count. */
-template <int Count>
+/** @brief Compare active-geometry Jacobians with central differences. @tparam Ct Gauss point count. */
+template <int Ct>
 void checkJacobian()
 {
-  using Function = CommonPlanePairFunction<EdgeQuadratureRuleGenerator<Count>, OffsetGap<CommonPlaneGap>>;
-  const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<Count>> rule_generator;
+  using Function = CommonPlanePairFunction<EdgeQuadratureRuleGenerator<Ct>, OffsetGap<CommonPlaneGap>>;
+  const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<Ct>> rule_generator;
   const Function function{ rule_generator, 2.5, OffsetGap{ CommonPlaneGap{}, 0.03 } };
+  using CoordinateFunction = PairCoordinateFunction<Function>;
+  const CoordinateFunction coordinate_function{ function };
   constexpr RealT step =
       2.0e-7;  // Small enough to resolve derivatives without changing the active or overlap branches.
   const Coordinates cases1[] = { Coordinates{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.2 } },
@@ -408,53 +412,57 @@ void checkJacobian()
                                  Coordinates{ MdArray<RealT, 2>{ 0.8, 0.2 }, MdArray<RealT, 2>{ -0.8, -0.2 } } };
   for ( int geometry = 0; geometry < 2; ++geometry ) {
     const auto coordinates = packPairCoordinates( cases1[geometry].view(), cases2[geometry].view() );
-    const auto expected = function.evaluate( coordinates.view() );
-    const auto result = EnzymePairDerivative<Function>::valuesAndJacobian( coordinates.view(), function );
+    const auto expected = coordinate_function.evaluate( coordinates.view() );
+    const auto result =
+        EnzymePairDerivative<CoordinateFunction>::valuesAndJacobian( coordinates.view(), coordinate_function );
     ASSERT_EQ( result.quadrature_result.status, QuadratureStatus::Success );
-    EXPECT_EQ( result.quadrature_result.required_point_count, Count );
+    EXPECT_EQ( result.quadrature_result.required_point_count, Ct );
     EXPECT_TRUE( result.has_active_points );
-    for ( IndexT row = 0; row < Function::value_count; ++row ) {
+    for ( IndexT row = 0; row < Function::value_ct; ++row ) {
       EXPECT_DOUBLE_EQ( result.values[row], expected.residual[row] );
     }
-    for ( int column = 0; column < Function::dof_count; ++column ) {
+    for ( int column = 0; column < Function::coord_ct; ++column ) {
       auto plus_coordinates = coordinates;
       auto minus_coordinates = coordinates;
       plus_coordinates[column] += step;
       minus_coordinates[column] -= step;
-      const auto plus = function.evaluate( plus_coordinates.view() );
-      const auto minus = function.evaluate( minus_coordinates.view() );
+      const auto plus = coordinate_function.evaluate( plus_coordinates.view() );
+      const auto minus = coordinate_function.evaluate( minus_coordinates.view() );
       ASSERT_EQ( plus.quadrature_result.status, QuadratureStatus::Success );
       ASSERT_EQ( minus.quadrature_result.status, QuadratureStatus::Success );
-      for ( int row = 0; row < Function::value_count; ++row ) {
+      for ( int row = 0; row < Function::value_ct; ++row ) {
         EXPECT_NEAR( result.jacobian( row, column ), ( plus.residual[row] - minus.residual[row] ) / ( 2.0 * step ),
                      2.0e-7 )
-            << "points=" << Count << ", geometry=" << geometry << ", row=" << row << ", column=" << column;
+            << "points=" << Ct << ", geometry=" << geometry << ", row=" << row << ", column=" << column;
       }
     }
   }
   const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
   const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, 0.0 }, MdArray<RealT, 2>{ 0.0, 0.0 } };
-  using UnshiftedFunction = CommonPlanePairFunction<EdgeQuadratureRuleGenerator<Count>>;
+  using UnshiftedFunction = CommonPlanePairFunction<EdgeQuadratureRuleGenerator<Ct>>;
   const UnshiftedFunction unshifted{ rule_generator, 1.0 };
+  using UnshiftedCoordinateFunction = PairCoordinateFunction<UnshiftedFunction>;
+  const UnshiftedCoordinateFunction unshifted_coordinate_function{ unshifted };
   const auto coordinates = packPairCoordinates( edge1.view(), edge2.view() );
-  const auto zero = unshifted.evaluate( coordinates.view() );
+  const auto zero = unshifted_coordinate_function.evaluate( coordinates.view() );
   EXPECT_TRUE( zero.has_active_points );
-  const auto derivatives = EnzymePairDerivative<UnshiftedFunction>::valuesAndJacobian( coordinates.view(), unshifted );
+  const auto derivatives = EnzymePairDerivative<UnshiftedCoordinateFunction>::valuesAndJacobian(
+      coordinates.view(), unshifted_coordinate_function );
   EXPECT_TRUE( derivatives.has_active_points );
-  for ( IndexT row = 0; row < UnshiftedFunction::value_count; ++row ) {
+  for ( IndexT row = 0; row < UnshiftedFunction::value_ct; ++row ) {
     EXPECT_EQ( derivatives.values[row], 0.0 );
   }
   EXPECT_GT( derivatives.jacobian( 1, 1 ), 0.0 );
   const Coordinates invalid{};
   const auto invalid_coordinates = packPairCoordinates( invalid.view(), edge2.view() );
-  const auto failure =
-      EnzymePairDerivative<UnshiftedFunction>::valuesAndJacobian( invalid_coordinates.view(), unshifted );
+  const auto failure = EnzymePairDerivative<UnshiftedCoordinateFunction>::valuesAndJacobian(
+      invalid_coordinates.view(), unshifted_coordinate_function );
   EXPECT_EQ( failure.quadrature_result.status, QuadratureStatus::InvalidGeometry );
   EXPECT_EQ( failure.quadrature_result.required_point_count, 0 );
   EXPECT_FALSE( failure.has_active_points );
   for ( int row = 0; row < failure.values.size(); ++row ) {
     EXPECT_EQ( failure.values[row], 0.0 );
-    for ( IndexT column = 0; column < UnshiftedFunction::dof_count; ++column ) {
+    for ( IndexT column = 0; column < UnshiftedFunction::coord_ct; ++column ) {
       EXPECT_EQ( failure.jacobian( row, column ), 0.0 );
     }
   }

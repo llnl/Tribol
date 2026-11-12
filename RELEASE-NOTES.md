@@ -114,10 +114,18 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Geometry blocks select input entries and connectivity; explicit FE spaces and a host transfer callback select the
   destination. No Jacobian data or assembly-mode flags are required. Use `MfemMatrixAssembler` for matrices; callers
   can compose vector and matrix views in one pair kernel and collect separate owned results.
-- Pair functions expose `evaluate()` as their single calculation interface. Removed their `values(coordinates)`
-  wrappers; callers obtain numerical values through `evaluate(coordinates).values()`. `PairFunctionType` constrains
-  evaluation sizes and result types, while `PairKernelFunctionType` also checks the coordinate split used by mesh
-  kernels. Scalar value/Jacobian/Hessian operations require exactly one output.
+- Pair functions expose `evaluate(geometry1, geometry2)` as their single calculation interface, with `FirstGeometry`
+  and `SecondGeometry` types. Callers construct the geometries from their separate coordinate views and obtain
+  numerical values through the result's `values()` method. `PairFunctionType` checks geometry construction, coordinate
+  counts (`geom1_coord_ct`, `geom2_coord_ct`, and their sum `coord_ct`), and result types. Coordinate functions and
+  `EnzymePairDerivative` likewise use `coord_ct` for their input size. `PairCoordinateFunction` adapts geometry pair
+  functions for coordinate differentiation and constructs both geometries inside AD, including derivatives of cached
+  geometry quantities. `CoordinateFunctionType` checks the coordinate interface used by `EnzymePairDerivative`;
+  functions without geometry types can still implement that interface directly. Scalar value/Jacobian/Hessian
+  operations require exactly one output.
+- New pair-evaluation and assembly count identifiers use `ct`, including `value_ct`, `node_ct`, `pair_ct`,
+  `ValueCt`, and `BlockCt`. Buffer and vector-assembler accessors are `pairCt()` and `valueCt()`. Existing shared
+  basis and quadrature API names are unchanged.
 - Scalar pair differentiation returns the value, Jacobian, Hessian, quadrature status, and activation together through
   `EnzymePairDerivative::valueJacobianAndHessian()`. The scalar value/Jacobian/Hessian kernel reuses those AD outputs,
   removing separate value and Jacobian calculations while retaining active zero-value derivatives.

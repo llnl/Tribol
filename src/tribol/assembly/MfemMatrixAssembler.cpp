@@ -35,8 +35,8 @@ MfemMatrixAssembler::MfemMatrixAssembler( MfemMatrixSpace rows, MfemMatrixSpace 
          block.column_offset > std::numeric_limits<IndexT>::max() - column_dofs ) {
       throw std::length_error( "Matrix input extents exceed the supported index range." );
     }
-    row_count_ = std::max( row_count_, block.row_offset + row_dofs );
-    column_count_ = std::max( column_count_, block.column_offset + column_dofs );
+    row_ct_ = std::max( row_ct_, block.row_offset + row_dofs );
+    column_ct_ = std::max( column_ct_, block.column_offset + column_dofs );
     const IndexT block_size = detail::checkedMatrixSize( row_dofs, column_dofs );
     largest_block = std::max( largest_block, block_size );
     layouts_.push_back( { block.row_geometry, block.column_geometry, block.row_nodes, block.column_nodes,
@@ -50,7 +50,7 @@ MfemMatrixAssembler::MfemMatrixAssembler( MfemMatrixSpace rows, MfemMatrixSpace 
 
 void MfemMatrixAssembler::addPair( InterfacePair pair, ArrayViewT<const RealT, 2> matrix )
 {
-  if ( matrix.shape()[0] != row_count_ || matrix.shape()[1] != column_count_ ) {
+  if ( matrix.shape()[0] != row_ct_ || matrix.shape()[1] != column_ct_ ) {
     throw std::invalid_argument( "Matrix input dimensions do not match the configured block extents." );
   }
   addPairFromReader( pair, [=]( IndexT row, IndexT column ) { return matrix( row, column ); } );

@@ -24,7 +24,7 @@ class FrozenPairQuadratureRuleGenerator {
  public:
   using FirstGeometry = typename PairRuleGenerator::FirstGeometry;    ///< First element geometry.
   using SecondGeometry = typename PairRuleGenerator::SecondGeometry;  ///< Second element geometry.
-  static constexpr IndexT coordinate_count =
+  static constexpr IndexT coord_ct =
       FirstGeometry::Coords::size() + SecondGeometry::Coords::size();  ///< Coordinates in the complete pair.
 
   /**
@@ -35,7 +35,7 @@ class FrozenPairQuadratureRuleGenerator {
    * @throws std::length_error Reference quadrature capacity is insufficient; no generator is constructed.
    */
   FrozenPairQuadratureRuleGenerator( const PairRuleGenerator& rule_generator,
-                                     MdSpan<const RealT, coordinate_count> coordinates )
+                                     MdSpan<const RealT, coord_ct> coordinates )
       : rule_generator_( rule_generator ),
         reference_rule_( rule_generator_.generateIntegrationSurfaceRule(
             { coordinates.data(), FirstGeometry::Coords::size() },

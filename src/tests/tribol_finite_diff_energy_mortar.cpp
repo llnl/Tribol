@@ -32,29 +32,34 @@ constexpr RealT hessian_tolerance = 2.0e-5;       ///< Second-derivative compari
  * @param weights Output weights used for the Hessian contraction.
  */
 template <typename Function>
-void checkFiniteDifferences( const Function& function, const MdArray<RealT, Function::dof_count>& coordinates,
-                             const MdArray<RealT, Function::value_count>& weights )
+void checkFiniteDifferences( const Function& function, const MdArray<RealT, Function::coord_ct>& coordinates,
+                             const MdArray<RealT, Function::value_ct>& weights )
 {
-  const auto base = EnzymePairDerivative<Function>::valuesAndJacobian( coordinates.view(), function );
-  const auto weighted =
-      EnzymePairDerivative<Function>::weightedJacobianAndHessian( coordinates.view(), function, weights.view() );
-  for ( IndexT column = 0; column < Function::dof_count; ++column ) {
+  using CoordinateFunction = PairCoordinateFunction<Function>;
+  const CoordinateFunction coordinate_function{ function };
+  const auto base =
+      EnzymePairDerivative<CoordinateFunction>::valuesAndJacobian( coordinates.view(), coordinate_function );
+  const auto weighted = EnzymePairDerivative<CoordinateFunction>::weightedJacobianAndHessian(
+      coordinates.view(), coordinate_function, weights.view() );
+  for ( IndexT column = 0; column < Function::coord_ct; ++column ) {
     auto positive_coordinates = coordinates;
     auto negative_coordinates = coordinates;
     positive_coordinates[column] += finite_difference_step;
     negative_coordinates[column] -= finite_difference_step;
-    const auto positive = EnzymePairDerivative<Function>::valuesAndJacobian( positive_coordinates.view(), function );
-    const auto negative = EnzymePairDerivative<Function>::valuesAndJacobian( negative_coordinates.view(), function );
+    const auto positive =
+        EnzymePairDerivative<CoordinateFunction>::valuesAndJacobian( positive_coordinates.view(), coordinate_function );
+    const auto negative =
+        EnzymePairDerivative<CoordinateFunction>::valuesAndJacobian( negative_coordinates.view(), coordinate_function );
 
-    for ( IndexT value = 0; value < Function::value_count; ++value ) {
+    for ( IndexT value = 0; value < Function::value_ct; ++value ) {
       EXPECT_NEAR( base.jacobian( value, column ),
                    ( positive.values[value] - negative.values[value] ) / ( 2.0 * finite_difference_step ),
                    jacobian_tolerance );
     }
-    for ( IndexT row = 0; row < Function::dof_count; ++row ) {
+    for ( IndexT row = 0; row < Function::coord_ct; ++row ) {
       RealT positive_gradient = 0.0;
       RealT negative_gradient = 0.0;
-      for ( IndexT value = 0; value < Function::value_count; ++value ) {
+      for ( IndexT value = 0; value < Function::value_ct; ++value ) {
         positive_gradient += weights[value] * positive.jacobian( value, row );
         negative_gradient += weights[value] * negative.jacobian( value, row );
       }
@@ -64,27 +69,26 @@ void checkFiniteDifferences( const Function& function, const MdArray<RealT, Func
   }
 }
 
-/** @brief Check varying and frozen quadrature derivatives. @tparam PointCount Gauss point count. */
-template <int PointCount>
+/** @brief Check varying and frozen quadrature derivatives. @tparam PointCt Gauss point count. */
+template <int PointCt>
 void checkRuleGenerator()
 {
-  using RuleGenerator =
-      PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<PointCount>>;
+  using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<PointCt>>;
   using Gap = OffsetGap<OpposingNormalGap>;
   const RuleGenerator rule_generator;
   const Gap gap{ {}, 0.05 };
   const EnergyMortarEnergy<RuleGenerator, Gap> energy{ rule_generator, 7.0, gap };
   const EnergyMortarNodalEnergy<RuleGenerator, Gap> nodal{ rule_generator, gap };
-  const MdArray<RealT, decltype( energy )::dof_count> coordinates{ 0.0, 0.0, 2.0, 0.15, 1.7, 0.35, 0.3, 0.15 };
+  const MdArray<RealT, decltype( energy )::coord_ct> coordinates{ 0.0, 0.0, 2.0, 0.15, 1.7, 0.35, 0.3, 0.15 };
   const auto check = [&]( const auto& selected_energy, const auto& selected_nodal ) {
     using SelectedEnergy = std::remove_cvref_t<decltype( selected_energy )>;
     using SelectedNodal = std::remove_cvref_t<decltype( selected_nodal )>;
-    checkFiniteDifferences( selected_energy, coordinates, MdArray<RealT, SelectedEnergy::value_count>{ 1.0 } );
+    checkFiniteDifferences( selected_energy, coordinates, MdArray<RealT, SelectedEnergy::value_ct>{ 1.0 } );
     checkFiniteDifferences( selected_nodal, coordinates,
-                            MdArray<RealT, SelectedNodal::value_count>{ 0.3, -0.2, 0.4, 0.1 } );
+                            MdArray<RealT, SelectedNodal::value_ct>{ 0.3, -0.2, 0.4, 0.1 } );
   };
 
-  SCOPED_TRACE( testing::Message() << "Gauss points: " << PointCount );
+  SCOPED_TRACE( testing::Message() << "Gauss points: " << PointCt );
   check( energy, nodal );
   using FrozenRuleGenerator = detail::FrozenPairQuadratureRuleGenerator<RuleGenerator>;
   const FrozenRuleGenerator frozen_rule_generator{ rule_generator, coordinates.view() };
@@ -103,8 +107,9 @@ TEST( EnergyMortarFiniteDifference, invalid_geometry_reports_status_before_deriv
 {
   using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
   const EnergyMortarEnergy<RuleGenerator> energy{ RuleGenerator{}, 1.0 };
-  const MdArray<RealT, decltype( energy )::dof_count> coordinates{ 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0 };
-  EXPECT_NE( energy.evaluate( coordinates.view() ).quadrature_result.status, QuadratureStatus::Success );
+  const MdArray<RealT, decltype( energy )::coord_ct> coordinates{ 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0 };
+  EXPECT_NE( PairCoordinateFunction{ energy }.evaluate( coordinates.view() ).quadrature_result.status,
+             QuadratureStatus::Success );
 }
 
 }  // namespace

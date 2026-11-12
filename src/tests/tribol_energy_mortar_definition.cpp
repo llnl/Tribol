@@ -8,11 +8,12 @@
  * @brief Check direct Energy Mortar energies, nodal integrals, and explicit field partials on enabled backends.
  * Host Enzyme checks compare the new pair definitions with finite differences for each Gauss count and derivative
  * mode. The energy kernel checks active, open, zero-gap, and invalid pairs on every enabled backend, including the
- * compressive zero-gap Hessian. Forward AD checks values and quadrature state without an extra value evaluation.
- * Compile-time checks accept the supported pair interfaces and reject invalid sizes, results, and coordinate splits.
- * Returned buffers retain the pair allocator and remain valid after the input pair list is destroyed. Weighted
- * Jacobian/Hessian kernels check reordered pairs with unequal weights. MFEM tests separately check assembly and
- * shared-node normalization.
+ * compressive zero-gap Hessian. A pair with distinct geometry types and unequal coordinate counts checks that AD
+ * includes nonlinear quantities cached during geometry construction. Forward AD checks values and quadrature state
+ * without an extra value evaluation. Compile-time checks accept the supported pair interfaces and reject invalid sizes,
+ * results, and coordinate splits. Returned buffers retain the pair allocator and remain valid after the input pair list
+ * is destroyed. Weighted Jacobian/Hessian kernels check reordered pairs with unequal weights. MFEM tests separately
+ * check assembly and shared-node normalization.
  */
 #include <type_traits>
 
@@ -36,119 +37,175 @@ constexpr RealT tolerance = 1.0e-12;  ///< Roundoff allowance for primal integra
 using EnergyMortarDefinitionTest = detail::ExecutionTest;
 
 /** @brief Declaration-only pair function for checking the evaluation interface without executing it. */
-struct PairFunctionCandidate {
-  static constexpr IndexT value_count = 2;  ///< Two output values.
-  static constexpr IndexT dof_count = 4;    ///< Four coordinate entries.
+struct CoordinateFunctionCandidate {
+  static constexpr IndexT value_ct = 2;  ///< Two output values.
+  static constexpr IndexT coord_ct = 4;  ///< Four coordinate entries.
 
   /** @brief Declare a const evaluation. @param coordinates Pair inputs. @return Values and quadrature state. */
-  PairResidualValue<value_count> evaluate( MdSpan<const RealT, dof_count> coordinates ) const;
+  PairResidualValue<value_ct> evaluate( MdSpan<const RealT, coord_ct> coordinates ) const;
 };
 
-/** @brief Valid mesh-kernel input splits four coordinates between two geometries. */
-struct PairKernelFunctionCandidate : PairFunctionCandidate {
-  static constexpr IndexT first_dofs = 2;  ///< Two coordinates for each geometry.
+/** @brief Geometry pair function for checking mesh-kernel inputs without executing it. */
+struct GeometryPairFunctionCandidate {
+  using FirstGeometry = LinearEdgeGeometry;                                 ///< Geometry1 type.
+  using SecondGeometry = LinearEdgeGeometry;                                ///< Geometry2 type.
+  static constexpr IndexT value_ct = 2;                                     ///< Two output values.
+  static constexpr IndexT geom1_coord_ct = FirstGeometry::Coords::size();   ///< Geometry1 coordinate count.
+  static constexpr IndexT geom2_coord_ct = SecondGeometry::Coords::size();  ///< Geometry2 coordinate count.
+  static constexpr IndexT coord_ct = geom1_coord_ct + geom2_coord_ct;       ///< Combined coordinate count.
+
+  /** @brief Supply an empty evaluation. @param geometry1 First edge. @param geometry2 Second edge.
+   * @return Zero values and empty, inactive quadrature state. */
+  PairResidualValue<value_ct> evaluate( [[maybe_unused]] const FirstGeometry& geometry1,
+                                        [[maybe_unused]] const SecondGeometry& geometry2 ) const
+  {
+    return {};
+  }
 };
 
 /** @brief Zero outputs must be rejected before instantiating fixed-size numerical arrays. */
-struct ZeroValuePairFunction : PairFunctionCandidate {
-  static constexpr IndexT value_count = 0;  ///< Invalid output count.
+struct ZeroValuePairFunction : CoordinateFunctionCandidate {
+  static constexpr IndexT value_ct = 0;  ///< Invalid output count.
 };
 
 /** @brief Zero coordinates must be rejected before instantiating a coordinate view. */
-struct ZeroDofPairFunction : PairFunctionCandidate {
-  static constexpr IndexT dof_count = 0;  ///< Invalid coordinate count.
+struct ZeroCoordinatePairFunction : CoordinateFunctionCandidate {
+  static constexpr IndexT coord_ct = 0;  ///< Invalid coordinate count.
 };
 
 /** @brief Output counts must be compile-time constants. */
-struct RuntimeSizePairFunction : PairFunctionCandidate {
-  IndexT value_count = 2;  ///< Invalid runtime output count.
+struct RuntimeSizePairFunction : CoordinateFunctionCandidate {
+  IndexT value_ct = 2;  ///< Invalid runtime output count.
 };
 
 /** @brief The returned value array must agree with the declared output count. */
-struct WrongValueCountPairFunction : PairFunctionCandidate {
-  static constexpr IndexT value_count = 1;  ///< Disagrees with the inherited two-entry result.
+struct WrongValueCtPairFunction : CoordinateFunctionCandidate {
+  static constexpr IndexT value_ct = 1;  ///< Disagrees with the inherited two-entry result.
 };
 
 /** @brief Pair evaluation must be callable on a const function object. */
-struct MutablePairFunction : PairFunctionCandidate {
+struct MutablePairFunction : CoordinateFunctionCandidate {
   /** @brief Declare a mutable-only evaluation. @param coordinates Pair inputs. @return Values and quadrature state. */
-  PairResidualValue<value_count> evaluate( MdSpan<const RealT, dof_count> coordinates );
+  PairResidualValue<value_ct> evaluate( MdSpan<const RealT, coord_ct> coordinates );
 };
 
 /** @brief An array alone supplies no quadrature status or activation. */
-struct MissingStatePairFunction : PairFunctionCandidate {
+struct MissingStatePairFunction : CoordinateFunctionCandidate {
   /** @brief Declare a result without quadrature state. @param coordinates Pair inputs. @return Numerical values only.
    */
-  MdArray<RealT, value_count> evaluate( MdSpan<const RealT, dof_count> coordinates ) const;
+  MdArray<RealT, value_ct> evaluate( MdSpan<const RealT, coord_ct> coordinates ) const;
 };
 
 /** @brief The numerical values must be readable from a const evaluation result. */
-struct MutableValuesPairFunction : PairFunctionCandidate {
+struct MutableValuesPairFunction : CoordinateFunctionCandidate {
   /** @brief Result that hides the const values() accessor with a mutable-only accessor. */
-  struct Result : PairResidualValue<value_count> {
+  struct Result : PairResidualValue<value_ct> {
     /** @brief Declare mutable-only value access. @return Pair values. */
-    MdArray<RealT, value_count> values();
+    MdArray<RealT, value_ct> values();
   };
   /** @brief Declare an incompatible result. @param coordinates Pair inputs. @return Mutable-only numerical values. */
-  Result evaluate( MdSpan<const RealT, dof_count> coordinates ) const;
+  Result evaluate( MdSpan<const RealT, coord_ct> coordinates ) const;
 };
 
 /** @brief Activation must have the expected bool type. */
-struct WrongActivationPairFunction : PairFunctionCandidate {
+struct WrongActivationPairFunction : CoordinateFunctionCandidate {
   /** @brief Result with an integer flag that hides the required bool member. */
-  struct Result : PairResidualValue<value_count> {
+  struct Result : PairResidualValue<value_ct> {
     IndexT has_active_points = 0;  ///< Incompatible activation type.
   };
   /** @brief Declare an incompatible result. @param coordinates Pair inputs. @return Values with an integer flag. */
-  Result evaluate( MdSpan<const RealT, dof_count> coordinates ) const;
+  Result evaluate( MdSpan<const RealT, coord_ct> coordinates ) const;
 };
 
 /** @brief Quadrature state must have the expected QuadratureResult type. */
-struct WrongQuadraturePairFunction : PairFunctionCandidate {
+struct WrongQuadraturePairFunction : CoordinateFunctionCandidate {
   /** @brief Result whose status member omits the required point count. */
-  struct Result : PairResidualValue<value_count> {
+  struct Result : PairResidualValue<value_ct> {
     QuadratureStatus quadrature_result{};  ///< Incompatible quadrature result type.
   };
   /** @brief Declare an incompatible result. @param coordinates Pair inputs. @return Values without a point count. */
-  Result evaluate( MdSpan<const RealT, dof_count> coordinates ) const;
+  Result evaluate( MdSpan<const RealT, coord_ct> coordinates ) const;
 };
 
 /** @brief A coordinate split must leave entries for geometry1. */
-struct EmptyFirstGeometryPairFunction : PairKernelFunctionCandidate {
-  static constexpr IndexT first_dofs = 0;  ///< Invalid empty geometry1.
+struct EmptyFirstGeometryPairFunction : GeometryPairFunctionCandidate {
+  static constexpr IndexT geom1_coord_ct = 0;  ///< Invalid empty geometry1.
 };
 
 /** @brief A coordinate split must leave entries for geometry2. */
-struct EmptySecondGeometryPairFunction : PairKernelFunctionCandidate {
-  static constexpr IndexT first_dofs = dof_count;  ///< Invalid empty geometry2.
+struct EmptySecondGeometryPairFunction : GeometryPairFunctionCandidate {
+  static constexpr IndexT geom2_coord_ct = 0;  ///< Invalid empty geometry2.
 };
 
-// Differentiation needs a const evaluation and fixed numerical sizes; it does not require a mesh coordinate split.
-static_assert( PairFunctionType<PairFunctionCandidate> );
-static_assert( !PairKernelFunctionType<PairFunctionCandidate> );
-static_assert( PairKernelFunctionType<PairKernelFunctionCandidate> );
-static_assert( !PairFunctionType<ZeroValuePairFunction> );
-static_assert( !PairFunctionType<ZeroDofPairFunction> );
-static_assert( !PairFunctionType<RuntimeSizePairFunction> );
-static_assert( !PairFunctionType<WrongValueCountPairFunction> );
-static_assert( !PairFunctionType<MutablePairFunction> );
-static_assert( !PairFunctionType<MissingStatePairFunction> );
-static_assert( !PairFunctionType<MutableValuesPairFunction> );
-static_assert( !PairFunctionType<WrongActivationPairFunction> );
-static_assert( !PairFunctionType<WrongQuadraturePairFunction> );
-static_assert( !PairKernelFunctionType<EmptyFirstGeometryPairFunction> );
-static_assert( !PairKernelFunctionType<EmptySecondGeometryPairFunction> );
+// Coordinate differentiation remains available for functions without geometry types.
+static_assert( CoordinateFunctionType<CoordinateFunctionCandidate> );
+static_assert( !PairFunctionType<CoordinateFunctionCandidate> );
+static_assert( PairFunctionType<GeometryPairFunctionCandidate> );
+static_assert( CoordinateFunctionType<PairCoordinateFunction<GeometryPairFunctionCandidate>> );
+static_assert( !CoordinateFunctionType<ZeroValuePairFunction> );
+static_assert( !CoordinateFunctionType<ZeroCoordinatePairFunction> );
+static_assert( !CoordinateFunctionType<RuntimeSizePairFunction> );
+static_assert( !CoordinateFunctionType<WrongValueCtPairFunction> );
+static_assert( !CoordinateFunctionType<MutablePairFunction> );
+static_assert( !CoordinateFunctionType<MissingStatePairFunction> );
+static_assert( !CoordinateFunctionType<MutableValuesPairFunction> );
+static_assert( !CoordinateFunctionType<WrongActivationPairFunction> );
+static_assert( !CoordinateFunctionType<WrongQuadraturePairFunction> );
+static_assert( !PairFunctionType<EmptyFirstGeometryPairFunction> );
+static_assert( !PairFunctionType<EmptySecondGeometryPairFunction> );
 
-// Both energy and nodal-integral functions implement the same evaluation and coordinate-packing interface.
-static_assert( PairKernelFunctionType<EnergyMortarEnergy<
+// Energy and nodal-integral functions accept two geometries with fixed coordinate counts.
+static_assert( PairFunctionType<EnergyMortarEnergy<
                    PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>>> );
-static_assert( PairKernelFunctionType<EnergyMortarNodalEnergy<
+static_assert( PairFunctionType<EnergyMortarNodalEnergy<
                    PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>>> );
 
-/** @brief Pair energy and nodal integrals written by one backend thread. @tparam Count Gauss point count. */
-template <int Count>
+/** @brief One-coordinate geometry caching a nonlinear coordinate expression. */
+struct SquaredCoordinateGeometry {
+  using Coords = MdSpan<const RealT, 1>;  ///< One coordinate input.
+  RealT squared;                          ///< Cached coordinate square.
+  /** @brief Cache the squared coordinate. @param coordinates Single coordinate. */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE explicit SquaredCoordinateGeometry( Coords coordinates )
+      : squared( coordinates[0] * coordinates[0] )
+  {
+  }
+};
+
+/** @brief Two-coordinate geometry caching a product. */
+struct CoordinateProductGeometry {
+  using Coords = MdSpan<const RealT, 2>;  ///< Two coordinate inputs.
+  RealT product;                          ///< Cached coordinate product.
+  /** @brief Cache the coordinate product. @param coordinates Two coordinates. */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE explicit CoordinateProductGeometry( Coords coordinates )
+      : product( coordinates[0] * coordinates[1] )
+  {
+  }
+};
+
+/** @brief Scalar pair function using distinct geometry types and unequal coordinate counts. */
+struct CachedGeometryPairFunction {
+  using FirstGeometry = SquaredCoordinateGeometry;                          ///< Single-coordinate geometry.
+  using SecondGeometry = CoordinateProductGeometry;                         ///< Two-coordinate geometry.
+  static constexpr IndexT value_ct = 1;                                     ///< One scalar value.
+  static constexpr IndexT geom1_coord_ct = FirstGeometry::Coords::size();   ///< Geometry1 coordinate count.
+  static constexpr IndexT geom2_coord_ct = SecondGeometry::Coords::size();  ///< Geometry2 coordinate count.
+  static constexpr IndexT coord_ct = geom1_coord_ct + geom2_coord_ct;       ///< Combined coordinate count.
+
+  /** @brief Multiply the cached expressions. @param geometry1 Squared coordinate. @param geometry2 Coordinate product.
+   * @return Active value with successful one-point quadrature state. */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairEnergyValue evaluate( const FirstGeometry& geometry1,
+                                                                    const SecondGeometry& geometry2 ) const
+  {
+    return { geometry1.squared * geometry2.product, true, { QuadratureStatus::Success, 1 } };
+  }
+};
+static_assert( PairFunctionType<CachedGeometryPairFunction> );
+static_assert( CoordinateFunctionType<PairCoordinateFunction<CachedGeometryPairFunction>> );
+
+/** @brief Pair energy and nodal integrals written by one backend thread. @tparam Ct Gauss point count. */
+template <int Ct>
 struct ParallelIntegralResult {
-  using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<Count>>;
+  using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<Ct>>;
   PairEnergyValue energy;                                               ///< Quadrature-point energy and status.
   typename EnergyMortarNodalEnergy<RuleGenerator>::PrimalResult nodal;  ///< Nodal integrals and status.
 };
@@ -160,32 +217,34 @@ struct NodalPartialsCase {
   EnergyMortarNodalPartials expected;  ///< Exact energy and field partials for stiffness four.
 };
 
-/** @brief Check constant-gap integrals on an unsmoothed interval. @tparam Count Gauss point count.
+/** @brief Check constant-gap integrals on an unsmoothed interval. @tparam Ct Gauss point count.
  * @param mode Execution backend. @param allocator Backend-accessible allocation resource. */
-template <int Count>
+template <int Ct>
 void checkParallelIntegrals( ExecutionMode mode, int allocator )
 {
-  using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<Count>>;
+  using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<Ct>>;
   using Energy = EnergyMortarEnergy<RuleGenerator>;
   using Nodal = EnergyMortarNodalEnergy<RuleGenerator>;
-  ArrayT<ParallelIntegralResult<Count>> results( 1, 1, allocator );
+  ArrayT<ParallelIntegralResult<Ct>> results( 1, 1, allocator );
   const auto output = results.view();
   forAllExec( mode, 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
-    const MdArray<RealT, Energy::dof_count> coordinates{ 0.0, 0.0, 2.0, 0.0, 3.0, 0.1, -1.0, 0.1 };
+    const MdArray<RealT, 2, 2> coordinates1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
+    const MdArray<RealT, 2, 2> coordinates2{ MdArray<RealT, 2>{ 3.0, 0.1 }, MdArray<RealT, 2>{ -1.0, 0.1 } };
+    const LinearEdgeGeometry geometry1( coordinates1.view() ), geometry2( coordinates2.view() );
     const RuleGenerator rule_generator( SmoothedProjectedEdgeMapping{ 0.0 } );
-    output[0] = { Energy{ rule_generator, 4.0 }.evaluate( coordinates.view() ),
-                  Nodal{ rule_generator }.evaluate( coordinates.view() ) };
+    output[0] = { Energy{ rule_generator, 4.0 }.evaluate( geometry1, geometry2 ),
+                  Nodal{ rule_generator }.evaluate( geometry1, geometry2 ) };
   } );
-  const ArrayT<ParallelIntegralResult<Count>, 1, MemorySpace::Host> host( results );
+  const ArrayT<ParallelIntegralResult<Ct>, 1, MemorySpace::Host> host( results );
   ASSERT_EQ( host[0].energy.quadrature_result.status, QuadratureStatus::Success );
-  EXPECT_EQ( host[0].energy.quadrature_result.required_point_count, Count );
+  EXPECT_EQ( host[0].energy.quadrature_result.required_point_count, Ct );
   // A length-two edge with gap -0.1 has energy 0.5*4*0.1^2*2, and equal nodal areas of one.
   EXPECT_NEAR( host[0].energy.energy, 0.04, tolerance );
   EXPECT_TRUE( host[0].energy.has_active_points );
   ASSERT_EQ( host[0].nodal.quadrature_result.status, QuadratureStatus::Success );
-  for ( IndexT node = 0; node < Nodal::node_count; ++node ) {
+  for ( IndexT node = 0; node < Nodal::node_ct; ++node ) {
     EXPECT_NEAR( host[0].nodal.value[node], -0.1, tolerance );
-    EXPECT_NEAR( host[0].nodal.value[Nodal::node_count + node], 1.0, tolerance );
+    EXPECT_NEAR( host[0].nodal.value[Nodal::node_ct + node], 1.0, tolerance );
   }
 }
 
@@ -231,12 +290,12 @@ INSTANTIATE_TEST_SUITE_P( backends, EnergyMortarDefinitionTest, detail::enabledE
 
 TEST_P( EnergyMortarDefinitionTest, contribution_buffers_use_backend_accessible_structure_of_arrays )
 {
-  constexpr IndexT pair_count = 3;
-  PairValueJacobianBuffer<2, 2> values( pair_count, allocatorId() );
-  ElementBlockBuffer<2, 2> blocks( pair_count, allocatorId() );
+  constexpr IndexT pair_ct = 3;
+  PairValueJacobianBuffer<2, 2> values( pair_ct, allocatorId() );
+  ElementBlockBuffer<2, 2> blocks( pair_ct, allocatorId() );
   const auto value_jacobian_view = values.view();
   const auto block_view = blocks.view();
-  forAllExec( GetParam(), pair_count, [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
+  forAllExec( GetParam(), pair_ct, [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
     value_jacobian_view.setValue( pair, 0, 10.0 + pair );
     value_jacobian_view.setValue( pair, 1, 20.0 + pair );
     value_jacobian_view.setJacobian( pair, 0, 0, 30.0 + pair );
@@ -257,13 +316,13 @@ TEST_P( EnergyMortarDefinitionTest, contribution_buffers_use_backend_accessible_
   const Array1D<IndexT, MemorySpace::Host> host_columns( blocks.columnElementIds() );
   const Array1D<IndexT, MemorySpace::Host> host_offsets( blocks.valueOffsets() );
   const Array1D<RealT, MemorySpace::Host> host_blocks( blocks.values() );
-  for ( IndexT pair = 0; pair < pair_count; ++pair ) {
+  for ( IndexT pair = 0; pair < pair_ct; ++pair ) {
     EXPECT_DOUBLE_EQ( host_values[pair], 10.0 + pair );
-    EXPECT_DOUBLE_EQ( host_values[pair_count + pair], 20.0 + pair );
+    EXPECT_DOUBLE_EQ( host_values[pair_ct + pair], 20.0 + pair );
     EXPECT_DOUBLE_EQ( host_jacobians[pair], 30.0 + pair );
-    EXPECT_DOUBLE_EQ( host_jacobians[pair_count + pair], 40.0 + pair );
-    EXPECT_DOUBLE_EQ( host_jacobians[2 * pair_count + pair], 50.0 + pair );
-    EXPECT_DOUBLE_EQ( host_jacobians[3 * pair_count + pair], 60.0 + pair );
+    EXPECT_DOUBLE_EQ( host_jacobians[pair_ct + pair], 40.0 + pair );
+    EXPECT_DOUBLE_EQ( host_jacobians[2 * pair_ct + pair], 50.0 + pair );
+    EXPECT_DOUBLE_EQ( host_jacobians[3 * pair_ct + pair], 60.0 + pair );
     EXPECT_EQ( host_rows[pair], pair );
     EXPECT_EQ( host_columns[pair], pair + 4 );
     EXPECT_EQ( host_offsets[pair], 4 * pair );
@@ -276,6 +335,36 @@ TEST_P( EnergyMortarDefinitionTest, contribution_buffers_use_backend_accessible_
 }
 
 #ifdef TRIBOL_USE_ENZYME
+// Different geometry types must retain all cached coordinate dependencies through both orders of AD.
+TEST_P( EnergyMortarDefinitionTest, differentiates_geometry_construction_with_unequal_coordinate_counts )
+{
+  using Function = PairCoordinateFunction<CachedGeometryPairFunction>;
+  ArrayT<PairValueJacobianHessian<Function::coord_ct>> results( 1, 1, allocatorId() );
+  const auto output = results.view();
+  forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
+    const MdArray<RealT, Function::coord_ct> coordinates{ 2.0, 3.0, 4.0 };
+    output[0] = EnzymePairDerivative<Function>::valueJacobianAndHessian( coordinates.view(),
+                                                                         Function{ CachedGeometryPairFunction{} } );
+  } );
+  const ArrayT<PairValueJacobianHessian<Function::coord_ct>, 1, MemorySpace::Host> host( results );
+  const auto& result = host[0];
+  ASSERT_EQ( result.quadrature_result.status, QuadratureStatus::Success );
+  EXPECT_EQ( result.quadrature_result.required_point_count, 1 );
+  EXPECT_TRUE( result.has_active_points );
+  EXPECT_DOUBLE_EQ( result.value, 48.0 );
+  // For f(x,y,z)=x^2*y*z, both cached expressions contribute to the mixed second derivatives.
+  const MdArray<RealT, Function::coord_ct> jacobian{ 48.0, 16.0, 12.0 };
+  const MdArray<RealT, Function::coord_ct, Function::coord_ct> hessian{
+      MdArray<RealT, Function::coord_ct>{ 24.0, 16.0, 12.0 }, MdArray<RealT, Function::coord_ct>{ 16.0, 0.0, 4.0 },
+      MdArray<RealT, Function::coord_ct>{ 12.0, 4.0, 0.0 } };
+  for ( IndexT row = 0; row < Function::coord_ct; ++row ) {
+    EXPECT_DOUBLE_EQ( result.jacobian[row], jacobian[row] );
+    for ( IndexT column = 0; column < Function::coord_ct; ++column ) {
+      EXPECT_DOUBLE_EQ( result.hessian( row, column ), hessian( row, column ) );
+    }
+  }
+}
+
 /** @brief Check whether a mesh kernel accepts a scalar pair function. @tparam Function Candidate pair function. */
 template <typename Function>
 concept CanEvaluateScalarPairKernel =
@@ -310,9 +399,9 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_h
   auto value_jacobian = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
     return evaluatePairValuesAndJacobians<Exec>( pairs, mesh1.getView(), mesh2.getView(), function );
   } );
-  EXPECT_EQ( contributions_view.derivatives.pair_count, pairs.size() );
+  EXPECT_EQ( contributions_view.derivatives.pair_ct, pairs.size() );
   EXPECT_EQ( buffer.quadratureResults().getAllocatorID(), pairs.getAllocatorID() );
-  EXPECT_EQ( value_jacobian.pairCount(), pairs.size() );
+  EXPECT_EQ( value_jacobian.pairCt(), pairs.size() );
   EXPECT_EQ( value_jacobian.values().getAllocatorID(), pairs.getAllocatorID() );
   EXPECT_EQ( value_jacobian.jacobians().getAllocatorID(), pairs.getAllocatorID() );
 
@@ -324,9 +413,9 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_h
         contributions_view.derivatives.jacobian( pair, 1 ) + contributions_view.derivatives.jacobian( pair, 3 );
     summary( pair, 2 ) = 0.0;
     summary( pair, 3 ) = 0.0;
-    for ( IndexT row = 0; row < Function::dof_count; ++row ) {
+    for ( IndexT row = 0; row < Function::coord_ct; ++row ) {
       summary( pair, 3 ) += std::abs( contributions_view.derivatives.jacobian( pair, row ) );
-      for ( IndexT column = 0; column < Function::dof_count; ++column ) {
+      for ( IndexT column = 0; column < Function::coord_ct; ++column ) {
         summary( pair, 3 ) += std::abs( contributions_view.derivatives.hessian( pair, row, column ) );
         if ( ( row == 1 || row == 3 ) && ( column == 1 || column == 3 ) ) {
           summary( pair, 2 ) += contributions_view.derivatives.hessian( pair, row, column );
@@ -361,7 +450,7 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_h
   for ( IndexT pair : { 1, 3 } ) {
     EXPECT_EQ( host( pair, 0 ), 0.0 );
     EXPECT_EQ( host( pair, 3 ), 0.0 );
-    for ( IndexT coordinate = 0; coordinate < Function::dof_count; ++coordinate ) {
+    for ( IndexT coordinate = 0; coordinate < Function::coord_ct; ++coordinate ) {
       EXPECT_EQ( jacobians[coordinate * pairs.size() + pair], 0.0 );
     }
   }
@@ -376,25 +465,25 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_h
     const auto weighted_pairs = copyToExecutionSpace<InterfacePair>( { { 0, 2 }, { 0, 0 } } );
     return evaluatePairWeightedJacobiansAndHessians<Exec>(
         weighted_pairs, mesh1.getView(), mesh2.getView(), function,
-        [] TRIBOL_HOST_DEVICE( IndexT pair ) { return MdArray<RealT, Function::value_count>{ pair + 2.0 }; } );
+        [] TRIBOL_HOST_DEVICE( IndexT pair ) { return MdArray<RealT, Function::value_ct>{ pair + 2.0 }; } );
   } );
-  constexpr IndexT weighted_pair_count = 2;
-  EXPECT_EQ( weighted.pairCount(), weighted_pair_count );
+  constexpr IndexT weighted_pair_ct = 2;
+  EXPECT_EQ( weighted.pairCt(), weighted_pair_ct );
   EXPECT_EQ( weighted.jacobians().getAllocatorID(), pairs.getAllocatorID() );
   EXPECT_EQ( weighted.hessians().getAllocatorID(), pairs.getAllocatorID() );
   const Array1D<RealT, MemorySpace::Host> weighted_jacobians( weighted.jacobians() );
   const Array1D<RealT, MemorySpace::Host> weighted_hessians( weighted.hessians() );
-  for ( IndexT pair = 0; pair < weighted_pair_count; ++pair ) {
+  for ( IndexT pair = 0; pair < weighted_pair_ct; ++pair ) {
     const IndexT original_pair = pair == 0 ? 2 : 0;
     const RealT weight = pair + 2.0;
-    for ( IndexT coordinate = 0; coordinate < Function::dof_count; ++coordinate ) {
-      EXPECT_NEAR( weighted_jacobians[coordinate * weighted_pair_count + pair],
+    for ( IndexT coordinate = 0; coordinate < Function::coord_ct; ++coordinate ) {
+      EXPECT_NEAR( weighted_jacobians[coordinate * weighted_pair_ct + pair],
                    weight * jacobians[coordinate * pairs.size() + original_pair], tolerance );
     }
     RealT vertical_hessian = 0.0;
     for ( IndexT row : { 1, 3 } ) {
       for ( IndexT column : { 1, 3 } ) {
-        vertical_hessian += weighted_hessians[( row * Function::dof_count + column ) * weighted_pair_count + pair];
+        vertical_hessian += weighted_hessians[( row * Function::coord_ct + column ) * weighted_pair_ct + pair];
       }
     }
     EXPECT_NEAR( vertical_hessian, weight * host( original_pair, 2 ), tolerance );
@@ -403,31 +492,31 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_h
 
 /** @brief Small fixed-size pair function used to compile and execute both Enzyme operations on every backend. */
 struct PolynomialPairFunction {
-  static constexpr IndexT value_count = 2;              ///< Number of outputs.
-  static constexpr IndexT dof_count = 2;                ///< Number of active coordinates.
-  using PrimalResult = PairResidualValue<value_count>;  ///< Polynomial values with quadrature state.
-  IndexT* evaluation_count = nullptr;                   ///< Optional counter for complete function evaluations.
+  static constexpr IndexT value_ct = 2;              ///< Number of outputs.
+  static constexpr IndexT coord_ct = 2;              ///< Number of active coordinates.
+  using PrimalResult = PairResidualValue<value_ct>;  ///< Polynomial values with quadrature state.
+  IndexT* evaluation_ct = nullptr;                   ///< Optional counter for complete function evaluations.
 
   /** @brief Evaluate two coupled polynomial outputs. @param coordinates Active coordinates.
    * @return Function values with successful, active quadrature state. */
-  TRIBOL_HOST_DEVICE PrimalResult evaluate( MdSpan<const RealT, dof_count> coordinates ) const
+  TRIBOL_HOST_DEVICE PrimalResult evaluate( MdSpan<const RealT, coord_ct> coordinates ) const
   {
-    if ( evaluation_count != nullptr ) {
-      ++*evaluation_count;
+    if ( evaluation_ct != nullptr ) {
+      ++*evaluation_ct;
     }
-    return { MdArray<RealT, value_count>{ coordinates[0] * coordinates[0] + coordinates[1],
-                                          coordinates[0] * coordinates[1] },
-             { QuadratureStatus::Success, 2 },
-             true };
+    return {
+        MdArray<RealT, value_ct>{ coordinates[0] * coordinates[0] + coordinates[1], coordinates[0] * coordinates[1] },
+        { QuadratureStatus::Success, 2 },
+        true };
   }
 };
 
 /** @brief Device-storable output from both pair derivative operations. */
 struct PolynomialDerivativeResult {
-  PairValueJacobian<PolynomialPairFunction::value_count, PolynomialPairFunction::dof_count> value_jacobian;
-  PairWeightedJacobianHessian<PolynomialPairFunction::dof_count> weighted_hessian;
-  IndexT evaluation_count = 0;           ///< Complete evaluations used for values and Jacobian.
-  IndexT weighted_evaluation_count = 0;  ///< Complete evaluations used for the weighted Jacobian and Hessian.
+  PairValueJacobian<PolynomialPairFunction::value_ct, PolynomialPairFunction::coord_ct> value_jacobian;
+  PairWeightedJacobianHessian<PolynomialPairFunction::coord_ct> weighted_hessian;
+  IndexT evaluation_ct = 0;           ///< Complete evaluations used for values and Jacobian.
+  IndexT weighted_evaluation_ct = 0;  ///< Complete evaluations used for the weighted Jacobian and Hessian.
 };
 
 // Jacobian and Hessian AD calls must also supply their primal outputs without separate evaluations.
@@ -436,20 +525,20 @@ TEST_P( EnergyMortarDefinitionTest, enzyme_pair_derivatives_execute_on_backend )
   Array1D<PolynomialDerivativeResult> results( 1, 1, allocatorId() );
   auto output = results.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
-    const MdArray<RealT, PolynomialPairFunction::dof_count> coordinates{ 3.0, 5.0 };
-    const MdArray<RealT, PolynomialPairFunction::value_count> weights{ 2.0, -1.0 };
-    IndexT evaluation_count = 0;
+    const MdArray<RealT, PolynomialPairFunction::coord_ct> coordinates{ 3.0, 5.0 };
+    const MdArray<RealT, PolynomialPairFunction::value_ct> weights{ 2.0, -1.0 };
+    IndexT evaluation_ct = 0;
     output[0].value_jacobian = EnzymePairDerivative<PolynomialPairFunction>::valuesAndJacobian(
-        coordinates.view(), PolynomialPairFunction{ &evaluation_count } );
-    output[0].evaluation_count = evaluation_count;
-    IndexT weighted_evaluation_count = 0;
+        coordinates.view(), PolynomialPairFunction{ &evaluation_ct } );
+    output[0].evaluation_ct = evaluation_ct;
+    IndexT weighted_evaluation_ct = 0;
     output[0].weighted_hessian = EnzymePairDerivative<PolynomialPairFunction>::weightedJacobianAndHessian(
-        coordinates.view(), PolynomialPairFunction{ &weighted_evaluation_count }, weights.view() );
-    output[0].weighted_evaluation_count = weighted_evaluation_count;
+        coordinates.view(), PolynomialPairFunction{ &weighted_evaluation_ct }, weights.view() );
+    output[0].weighted_evaluation_ct = weighted_evaluation_ct;
   } );
   const Array1D<PolynomialDerivativeResult, MemorySpace::Host> host_results( results );
   const auto& value_jacobian = host_results[0].value_jacobian;
-  EXPECT_EQ( host_results[0].evaluation_count, PolynomialPairFunction::dof_count );
+  EXPECT_EQ( host_results[0].evaluation_ct, PolynomialPairFunction::coord_ct );
   EXPECT_EQ( value_jacobian.quadrature_result.status, QuadratureStatus::Success );
   EXPECT_EQ( value_jacobian.quadrature_result.required_point_count, 2 );
   EXPECT_TRUE( value_jacobian.has_active_points );
@@ -459,7 +548,7 @@ TEST_P( EnergyMortarDefinitionTest, enzyme_pair_derivatives_execute_on_backend )
   EXPECT_DOUBLE_EQ( value_jacobian.jacobian( 0, 1 ), 1.0 );
   EXPECT_DOUBLE_EQ( value_jacobian.jacobian( 1, 0 ), 5.0 );
   EXPECT_DOUBLE_EQ( value_jacobian.jacobian( 1, 1 ), 3.0 );
-  EXPECT_EQ( host_results[0].weighted_evaluation_count, PolynomialPairFunction::dof_count );
+  EXPECT_EQ( host_results[0].weighted_evaluation_ct, PolynomialPairFunction::coord_ct );
   const auto& weighted_hessian = host_results[0].weighted_hessian;
   EXPECT_DOUBLE_EQ( weighted_hessian.jacobian[0], 7.0 );
   EXPECT_DOUBLE_EQ( weighted_hessian.jacobian[1], -1.0 );
@@ -471,18 +560,18 @@ TEST_P( EnergyMortarDefinitionTest, enzyme_pair_derivatives_execute_on_backend )
 
 /** @brief Scalar polynomial with a counter to detect separate value or Jacobian evaluations. */
 struct ScalarPolynomialPairFunction {
-  static constexpr IndexT value_count = 1;  ///< One scalar output.
-  static constexpr IndexT dof_count = 2;    ///< Two coordinate entries.
-  IndexT* evaluation_count;                 ///< Number of evaluate() calls, in backend-accessible memory.
-  bool active;                              ///< Activation reported with the polynomial value.
-  QuadratureStatus status;                  ///< Quadrature status reported with the polynomial value.
+  static constexpr IndexT value_ct = 1;  ///< One scalar output.
+  static constexpr IndexT coord_ct = 2;  ///< Two coordinate entries.
+  IndexT* evaluation_ct;                 ///< Number of evaluate() calls, in backend-accessible memory.
+  bool active;                           ///< Activation reported with the polynomial value.
+  QuadratureStatus status;               ///< Quadrature status reported with the polynomial value.
 
   /** @brief Evaluate x0^2*x1 with the configured status. @param coordinates Polynomial inputs.
    * @return Scalar value, activation, and status; numerical outputs are retained even for inactive or failed inputs
    * so the test can check that differentiation masks them. */
-  TRIBOL_HOST_DEVICE PairEnergyValue evaluate( MdSpan<const RealT, dof_count> coordinates ) const
+  TRIBOL_HOST_DEVICE PairEnergyValue evaluate( MdSpan<const RealT, coord_ct> coordinates ) const
   {
-    ++*evaluation_count;
+    ++*evaluation_ct;
     return { coordinates[0] * coordinates[0] * coordinates[1],
              active,
              { status, status == QuadratureStatus::InvalidGeometry ? 0 : 2 } };
@@ -496,36 +585,36 @@ TEST_P( EnergyMortarDefinitionTest, scalar_derivatives_reuse_ad_values_and_state
   using Function = ScalarPolynomialPairFunction;
   /** @brief Polynomial inputs and reported quadrature state for one backend test case. */
   struct Input {
-    MdArray<RealT, Function::dof_count> coordinates;  ///< Polynomial inputs.
-    bool active;                                      ///< Reported activation.
-    QuadratureStatus status;                          ///< Reported quadrature status.
+    MdArray<RealT, Function::coord_ct> coordinates;  ///< Polynomial inputs.
+    bool active;                                     ///< Reported activation.
+    QuadratureStatus status;                         ///< Reported quadrature status.
   };
   const auto cases = copyToExecutionSpace<Input>( {
-      { MdArray<RealT, Function::dof_count>{ 3.0, 5.0 }, true, QuadratureStatus::Success },
-      { MdArray<RealT, Function::dof_count>{ 0.0, 5.0 }, true, QuadratureStatus::Success },
-      { MdArray<RealT, Function::dof_count>{ 3.0, 5.0 }, false, QuadratureStatus::Success },
-      { MdArray<RealT, Function::dof_count>{ 3.0, 5.0 }, false, QuadratureStatus::InvalidGeometry },
-      { MdArray<RealT, Function::dof_count>{ 3.0, 5.0 }, false, QuadratureStatus::InsufficientCapacity },
+      { MdArray<RealT, Function::coord_ct>{ 3.0, 5.0 }, true, QuadratureStatus::Success },
+      { MdArray<RealT, Function::coord_ct>{ 0.0, 5.0 }, true, QuadratureStatus::Success },
+      { MdArray<RealT, Function::coord_ct>{ 3.0, 5.0 }, false, QuadratureStatus::Success },
+      { MdArray<RealT, Function::coord_ct>{ 3.0, 5.0 }, false, QuadratureStatus::InvalidGeometry },
+      { MdArray<RealT, Function::coord_ct>{ 3.0, 5.0 }, false, QuadratureStatus::InsufficientCapacity },
   } );
-  ArrayT<PairValueJacobianHessian<Function::dof_count>> results( cases.size(), cases.size(), allocatorId() );
-  ArrayT<IndexT> counts( cases.size(), cases.size(), allocatorId() );
+  ArrayT<PairValueJacobianHessian<Function::coord_ct>> results( cases.size(), cases.size(), allocatorId() );
+  ArrayT<IndexT> cts( cases.size(), cases.size(), allocatorId() );
   const auto input = cases.view();
   const auto output = results.view();
-  const auto count = counts.view();
+  const auto ct = cts.view();
   forAllExec( GetParam(), cases.size(), [=] TRIBOL_HOST_DEVICE( IndexT i ) {
-    count[i] = 0;
-    const Function function{ &count[i], input[i].active, input[i].status };
+    ct[i] = 0;
+    const Function function{ &ct[i], input[i].active, input[i].status };
     output[i] = EnzymePairDerivative<Function>::valueJacobianAndHessian( input[i].coordinates.view(), function );
   } );
   const ArrayT<Input, 1, MemorySpace::Host> host_input( cases );
-  const ArrayT<PairValueJacobianHessian<Function::dof_count>, 1, MemorySpace::Host> host( results );
-  const ArrayT<IndexT, 1, MemorySpace::Host> host_counts( counts );
+  const ArrayT<PairValueJacobianHessian<Function::coord_ct>, 1, MemorySpace::Host> host( results );
+  const ArrayT<IndexT, 1, MemorySpace::Host> host_cts( cts );
   for ( IndexT i = 0; i < cases.size(); ++i ) {
     SCOPED_TRACE( i );
     EXPECT_EQ( host[i].quadrature_result.status, host_input[i].status );
     EXPECT_EQ( host[i].quadrature_result.required_point_count, i == 3 ? 0 : 2 );
     EXPECT_EQ( host[i].has_active_points, host_input[i].active );
-    EXPECT_EQ( host_counts[i], i < 2 ? Function::dof_count : 1 );
+    EXPECT_EQ( host_cts[i], i < 2 ? Function::coord_ct : 1 );
     EXPECT_DOUBLE_EQ( host[i].value, i == 0 ? 45.0 : 0.0 );
     EXPECT_DOUBLE_EQ( host[i].jacobian[0], i == 0 ? 30.0 : 0.0 );
     EXPECT_DOUBLE_EQ( host[i].jacobian[1], i == 0 ? 9.0 : 0.0 );
@@ -544,32 +633,37 @@ TEST_P( EnergyMortarDefinitionTest, scalar_derivatives_reuse_ad_values_and_state
  * @param weights Scalar contraction used for the gradient and Hessian check.
  */
 template <typename Function>
-void checkPairDerivatives( const Function& function, const MdArray<RealT, Function::dof_count>& coordinates,
-                           const MdArray<RealT, Function::value_count>& weights )
+void checkPairDerivatives( const Function& function, const MdArray<RealT, Function::coord_ct>& coordinates,
+                           const MdArray<RealT, Function::value_ct>& weights )
 {
+  using CoordinateFunction = PairCoordinateFunction<Function>;
+  const CoordinateFunction coordinate_function{ function };
   constexpr RealT step = 1.0e-6;
-  const auto base = EnzymePairDerivative<Function>::valuesAndJacobian( coordinates.view(), function );
-  const auto weighted =
-      EnzymePairDerivative<Function>::weightedJacobianAndHessian( coordinates.view(), function, weights.view() );
-  for ( IndexT column = 0; column < Function::dof_count; ++column ) {
+  const auto base =
+      EnzymePairDerivative<CoordinateFunction>::valuesAndJacobian( coordinates.view(), coordinate_function );
+  const auto weighted = EnzymePairDerivative<CoordinateFunction>::weightedJacobianAndHessian(
+      coordinates.view(), coordinate_function, weights.view() );
+  for ( IndexT column = 0; column < Function::coord_ct; ++column ) {
     auto plus = coordinates, minus = coordinates;
     plus[column] += step;
     minus[column] -= step;
-    const auto positive = EnzymePairDerivative<Function>::valuesAndJacobian( plus.view(), function );
-    const auto negative = EnzymePairDerivative<Function>::valuesAndJacobian( minus.view(), function );
+    const auto positive =
+        EnzymePairDerivative<CoordinateFunction>::valuesAndJacobian( plus.view(), coordinate_function );
+    const auto negative =
+        EnzymePairDerivative<CoordinateFunction>::valuesAndJacobian( minus.view(), coordinate_function );
     RealT positive_scalar = 0.0;
     RealT negative_scalar = 0.0;
-    for ( IndexT value = 0; value < Function::value_count; ++value ) {
+    for ( IndexT value = 0; value < Function::value_ct; ++value ) {
       positive_scalar += weights[value] * positive.values[value];
       negative_scalar += weights[value] * negative.values[value];
       EXPECT_NEAR( base.jacobian( value, column ), ( positive.values[value] - negative.values[value] ) / ( 2.0 * step ),
                    1.0e-6 );
     }
     EXPECT_NEAR( weighted.jacobian[column], ( positive_scalar - negative_scalar ) / ( 2.0 * step ), 1.0e-6 );
-    for ( IndexT row = 0; row < Function::dof_count; ++row ) {
+    for ( IndexT row = 0; row < Function::coord_ct; ++row ) {
       RealT positive_gradient = 0.0;
       RealT negative_gradient = 0.0;
-      for ( IndexT value = 0; value < Function::value_count; ++value ) {
+      for ( IndexT value = 0; value < Function::value_ct; ++value ) {
         positive_gradient += weights[value] * positive.jacobian( value, row );
         negative_gradient += weights[value] * negative.jacobian( value, row );
       }
@@ -579,26 +673,26 @@ void checkPairDerivatives( const Function& function, const MdArray<RealT, Functi
   }
 }
 
-/** @brief Check both pair definitions for varying and frozen quadrature. @tparam Count Gauss point count. */
-template <int Count>
+/** @brief Check both pair definitions for varying and frozen quadrature. @tparam Ct Gauss point count. */
+template <int Ct>
 void checkRuleDerivatives()
 {
-  using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<Count>>;
+  using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<Ct>>;
   using Gap = OffsetGap<OpposingNormalGap>;
   const RuleGenerator rule_generator;
   const Gap gap{ {}, 0.05 };
   const EnergyMortarEnergy<RuleGenerator, Gap> energy{ rule_generator, 7.0, gap };
   const EnergyMortarNodalEnergy<RuleGenerator, Gap> nodal{ rule_generator, gap };
-  const MdArray<RealT, decltype( energy )::dof_count> coordinates{ 0.0, 0.0, 2.0, 0.15, 1.7, 0.35, 0.3, 0.15 };
+  const MdArray<RealT, decltype( energy )::coord_ct> coordinates{ 0.0, 0.0, 2.0, 0.15, 1.7, 0.35, 0.3, 0.15 };
   const auto check = [&]( const auto& selected_energy, const auto& selected_nodal ) {
     using SelectedEnergy = std::remove_cvref_t<decltype( selected_energy )>;
     using SelectedNodal = std::remove_cvref_t<decltype( selected_nodal )>;
-    ASSERT_EQ( selected_nodal.evaluate( coordinates.view() ).quadrature_result.status, QuadratureStatus::Success );
-    checkPairDerivatives( selected_energy, coordinates, MdArray<RealT, SelectedEnergy::value_count>{ 1.0 } );
-    checkPairDerivatives( selected_nodal, coordinates,
-                          MdArray<RealT, SelectedNodal::value_count>{ 0.3, -0.2, 0.4, 0.1 } );
+    ASSERT_EQ( PairCoordinateFunction{ selected_nodal }.evaluate( coordinates.view() ).quadrature_result.status,
+               QuadratureStatus::Success );
+    checkPairDerivatives( selected_energy, coordinates, MdArray<RealT, SelectedEnergy::value_ct>{ 1.0 } );
+    checkPairDerivatives( selected_nodal, coordinates, MdArray<RealT, SelectedNodal::value_ct>{ 0.3, -0.2, 0.4, 0.1 } );
   };
-  SCOPED_TRACE( testing::Message() << "points=" << Count );
+  SCOPED_TRACE( testing::Message() << "points=" << Ct );
   {
     SCOPED_TRACE( "varying quadrature" );
     check( energy, nodal );

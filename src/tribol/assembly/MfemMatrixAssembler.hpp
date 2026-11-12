@@ -70,18 +70,18 @@ struct MfemMatrixBlockLayout {
   }
 };
 
-/** @brief Check a storage-size product before allocating. @param count Nonnegative entries.
+/** @brief Check a storage-size product before allocating. @param ct Nonnegative entries.
  * @param size Nonnegative values per entry. @return Product representable by IndexT.
  * @throws std::invalid_argument A size is negative. @throws std::length_error The product exceeds IndexT. */
-inline IndexT checkedMatrixSize( IndexT count, IndexT size )
+inline IndexT checkedMatrixSize( IndexT ct, IndexT size )
 {
-  if ( count < 0 || size < 0 ) {
+  if ( ct < 0 || size < 0 ) {
     throw std::invalid_argument( "Matrix storage sizes must be nonnegative." );
   }
-  if ( size != 0 && count > std::numeric_limits<IndexT>::max() / size ) {
+  if ( size != 0 && ct > std::numeric_limits<IndexT>::max() / size ) {
     throw std::length_error( "Matrix storage exceeds the supported index range." );
   }
-  return count * size;
+  return ct * size;
 }
 }  // namespace detail
 
@@ -89,13 +89,12 @@ inline IndexT checkedMatrixSize( IndexT count, IndexT size )
  * @brief Write rectangular blocks for one batch from a host or device kernel.
  * @tparam RowDofs Rows per block in MFEM element order.
  * @tparam ColumnDofs Columns per block in MFEM element order.
- * @tparam BlockCount Configured blocks per pair.
+ * @tparam BlockCt Configured blocks per pair.
  */
-template <IndexT RowDofs, IndexT ColumnDofs, IndexT BlockCount>
+template <IndexT RowDofs, IndexT ColumnDofs, IndexT BlockCt>
 struct MfemMatrixBatchView {
-  MdArray<ElementBlockView<RowDofs, ColumnDofs>, BlockCount>
-      blocks;                                                  ///< Writable views into the matrix batch's buffers.
-  MdArray<detail::MfemMatrixBlockLayout, BlockCount> layouts;  ///< Independent row and column indexing.
+  MdArray<ElementBlockView<RowDofs, ColumnDofs>, BlockCt> blocks;  ///< Writable views into the matrix batch's buffers.
+  MdArray<detail::MfemMatrixBlockLayout, BlockCt> layouts;         ///< Independent row and column indexing.
 
   /**
    * @brief Pack one pair's blocks, converting node/component inputs to MFEM component/node element order.
@@ -111,7 +110,7 @@ struct MfemMatrixBatchView {
                                     Indices... indices ) const
   {
     const MdArray<IndexT, 2> elements{ pair.element_id1_, pair.element_id2_ };
-    for ( IndexT block = 0; block < BlockCount; ++block ) {
+    for ( IndexT block = 0; block < BlockCt; ++block ) {
       const auto layout = layouts[block];
       const auto block_view = blocks[block];
       block_view.setElements( pair_index, elements[layout.row_geometry], elements[layout.column_geometry] );
@@ -132,17 +131,17 @@ class MfemMatrixAssembler;
  * @brief Own scratch blocks until packing and transfer to an assembler finish.
  * @tparam RowDofs Rows per block.
  * @tparam ColumnDofs Columns per block.
- * @tparam BlockCount Configured blocks per pair.
+ * @tparam BlockCt Configured blocks per pair.
  */
-template <IndexT RowDofs, IndexT ColumnDofs, IndexT BlockCount>
+template <IndexT RowDofs, IndexT ColumnDofs, IndexT BlockCt>
 class MfemMatrixBatch {
  public:
   /** @brief Return a writable kernel view. @return View into this batch's buffers; the batch must remain alive while
    * the view is used. */
-  MfemMatrixBatchView<RowDofs, ColumnDofs, BlockCount> view()
+  MfemMatrixBatchView<RowDofs, ColumnDofs, BlockCt> view()
   {
-    MfemMatrixBatchView<RowDofs, ColumnDofs, BlockCount> result{ {}, layouts_ };
-    for ( IndexT block = 0; block < BlockCount; ++block ) {
+    MfemMatrixBatchView<RowDofs, ColumnDofs, BlockCt> result{ {}, layouts_ };
+    for ( IndexT block = 0; block < BlockCt; ++block ) {
       result.blocks[block] = blocks_[block].view();
     }
     return result;
@@ -150,19 +149,19 @@ class MfemMatrixBatch {
 
  private:
   friend class MfemMatrixAssembler;
-  /** @brief Allocate a validated batch. @param owner Assembler that accepts these blocks. @param pair_count Pairs.
+  /** @brief Allocate a validated batch. @param owner Assembler that accepts these blocks. @param pair_ct Pairs.
    * @param allocator_id Execution allocator. @param layouts Validated block layouts. */
-  MfemMatrixBatch( const MfemMatrixAssembler* owner, IndexT pair_count, int allocator_id,
-                   MdArray<detail::MfemMatrixBlockLayout, BlockCount> layouts )
+  MfemMatrixBatch( const MfemMatrixAssembler* owner, IndexT pair_ct, int allocator_id,
+                   MdArray<detail::MfemMatrixBlockLayout, BlockCt> layouts )
       : owner_( owner ), layouts_( layouts )
   {
-    blocks_.reserve( BlockCount );
-    for ( IndexT block = 0; block < BlockCount; ++block ) {
-      blocks_.emplace_back( pair_count, allocator_id );
+    blocks_.reserve( BlockCt );
+    for ( IndexT block = 0; block < BlockCt; ++block ) {
+      blocks_.emplace_back( pair_ct, allocator_id );
     }
   }
   const MfemMatrixAssembler* owner_;  ///< Assembler that created the batch; it must remain in place until addBatch().
-  MdArray<detail::MfemMatrixBlockLayout, BlockCount> layouts_;   ///< Indexing copied into the kernel view.
+  MdArray<detail::MfemMatrixBlockLayout, BlockCt> layouts_;      ///< Indexing copied into the kernel view.
   std::vector<ElementBlockBuffer<RowDofs, ColumnDofs>> blocks_;  ///< Scratch proportional to this batch's pairs.
 };
 
@@ -224,55 +223,55 @@ class MfemMatrixAssembler {
 
   /**
    * @brief Allocate fixed-size block scratch for an execution-space kernel.
-   * @tparam RowDofs Rows per block. @tparam ColumnDofs Columns per block. @tparam BlockCount Blocks per pair.
-   * @param pair_count Supplied pair count. @param allocator_id Execution-accessible allocator.
+   * @tparam RowDofs Rows per block. @tparam ColumnDofs Columns per block. @tparam BlockCt Blocks per pair.
+   * @param pair_ct Supplied pair count. @param allocator_id Execution-accessible allocator.
    * @return Owning batch whose view can pack matrices alongside other per-pair operations.
    * Keep the assembler alive and in place until addBatch() finishes. Scratch must remain alive while kernels use its
    * view.
-   * @throws std::invalid_argument Template dimensions or count do not match the configuration, or pair_count is
+   * @throws std::invalid_argument Template dimensions or count do not match the configuration, or pair_ct is
    * negative.
    * @throws std::length_error Scratch size exceeds the supported index range; no batch is returned.
    */
-  template <IndexT RowDofs, IndexT ColumnDofs, IndexT BlockCount>
-  MfemMatrixBatch<RowDofs, ColumnDofs, BlockCount> makeBatch( IndexT pair_count, int allocator_id ) const
+  template <IndexT RowDofs, IndexT ColumnDofs, IndexT BlockCt>
+  MfemMatrixBatch<RowDofs, ColumnDofs, BlockCt> makeBatch( IndexT pair_ct, int allocator_id ) const
   {
-    static_assert( RowDofs > 0 && ColumnDofs > 0 && BlockCount > 0 );
-    if ( layouts_.size() != static_cast<std::size_t>( BlockCount ) ) {
+    static_assert( RowDofs > 0 && ColumnDofs > 0 && BlockCt > 0 );
+    if ( layouts_.size() != static_cast<std::size_t>( BlockCt ) ) {
       throw std::invalid_argument( "Matrix batch block count does not match its configuration." );
     }
-    MdArray<detail::MfemMatrixBlockLayout, BlockCount> layouts{};
-    for ( IndexT block = 0; block < BlockCount; ++block ) {
+    MdArray<detail::MfemMatrixBlockLayout, BlockCt> layouts{};
+    for ( IndexT block = 0; block < BlockCt; ++block ) {
       layouts[block] = layouts_[block];
       if ( layouts[block].row_nodes * layouts[block].row_components != RowDofs ||
            layouts[block].column_nodes * layouts[block].column_components != ColumnDofs ) {
         throw std::invalid_argument( "Matrix batch dimensions do not match its configured blocks." );
       }
     }
-    detail::checkedMatrixSize( pair_count, detail::checkedMatrixSize( RowDofs, ColumnDofs ) );
-    return { this, pair_count, allocator_id, layouts };
+    detail::checkedMatrixSize( pair_ct, detail::checkedMatrixSize( RowDofs, ColumnDofs ) );
+    return { this, pair_ct, allocator_id, layouts };
   }
 
   /**
    * @brief Copy completed execution-space blocks to host accumulation storage.
-   * @tparam RowDofs Rows per block. @tparam ColumnDofs Columns per block. @tparam BlockCount Blocks per pair.
+   * @tparam RowDofs Rows per block. @tparam ColumnDofs Columns per block. @tparam BlockCt Blocks per pair.
    * @param batch Batch created by this assembler; its buffers must remain valid until the call completes.
    * @throws std::invalid_argument Batch belongs to another assembler; nothing is appended.
    * @throws std::length_error Accumulated blocks exceed the supported index range.
    */
-  template <IndexT RowDofs, IndexT ColumnDofs, IndexT BlockCount>
-  void addBatch( const MfemMatrixBatch<RowDofs, ColumnDofs, BlockCount>& batch )
+  template <IndexT RowDofs, IndexT ColumnDofs, IndexT BlockCt>
+  void addBatch( const MfemMatrixBatch<RowDofs, ColumnDofs, BlockCt>& batch )
   {
     if ( batch.owner_ != this ) {
       throw std::invalid_argument( "Matrix batch must be appended to the assembler that created it." );
     }
-    for ( IndexT block = 0; block < BlockCount; ++block ) {
+    for ( IndexT block = 0; block < BlockCt; ++block ) {
       appendElementBlocks( contributions_[block], batch.blocks_[block] );
     }
   }
 
   /**
    * @brief Pack and append matrices in a dedicated kernel; earlier contributions accumulate.
-   * @tparam RowDofs Rows per block. @tparam ColumnDofs Columns per block. @tparam BlockCount Blocks per pair.
+   * @tparam RowDofs Rows per block. @tparam ColumnDofs Columns per block. @tparam BlockCt Blocks per pair.
    * @tparam MatrixReader Device-callable `(pair, row, column) -> RealT` reader.
    * @tparam Exec Concrete execution mode.
    * @param pairs Supplied execution-accessible pairs.
@@ -280,10 +279,10 @@ class MfemMatrixAssembler {
    * @throws std::invalid_argument Batch dimensions do not match the configuration; nothing is appended.
    * @throws std::length_error Required storage exceeds the supported index range.
    */
-  template <ExecutionMode Exec, IndexT RowDofs, IndexT ColumnDofs, IndexT BlockCount, typename MatrixReader>
+  template <ExecutionMode Exec, IndexT RowDofs, IndexT ColumnDofs, IndexT BlockCt, typename MatrixReader>
   void addPairs( const ArrayT<InterfacePair>& pairs, MatrixReader read_matrix )
   {
-    auto batch = makeBatch<RowDofs, ColumnDofs, BlockCount>( pairs.size(), pairs.getAllocatorID() );
+    auto batch = makeBatch<RowDofs, ColumnDofs, BlockCt>( pairs.size(), pairs.getAllocatorID() );
     const auto batch_view = batch.view();
     const auto pairs_view = pairs.view();
     forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
@@ -336,8 +335,8 @@ class MfemMatrixAssembler {
   std::vector<detail::MfemMatrixBlockLayout> layouts_;  ///< Input block indexing, independent of pair count.
   std::vector<PackedPairJacobianContribs>
       contributions_;                        ///< Accumulated blocks referencing FE spaces and element maps.
-  IndexT row_count_ = 0;                     ///< Input rows including configured offsets.
-  IndexT column_count_ = 0;                  ///< Input columns including configured offsets.
+  IndexT row_ct_ = 0;                        ///< Input rows including configured offsets.
+  IndexT column_ct_ = 0;                     ///< Input columns including configured offsets.
   Array1D<RealT, MemorySpace::Host> block_;  ///< Reused host scratch for the largest configured block.
 };
 

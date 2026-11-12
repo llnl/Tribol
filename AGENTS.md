@@ -9,6 +9,11 @@
 - Always enclose `if` and `for` statement bodies in braces, including single-statement bodies.
 - Run `clang-format-19 -i` on every C or C++ source and header file changed before finalizing the work.
 
+## Naming
+
+- Use `ct` as shorthand for `count` in new identifiers, following the surrounding capitalization: `pair_ct`,
+  `ValueCt`, and `pairCt()`. Keep existing shared and external API names.
+
 ## Numeric literals
 
 - Avoid unexplained numeric literals. Name values by their purpose, calculate counts from existing data where practical,
