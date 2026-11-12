@@ -16,8 +16,6 @@
 #include "tribol/common/GlobalScalarAssembler.hpp"
 #include "tribol/assembly/PairContribution.hpp"
 #include "tribol/assembly/PairKernel.hpp"
-#include "tribol/assembly/ContactEvaluation.hpp"
-#include <utility>
 #include "tribol/integ/QuadratureCommon.hpp"
 
 namespace tribol {
@@ -145,6 +143,7 @@ ContactFormulationResult evaluateAndAssemblePairResidual( const ArrayT<Interface
   static_assert( PairFunction::num_values == PairFunction::num_coords, "Pair residuals must match coordinate DOFs." );
   auto all_pair_values = evaluatePairValues<Exec>( pairs, mesh1, mesh2, pair_function );
   checkPairQuadratureResults<Exec>( all_pair_values.quadratureResults() );
+
   auto assembler = detail::makeDisplacementVectorAssembler( mesh_data, mesh1, mesh2 );
   const auto all_pair_values_view = all_pair_values.view();
   assembler.addPairs<Exec, PairFunction::num_coords, 2>( pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
@@ -178,17 +177,17 @@ ContactFormulationResult evaluateAndAssemblePairResidualJacobian( const ArrayT<I
                                                                   const PairFunction& pair_function )
 {
   static_assert( PairFunction::num_values == PairFunction::num_coords, "Pair residuals must match coordinate DOFs." );
-  auto contributions = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function );
-  const auto contributions_view = contributions.view();
-  checkPairQuadratureResults<Exec>( contributions.quadratureResults() );
+  auto all_pair_values = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function );
+  checkPairQuadratureResults<Exec>( all_pair_values.quadratureResults() );
 
+  const auto all_pair_values_view = all_pair_values.view();
   return detail::assemblePairForcesAndJacobian<Exec, PairFunction::num_coords>(
       pairs, mesh1, mesh2, mesh_data, jacobian_data,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
-        return contributions_view.has_active_points[pair] ? contributions_view.value( pair, row ) : 0.0;
+        return all_pair_values_view.has_active_points[pair] ? all_pair_values_view.value( pair, row ) : 0.0;
       },
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
-        return contributions_view.has_active_points[pair] ? contributions_view.jacobian( pair, row, column ) : 0.0;
+        return all_pair_values_view.has_active_points[pair] ? all_pair_values_view.jacobian( pair, row, column ) : 0.0;
       } );
 }
 #endif  // TRIBOL_USE_ENZYME
@@ -198,102 +197,80 @@ ContactFormulationResult evaluateAndAssemblePairResidualJacobian( const ArrayT<I
  * @brief Evaluate scalar energies and assemble their coordinate Jacobians as forces, without Hessians.
  * @tparam Exec Concrete execution mode for evaluation and assembly kernels.
  * @tparam PairFunction Fixed scalar pair-energy function.
+ * @param pairs Accepted element pairs; not retained.
+ * @param mesh1 Current first mesh.
+ * @param mesh2 Current second mesh.
+ * @param mesh_data Displacement transfer data used for assembly.
+ * @param pair_function Configured scalar-energy function.
+ * @return Owned force and globally summed energy; df_dx and other outputs are absent. Empty or inactive pairs
+ * contribute zero.
+ * @throws std::invalid_argument Pair geometry or assembly dimensions are invalid.
+ * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
-class EnergyForceEvaluation final : public ContactEvaluation {
- public:
-  /** @brief Store the scalar pair function and displacement transfer data.
-   * @param mesh_data Displacement transfer data; must outlive this evaluation.
-   * @param pair_function Configured scalar-energy function, retained by value. */
-  EnergyForceEvaluation( const MfemMeshData& mesh_data, PairFunction pair_function )
-      : mesh_data_( mesh_data ), pair_function_( std::move( pair_function ) )
-  {
-  }
+ContactFormulationResult evaluateAndAssemblePairEnergy( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
+                                                        MeshData::Viewer mesh2, const MfemMeshData& mesh_data,
+                                                        const PairFunction& pair_function )
+{
+  static_assert( PairFunction::num_values == 1, "Pair energies must have one scalar output." );
+  auto all_pair_values = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function );
+  checkPairQuadratureResults<Exec>( all_pair_values.quadratureResults() );
 
-  /** @brief Evaluate energy and its Jacobian and assemble energy and force.
-   * @param pairs Accepted element pairs; not retained. @param mesh1 Current first mesh. @param mesh2 Current second
-   * mesh.
-   * @return Owned force and globally summed energy; df_dx and other outputs are absent. Empty or inactive pairs
-   * contribute zero. @throws std::invalid_argument Pair geometry or assembly dimensions are invalid.
-   * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded. */
-  ContactFormulationResult evaluateAndAssemble( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
-                                                MeshData::Viewer mesh2 ) const override
-  {
-    static_assert( PairFunction::num_values == 1, "Pair energies must have one scalar output." );
-    auto all_pair_values = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function_ );
-    checkPairQuadratureResults<Exec>( all_pair_values.quadratureResults() );
-    const auto all_pair_values_view = all_pair_values.view();
-    auto assembler = detail::makeDisplacementVectorAssembler( mesh_data_, mesh1, mesh2 );
-    assembler.addPairs<Exec, PairFunction::num_coords, 2>( pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
-      return all_pair_values_view.has_active_points[pair] ? all_pair_values_view.jacobian( pair, 0, row ) : 0.0;
-    } );
-    ContactFormulationResult result;
-    result.force.reset( assembler.assemble().release() );
-    result.energy = GlobalScalarAssembler::sum<Exec>(
-        pairs.size(),
-        [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
-          return all_pair_values_view.has_active_points[pair] ? all_pair_values_view.value( pair, 0 ) : 0.0;
-        },
-        result.force->GetComm() );
-    return result;
-  }
-
- private:
-  const MfemMeshData& mesh_data_;     ///< Referenced displacement transfer data.
-  const PairFunction pair_function_;  ///< Owned, fixed scalar-energy function.
-};
+  auto assembler = detail::makeDisplacementVectorAssembler( mesh_data, mesh1, mesh2 );
+  const auto all_pair_values_view = all_pair_values.view();
+  assembler.addPairs<Exec, PairFunction::num_coords, 2>( pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
+    return all_pair_values_view.has_active_points[pair] ? all_pair_values_view.jacobian( pair, 0, row ) : 0.0;
+  } );
+  ContactFormulationResult result;
+  result.force.reset( assembler.assemble().release() );
+  result.energy = GlobalScalarAssembler::sum<Exec>(
+      pairs.size(),
+      [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
+        return all_pair_values_view.has_active_points[pair] ? all_pair_values_view.value( pair, 0 ) : 0.0;
+      },
+      result.force->GetComm() );
+  return result;
+}
 
 /**
  * @brief Evaluate scalar energies, Jacobians, and Hessians and assemble energy, force, and force Jacobians.
  * @tparam Exec Concrete execution mode for evaluation and assembly kernels.
  * @tparam PairFunction Fixed scalar pair-energy function.
+ * @param pairs Accepted element pairs; not retained.
+ * @param mesh1 Current first mesh.
+ * @param mesh2 Current second mesh.
+ * @param mesh_data Displacement transfer data used for vector and matrix assembly.
+ * @param jacobian_data Coordinate-matrix transfer data used for matrix assembly.
+ * @param pair_function Configured scalar-energy function.
+ * @return Owned energy, force, and df_dx; other outputs are absent. Empty or inactive pairs contribute zero.
+ * @throws std::invalid_argument Pair geometry or assembly dimensions are invalid.
+ * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
-class EnergyForceJacobianEvaluation final : public ContactEvaluation {
- public:
-  /** @brief Store the scalar pair function and required transfer data.
-   * @param mesh_data Displacement transfer data; must outlive this evaluation.
-   * @param jacobian_data Coordinate-matrix transfer data; must outlive this evaluation.
-   * @param pair_function Configured scalar-energy function, retained by value. */
-  EnergyForceJacobianEvaluation( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
-                                 PairFunction pair_function )
-      : mesh_data_( mesh_data ), jacobian_data_( jacobian_data ), pair_function_( std::move( pair_function ) )
-  {
-  }
+ContactFormulationResult evaluateAndAssemblePairEnergyJacobian( const ArrayT<InterfacePair>& pairs,
+                                                                MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                                                const MfemMeshData& mesh_data,
+                                                                const MfemJacobianData& jacobian_data,
+                                                                const PairFunction& pair_function )
+{
+  static_assert( PairFunction::num_values == 1, "Pair energies must have one scalar output." );
+  auto contributions = evaluatePairValuesJacobiansAndHessians<Exec>( pairs, mesh1, mesh2, pair_function );
+  const auto contributions_view = contributions.view();
+  checkPairQuadratureResults<Exec>( contributions.quadratureResults() );
 
-  /** @brief Evaluate energy and its first two coordinate derivatives and assemble all three outputs.
-   * @param pairs Accepted element pairs; not retained. @param mesh1 Current first mesh. @param mesh2 Current second
-   * mesh.
-   * @return Owned energy, force, and df_dx; other outputs are absent. Empty or inactive pairs contribute zero.
-   * @throws std::invalid_argument Pair geometry or assembly dimensions are invalid.
-   * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded. */
-  ContactFormulationResult evaluateAndAssemble( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
-                                                MeshData::Viewer mesh2 ) const override
-  {
-    static_assert( PairFunction::num_values == 1, "Pair energies must have one scalar output." );
-    auto contributions = evaluatePairValuesJacobiansAndHessians<Exec>( pairs, mesh1, mesh2, pair_function_ );
-    const auto contributions_view = contributions.view();
-    checkPairQuadratureResults<Exec>( contributions.quadratureResults() );
-
-    auto result = detail::assemblePairForcesAndJacobian<Exec, PairFunction::num_coords>(
-        pairs, mesh1, mesh2, mesh_data_, jacobian_data_,
-        [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
-          return contributions_view.derivatives.jacobian( pair, row );
-        },
-        [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
-          return contributions_view.derivatives.hessian( pair, row, column );
-        } );
-    result.energy = GlobalScalarAssembler::sum<Exec>(
-        pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) { return contributions_view.values[pair]; },
-        result.force->GetComm() );
-    return result;
-  }
-
- private:
-  const MfemMeshData& mesh_data_;          ///< Referenced displacement transfer data.
-  const MfemJacobianData& jacobian_data_;  ///< Referenced coordinate-matrix transfer data.
-  const PairFunction pair_function_;       ///< Owned, fixed scalar-energy function.
-};
+  auto result = detail::assemblePairForcesAndJacobian<Exec, PairFunction::num_coords>(
+      pairs, mesh1, mesh2, mesh_data, jacobian_data,
+      [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
+        return contributions_view.derivatives.jacobian( pair, row );
+      },
+      [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
+        return contributions_view.derivatives.hessian( pair, row, column );
+      } );
+  result.energy = GlobalScalarAssembler::sum<Exec>(
+      pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) { return contributions_view.values[pair]; },
+      result.force->GetComm() );
+  return result;
+}
 #endif  // TRIBOL_USE_ENZYME
 
 }  // namespace tribol

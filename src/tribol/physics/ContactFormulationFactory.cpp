@@ -19,7 +19,6 @@
 #include "tribol/physics/CommonPlaneFormulation.hpp"
 #include "tribol/assembly/PairEvaluationAssembly.hpp"
 #include "tribol/physics/EnergyMortar.hpp"
-#include "tribol/physics/EnergyMortarEvaluation.hpp"
 #include "tribol/physics/PenaltyStiffness.hpp"
 #include "tribol/physics/ContactEnforcement.hpp"
 
@@ -178,23 +177,20 @@ std::unique_ptr<ContactFormulation> createEnergyMortarForRuleGenerator( Coupling
     EnergyMortarEnergy<PairRuleGenerator, OffsetGap<OpposingNormalGap>> pair_function{
         std::move( rule_generator ), detail::checkedPenaltyStiffness( penalty ),
         OffsetGap{ OpposingNormalGap{}, residual_gap } };
-    auto evaluation = std::make_unique<EnergyForceJacobianEvaluation<Exec, decltype( pair_function )>>(
-        data, *cs->getMfemJacobianData(), std::move( pair_function ) );
-    return std::make_unique<QuadraturePointEnergyMortar>( std::move( evaluation ), std::move( pair_builder ) );
+    return std::make_unique<QuadraturePointEnergyMortar<Exec, decltype( pair_function )>>(
+        data, *cs->getMfemJacobianData(), std::move( pair_function ), std::move( pair_builder ) );
   }
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "Nodal Energy Mortar requires pressure/gap data." );
   EnergyMortarNodalEnergy<PairRuleGenerator, OffsetGap<OpposingNormalGap>> pair_function{
       std::move( rule_generator ), OffsetGap{ OpposingNormalGap{}, residual_gap } };
-  std::unique_ptr<ContactEvaluation> evaluation;
   if ( use_penalty ) {
-    evaluation = std::make_unique<NodalPenaltyEvaluation<Exec, decltype( pair_function )>>(
+    return std::make_unique<NodalPenaltyEnergyMortar<Exec, decltype( pair_function )>>(
         data, *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( pair_function ),
-        PenaltyEnforcement{ penalty } );
-  } else {
-    evaluation = std::make_unique<NodalLagrangeMultiplierEvaluation<Exec, decltype( pair_function )>>(
-        data, *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( pair_function ) );
+        PenaltyEnforcement{ penalty }, std::move( pair_builder ) );
   }
-  return std::make_unique<NodalEnergyMortar>( std::move( evaluation ), std::move( pair_builder ) );
+  return std::make_unique<NodalLagrangeMultiplierEnergyMortar<Exec, decltype( pair_function )>>(
+      data, *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( pair_function ),
+      std::move( pair_builder ) );
 }
 
 template <ExecutionMode Exec>

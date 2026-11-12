@@ -17,7 +17,6 @@ set(tribol_headers
     assembly/PairEvaluation.hpp
     assembly/PairEvaluationAssembly.hpp
     assembly/PairKernel.hpp
-    assembly/ContactEvaluation.hpp
 
     common/ArrayTypes.hpp
     common/Atomics.hpp

@@ -14,7 +14,7 @@
  * precede penalty configuration, but no penalty formulation is constructed until the settings are complete. Each
  * formulation retains its construction stiffness until replaced.
  * Direct force, Jacobian, and energy scaling checks use Sequential and OpenMP when enabled, with host mesh storage.
- * Scalar force-only evaluators check active and empty pair batches without computing or returning a force Jacobian.
+ * Scalar force-only helpers check active and empty pair batches without computing or returning a force Jacobian.
  */
 #include <gtest/gtest.h>
 #include <cmath>
@@ -84,17 +84,6 @@ class EnergyMortarQuadratureSettingsTest : public testing::TestWithParam<std::tu
   std::unique_ptr<mfem::ParGridFunction> coords_;     ///< Owned registered mesh-coordinate field.
 };
 
-/** @brief Check the factory-selected enforcement location.
- * @param formulation Factory-created contact formulation. @param location Selected enforcement location.
- * @return Whether the formulation provides the requested nodal or quadrature-point calculation. */
-bool usesEnforcementLocation( tribol::ContactFormulation* formulation, tribol::EnforcementLocation location )
-{
-  if ( location == tribol::EnforcementLocation::Nodal ) {
-    return dynamic_cast<tribol::NodalEnergyMortar*>( formulation ) != nullptr;
-  }
-  return dynamic_cast<tribol::QuadraturePointEnergyMortar*>( formulation ) != nullptr;
-}
-
 // Supported orders configure either enforcement location; rejected orders must leave the selected object intact.
 TEST_P( EnergyMortarQuadratureSettingsTest, configures_and_rebuilds_formulation )
 {
@@ -104,7 +93,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, configures_and_rebuilds_formulation 
     tribol::setQuadratureOrder( 0, order );
     auto* formulation = cs->getContactFormulation();
     ASSERT_NE( formulation, nullptr );
-    EXPECT_TRUE( usesEnforcementLocation( formulation, location ) );
+    EXPECT_EQ( cs->getParameters().enforcement_location, location );
     EXPECT_EQ( cs->getParameters().quadrature_order, order );
   };
   check( quadratureOrder() );
@@ -124,7 +113,8 @@ TEST_P( EnergyMortarQuadratureSettingsTest, configures_and_rebuilds_formulation 
   tribol::setQuadratureOrder( 0, 2 );
   EXPECT_FALSE( cs->hasContactFormulation() );
   cs->updateContactFormulation();
-  EXPECT_TRUE( usesEnforcementLocation( cs->getContactFormulation(), location ) );
+  EXPECT_TRUE( cs->hasContactFormulation() );
+  EXPECT_EQ( cs->getParameters().enforcement_location, location );
 }
 
 // Gap and force calls must work independently, initialize only their outputs, and leave earlier results unchanged.
@@ -215,17 +205,17 @@ TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
             if ( std::get<0>( GetParam() ) == EnforcementLocation::Nodal ) {
               EnergyMortarNodalEnergy<decltype( rule_generator ), OffsetGap<OpposingNormalGap>> pair_function{
                   std::move( rule_generator ), OffsetGap{ OpposingNormalGap{}, 0.0 } };
-              auto evaluation = std::make_unique<NodalPenaltyEvaluation<Exec, decltype( pair_function )>>(
+              return std::make_unique<NodalPenaltyEnergyMortar<Exec, decltype( pair_function )>>(
                   *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(),
-                  std::move( pair_function ), PenaltyEnforcement{ SeriesPenaltyStiffness{}( 2.0, 6.0 ) } );
-              return std::make_unique<NodalEnergyMortar>( std::move( evaluation ), std::move( pair_builder ) );
+                  std::move( pair_function ), PenaltyEnforcement{ SeriesPenaltyStiffness{}( 2.0, 6.0 ) },
+                  std::move( pair_builder ) );
             }
             EnergyMortarEnergy<decltype( rule_generator ), OffsetGap<OpposingNormalGap>> pair_function{
                 std::move( rule_generator ), SeriesPenaltyStiffness{}( 2.0, 6.0 ),
                 OffsetGap{ OpposingNormalGap{}, 0.0 } };
-            auto evaluation = std::make_unique<EnergyForceJacobianEvaluation<Exec, decltype( pair_function )>>(
-                *cs.getMfemMeshData(), *cs.getMfemJacobianData(), std::move( pair_function ) );
-            return std::make_unique<QuadraturePointEnergyMortar>( std::move( evaluation ), std::move( pair_builder ) );
+            return std::make_unique<QuadraturePointEnergyMortar<Exec, decltype( pair_function )>>(
+                *cs.getMfemMeshData(), *cs.getMfemJacobianData(), std::move( pair_function ),
+                std::move( pair_builder ) );
           } );
     } );
     auto result = alternate->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView() );
@@ -258,6 +248,10 @@ TEST_P( EnergyMortarQuadratureSettingsTest, quadrature_force_only_matches_energy
   const auto baseline = cs.getContactFormulation()->computeNodalForces( mesh1, mesh2 );
   ASSERT_TRUE( baseline.energy.has_value() );
   ASSERT_GT( *baseline.energy, 0.0 );
+  struct ForceOnlyResults {
+    ContactFormulationResult empty;   ///< Result for an empty accepted-pair list.
+    ContactFormulationResult active;  ///< Result for the searched contact pairs.
+  };
   for ( const auto mode : { ExecutionMode::Sequential
 #ifdef TRIBOL_USE_OPENMP
                             ,
@@ -265,29 +259,29 @@ TEST_P( EnergyMortarQuadratureSettingsTest, quadrature_force_only_matches_energy
 #endif
         } ) {
     SCOPED_TRACE( static_cast<int>( mode ) );
-    auto evaluation = dispatchExecutionMode( mode, [&]<ExecutionMode Exec>() {
+    auto results = dispatchExecutionMode( mode, [&]<ExecutionMode Exec>() {
       return createWithQuadratureRuleGenerator(
-          quadratureOrder(), SmoothedProjectedEdgeMapping{},
-          [&]( auto rule_generator ) -> std::unique_ptr<ContactEvaluation> {
+          quadratureOrder(), SmoothedProjectedEdgeMapping{}, [&]( auto rule_generator ) -> ForceOnlyResults {
             EnergyMortarEnergy<decltype( rule_generator ), OffsetGap<OpposingNormalGap>> pair_function{
                 std::move( rule_generator ), 100.0, OffsetGap{ OpposingNormalGap{}, 0.0 } };
-            return std::make_unique<EnergyForceEvaluation<Exec, decltype( pair_function )>>(
-                *cs.getMfemMeshData(), std::move( pair_function ) );
+            const ArrayT<InterfacePair> empty_pairs( 0, 0, cs.getMesh1().getAllocatorId() );
+            auto empty =
+                evaluateAndAssemblePairEnergy<Exec>( empty_pairs, mesh1, mesh2, *cs.getMfemMeshData(), pair_function );
+            auto coarse = createCoarseSearch( cs.spatialDimension(), cs.getBinningMethod(), mode,
+                                              cs.getEffectiveBinningProximityScale(), 0.0 );
+            auto refined = std::make_unique<ProjectedEdgeSearch>( mode, false );
+            const auto pairs = PairListBuilder{ std::move( coarse ), std::move( refined ) }.build( mesh1, mesh2 );
+            auto active =
+                evaluateAndAssemblePairEnergy<Exec>( pairs, mesh1, mesh2, *cs.getMfemMeshData(), pair_function );
+            return { std::move( empty ), std::move( active ) };
           } );
     } );
-    const ArrayT<InterfacePair> empty_pairs( 0, 0, cs.getMesh1().getAllocatorId() );
-    auto empty = evaluation->evaluateAndAssemble( empty_pairs, mesh1, mesh2 );
-    ASSERT_NE( empty.force, nullptr );
-    ASSERT_TRUE( empty.energy.has_value() );
-    EXPECT_EQ( *empty.energy, 0.0 );
-    EXPECT_EQ( empty.force->Norml2(), 0.0 );
-    EXPECT_EQ( empty.df_dx, nullptr );
-    auto coarse = createCoarseSearch( cs.spatialDimension(), cs.getBinningMethod(), mode,
-                                      cs.getEffectiveBinningProximityScale(), 0.0 );
-    auto refined = std::make_unique<ProjectedEdgeSearch>( mode, false );
-    QuadraturePointEnergyMortar formulation( std::move( evaluation ),
-                                             PairListBuilder{ std::move( coarse ), std::move( refined ) } );
-    auto result = formulation.computeNodalForces( mesh1, mesh2 );
+    ASSERT_NE( results.empty.force, nullptr );
+    ASSERT_TRUE( results.empty.energy.has_value() );
+    EXPECT_EQ( *results.empty.energy, 0.0 );
+    EXPECT_EQ( results.empty.force->Norml2(), 0.0 );
+    EXPECT_EQ( results.empty.df_dx, nullptr );
+    auto& result = results.active;
     ASSERT_NE( result.force, nullptr );
     ASSERT_TRUE( result.energy.has_value() );
     EXPECT_NEAR( *result.energy, *baseline.energy, 1.0e-11 );
@@ -383,7 +377,7 @@ TEST_P( EnergyMortarRegistrationTest, constructs_formulation_before_decompositio
   tribol::setMfemKinematicConstantPenalty( 0, 100.0, 100.0 );
   ASSERT_TRUE( cs.hasContactFormulation() );
   const auto location = std::get<0>( GetParam() );
-  EXPECT_TRUE( usesEnforcementLocation( cs.getContactFormulation(), location ) );
+  EXPECT_EQ( cs.getParameters().enforcement_location, location );
   EXPECT_EQ( cs.getParameters().quadrature_order, quadratureOrder() );
   tribol::updateMfemParallelDecomposition( 1, true );
   ASSERT_EQ( tribol::update( 0, 0.0, dt ), 0 );
@@ -521,11 +515,9 @@ TEST_P( EnergyMortarQuadratureSettingsTest, nodal_activation_preserves_only_comp
         PairListBuilder pair_builder{ std::move( coarse ), std::move( refined ) };
         EnergyMortarNodalEnergy<decltype( rule_generator ), OffsetGap<OpposingNormalGap>> pair_function{
             std::move( rule_generator ), OffsetGap{ OpposingNormalGap{}, 0.0 } };
-        auto evaluation =
-            std::make_unique<NodalLagrangeMultiplierEvaluation<ExecutionMode::Sequential, decltype( pair_function )>>(
-                *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(),
-                std::move( pair_function ) );
-        NodalEnergyMortar lm( std::move( evaluation ), std::move( pair_builder ) );
+        NodalLagrangeMultiplierEnergyMortar<ExecutionMode::Sequential, decltype( pair_function )> lm(
+            *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), std::move( pair_function ),
+            std::move( pair_builder ) );
         return lm.computeNodalGaps( cs.getMesh1().getView(), cs.getMesh2().getView() );
       } );
   mfem::Vector direction( fes_->GetTrueVSize() ), penalty_action( penalty.gap->Size() ),
