@@ -10,7 +10,7 @@
  * transfers, three independent fields with signed values, and all matrix blocks. Tests run on one and two ranks, with
  * contact data on rank zero. Batch tests check accumulation after host calls, repeated batches, and an empty batch on
  * Sequential and OpenMP backends. Physics and Enzyme derivatives are checked by the formulation tests.
- * Force-only batches check shared-node accumulation without Jacobian transfer data and reject matrix operations.
+ * Separate force and matrix components check shared-node accumulation and combine their views in one batch kernel.
  * Independent scalar/coordinate matrix assemblers check both rectangular orientations, host and batch packing,
  * invalid layouts, and empty batches on the same nonmatching surfaces.
  */
@@ -21,8 +21,9 @@
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/assembly/MfemFieldAssembler.hpp"
-#include "tribol/assembly/MfemPairAssembler.hpp"
+#include "tribol/assembly/MfemVectorAssembler.hpp"
+#include "tribol/assembly/PairEvaluationAssembly.hpp"
+#include "tribol/assembly/MfemMatrixAssembler.hpp"
 
 namespace {
 using namespace tribol;
@@ -51,7 +52,7 @@ RealT rowValue( RealT x, RealT y, int component ) { return 1.0 + x + 2.0 * y + 3
 RealT columnValue( RealT x, RealT y, int component ) { return -2.0 + 3.0 * x - y - 4.0 * component; }
 
 /** @brief Provide parent and Redecomp transfers without selecting a contact formulation. */
-class MfemPairAssemblerTest : public testing::Test {
+class MfemVectorAssemblerTest : public testing::Test {
  protected:
   /** @brief Build nonmatching linear surfaces and concentrate their Redecomp elements on rank zero. */
   void SetUp() override
@@ -117,8 +118,57 @@ class MfemPairAssemblerTest : public testing::Test {
   std::unique_ptr<mfem::ParGridFunction> coords_;     ///< Parent node coordinates.
 };
 
+/** @brief Share scalar-vector/matrix configuration and batch execution across nodal assembly tests. */
+class TestNodalAssembly {
+ public:
+  /** @brief Configure independent components for each field. @param data Displacement transfers.
+   * @param dual Scalar transfers. @param jacobian Matrix transfers. @param mesh1 Field geometry.
+   * @param mesh2 Second coordinate geometry. @param field_count Independent fields. @param capacity Expected pairs. */
+  TestNodalAssembly( const MfemMeshData& data, const MfemSubmeshData& dual, const MfemJacobianData& jacobian,
+                     MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT field_count, IndexT capacity )
+  {
+    vectors_.reserve( field_count );
+    matrices_.reserve( field_count );
+    for ( IndexT field = 0; field < field_count; ++field ) {
+      vectors_.push_back( detail::makeNodalVectorAssembler( dual, mesh1 ) );
+      matrices_.push_back( detail::makeNodalCoordinateMatrixAssembler( data, dual, jacobian, mesh1, mesh2, capacity ) );
+    }
+  }
+  /** @brief Add host field values and derivatives. @param pair Geometry IDs. @param values Scalar values.
+   * @param gradients Coordinate derivatives. */
+  void addPair( InterfacePair pair, ArrayViewT<const RealT, 2> values, ArrayViewT<const RealT, 3> gradients )
+  {
+    for ( IndexT field = 0; field < static_cast<IndexT>( vectors_.size() ); ++field ) {
+      vectors_[field].addPairFromReader( pair, [&]( IndexT row ) { return values( field, row ); } );
+      matrices_[field].addPairFromReader(
+          pair, [&]( IndexT row, IndexT column ) { return gradients( field, row, column ); } );
+    }
+  }
+  /** @brief Compose batch accumulation. @tparam Fields Field count. @tparam Nodes Rows per field.
+   * @tparam Dofs Pair coordinates. @tparam Values Scalar reader. @tparam Jacobians Matrix reader.
+   * @param mode Backend. @param pairs Geometry pairs. @param values Scalar reader. @param jacobians Matrix reader. */
+  template <IndexT Fields, IndexT Nodes, IndexT Dofs, typename Values, typename Jacobians>
+  void addPairs( ExecutionMode mode, const ArrayT<InterfacePair>& pairs, Values values, Jacobians jacobians )
+  {
+    detail::addNodalValuesAndJacobians<Fields, Nodes, Dofs>( mode, pairs, vectors_, matrices_, values, jacobians );
+  }
+  /** @brief Return independent field results. @return Owned vectors and matrices. */
+  std::vector<AssembledField> assemble() const
+  {
+    std::vector<AssembledField> result;
+    for ( IndexT field = 0; field < static_cast<IndexT>( vectors_.size() ); ++field ) {
+      result.push_back( { vectors_[field].assemble(), matrices_[field].assemble() } );
+    }
+    return result;
+  }
+
+ private:
+  std::vector<MfemVectorAssembler> vectors_;   ///< Scalar components, one per field.
+  std::vector<MfemMatrixAssembler> matrices_;  ///< Coordinate Jacobian components, one per field.
+};
+
 // A nonsymmetric outer product has a known action that checks row/column ordering and every pair block independently.
-TEST_F( MfemPairAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_jacobian )
+TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_jacobian )
 {
   mfem::ParGridFunction direction( fes_.get() );
   mfem::VectorFunctionCoefficient direction_coefficient( dimension, []( const mfem::Vector& x, mfem::Vector& value ) {
@@ -191,7 +241,9 @@ TEST_F( MfemPairAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_ja
   ContactFormulationResult result;
   {
     const IndexT pair_count = mesh1.numberOfElements() * mesh2.numberOfElements();
-    MfemPairAssembler assembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2, pair_count );
+    auto assembler = detail::makeDisplacementVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
+    auto matrix = detail::makeCoordinateMatrixAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2,
+                                                         pair_count );
     MdArray<RealT, pair_dofs> residual{}, columns{};
     MdArray<RealT, pair_dofs, pair_dofs> jacobian{};
     for ( IndexT element1 = 0; element1 < mesh1.numberOfElements(); ++element1 ) {
@@ -213,11 +265,12 @@ TEST_F( MfemPairAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_ja
             jacobian( row, column ) = residual[row] * columns[column];
           }
         }
-        assembler.addPair( { element1, element2 }, { residual.data(), residual.size() },
-                           { jacobian.data(), { pair_dofs, pair_dofs } } );
+        assembler.addPair( { element1, element2 }, { residual.data(), residual.size() } );
+        matrix.addPair( { element1, element2 }, { jacobian.data(), { pair_dofs, pair_dofs } } );
       }
     }
-    result = assembler.assemble();
+    result.force.reset( assembler.assemble().release() );
+    result.df_dx.reset( matrix.assemble().release() );
     residual[0] = 0.0;
     jacobian[0] = 0.0;
   }
@@ -245,34 +298,30 @@ TEST_F( MfemPairAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_ja
 }
 
 // Empty assembly must return usable zero outputs, and rejected input shapes must not add any partial contribution.
-TEST_F( MfemPairAssemblerTest, returns_zero_outputs_for_empty_or_rejected_input )
+TEST_F( MfemVectorAssemblerTest, returns_zero_outputs_for_empty_or_rejected_input )
 {
   auto& cs = scheme();
-  MfemPairAssembler assembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), cs.getMesh1().getView(),
-                               cs.getMesh2().getView(), 0 );
-  if ( cs.getMesh1().numberOfElements() > 0 && cs.getMesh2().numberOfElements() > 0 ) {
-    MdArray<RealT, pair_dofs> residual{};
-    MdArray<RealT, pair_dofs, pair_dofs> jacobian{};
-    residual[0] = 1.0;
-    EXPECT_THROW( assembler.addPair( { 0, 0 }, { residual.data(), pair_dofs - 1 },
-                                     { jacobian.data(), { pair_dofs, pair_dofs } } ),
-                  std::invalid_argument );
-    EXPECT_THROW( assembler.addPair( { 0, 0 }, { residual.data(), pair_dofs },
-                                     { jacobian.data(), { pair_dofs - 1, pair_dofs } } ),
-                  std::invalid_argument );
-  }
-  auto result = assembler.assemble();
-  ASSERT_NE( result.force, nullptr );
-  ASSERT_NE( result.df_dx, nullptr );
-  EXPECT_EQ( norm( *result.force ), 0.0 );
+  const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
+  auto assembler = detail::makeDisplacementVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
+  auto matrix =
+      detail::makeCoordinateMatrixAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2, 0 );
+  MdArray<RealT, pair_dofs> residual{};
+  MdArray<RealT, pair_dofs, pair_dofs> jacobian{};
+  residual[0] = 1.0;
+  EXPECT_THROW( assembler.addPair( { 0, 0 }, { residual.data(), pair_dofs - 1 } ), std::invalid_argument );
+  EXPECT_THROW( matrix.addPair( { 0, 0 }, { jacobian.data(), { pair_dofs - 1, pair_dofs } } ), std::invalid_argument );
+  const auto force = assembler.assemble();
+  const auto df_dx = matrix.assemble();
+  EXPECT_EQ( force.size(), fes_->GetTrueVSize() );
+  EXPECT_EQ( norm( force.get() ), 0.0 );
   mfem::Vector direction( fes_->GetTrueVSize() ), action( fes_->GetTrueVSize() );
   direction = 1.0;
-  result.df_dx->Mult( direction, action );
+  df_dx->Mult( direction, action );
   EXPECT_EQ( norm( action ), 0.0 );
 }
 
 // Three signed scalar fields retain their values and gradients without normalization or contact activation.
-TEST_F( MfemPairAssemblerTest, assembles_scalar_fields_and_dual_transfers )
+TEST_F( MfemVectorAssemblerTest, assembles_scalar_fields_and_dual_transfers )
 {
   prepareDualData();
   auto& cs = scheme();
@@ -296,8 +345,8 @@ TEST_F( MfemPairAssemblerTest, assembles_scalar_fields_and_dual_transfers )
   MPI_Allreduce( &local_pairs, &global_pairs, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
   std::vector<AssembledField> result;
   {
-    MfemFieldAssembler assembler( *cs.getMfemMeshData(), dual_data, *cs.getMfemJacobianData(), mesh1, mesh2,
-                                  field_count, pair_list.size() );
+    TestNodalAssembly assembler( *cs.getMfemMeshData(), dual_data, *cs.getMfemJacobianData(), mesh1, mesh2, field_count,
+                                 pair_list.size() );
     MdArray<RealT, field_count, nodes_per_edge> values{};
     MdArray<RealT, field_count, nodes_per_edge, pair_dofs> gradients{};
     for ( IndexT field_index = 0; field_index < field_count; ++field_index ) {
@@ -337,35 +386,35 @@ TEST_F( MfemPairAssemblerTest, assembles_scalar_fields_and_dual_transfers )
   }
 }
 
-// Invalid field layouts add nothing, and empty assembly returns usable zero vectors and rectangular matrices.
-TEST_F( MfemPairAssemblerTest, scalar_fields_reject_invalid_layouts_and_return_empty_outputs )
+// Scalar vector accumulation needs no Jacobian data. Invalid input sizes and view block counts add nothing.
+TEST_F( MfemVectorAssemblerTest, scalar_values_need_no_jacobian_data )
 {
   prepareDualData();
   auto& cs = scheme();
-  const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
-  EXPECT_THROW( MfemFieldAssembler( *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), mesh1,
-                                    mesh2, 0, 0 ),
-                std::invalid_argument );
-  MfemFieldAssembler assembler( *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), mesh1,
-                                mesh2, 1, 0 );
-  if ( mesh1.numberOfElements() > 0 && mesh2.numberOfElements() > 0 ) {
-    MdArray<RealT, 1, nodes_per_edge> values{};
-    MdArray<RealT, 1, nodes_per_edge, pair_dofs> gradients{};
-    EXPECT_THROW( assembler.addPair( { 0, 0 }, { values.data(), { 1, nodes_per_edge - 1 } },
-                                     { gradients.data(), { 1, nodes_per_edge, pair_dofs } } ),
-                  std::invalid_argument );
-  }
+  cs.setMfemJacobianData( nullptr );
+  const auto& dual = *cs.getMfemSubmeshData();
+  const auto mesh1 = cs.getMesh1().getView();
+  auto assembler = detail::makeNodalVectorAssembler( dual, mesh1 );
+  MdArray<RealT, nodes_per_edge> values{};
+  EXPECT_THROW( assembler.addPair( { 0, 0 }, { values.data(), nodes_per_edge - 1 } ), std::invalid_argument );
+  EXPECT_THROW( assembler.view<2>( ExecutionMode::Sequential ), std::invalid_argument );
+  const auto zero = assembler.assemble();
+  EXPECT_EQ( norm( zero.get() ), 0.0 );
+  const auto pair_list = pairs();
+  assembler.addPairs<nodes_per_edge, 1>( ExecutionMode::Sequential, pair_list,
+                                         [] TRIBOL_HOST_DEVICE( IndexT, IndexT row ) { return row + 1.0; } );
   const auto result = assembler.assemble();
-  ASSERT_EQ( result.size(), 1 );
-  EXPECT_EQ( norm( result[0].values.get() ), 0.0 );
-  mfem::Vector direction( fes_->GetTrueVSize() ), action( result[0].values.size() );
-  direction = 1.0;
-  result[0].dvalues_dx->Mult( direction, action );
-  EXPECT_EQ( norm( action ), 0.0 );
+  const RealT local_sum = result.get().Sum();
+  RealT global_sum = 0.0;
+  const int local_pairs = pair_list.size();
+  int global_pairs = 0;
+  MPI_Allreduce( &local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
+  MPI_Allreduce( &local_pairs, &global_pairs, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
+  EXPECT_NEAR( global_sum, 3.0 * global_pairs, tolerance );
 }
 
 /** @brief Exercise host batch kernels with each enabled host execution mode. */
-class MfemBatchAssemblerTest : public MfemPairAssemblerTest, public testing::WithParamInterface<ExecutionMode> {};
+class MfemBatchAssemblerTest : public MfemVectorAssemblerTest, public testing::WithParamInterface<ExecutionMode> {};
 
 // Rectangular packing must transfer scalar and coordinate spaces in either orientation, including nonmatching element
 // maps and a rank with no local pairs. Host and execution-space batches must accumulate the same nonsymmetric entries.
@@ -391,7 +440,7 @@ TEST_P( MfemBatchAssemblerTest, assembles_rectangular_matrices_in_both_orientati
       { 1, 0, nodes_per_edge, nodes_per_edge, element_dofs, 0, map2, map1 } };
   MfemMatrixAssembler forward( scalar, coordinate, forward_blocks, 0 );
   MfemMatrixAssembler reverse( coordinate, scalar, reverse_blocks, 0 );
-  MfemFieldAssembler reference( data, dual, transfer, mesh1, mesh2, 1, 0 );
+  MfemMatrixAssembler reference( scalar, coordinate, forward_blocks, 0 );
   const ArrayT<InterfacePair> empty( 0, 0, pair_list.getAllocatorID() );
 
   // Rejected shapes and scratch from a different assembler must leave the accumulated matrix empty.
@@ -419,20 +468,16 @@ TEST_P( MfemBatchAssemblerTest, assembles_rectangular_matrices_in_both_orientati
       return read_forward( pair, node, coordinate );
     };
     for ( IndexT pair = 0; pair < pair_list.size(); ++pair ) {
-      MdArray<RealT, 1, nodes_per_edge> values{};
-      MdArray<RealT, 1, nodes_per_edge, pair_dofs> gradients{};
       MdArray<RealT, nodes_per_edge, pair_dofs> matrix{};
       MdArray<RealT, pair_dofs, nodes_per_edge> transposed{};
       for ( IndexT node = 0; node < nodes_per_edge; ++node ) {
         for ( IndexT column = 0; column < pair_dofs; ++column ) {
           const RealT entry = read_forward( pair, node, column );
-          gradients( 0, node, column ) = entry;
           matrix( node, column ) = entry;
           transposed( column, node ) = entry;
         }
       }
-      reference.addPair( pair_list[pair], { values.data(), { 1, nodes_per_edge } },
-                         { gradients.data(), { 1, nodes_per_edge, pair_dofs } } );
+      reference.addPair( pair_list[pair], { matrix.data(), { nodes_per_edge, pair_dofs } } );
       if ( batch == 0 ) {
         forward.addPair( pair_list[pair], { matrix.data(), { nodes_per_edge, pair_dofs } } );
         reverse.addPair( pair_list[pair], { transposed.data(), { pair_dofs, nodes_per_edge } } );
@@ -445,8 +490,8 @@ TEST_P( MfemBatchAssemblerTest, assembles_rectangular_matrices_in_both_orientati
       reverse.addPairs<element_dofs, nodes_per_edge, 2>( GetParam(), pair_list, read_reverse );
     }
   }
-  const auto fields = reference.assemble();
-  const auto expected_reverse = fields[0].dvalues_dx.transpose();
+  const auto expected_forward = reference.assemble();
+  const auto expected_reverse = expected_forward.transpose();
   const auto actual_forward = forward.assemble();
   const auto actual_reverse = reverse.assemble();
   EXPECT_EQ( actual_forward->Height(), dual.GetSubmeshFESpace().GetTrueVSize() );
@@ -457,7 +502,7 @@ TEST_P( MfemBatchAssemblerTest, assembles_rectangular_matrices_in_both_orientati
   for ( int dof = 0; dof < coordinate_direction.Size(); ++dof ) {
     coordinate_direction[dof] = 1.0 + 0.1 * dof;
   }
-  fields[0].dvalues_dx->Mult( coordinate_direction, expected_scalar );
+  expected_forward->Mult( coordinate_direction, expected_scalar );
   actual_forward->Mult( coordinate_direction, scalar_action );
   scalar_action -= expected_scalar;
   EXPECT_LT( norm( scalar_action ), tolerance );
@@ -477,18 +522,22 @@ TEST_P( MfemBatchAssemblerTest, assembles_rectangular_matrices_in_both_orientati
 TEST_P( MfemBatchAssemblerTest, accumulates_residuals_and_jacobians_across_batches )
 {
   auto& cs = scheme();
+  const auto& data = *cs.getMfemMeshData();
+  const auto& transfers = *cs.getMfemJacobianData();
   const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
   const auto pair_list = pairs();
-  MfemPairAssembler reference( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2, 0 );
-  MfemPairAssembler batched( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2, 0 );
-  MfemPairAssembler matrix_only( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2, 0, false );
-  MfemPairAssembler force_only( *cs.getMfemMeshData(), nullptr, mesh1, mesh2, 0 );
+  auto reference = detail::makeDisplacementVectorAssembler( data, mesh1, mesh2 );
+  auto composed = detail::makeDisplacementVectorAssembler( data, mesh1, mesh2 );
+  auto force_only = detail::makeDisplacementVectorAssembler( data, mesh1, mesh2 );
+  auto reference_matrix = detail::makeCoordinateMatrixAssembler( data, transfers, mesh1, mesh2, 0 );
+  auto composed_matrix = detail::makeCoordinateMatrixAssembler( data, transfers, mesh1, mesh2, 0 );
+  auto matrix_only = detail::makeCoordinateMatrixAssembler( data, transfers, mesh1, mesh2, 0 );
   const auto initial_force = force_only.assemble();
-  ASSERT_NE( initial_force.force, nullptr );
-  EXPECT_EQ( initial_force.df_dx, nullptr );
-  EXPECT_EQ( norm( *initial_force.force ), 0.0 );
-  EXPECT_THROW( force_only.assembleJacobian(), std::logic_error );
+  EXPECT_EQ( norm( initial_force.get() ), 0.0 );
   const ArrayT<InterfacePair> empty( 0, 0, pair_list.getAllocatorID() );
+  const auto zero_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };
+  EXPECT_THROW( ( force_only.addPairs<pair_dofs - 1, 2>( GetParam(), empty, zero_force ) ), std::invalid_argument );
+  constexpr IndexT element_dofs = pair_dofs / 2;
   for ( int batch = 0; batch < 3; ++batch ) {
     const RealT scale = batch + 1.0;
     MdArray<RealT, pair_dofs> residual{};
@@ -500,50 +549,56 @@ TEST_P( MfemBatchAssemblerTest, accumulates_residuals_and_jacobians_across_batch
           jacobian( row, column ) = scale * ( row + 1.0 ) * ( column + 2.0 );
         }
       }
-      reference.addPair( pair_list[pair], { residual.data(), pair_dofs },
-                         { jacobian.data(), { pair_dofs, pair_dofs } } );
+      reference.addPair( pair_list[pair], { residual.data(), pair_dofs } );
+      reference_matrix.addPair( pair_list[pair], { jacobian.data(), { pair_dofs, pair_dofs } } );
       if ( batch == 0 ) {
-        matrix_only.addPairJacobian( pair_list[pair], { jacobian.data(), { pair_dofs, pair_dofs } } );
-        batched.addPair( pair_list[pair], { residual.data(), pair_dofs },
-                         { jacobian.data(), { pair_dofs, pair_dofs } } );
+        composed.addPair( pair_list[pair], { residual.data(), pair_dofs } );
+        composed_matrix.addPair( pair_list[pair], { jacobian.data(), { pair_dofs, pair_dofs } } );
+        matrix_only.addPair( pair_list[pair], { jacobian.data(), { pair_dofs, pair_dofs } } );
       }
     }
-    const auto read_residual = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT row ) { return scale * ( row + 1.0 ); };
-    force_only.addPairResiduals<pair_dofs>( GetParam(), empty, read_residual );
-    force_only.addPairResiduals<pair_dofs>( GetParam(), pair_list, read_residual );
-    EXPECT_THROW( matrix_only.addPairResiduals<pair_dofs>( GetParam(), empty, read_residual ), std::logic_error );
+    const auto read_force = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT row ) { return scale * ( row + 1.0 ); };
+    const auto read_jacobian = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT row, IndexT column ) {
+      return scale * ( row + 1.0 ) * ( column + 2.0 );
+    };
+    force_only.addPairs<pair_dofs, 2>( GetParam(), empty, read_force );
+    force_only.addPairs<pair_dofs, 2>( GetParam(), pair_list, read_force );
     if ( batch != 0 ) {
-      const auto read_jacobian = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT row, IndexT column ) {
-        return scale * ( row + 1.0 ) * ( column + 2.0 );
-      };
-      matrix_only.addPairJacobians<pair_dofs>( GetParam(), empty, read_jacobian );
-      matrix_only.addPairJacobians<pair_dofs>( GetParam(), pair_list, read_jacobian );
-      batched.addPairs<pair_dofs>( GetParam(), empty, read_residual, read_jacobian );
-      batched.addPairs<pair_dofs>( GetParam(), pair_list, read_residual, read_jacobian );
+      matrix_only.addPairs<element_dofs, element_dofs, 4>( GetParam(), empty, read_jacobian );
+      matrix_only.addPairs<element_dofs, element_dofs, 4>( GetParam(), pair_list, read_jacobian );
+      composed.addPairs<pair_dofs, 2>( GetParam(), empty, read_force );
+      composed_matrix.addPairs<element_dofs, element_dofs, 4>( GetParam(), empty, read_jacobian );
+      auto matrix_batch =
+          composed_matrix.makeBatch<element_dofs, element_dofs, 4>( pair_list.size(), pair_list.getAllocatorID() );
+      const auto matrix_view = matrix_batch.view();
+      const auto force_view = composed.view<2>( GetParam() );
+      const auto pairs_view = pair_list.view();
+      forAllExec( GetParam(), pair_list.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
+        force_view.addPair( pair, pairs_view[pair], read_force );
+        matrix_view.packPair( pair, pairs_view[pair], read_jacobian );
+      } );
+      composed_matrix.addBatch( matrix_batch );
     }
   }
-  auto expected = reference.assemble();
-  auto result = batched.assemble();
+  const auto expected = reference.assemble();
   auto force_result = force_only.assemble();
-  EXPECT_EQ( force_result.df_dx, nullptr );
-  force_result.force->Add( -1.0, *expected.force );
-  EXPECT_LT( norm( *force_result.force ), tolerance );
-  EXPECT_EQ( norm( *initial_force.force ), 0.0 );
-  EXPECT_GT( norm( *expected.force ), 0.0 );
-  result.force->Add( -1.0, *expected.force );
-  EXPECT_LT( norm( *result.force ), tolerance );
+  force_result.get().Add( -1.0, expected.get() );
+  EXPECT_LT( norm( force_result.get() ), tolerance );
+  EXPECT_EQ( norm( initial_force.get() ), 0.0 );
+  EXPECT_GT( norm( expected.get() ), 0.0 );
+  auto result = composed.assemble();
+  result.get().Add( -1.0, expected.get() );
+  EXPECT_LT( norm( result.get() ), tolerance );
   mfem::Vector direction( fes_->GetTrueVSize() ), expected_action( fes_->GetTrueVSize() ),
       action( fes_->GetTrueVSize() );
   direction = 1.0;
-  expected.df_dx->Mult( direction, expected_action );
-  result.df_dx->Mult( direction, action );
+  reference_matrix.assemble()->Mult( direction, expected_action );
+  composed_matrix.assemble()->Mult( direction, action );
   action -= expected_action;
   EXPECT_LT( norm( action ), tolerance );
-  const auto matrix_result = matrix_only.assembleJacobian();
-  matrix_result->Mult( direction, action );
+  matrix_only.assemble()->Mult( direction, action );
   action -= expected_action;
   EXPECT_LT( norm( action ), tolerance );
-  EXPECT_THROW( matrix_only.assemble(), std::logic_error );
 }
 
 // Three independent fields and their rectangular Jacobians retain host contributions and every subsequent batch.
@@ -554,10 +609,10 @@ TEST_P( MfemBatchAssemblerTest, accumulates_scalar_fields_and_gradients_across_b
   const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
   const auto pair_list = pairs();
   constexpr IndexT field_count = 3;
-  MfemFieldAssembler reference( *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), mesh1,
-                                mesh2, field_count, 0 );
-  MfemFieldAssembler batched( *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), mesh1, mesh2,
-                              field_count, 0 );
+  TestNodalAssembly reference( *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), mesh1, mesh2,
+                               field_count, 0 );
+  TestNodalAssembly batched( *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), mesh1, mesh2,
+                             field_count, 0 );
   const ArrayT<InterfacePair> empty( 0, 0, pair_list.getAllocatorID() );
   for ( int batch = 0; batch < 3; ++batch ) {
     const RealT scale = batch + 1.0;

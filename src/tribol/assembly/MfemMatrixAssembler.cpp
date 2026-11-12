@@ -6,6 +6,8 @@
 #include "tribol/assembly/MfemMatrixAssembler.hpp"
 #ifdef BUILD_REDECOMP
 #include <algorithm>
+#include <array>
+#include <utility>
 
 namespace tribol {
 
@@ -55,6 +57,55 @@ void MfemMatrixAssembler::addPair( InterfacePair pair, ArrayViewT<const RealT, 2
 }
 
 shared::ParSparseMat MfemMatrixAssembler::assemble() const { return transfer_.Assemble( contributions_ ); }
+
+namespace detail {
+MfemMatrixAssembler makeCoordinateMatrixAssembler( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
+                                                   MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                                   IndexT pair_capacity )
+{
+  const int dimension = mesh1.spatialDimension();
+  const MdArray<IndexT, 2> nodes{ mesh1.numberOfNodesPerElement(), mesh2.numberOfNodesPerElement() };
+  const auto& coordinate_space = *mesh_data.GetRedecompResponse().FESpace();
+  if ( dimension <= 0 || mesh2.spatialDimension() != dimension || coordinate_space.GetVDim() != dimension ||
+       nodes[0] <= 0 || nodes[1] <= 0 ) {
+    throw std::invalid_argument( "Coordinate matrix assembly requires matching dimensions and positive node counts." );
+  }
+  const MdArray<IndexT, 2> offsets{ 0, checkedMatrixSize( nodes[0], dimension ) };
+  const std::array<const Array1D<int>*, 2> maps{ &mesh_data.GetElemMap1(), &mesh_data.GetElemMap2() };
+  std::vector<MfemMatrixBlock> blocks;
+  blocks.reserve( 4 );
+  for ( IndexT row_geometry = 0; row_geometry < 2; ++row_geometry ) {
+    for ( IndexT column_geometry = 0; column_geometry < 2; ++column_geometry ) {
+      blocks.push_back( { row_geometry, column_geometry, nodes[row_geometry], nodes[column_geometry],
+                          offsets[row_geometry], offsets[column_geometry], *maps[row_geometry],
+                          *maps[column_geometry] } );
+    }
+  }
+  const MfemMatrixSpace space{ jacobian_data.ParentPath(), coordinate_space };
+  return { space, space, std::move( blocks ), pair_capacity };
+}
+MfemMatrixAssembler makeNodalCoordinateMatrixAssembler( const MfemMeshData& mesh_data,
+                                                        const MfemSubmeshData& submesh_data,
+                                                        const MfemJacobianData& jacobian_data, MeshData::Viewer mesh1,
+                                                        MeshData::Viewer mesh2, IndexT pair_capacity )
+{
+  const auto& coordinates = *mesh_data.GetRedecompResponse().FESpace();
+  const auto& field = submesh_data.GetRedecompFESpace();
+  if ( field.GetVDim() != 1 || submesh_data.GetSubmeshFESpace().GetVDim() != 1 || mesh1.spatialDimension() <= 0 ||
+       mesh1.spatialDimension() != coordinates.GetVDim() || mesh2.spatialDimension() != coordinates.GetVDim() ) {
+    throw std::invalid_argument( "Nodal coordinate matrices require scalar rows and matching coordinate dimensions." );
+  }
+  const IndexT nodes1 = mesh1.numberOfNodesPerElement();
+  const auto& map1 = mesh_data.GetElemMap1();
+  const auto& map2 = mesh_data.GetElemMap2();
+  return { { jacobian_data.SubmeshPath(), field },
+           { jacobian_data.ParentPath(), coordinates },
+           { { 0, 0, nodes1, nodes1, 0, 0, map1, map1 },
+             { 0, 1, nodes1, mesh2.numberOfNodesPerElement(), 0, checkedMatrixSize( nodes1, coordinates.GetVDim() ),
+               map1, map2 } },
+           pair_capacity };
+}
+}  // namespace detail
 
 }  // namespace tribol
 #endif  // BUILD_REDECOMP

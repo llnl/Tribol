@@ -11,8 +11,8 @@
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
-#include "tribol/assembly/MfemFieldAssembler.hpp"
-#include "tribol/assembly/MfemPairAssembler.hpp"
+#include "tribol/assembly/MfemVectorAssembler.hpp"
+#include "tribol/assembly/MfemMatrixAssembler.hpp"
 #include "tribol/common/GlobalScalarAssembler.hpp"
 #include "tribol/assembly/PairContribution.hpp"
 #include "tribol/assembly/PairEvaluationAssembly.hpp"
@@ -57,17 +57,25 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( ExecutionMode ex
   const auto view = buffer.view();
   evaluatePairValuesAndJacobians( execution_mode, pairs.view(), mesh1, mesh2, function, view );
   checkPairQuadratureResults( execution_mode, buffer.quadratureResults() );
-  MfemFieldAssembler assembler( mesh_data, submesh_data, jacobian_data, mesh1, mesh2, 2, pairs.size() );
-  assembler.addPairs<2, node_count, dof_count>(
-      execution_mode, pairs,
+  constexpr IndexT field_count = 2;
+  std::vector<MfemVectorAssembler> vectors;
+  std::vector<MfemMatrixAssembler> matrices;
+  vectors.reserve( field_count );
+  matrices.reserve( field_count );
+  for ( IndexT field = 0; field < field_count; ++field ) {
+    vectors.push_back( detail::makeNodalVectorAssembler( submesh_data, mesh1 ) );
+    matrices.push_back( detail::makeNodalCoordinateMatrixAssembler( mesh_data, submesh_data, jacobian_data, mesh1,
+                                                                    mesh2, pairs.size() ) );
+  }
+  detail::addNodalValuesAndJacobians<field_count, node_count, dof_count>(
+      execution_mode, pairs, vectors, matrices,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node ) {
         return view.has_active_points[pair] ? view.value( pair, field * node_count + node ) : 0.0;
       },
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node, IndexT coordinate ) {
         return view.has_active_points[pair] ? view.jacobian( pair, field * node_count + node, coordinate ) : 0.0;
       } );
-  auto fields = assembler.assemble();
-  return { std::move( fields[0] ), std::move( fields[1] ) };
+  return { { vectors[0].assemble(), matrices[0].assemble() }, { vectors[1].assemble(), matrices[1].assemble() } };
 }
 
 /**
@@ -121,12 +129,12 @@ shared::ParSparseMat assembleWeightedNodalHessian( ExecutionMode execution_mode,
       },
       hessians.view() );
   const auto hessian_view = hessians.view();
-  MfemPairAssembler assembler( mesh_data, jacobian_data, mesh1, mesh2, pair_count, false );
-  assembler.addPairJacobians<Function::dof_count>( execution_mode, pairs,
-                                                   [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
-                                                     return hessian_view.hessian( pair, row, column );
-                                                   } );
-  return assembler.assembleJacobian();
+  auto assembler = detail::makeCoordinateMatrixAssembler( mesh_data, jacobian_data, mesh1, mesh2, pair_count );
+  assembler.addPairs<Function::dof_count / 2, Function::dof_count / 2, 4>(
+      execution_mode, pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
+        return hessian_view.hessian( pair, row, column );
+      } );
+  return assembler.assemble();
 }
 
 /**

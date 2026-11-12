@@ -174,7 +174,7 @@ endif()
 if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 
   set( combined_tests
-      tribol_mfem_pair_assembler.cpp
+      tribol_mfem_vector_assembler.cpp
       tribol_mfem_common_plane_formulation.cpp
       tribol_mfem_data.cpp
       tribol_mfem_common_plane.cpp
@@ -215,7 +215,7 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 
   endforeach()
 
-  blt_add_test(NAME tribol_mfem_pair_assembler COMMAND tribol_mfem_pair_assembler_test NUM_MPI_TASKS 1)
+  blt_add_test(NAME tribol_mfem_vector_assembler COMMAND tribol_mfem_vector_assembler_test NUM_MPI_TASKS 1)
   blt_add_test(NAME tribol_mfem_common_plane_formulation
       COMMAND tribol_mfem_common_plane_formulation_test NUM_MPI_TASKS 1)
   if (ENABLE_CUDA)

@@ -12,9 +12,8 @@ endif()
 set(tribol_headers
 
     assembly/MfemElementAssembly.hpp
-    assembly/MfemFieldAssembler.hpp
     assembly/MfemMatrixAssembler.hpp
-    assembly/MfemPairAssembler.hpp
+    assembly/MfemVectorAssembler.hpp
     assembly/PairContribution.hpp
     assembly/PairEvaluation.hpp
     assembly/PairEvaluationAssembly.hpp
@@ -95,9 +94,8 @@ set(tribol_headers
 ## list of sources
 set(tribol_sources
 
-    assembly/MfemFieldAssembler.cpp
     assembly/MfemMatrixAssembler.cpp
-    assembly/MfemPairAssembler.cpp
+    assembly/MfemVectorAssembler.cpp
      
     geom/CompGeom.cpp
     geom/GeomUtilities.cpp

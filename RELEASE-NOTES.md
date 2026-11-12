@@ -80,6 +80,9 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- `MfemPairAssembler` now assembles forces only and returns an owned `shared::ParVector`. Its constructor takes mesh
+  and displacement-transfer data, with no Jacobian argument or assembly-mode flags. Use `MfemMatrixAssembler` for
+  matrices; force-and-Jacobian callers compose their views in one kernel and collect the separate results.
 - Pair functions expose `evaluate()` as their single calculation interface. Removed their `values(coordinates)`
   wrappers; callers obtain numerical values through `evaluate(coordinates).values()`. `PairFunctionType` constrains
   evaluation sizes and result types, while `PairKernelFunctionType` also checks the coordinate split used by mesh

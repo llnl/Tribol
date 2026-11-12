@@ -16,6 +16,7 @@
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/MdArray.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
+#include "tribol/mesh/MeshData.hpp"
 
 namespace tribol {
 
@@ -297,6 +298,36 @@ class MfemMatrixAssembler {
   IndexT column_count_ = 0;                                ///< Input columns including configured offsets.
   Array1D<RealT, MemorySpace::Host> block_;                ///< Reused host scratch for the largest configured block.
 };
+
+namespace detail {
+/**
+ * @brief Configure all four coordinate blocks for a pair of displacement elements.
+ * @param mesh_data Borrowed displacement spaces and element maps for the current decomposition.
+ * @param jacobian_data Initialized parent-coordinate transfer path; borrowed by the returned assembler.
+ * @param mesh1 First geometry's nodal layout.
+ * @param mesh2 Second geometry's nodal layout.
+ * @param pair_capacity Expected contributing pairs, independent of all possible mesh pairs.
+ * @return Matrix assembler borrowing the displacement FE spaces, maps, and transfer path.
+ * @throws std::invalid_argument Geometry dimensions or node counts do not match the displacement layout.
+ * @throws std::length_error Required storage exceeds the supported index range.
+ */
+MfemMatrixAssembler makeCoordinateMatrixAssembler( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
+                                                   MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                                   IndexT pair_capacity );
+/** @brief Configure a scalar nodal field's two coordinate-Jacobian blocks.
+ * @param mesh_data Borrowed displacement spaces and element maps.
+ * @param submesh_data Borrowed scalar field spaces, updated for the current decomposition.
+ * @param jacobian_data Initialized scalar and parent-coordinate transfer paths.
+ * @param mesh1 Geometry carrying scalar rows. @param mesh2 Second geometry contributing coordinate columns.
+ * @param pair_capacity Expected contributing pairs.
+ * @return Matrix assembler with scalar submesh rows and parent displacement columns.
+ * @throws std::invalid_argument Field spaces are not scalar or geometry dimensions do not match the coordinate space.
+ * @throws std::length_error Required storage exceeds the supported index range. */
+MfemMatrixAssembler makeNodalCoordinateMatrixAssembler( const MfemMeshData& mesh_data,
+                                                        const MfemSubmeshData& submesh_data,
+                                                        const MfemJacobianData& jacobian_data, MeshData::Viewer mesh1,
+                                                        MeshData::Viewer mesh2, IndexT pair_capacity );
+}  // namespace detail
 
 }  // namespace tribol
 #endif  // BUILD_REDECOMP
