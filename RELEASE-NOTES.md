@@ -123,7 +123,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Common Plane and quadrature-point Energy Mortar functions return
   `PairResidualValue<num_geom1_dofs, num_geom2_dofs, num_components>` and
   `PairEnergyValue` directly, without `PrimalResult` aliases. Nodal Energy Mortar's result struct is named
-  `NodalIntegralValue` and contains the weighted-gap and area integrals, activation, and quadrature status.
+  `NodalIntegralValue` and provides named weighted-gap and tributary-area access while retaining their contiguous
+  function-value layout, activation, and quadrature status.
 - Pair functions expose `evaluate(coords1, coords2)` with separate `Coords1` and `Coords2` view types. Common Plane and
   both Energy Mortar functions construct their geometry inside this calculation. `PairFunctionType` checks both input
   types, coordinate counts, and result types; functions without geometry types can implement the same interface.

@@ -248,8 +248,8 @@ void checkParallelIntegrals( ExecutionMode mode, int allocator )
   EXPECT_TRUE( host[0].energy.has_active_points );
   ASSERT_EQ( host[0].nodal.quadrature_result.status, QuadratureStatus::Success );
   for ( IndexT node = 0; node < Nodal::num_nodes; ++node ) {
-    EXPECT_NEAR( host[0].nodal.value[node], -0.1, tolerance );
-    EXPECT_NEAR( host[0].nodal.value[Nodal::num_nodes + node], 1.0, tolerance );
+    EXPECT_NEAR( host[0].nodal.weightedGap( node ), -0.1, tolerance );
+    EXPECT_NEAR( host[0].nodal.tributaryArea( node ), 1.0, tolerance );
   }
 }
 

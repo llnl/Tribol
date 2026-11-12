@@ -45,13 +45,14 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<Int
                                                                 const MfemSubmeshData& submesh_data,
                                                                 const MfemJacobianData& jacobian_data )
 {
+  using PairResult = typename Function::Result;
   constexpr IndexT num_nodes = Function::num_nodes;
   constexpr IndexT num_coords = Function::num_coords;
   static_assert( Function::num_values == 2 * num_nodes );
   auto buffer = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, function );
   const auto contributions_view = buffer.view();
   checkPairQuadratureResults<Exec>( buffer.quadratureResults() );
-  constexpr IndexT num_fields = 2;
+  constexpr IndexT num_fields = PairResult::num_fields;
   std::vector<MfemVectorAssembler> vectors;
   std::vector<MfemMatrixAssembler> matrices;
   vectors.reserve( num_fields );
@@ -64,12 +65,15 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<Int
   detail::addNodalValuesAndJacobians<Exec, num_fields, num_nodes, num_coords>(
       pairs, vectors, matrices,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node ) {
-        return contributions_view.has_active_points[pair] ? contributions_view.value( pair, field * num_nodes + node )
-                                                          : 0.0;
+        const auto integral_field = static_cast<typename PairResult::Field>( field );
+        return contributions_view.has_active_points[pair]
+                   ? contributions_view.value( pair, PairResult::valueIndex( integral_field, node ) )
+                   : 0.0;
       },
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node, IndexT coordinate ) {
+        const auto integral_field = static_cast<typename PairResult::Field>( field );
         return contributions_view.has_active_points[pair]
-                   ? contributions_view.jacobian( pair, field * num_nodes + node, coordinate )
+                   ? contributions_view.jacobian( pair, PairResult::valueIndex( integral_field, node ), coordinate )
                    : 0.0;
       } );
   return { { vectors[0].assemble(), matrices[0].assemble() }, { vectors[1].assemble(), matrices[1].assemble() } };
@@ -97,6 +101,7 @@ shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& 
                                                    const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
                                                    WeightReader read_weights )
 {
+  using PairResult = typename Function::Result;
   constexpr IndexT num_nodes = Function::num_nodes;
   static_assert( Function::num_values == 2 * num_nodes );
   const IndexT num_pairs = pairs.size();
@@ -108,8 +113,8 @@ shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& 
         const auto nodes = connectivity( pairs_view[pair_index].element_id1_ );
         for ( IndexT node = 0; node < num_nodes; ++node ) {
           const auto nodal_weights = read_weights( nodes[node] );
-          weights[node] = nodal_weights[0];
-          weights[num_nodes + node] = nodal_weights[1];
+          weights[PairResult::weightedGapIndex( node )] = nodal_weights[0];
+          weights[PairResult::tributaryAreaIndex( node )] = nodal_weights[1];
         }
         return weights;
       } );
