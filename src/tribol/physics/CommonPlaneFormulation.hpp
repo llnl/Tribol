@@ -15,7 +15,7 @@
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
 #include "tribol/integ/PairQuadratureRuleGenerator.hpp"
 #include "tribol/physics/ContactFormulation.hpp"
-#include "tribol/assembly/ResidualEvaluation.hpp"
+#include "tribol/assembly/ContactEvaluation.hpp"
 #include "tribol/assembly/PairEvaluation.hpp"
 #include "tribol/search/PairListBuilder.hpp"
 
@@ -112,15 +112,15 @@ class CommonPlaneFormulation final : public ContactFormulation {
    * @param pair_builder Owned pair search composition.
    * @throws std::invalid_argument The evaluator is null; no formulation is constructed.
    */
-  CommonPlaneFormulation( std::unique_ptr<ResidualEvaluation> evaluation, PairListBuilder pair_builder );
+  CommonPlaneFormulation( std::unique_ptr<ContactEvaluation> evaluation, PairListBuilder pair_builder );
 
   /** @brief Compute Common Plane force and the optional Jacobian. @param mesh1 First mesh. @param mesh2 Second mesh.
    * @return Owned force; df_dx is absent when the evaluator calculates forces only. */
   ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override;
 
  private:
-  std::unique_ptr<ResidualEvaluation> evaluation_;  ///< Owned residual function, transfer references, and calculation.
-  PairListBuilder pair_builder_;                    ///< Owned search composition.
+  std::unique_ptr<ContactEvaluation> evaluation_;  ///< Owned residual function, transfer references, and calculation.
+  PairListBuilder pair_builder_;                   ///< Owned search composition.
 };
 #endif
 

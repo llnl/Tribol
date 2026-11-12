@@ -278,6 +278,7 @@ if( TRIBOL_USE_ENZYME )
 
   # Enzyme rejects the aggregate-heavy edge geometry IR produced at -O0.
   target_compile_options(tribol_finite_diff_energy_mortar_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
+  target_compile_options(tribol_energy_mortar_quadrature_settings_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
 
 endif()
 

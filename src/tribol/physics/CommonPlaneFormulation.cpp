@@ -11,7 +11,7 @@
 
 namespace tribol {
 
-CommonPlaneFormulation::CommonPlaneFormulation( std::unique_ptr<ResidualEvaluation> evaluation,
+CommonPlaneFormulation::CommonPlaneFormulation( std::unique_ptr<ContactEvaluation> evaluation,
                                                 PairListBuilder pair_builder )
     : evaluation_( std::move( evaluation ) ), pair_builder_( std::move( pair_builder ) )
 {

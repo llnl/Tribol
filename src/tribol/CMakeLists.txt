@@ -17,7 +17,7 @@ set(tribol_headers
     assembly/PairEvaluation.hpp
     assembly/PairEvaluationAssembly.hpp
     assembly/PairKernel.hpp
-    assembly/ResidualEvaluation.hpp
+    assembly/ContactEvaluation.hpp
 
     common/ArrayTypes.hpp
     common/Atomics.hpp
@@ -69,6 +69,7 @@ set(tribol_headers
     physics/ContactFormulation.hpp
     physics/ContactFormulationFactory.hpp
     physics/Mortar.hpp
+    physics/EnergyMortarEvaluation.hpp
     physics/EnergyMortarEnergy.hpp
     physics/PenaltyStiffness.hpp
     physics/EnergyMortar.hpp
@@ -162,7 +163,7 @@ message(STATUS "Tribol library dependencies: ${tribol_depends}")
 if(TRIBOL_USE_ENZYME)
     # At -O0, Enzyme rejects Clang 19's aggregate-heavy IR or silently generates incorrect fixed-rule derivatives.
     # Optimize the translation units that generate those derivatives; other Debug sources remain at -O0.
-    set_property(SOURCE physics/EnergyMortar.cpp physics/ContactFormulationFactory.cpp APPEND PROPERTY COMPILE_OPTIONS
+    set_property(SOURCE physics/ContactFormulationFactory.cpp APPEND PROPERTY COMPILE_OPTIONS
         "$<$<CONFIG:Debug>:-O2>")
 endif()
 

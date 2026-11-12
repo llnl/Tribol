@@ -96,25 +96,27 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   header and function names. The compatibility concept is now `CompatibleQuadratureMappingAndGenerator`.
   Formulation template parameters and local configuration objects use rule-generator terminology. Update direct
   callers and includes to these names; quadrature generation and contact calculations are unchanged.
-- Common Plane is a non-template formulation owning a `ResidualEvaluation` and its pair search. The factory selects
-  `ResidualForceEvaluation<Exec, PairFunction>` or `ResidualForceJacobianEvaluation<Exec, PairFunction>` at construction.
-  Each evaluator owns its pair function, references its required transfer data, and implements `evaluateAndAssemble()`.
-  Direct callers construct the evaluator and pass it with a `PairListBuilder` to `CommonPlaneFormulation`. The virtual
-  call covers the entire pair batch; execution mode and pair-function types remain fixed in numerical kernels.
-  Nodal Energy Mortar takes `PenaltyEnforcement` or `LagrangeMultiplierEnforcement` as its third template argument;
-  the `NodalContactEnforcement` variant was removed. Public MFEM selection functions are unchanged.
+- Common Plane and both Energy Mortar formulations are non-template classes owning a `ContactEvaluation` and a pair
+  search. Evaluators own their fixed pair function and reference the required transfer data. Common Plane uses
+  `ResidualForceEvaluation<Exec, PairFunction>` or `ResidualForceJacobianEvaluation<Exec, PairFunction>`.
+  Quadrature-point Energy Mortar uses `EnergyForceJacobianEvaluation`; `EnergyForceEvaluation` provides energy and
+  force without a force Jacobian for direct callers. Nodal Energy Mortar uses `NodalPenaltyEvaluation` or
+  `NodalLagrangeMultiplierEvaluation`, including their gap calculation. Public MFEM selection functions and default
+  outputs are unchanged. Direct callers construct an evaluator and pass it with a `PairListBuilder` to the formulation.
+  The base interface is declared in `assembly/ContactEvaluation.hpp`; nodal implementations are in
+  `physics/EnergyMortarEvaluation.hpp`. Each host virtual call covers a whole pair batch; kernels retain concrete
+  execution-mode and pair-function types. `ResidualEvaluation` and the free residual/energy evaluation helpers were
+  removed.
 - Weighted Hessian differentiation reuses the Jacobian produced by its AD calls. Nodal Energy Mortar reads weights
   directly in that kernel, removing the temporary pair-weight array and its gather kernel.
 - Renamed `PairHessianBuffer`/`PairHessianView` to `PairJacobianHessianBuffer`/`PairJacobianHessianView` and
   `PairEnergyHessianBuffer`/`PairEnergyHessianView` to `PairValueJacobianHessianBuffer`/`PairValueJacobianHessianView`.
   Their gradient members and accessors now use Jacobian terminology; scalar energy buffers use `values` for function
   outputs. Removed unused `PairResidualValue::coordinate_count` and the internal Energy Mortar `PairFunction` and
-  `CoordinateView` aliases. The nodal penalty area tolerance is now local to `EnergyMortar.cpp`.
-- Both Energy Mortar formulations take a concrete `ExecutionMode` template argument after their quadrature type. The
-  factory selects the specialization at construction; evaluation, assembly, and scalar reductions carry that mode as a
-  template argument. Direct callers must supply the mode in the type and remove the runtime
-  constructor argument. Pair kernels and MFEM batch assembly methods likewise take the mode as their first template
-  argument. `ContactFormulation` calls and runtime search configuration are unchanged.
+  `CoordinateView` aliases. The nodal penalty area tolerance is defined with the nodal evaluators in `EnergyMortarEvaluation.hpp`.
+- Evaluators, pair kernels, and MFEM batch assembly methods take a concrete `ExecutionMode` template argument.
+  Factories select evaluator specializations at construction; evaluation, assembly, and scalar reductions retain
+  that mode as a template argument. `ContactFormulation` calls and runtime search configuration are unchanged.
 - Replaced `MfemPairAssembler` and `MfemFieldAssembler` with `MfemVectorAssembler` for scalar or vector nodal values.
   Geometry blocks select input entries and connectivity; explicit FE spaces and a host transfer callback select the
   destination. No Jacobian data or assembly-mode flags are required. Use `MfemMatrixAssembler` for matrices; callers
@@ -174,19 +176,18 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Removed the `CommonPlaneQuadratureRule`, `CommonPlaneResidualData`, and `CommonPlaneFormulation::PairFunction` aliases;
   use `PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, BaseRuleGenerator>`, `PairResidualValue`, and
   `CommonPlanePairFunction` directly.
-- Common Plane evaluators implement residual evaluation and assembly directly; the overloaded
-  `evaluateAndAssembleResidualPairs()` helpers were removed. Quadrature-point Energy Mortar uses
-  `evaluateAndAssembleEnergyPairs()` and reuses the energy Jacobian as the force.
+- Residual, scalar-energy, and nodal evaluators implement their evaluation and assembly operations directly.
+  Scalar-energy forces reuse the energy Jacobian; force Jacobians use the energy Hessian.
 - Common Plane penalty stiffness is fixed at formulation construction, including MFEM penalty scales. The MFEM
-  constant and scale setters replace an enabled formulation without requiring a decomposition refresh. Direct
-  The factory validates the effective scalar stiffness before constructing the evaluator's pair function. The
-  stiffness-combination template parameter and `ScaledMeshPenaltyInputs` reader were removed. Low-level `setPenaltyScale()` calls leave a composed
-  formulation's stiffness unchanged; use `setMfemKinematicPenaltyScale()` to change Common Plane scales.
+  constant and scale setters replace an enabled formulation without requiring a decomposition refresh. The factory
+  validates the effective scalar stiffness before constructing the evaluator's pair function. The stiffness-combination
+  template parameter and `ScaledMeshPenaltyInputs` reader were removed. Low-level `setPenaltyScale()` calls leave a
+  composed formulation's stiffness unchanged; use `setMfemKinematicPenaltyScale()` to change Common Plane scales.
 - Energy Mortar penalty stiffness is fixed at formulation construction. `setMfemKinematicConstantPenalty()` constructs
   the initial formulation once constants are available and replaces it on later changes. `update()` rejects incomplete
   penalty settings. Nodal LM formulations remain available at registration. Direct Energy Mortar constructors now take
-  an effective scalar penalty or a fixed `PenaltyEnforcement`; their stiffness-combination template parameter and
-  `RegisteredPenaltyInputs`/`RegisteredPenaltyEnforcement` readers were removed. Fixed penalties must be positive and
+  a configured evaluator with a fixed pair-function penalty or `PenaltyEnforcement`. The stiffness-combination template
+  parameter and `RegisteredPenaltyInputs`/`RegisteredPenaltyEnforcement` readers were removed. Fixed penalties must be positive and
   finite, and no default stiffness is substituted for missing constants.
 - Replaced `MfemNodalAssembler` and `MfemNodalQuantityData` with separate vector and matrix assemblers and per-field
   `AssembledField` results. Scalar nodal fields sharing one submesh space can accumulate in one batch kernel.
