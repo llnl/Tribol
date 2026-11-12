@@ -16,6 +16,7 @@
 #include "tribol/common/GlobalScalarAssembler.hpp"
 #include "tribol/assembly/PairContribution.hpp"
 #include "tribol/assembly/PairKernel.hpp"
+#include "tribol/integ/QuadratureCommon.hpp"
 
 namespace tribol {
 /** @brief Own scalar nodal values and their coordinate Jacobian after composing vector and matrix assembly. */

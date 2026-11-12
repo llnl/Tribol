@@ -17,6 +17,7 @@
 #include "tribol/assembly/PairContribution.hpp"
 #include "tribol/assembly/PairEvaluationAssembly.hpp"
 #include "tribol/assembly/PairKernel.hpp"
+#include "tribol/integ/QuadratureCommon.hpp"
 
 namespace tribol {
 namespace {

@@ -12,49 +12,13 @@
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/MdArray.hpp"
-#include "tribol/common/Reductions.hpp"
+#include "tribol/integ/QuadratureCommon.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/assembly/PairContribution.hpp"
 #include "tribol/assembly/PairEvaluation.hpp"
 
 namespace tribol {
-namespace detail {
-
-/**
- * @brief Find the most severe quadrature error across all pairs using the specified execution policy.
- * @tparam Exec Concrete execution policy.
- * @param results One status per pair in execution-accessible memory.
- * @return Highest-severity status present in the array.
- */
-template <ExecutionMode Exec>
-QuadratureStatus reduceQuadratureStatus( ArrayViewT<const QuadratureResult> results )
-{
-  ReduceMax<Exec, int> status( static_cast<int>( QuadratureStatus::Success ) );
-  forAllExec<Exec>( results.size(),
-                    [=] TRIBOL_HOST_DEVICE( IndexT pair ) { status.max( static_cast<int>( results[pair].status ) ); } );
-  return static_cast<QuadratureStatus>( status.get() );
-}
-
-}  // namespace detail
-
-/**
- * @brief Check the quadrature rules produced for all pairs and throw if any rule reports an error.
- * @tparam Exec Concrete execution mode used to populate the results.
- * @param results One preallocated result per pair.
- * Empty results pass the check.
- * @throws std::invalid_argument A rule reports invalid geometry.
- * @throws std::length_error A rule reports insufficient quadrature capacity.
- */
-template <ExecutionMode Exec>
-void checkPairQuadratureResults( const Array1D<QuadratureResult>& results )
-{
-  const auto status = detail::reduceQuadratureStatus<Exec>( results.view() );
-  if ( status != QuadratureStatus::Success ) {
-    reportQuadratureFailure( status );
-  }
-}
-
 /**
  * @brief Require a pair evaluation and a compile-time coordinate split with entries for both geometries.
  *

@@ -5,7 +5,7 @@
 
 /**
  * @file
- * @brief Integration-surface and element-pair quadrature arrays, views, and generation results.
+ * @brief Integration-surface and element-pair quadrature arrays, views, generation results, and validation.
  *
  * Integration-surface representations shared by mappings and rule generators belong in this header. Keep
  * representations for additional element topologies or geometries here alongside EdgeQuadratureInterval.
@@ -21,6 +21,7 @@
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Enzyme.hpp"
 #include "tribol/common/MdArray.hpp"
+#include "tribol/common/Reductions.hpp"
 
 namespace tribol {
 
@@ -64,6 +65,42 @@ struct QuadratureResult {
   QuadratureStatus status{ QuadratureStatus::Success };  ///< Whether the complete rule can be consumed.
   IndexT required_point_count{ 0 };  ///< Complete count on success or overflow; zero for invalid geometry.
 };
+
+namespace detail {
+
+/**
+ * @brief Find the most severe quadrature error across all pairs using the specified execution policy.
+ * @tparam Exec Concrete execution policy.
+ * @param results One status per pair in execution-accessible memory.
+ * @return Highest-severity status present in the array, or Success when the array is empty.
+ */
+template <ExecutionMode Exec>
+QuadratureStatus reduceQuadratureStatus( ArrayViewT<const QuadratureResult> results )
+{
+  ReduceMax<Exec, int> status( static_cast<int>( QuadratureStatus::Success ) );
+  forAllExec<Exec>( results.size(),
+                    [=] TRIBOL_HOST_DEVICE( IndexT pair ) { status.max( static_cast<int>( results[pair].status ) ); } );
+  return static_cast<QuadratureStatus>( status.get() );
+}
+
+}  // namespace detail
+
+/**
+ * @brief Check the quadrature rules produced for all pairs and throw if any rule reports an error.
+ * @tparam Exec Concrete execution mode used to populate the results.
+ * @param results One preallocated result per pair.
+ * Empty results pass the check.
+ * @throws std::invalid_argument A rule reports invalid geometry.
+ * @throws std::length_error A rule reports insufficient quadrature capacity.
+ */
+template <ExecutionMode Exec>
+void checkPairQuadratureResults( const Array1D<QuadratureResult>& results )
+{
+  const auto status = detail::reduceQuadratureStatus<Exec>( results.view() );
+  if ( status != QuadratureStatus::Success ) {
+    reportQuadratureFailure( status );
+  }
+}
 
 /**
  * @brief Provide read-only access to quadrature points and weights in the integration surface's coordinates.
