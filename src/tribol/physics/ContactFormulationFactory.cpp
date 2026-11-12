@@ -139,20 +139,18 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
         auto refined = std::make_unique<ProjectedEdgeSearch>( Exec, cs->getContactCase() == AUTO );
         CommonPlanePairFunction<BaseRuleGenerator, OffsetGap<CommonPlaneGap>> pair_function{
             std::move( rule_generator ), penalty, OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap } };
-        std::unique_ptr<ContactEvaluation> evaluation;
+        PairListBuilder pair_builder{ std::move( coarse ), std::move( refined ) };
         if ( cs->getParameters().common_plane_compute_jacobian ) {
 #ifdef TRIBOL_USE_ENZYME
-          evaluation = std::make_unique<ResidualForceJacobianEvaluation<Exec, decltype( pair_function )>>(
-              *cs->getMfemMeshData(), *cs->getMfemJacobianData(), std::move( pair_function ) );
+          return std::make_unique<CommonPlaneResidualJacobianFormulation<Exec, decltype( pair_function )>>(
+              *cs->getMfemMeshData(), *cs->getMfemJacobianData(), std::move( pair_function ),
+              std::move( pair_builder ) );
 #else
           throw std::runtime_error( "Common Plane Jacobian calculation requires Enzyme." );
 #endif
-        } else {
-          evaluation = std::make_unique<ResidualForceEvaluation<Exec, decltype( pair_function )>>(
-              *cs->getMfemMeshData(), std::move( pair_function ) );
         }
-        return std::make_unique<CommonPlaneFormulation>( std::move( evaluation ),
-                                                         PairListBuilder{ std::move( coarse ), std::move( refined ) } );
+        return std::make_unique<CommonPlaneResidualFormulation<Exec, decltype( pair_function )>>(
+            *cs->getMfemMeshData(), std::move( pair_function ), std::move( pair_builder ) );
       } );
 }
 

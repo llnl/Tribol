@@ -14,10 +14,11 @@
 #include "tribol/integ/BasisFunction.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
 #include "tribol/integ/PairQuadratureRuleGenerator.hpp"
-#include "tribol/physics/ContactFormulation.hpp"
-#include "tribol/assembly/ContactEvaluation.hpp"
+#include "tribol/assembly/PairEvaluationAssembly.hpp"
 #include "tribol/assembly/PairEvaluation.hpp"
+#include "tribol/physics/ContactFormulation.hpp"
 #include "tribol/search/PairListBuilder.hpp"
+#include <utility>
 
 namespace tribol {
 
@@ -102,26 +103,91 @@ class CommonPlanePairFunction {
 };
 
 #ifdef BUILD_REDECOMP
-/** @brief Common Plane pair search followed by the configured residual evaluation and assembly. */
-class CommonPlaneFormulation final : public ContactFormulation {
+/**
+ * @brief Common Plane pair search followed by residual-only evaluation and force assembly.
+ * @tparam Exec Concrete execution mode for search, evaluation, and assembly kernels.
+ * @tparam PairFunction Fixed Common Plane residual function.
+ */
+template <ExecutionMode Exec, PairFunctionType PairFunction>
+class CommonPlaneResidualFormulation final : public ContactFormulation {
  public:
   /**
-   * @brief Own the pair search and the selected residual evaluation.
-   * @param evaluation Non-null evaluator owning the fixed pair function and referencing its transfer data. The
-   * transfer data must remain valid for this formulation's lifetime.
+   * @brief Own the residual function and pair search and reference displacement transfer data.
+   * @param mesh_data Displacement transfer data; must outlive this formulation.
+   * @param pair_function Configured residual function, retained by value.
    * @param pair_builder Owned pair search composition.
-   * @throws std::invalid_argument The evaluator is null; no formulation is constructed.
    */
-  CommonPlaneFormulation( std::unique_ptr<ContactEvaluation> evaluation, PairListBuilder pair_builder );
+  CommonPlaneResidualFormulation( const MfemMeshData& mesh_data, PairFunction pair_function,
+                                  PairListBuilder pair_builder )
+      : mesh_data_( mesh_data ),
+        pair_function_( std::move( pair_function ) ),
+        pair_builder_( std::move( pair_builder ) )
+  {
+  }
 
-  /** @brief Compute Common Plane force and the optional Jacobian. @param mesh1 First mesh. @param mesh2 Second mesh.
-   * @return Owned force; df_dx is absent when the evaluator calculates forces only. */
-  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override;
+  /**
+   * @brief Compute the Common Plane force without calculating a Jacobian.
+   * @param mesh1 Current first mesh.
+   * @param mesh2 Current second mesh.
+   * @return Owned force; df_dx and other outputs are absent.
+   */
+  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
+  {
+    const auto pairs = pair_builder_.build( mesh1, mesh2 );
+    return evaluateAndAssemblePairResidual<Exec>( pairs, mesh1, mesh2, mesh_data_, pair_function_ );
+  }
 
  private:
-  std::unique_ptr<ContactEvaluation> evaluation_;  ///< Owned residual function, transfer references, and calculation.
-  PairListBuilder pair_builder_;                   ///< Owned search composition.
+  const MfemMeshData& mesh_data_;     ///< Displacement transfer data referenced for this formulation's lifetime.
+  const PairFunction pair_function_;  ///< Owned, fixed Common Plane residual function.
+  PairListBuilder pair_builder_;      ///< Owned search composition.
 };
+
+#ifdef TRIBOL_USE_ENZYME
+/**
+ * @brief Common Plane pair search followed by residual and coordinate-Jacobian evaluation and assembly.
+ * @tparam Exec Concrete execution mode for search, evaluation, and assembly kernels.
+ * @tparam PairFunction Fixed Common Plane residual function.
+ */
+template <ExecutionMode Exec, PairFunctionType PairFunction>
+class CommonPlaneResidualJacobianFormulation final : public ContactFormulation {
+ public:
+  /**
+   * @brief Own the residual function and pair search and reference vector and matrix transfer data.
+   * @param mesh_data Displacement transfer data; must outlive this formulation.
+   * @param jacobian_data Coordinate-matrix transfer data; must outlive this formulation.
+   * @param pair_function Configured residual function, retained by value.
+   * @param pair_builder Owned pair search composition.
+   */
+  CommonPlaneResidualJacobianFormulation( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
+                                          PairFunction pair_function, PairListBuilder pair_builder )
+      : mesh_data_( mesh_data ),
+        jacobian_data_( jacobian_data ),
+        pair_function_( std::move( pair_function ) ),
+        pair_builder_( std::move( pair_builder ) )
+  {
+  }
+
+  /**
+   * @brief Compute the Common Plane force and its coordinate Jacobian.
+   * @param mesh1 Current first mesh.
+   * @param mesh2 Current second mesh.
+   * @return Owned force and df_dx; other outputs are absent.
+   */
+  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
+  {
+    const auto pairs = pair_builder_.build( mesh1, mesh2 );
+    return evaluateAndAssemblePairResidualJacobian<Exec>( pairs, mesh1, mesh2, mesh_data_, jacobian_data_,
+                                                          pair_function_ );
+  }
+
+ private:
+  const MfemMeshData& mesh_data_;          ///< Displacement transfer data referenced for this formulation's lifetime.
+  const MfemJacobianData& jacobian_data_;  ///< Matrix transfer data referenced for this formulation's lifetime.
+  const PairFunction pair_function_;       ///< Owned, fixed Common Plane residual function.
+  PairListBuilder pair_builder_;           ///< Owned search composition.
+};
+#endif  // TRIBOL_USE_ENZYME
 #endif
 
 }  // namespace tribol

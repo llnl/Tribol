@@ -118,7 +118,6 @@ set(tribol_sources
 
     physics/AlignedMortar.cpp
     physics/CommonPlane.cpp
-    physics/CommonPlaneFormulation.cpp
     physics/ContactFormulationFactory.cpp
     physics/Mortar.cpp
     physics/EnergyMortar.cpp

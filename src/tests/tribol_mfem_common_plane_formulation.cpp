@@ -261,10 +261,9 @@ TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
             CommonPlanePairFunction<BaseRuleGenerator, OffsetGap<CommonPlaneGap>> pair_function{
                 std::move( rule_generator ), AveragePenaltyStiffness{}( 2.0, 6.0 ),
                 OffsetGap{ CommonPlaneGap{}, 0.0 } };
-            auto evaluation = std::make_unique<ResidualForceJacobianEvaluation<Exec, decltype( pair_function )>>(
-                *scheme().getMfemMeshData(), *scheme().getMfemJacobianData(), std::move( pair_function ) );
-            return std::make_unique<CommonPlaneFormulation>(
-                std::move( evaluation ), PairListBuilder{ std::move( coarse ), std::move( refined ) } );
+            return std::make_unique<CommonPlaneResidualJacobianFormulation<Exec, decltype( pair_function )>>(
+                *scheme().getMfemMeshData(), *scheme().getMfemJacobianData(), std::move( pair_function ),
+                PairListBuilder{ std::move( coarse ), std::move( refined ) } );
           } );
     } );
     auto result = alternate->computeNodalForces( scheme().getMesh1().getView(), scheme().getMesh2().getView() );
@@ -514,7 +513,7 @@ TEST_P( MfemCommonPlaneTest, execution_modes_preserve_forces_and_jacobian_select
     registerScheme( mode );
     enable( false );
     evaluate();
-    ASSERT_NE( dynamic_cast<CommonPlaneFormulation*>( scheme().getContactFormulation() ), nullptr );
+    ASSERT_TRUE( scheme().hasContactFormulation() );
     EXPECT_FALSE( scheme().hasMfemJacobianData() );
     EXPECT_EQ( scheme().getContactFormulationResult().df_dx, nullptr );
     auto forces = getMfemContactForce( 0 );
@@ -533,15 +532,6 @@ TEST_P( MfemCommonPlaneTest, execution_modes_preserve_forces_and_jacobian_select
     EXPECT_LT( norm( forces ), 1.0e-11 );
 #endif
   }
-}
-
-// A formulation must reject a missing evaluator before it can attempt a force calculation.
-TEST( CommonPlaneFormulation, rejects_null_residual_evaluation )
-{
-  auto coarse = createCoarseSearch( 2, BINNING_GRID, ExecutionMode::Sequential, 1.0, 0.0 );
-  auto refined = std::make_unique<ProjectedEdgeSearch>( ExecutionMode::Sequential, false );
-  EXPECT_THROW( ( CommonPlaneFormulation{ nullptr, PairListBuilder{ std::move( coarse ), std::move( refined ) } } ),
-                std::invalid_argument );
 }
 
 // Rejected configuration must leave the legacy selection and its resources intact.
@@ -573,7 +563,7 @@ TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
   for ( int order = 0; order <= 5; ++order ) {
     setQuadratureOrder( 0, order );
     auto* formulation = scheme().getContactFormulation();
-    EXPECT_NE( dynamic_cast<CommonPlaneFormulation*>( formulation ), nullptr );
+    EXPECT_NE( formulation, nullptr );
     EXPECT_EQ( scheme().getParameters().quadrature_order, order );
   }
   EXPECT_THROW( setQuadratureOrder( 0, 6 ), std::invalid_argument );
