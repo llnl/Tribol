@@ -47,9 +47,9 @@ set(tribol_headers
     integ/EdgeQuadratureRuleGenerator.hpp
     integ/FE.hpp
     integ/Integration.hpp
-    integ/PairQuadratureRule.hpp
+    integ/PairQuadratureRuleGenerator.hpp
     integ/QuadratureCommon.hpp
-    integ/QuadratureRuleFactory.hpp
+    integ/QuadratureRuleGeneratorFactory.hpp
 
     interface/mfem_tribol.hpp
     interface/simple_tribol.hpp

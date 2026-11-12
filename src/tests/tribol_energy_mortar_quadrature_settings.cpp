@@ -31,7 +31,7 @@
 #include "tribol/physics/EnergyMortar.hpp"
 #include "tribol/physics/PenaltyStiffness.hpp"
 #include "tribol/common/LoopExec.hpp"
-#include "tribol/integ/QuadratureRuleFactory.hpp"
+#include "tribol/integ/QuadratureRuleGeneratorFactory.hpp"
 #include "tribol/search/CoarseSearchFactory.hpp"
 #include "tribol/search/ProjectedEdgeSearch.hpp"
 
@@ -87,19 +87,20 @@ class EnergyMortarQuadratureSettingsTest : public testing::TestWithParam<std::tu
  * @param formulation Factory-created contact formulation.
  * @param location Selected enforcement location.
  * @param execution_mode Expected execution specialization.
- * @return Whether the formulation has the expected rule and enforcement types.
+ * @return Whether the formulation has the expected rule-generator and enforcement types.
  */
 template <int Count>
 bool usesPointCount( tribol::ContactFormulation* formulation, tribol::EnforcementLocation location,
                      tribol::ExecutionMode execution_mode )
 {
-  using Rule =
-      tribol::PairQuadratureRule<tribol::SmoothedProjectedEdgeMapping, tribol::EdgeQuadratureRuleGenerator<Count>>;
+  using RuleGenerator = tribol::PairQuadratureRuleGenerator<tribol::SmoothedProjectedEdgeMapping,
+                                                            tribol::EdgeQuadratureRuleGenerator<Count>>;
   return tribol::dispatchExecutionMode( execution_mode, [&]<tribol::ExecutionMode Exec>() {
     if ( location == tribol::EnforcementLocation::Nodal ) {
-      return dynamic_cast<tribol::NodalEnergyMortar<Rule, Exec, tribol::PenaltyEnforcement>*>( formulation ) != nullptr;
+      return dynamic_cast<tribol::NodalEnergyMortar<RuleGenerator, Exec, tribol::PenaltyEnforcement>*>( formulation ) !=
+             nullptr;
     }
-    return dynamic_cast<tribol::QuadraturePointEnergyMortar<Rule, Exec>*>( formulation ) != nullptr;
+    return dynamic_cast<tribol::QuadraturePointEnergyMortar<RuleGenerator, Exec>*>( formulation ) != nullptr;
   } );
 }
 
@@ -218,21 +219,23 @@ TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
         } ) {
     SCOPED_TRACE( static_cast<int>( execution_mode ) );
     auto alternate = dispatchExecutionMode( execution_mode, [&]<ExecutionMode Exec>() {
-      return createWithQuadratureRule(
-          quadratureOrder(), SmoothedProjectedEdgeMapping{}, [&]( auto rule ) -> std::unique_ptr<ContactFormulation> {
+      return createWithQuadratureRuleGenerator(
+          quadratureOrder(), SmoothedProjectedEdgeMapping{},
+          [&]( auto rule_generator ) -> std::unique_ptr<ContactFormulation> {
             auto coarse = createCoarseSearch( cs.spatialDimension(), cs.getBinningMethod(), execution_mode,
                                               cs.getEffectiveBinningProximityScale(), 0.0 );
             auto refined = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
             PairListBuilder pair_builder{ std::move( coarse ), std::move( refined ) };
             if ( std::get<0>( GetParam() ) == EnforcementLocation::Nodal ) {
-              return std::make_unique<NodalEnergyMortar<decltype( rule ), Exec, PenaltyEnforcement>>(
+              return std::make_unique<NodalEnergyMortar<decltype( rule_generator ), Exec, PenaltyEnforcement>>(
                   *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), std::move( pair_builder ),
-                  std::move( rule ), OffsetGap{ OpposingNormalGap{}, 0.0 },
+                  std::move( rule_generator ), OffsetGap{ OpposingNormalGap{}, 0.0 },
                   PenaltyEnforcement{ SeriesPenaltyStiffness{}( 2.0, 6.0 ) } );
             }
-            return std::make_unique<QuadraturePointEnergyMortar<decltype( rule ), Exec>>(
-                *cs.getMfemMeshData(), *cs.getMfemJacobianData(), std::move( pair_builder ), std::move( rule ),
-                OffsetGap{ OpposingNormalGap{}, 0.0 }, SeriesPenaltyStiffness{}( 2.0, 6.0 ) );
+            return std::make_unique<QuadraturePointEnergyMortar<decltype( rule_generator ), Exec>>(
+                *cs.getMfemMeshData(), *cs.getMfemJacobianData(), std::move( pair_builder ),
+                std::move( rule_generator ), OffsetGap{ OpposingNormalGap{}, 0.0 },
+                SeriesPenaltyStiffness{}( 2.0, 6.0 ) );
           } );
     } );
     auto result = alternate->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView() );
@@ -470,16 +473,17 @@ TEST_P( EnergyMortarQuadratureSettingsTest, nodal_activation_preserves_only_comp
   updateMfemParallelDecomposition( 1, true );
   auto& cs = CouplingSchemeManager::getInstance().at( 0 );
   const auto penalty = cs.getContactFormulation()->computeNodalGaps( cs.getMesh1().getView(), cs.getMesh2().getView() );
-  const auto weighted = createWithQuadratureRule( quadratureOrder(), SmoothedProjectedEdgeMapping{}, [&]( auto rule ) {
-    auto coarse = createCoarseSearch( cs.spatialDimension(), cs.getBinningMethod(), cs.getExecutionMode(),
-                                      cs.getEffectiveBinningProximityScale(), 0.0 );
-    auto refined = std::make_unique<ProjectedEdgeSearch>( cs.getExecutionMode(), false );
-    NodalEnergyMortar<decltype( rule ), ExecutionMode::Sequential, LagrangeMultiplierEnforcement> lm(
-        *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(),
-        PairListBuilder{ std::move( coarse ), std::move( refined ) }, rule, OffsetGap{ OpposingNormalGap{}, 0.0 },
-        LagrangeMultiplierEnforcement{} );
-    return lm.computeNodalGaps( cs.getMesh1().getView(), cs.getMesh2().getView() );
-  } );
+  const auto weighted =
+      createWithQuadratureRuleGenerator( quadratureOrder(), SmoothedProjectedEdgeMapping{}, [&]( auto rule_generator ) {
+        auto coarse = createCoarseSearch( cs.spatialDimension(), cs.getBinningMethod(), cs.getExecutionMode(),
+                                          cs.getEffectiveBinningProximityScale(), 0.0 );
+        auto refined = std::make_unique<ProjectedEdgeSearch>( cs.getExecutionMode(), false );
+        NodalEnergyMortar<decltype( rule_generator ), ExecutionMode::Sequential, LagrangeMultiplierEnforcement> lm(
+            *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(),
+            PairListBuilder{ std::move( coarse ), std::move( refined ) }, rule_generator,
+            OffsetGap{ OpposingNormalGap{}, 0.0 }, LagrangeMultiplierEnforcement{} );
+        return lm.computeNodalGaps( cs.getMesh1().getView(), cs.getMesh2().getView() );
+      } );
   mfem::Vector direction( fes_->GetTrueVSize() ), penalty_action( penalty.gap->Size() ),
       weighted_action( weighted.gap->Size() );
   direction = 0.0;

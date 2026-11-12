@@ -11,7 +11,7 @@
 
 #include "tribol/geom/OpposingNormalGap.hpp"
 #include "tribol/integ/BasisFunction.hpp"
-#include "tribol/integ/PairQuadratureRule.hpp"
+#include "tribol/integ/PairQuadratureRuleGenerator.hpp"
 #include "tribol/assembly/PairEvaluation.hpp"
 
 namespace tribol {
@@ -51,20 +51,22 @@ struct EnergyMortarNodalPartials {
 
 /**
  * @brief Integrate quadrature-point penalty energy directly from current coordinates.
- * @tparam QuadratureRule Smoothed projected-edge pair rule.
+ * @tparam PairRuleGenerator Smoothed projected-edge pair rule generator.
  * @tparam GapDefinition Geometric or offset gap callable.
  */
-template <typename QuadratureRule, typename GapDefinition = OpposingNormalGap>
+template <typename PairRuleGenerator, typename GapDefinition = OpposingNormalGap>
 class EnergyMortarEnergy {
  public:
-  using Quadrature = QuadratureRule;        ///< Owned pair generator type.
   using PrimalResult = PairEnergyValue;     ///< Energy, activation, and quadrature status.
   static constexpr IndexT value_count = 1;  ///< Scalar pair energy output.
-  static constexpr IndexT first_dofs = Quadrature::FirstGeometry::Coords::size();  ///< First-element coordinates.
-  static constexpr IndexT dof_count = first_dofs + Quadrature::SecondGeometry::Coords::size();  ///< Pair coordinates.
-  /** @brief Store fixed inputs. @param rule Pair generator. @param penalty Stiffness. @param gap Gap callable. */
-  TRIBOL_HOST_DEVICE EnergyMortarEnergy( Quadrature rule, RealT penalty, GapDefinition gap = {} )
-      : quadrature_( rule ), penalty_( penalty ), gap_( gap )
+  static constexpr IndexT first_dofs =
+      PairRuleGenerator::FirstGeometry::Coords::size();  ///< First-element coordinates.
+  static constexpr IndexT dof_count =
+      first_dofs + PairRuleGenerator::SecondGeometry::Coords::size();  ///< Pair coordinates.
+  /** @brief Store fixed inputs. @param rule_generator Pair quadrature rule generator. @param penalty Stiffness. @param
+   * gap Gap callable. */
+  TRIBOL_HOST_DEVICE EnergyMortarEnergy( PairRuleGenerator rule_generator, RealT penalty, GapDefinition gap = {} )
+      : rule_generator_( rule_generator ), penalty_( penalty ), gap_( gap )
   {
   }
   /**
@@ -74,9 +76,10 @@ class EnergyMortarEnergy {
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PrimalResult evaluate( MdSpan<const RealT, dof_count> coordinates ) const
   {
-    const typename Quadrature::FirstGeometry geometry1( { coordinates.data(), first_dofs } );
-    const typename Quadrature::SecondGeometry geometry2( { coordinates.data() + first_dofs, dof_count - first_dofs } );
-    const auto points = quadrature_.generate( geometry1, geometry2 );
+    const typename PairRuleGenerator::FirstGeometry geometry1( { coordinates.data(), first_dofs } );
+    const typename PairRuleGenerator::SecondGeometry geometry2(
+        { coordinates.data() + first_dofs, dof_count - first_dofs } );
+    const auto points = rule_generator_.generate( geometry1, geometry2 );
     PrimalResult result{ 0.0, false, points.result };
     if ( points.result.status != QuadratureStatus::Success || points.result.required_point_count == 0 ) {
       return result;
@@ -95,25 +98,26 @@ class EnergyMortarEnergy {
   }
 
  private:
-  Quadrature quadrature_;  ///< Owned pair quadrature configuration.
-  RealT penalty_;          ///< Fixed effective stiffness.
-  GapDefinition gap_;      ///< Owned gap configuration.
+  PairRuleGenerator rule_generator_;  ///< Owned pair quadrature rule generator.
+  RealT penalty_;                     ///< Fixed effective stiffness.
+  GapDefinition gap_;                 ///< Owned gap configuration.
 };
 
 /**
  * @brief Integrate nodal weighted gaps and areas directly, exposing only local Enzyme derivative entries.
- * @tparam QuadratureRule Smoothed projected-edge pair rule.
+ * @tparam PairRuleGenerator Smoothed projected-edge pair rule generator.
  * @tparam GapDefinition Geometric or offset gap callable.
  */
-template <typename QuadratureRule, typename GapDefinition = OpposingNormalGap>
+template <typename PairRuleGenerator, typename GapDefinition = OpposingNormalGap>
 class EnergyMortarNodalEnergy {
  public:
-  using Quadrature = QuadratureRule;                                               ///< Pair generator type.
-  using Basis = BasisFunction<EDGE, LINEAR_LAGRANGE>;                              ///< Non-mortar nodal basis.
-  static constexpr IndexT node_count = Basis::node_count;                          ///< Non-mortar nodes per edge.
-  static constexpr IndexT value_count = 2 * node_count;                            ///< Weighted gaps followed by areas.
-  static constexpr IndexT first_dofs = Quadrature::FirstGeometry::Coords::size();  ///< First-element coordinates.
-  static constexpr IndexT dof_count = first_dofs + Quadrature::SecondGeometry::Coords::size();  ///< Pair coordinates.
+  using Basis = BasisFunction<EDGE, LINEAR_LAGRANGE>;      ///< Non-mortar nodal basis.
+  static constexpr IndexT node_count = Basis::node_count;  ///< Non-mortar nodes per edge.
+  static constexpr IndexT value_count = 2 * node_count;    ///< Weighted gaps followed by areas.
+  static constexpr IndexT first_dofs =
+      PairRuleGenerator::FirstGeometry::Coords::size();  ///< First-element coordinates.
+  static constexpr IndexT dof_count =
+      first_dofs + PairRuleGenerator::SecondGeometry::Coords::size();  ///< Pair coordinates.
   /** @brief Nodal values with activation and quadrature status. */
   struct PrimalResult {
     MdArray<RealT, value_count> value{};   ///< Weighted gaps, then areas, in local-node order.
@@ -124,9 +128,9 @@ class EnergyMortarNodalEnergy {
      */
     TRIBOL_HOST_DEVICE MdArray<RealT, value_count> values() const { return value; }
   };
-  /** @brief Store fixed inputs. @param rule Pair generator. @param gap Gap callable. */
-  TRIBOL_HOST_DEVICE EnergyMortarNodalEnergy( Quadrature rule, GapDefinition gap = {} )
-      : quadrature_( rule ), gap_( gap )
+  /** @brief Store fixed inputs. @param rule_generator Pair quadrature rule generator. @param gap Gap callable. */
+  TRIBOL_HOST_DEVICE EnergyMortarNodalEnergy( PairRuleGenerator rule_generator, GapDefinition gap = {} )
+      : rule_generator_( rule_generator ), gap_( gap )
   {
   }
   /**
@@ -136,9 +140,10 @@ class EnergyMortarNodalEnergy {
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PrimalResult evaluate( MdSpan<const RealT, dof_count> coordinates ) const
   {
-    const typename Quadrature::FirstGeometry geometry1( { coordinates.data(), first_dofs } );
-    const typename Quadrature::SecondGeometry geometry2( { coordinates.data() + first_dofs, dof_count - first_dofs } );
-    const auto points = quadrature_.generate( geometry1, geometry2 );
+    const typename PairRuleGenerator::FirstGeometry geometry1( { coordinates.data(), first_dofs } );
+    const typename PairRuleGenerator::SecondGeometry geometry2(
+        { coordinates.data() + first_dofs, dof_count - first_dofs } );
+    const auto points = rule_generator_.generate( geometry1, geometry2 );
     PrimalResult result{ {}, false, points.result };
     if ( points.result.status != QuadratureStatus::Success || points.result.required_point_count == 0 ) {
       return result;
@@ -160,8 +165,8 @@ class EnergyMortarNodalEnergy {
   }
 
  private:
-  Quadrature quadrature_;  ///< Owned pair quadrature configuration.
-  GapDefinition gap_;      ///< Owned gap configuration.
+  PairRuleGenerator rule_generator_;  ///< Owned pair quadrature rule generator.
+  GapDefinition gap_;                 ///< Owned gap configuration.
 };
 }  // namespace tribol
 #endif

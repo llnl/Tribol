@@ -5,10 +5,10 @@
 
 /**
  * @file
- * @brief Compose an element-pair integration mapping with an integration-surface quadrature rule.
+ * @brief Compose an element-pair integration mapping with an integration-surface quadrature rule generator.
  */
-#ifndef SRC_TRIBOL_INTEG_PAIRQUADRATURERULE_HPP_
-#define SRC_TRIBOL_INTEG_PAIRQUADRATURERULE_HPP_
+#ifndef SRC_TRIBOL_INTEG_PAIRQUADRATURERULEGENERATOR_HPP_
+#define SRC_TRIBOL_INTEG_PAIRQUADRATURERULEGENERATOR_HPP_
 
 #include <concepts>
 #include <type_traits>
@@ -47,7 +47,7 @@ concept ElementPairMapping =
  * @tparam Generator Type generating integration-surface points, weights, and generation status.
  */
 template <typename Mapping, typename Generator>
-concept PairQuadratureComponentsAreCompatible =
+concept CompatibleQuadratureMappingAndGenerator =
     ElementPairMapping<Mapping> &&
     requires {
       typename Generator::IntegrationSurfaceRule;
@@ -57,13 +57,13 @@ concept PairQuadratureComponentsAreCompatible =
       requires( Generator::coordinate_dimension == 1 || Generator::coordinate_dimension == 2 );
       requires( Generator::max_points > 0 );
     } &&
-    requires(
-        const Generator& generator, const Mapping& mapping, const typename Mapping::FirstGeometry& geometry1,
-        const typename Mapping::SecondGeometry& geometry2,
-        const typename Generator::IntegrationSurfaceRule& integration_surface_rule,
-        IntegrationSurfaceRuleView<Generator::coordinate_dimension> integration_surface_rule_view,
-        PairQuadratureView<Mapping::FirstGeometry::parametric_dimension, Mapping::SecondGeometry::parametric_dimension>
-            output ) {
+    requires( const Generator& generator, const Mapping& mapping, const typename Mapping::FirstGeometry& geometry1,
+              const typename Mapping::SecondGeometry& geometry2,
+              const typename Generator::IntegrationSurfaceRule& integration_surface_rule,
+              IntegrationSurfaceRuleView<Generator::coordinate_dimension> integration_surface_rule_view,
+              PairQuadratureRuleView<Mapping::FirstGeometry::parametric_dimension,
+                                     Mapping::SecondGeometry::parametric_dimension>
+                  output ) {
       {
         generator.generate( mapping.makeIntegrationSurface( geometry1, geometry2 ) )
       } -> std::same_as<typename Generator::IntegrationSurfaceRule>;
@@ -91,25 +91,25 @@ concept PairQuadratureComponentsAreCompatible =
  * coordinates.
  */
 template <ElementPairMapping Mapping, typename IntegrationSurfaceRuleGenerator>
-  requires PairQuadratureComponentsAreCompatible<Mapping, IntegrationSurfaceRuleGenerator>
-class PairQuadratureRule {
+  requires CompatibleQuadratureMappingAndGenerator<Mapping, IntegrationSurfaceRuleGenerator>
+class PairQuadratureRuleGenerator {
  public:
-  using Generator = IntegrationSurfaceRuleGenerator;        ///< Integration-surface quadrature generator.
-  using FirstGeometry = typename Mapping::FirstGeometry;    ///< Geometry type of the first element.
-  using SecondGeometry = typename Mapping::SecondGeometry;  ///< Geometry type of the second element.
+  using BaseRuleGenerator = IntegrationSurfaceRuleGenerator;  ///< Integration-surface quadrature generator.
+  using FirstGeometry = typename Mapping::FirstGeometry;      ///< Geometry type of the first element.
+  using SecondGeometry = typename Mapping::SecondGeometry;    ///< Geometry type of the second element.
   /// Maximum number of points in a successfully generated rule.
   static constexpr int max_points = IntegrationSurfaceRuleGenerator::max_points;
   /// Maximum polynomial degree integrated exactly in integration-surface coordinates.
   static constexpr int polynomial_order = IntegrationSurfaceRuleGenerator::polynomial_order;
 
   /** @brief Use a default mapping and integration-surface rule generator. */
-  TRIBOL_DEFAULT_HOST_DEVICE PairQuadratureRule() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE PairQuadratureRuleGenerator() = default;
   /**
    * @brief Copy the mapping and integration-surface rule generator.
    * @param mapping Forward and reverse mapping configuration.
-   * @param integration_surface_rule_generator Generator copied into this pair rule.
+   * @param integration_surface_rule_generator Integration-surface generator copied into this pair rule generator.
    */
-  TRIBOL_HOST_DEVICE explicit PairQuadratureRule(
+  TRIBOL_HOST_DEVICE explicit PairQuadratureRuleGenerator(
       Mapping mapping, IntegrationSurfaceRuleGenerator integration_surface_rule_generator = {} )
       : mapping_( mapping ), integration_surface_rule_generator_( integration_surface_rule_generator )
   {
@@ -117,9 +117,10 @@ class PairQuadratureRule {
 
   /** @brief Quadrature points and weights expressed in the integration surface's coordinates. */
   using IntegrationSurfaceRule = typename IntegrationSurfaceRuleGenerator::IntegrationSurfaceRule;
-  /** @brief Local paired parametric coordinates and physical weights. */
-  using QuadratureData =
-      PairQuadratureData<FirstGeometry::parametric_dimension, SecondGeometry::parametric_dimension, max_points>;
+  /** @brief Generated pair quadrature rule containing parametric coordinates, physical weights, and generation status.
+   */
+  using Rule =
+      PairQuadratureRule<FirstGeometry::parametric_dimension, SecondGeometry::parametric_dimension, max_points>;
 
   /**
    * @brief Construct the integration surface and generate quadrature points and weights in its coordinates.
@@ -148,7 +149,7 @@ class PairQuadratureRule {
    * coordinates.
    * @return Local paired quadrature with generation status; invalid geometry has zero points.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData mapIntegrationSurfaceRuleToElements(
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Rule mapIntegrationSurfaceRuleToElements(
       typename FirstGeometry::Coords element1_coords, typename SecondGeometry::Coords element2_coords,
       IntegrationSurfaceRuleView<IntegrationSurfaceRuleGenerator::coordinate_dimension> integration_surface_rule ) const
   {
@@ -165,11 +166,11 @@ class PairQuadratureRule {
    * @param integration_surface_rule Quadrature points and weights expressed in the integration surface's coordinates.
    * @return Local paired quadrature with generation status; invalid geometry has zero points.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData mapIntegrationSurfaceRuleToElements(
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Rule mapIntegrationSurfaceRuleToElements(
       const FirstGeometry& geometry1, const SecondGeometry& geometry2,
       IntegrationSurfaceRuleView<IntegrationSurfaceRuleGenerator::coordinate_dimension> integration_surface_rule ) const
   {
-    QuadratureData output{};
+    Rule output{};
     output.result = mapping_.mapToElements( geometry1, geometry2, integration_surface_rule, output.getOutputView() );
     return output;
   }
@@ -181,9 +182,9 @@ class PairQuadratureRule {
    * @param [out] output Parametric coordinates on both elements and physical weights.
    * @return Generation status and full point count; failures must not be consumed. No allocation or retry is performed.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult
-  generate( typename FirstGeometry::Coords element1_coords, typename SecondGeometry::Coords element2_coords,
-            PairQuadratureView<FirstGeometry::parametric_dimension, SecondGeometry::parametric_dimension> output ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult generate(
+      typename FirstGeometry::Coords element1_coords, typename SecondGeometry::Coords element2_coords,
+      PairQuadratureRuleView<FirstGeometry::parametric_dimension, SecondGeometry::parametric_dimension> output ) const
   {
     return generate( FirstGeometry( element1_coords ), SecondGeometry( element2_coords ), output );
   }
@@ -195,9 +196,9 @@ class PairQuadratureRule {
    * @param[out] output Paired parametric coordinates and physical weights.
    * @return Generation status and full count; failed output must not be consumed.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult
-  generate( const FirstGeometry& geometry1, const SecondGeometry& geometry2,
-            PairQuadratureView<FirstGeometry::parametric_dimension, SecondGeometry::parametric_dimension> output ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult generate(
+      const FirstGeometry& geometry1, const SecondGeometry& geometry2,
+      PairQuadratureRuleView<FirstGeometry::parametric_dimension, SecondGeometry::parametric_dimension> output ) const
   {
     const auto integration_surface_rule =
         integration_surface_rule_generator_.generate( mapping_.makeIntegrationSurface( geometry1, geometry2 ) );
@@ -214,10 +215,10 @@ class PairQuadratureRule {
    * @param element2_coords Current second-element coordinates.
    * @return Local paired quadrature with generation status; valid zero measure has zero points.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData
-  generate( typename FirstGeometry::Coords element1_coords, typename SecondGeometry::Coords element2_coords ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Rule generate( typename FirstGeometry::Coords element1_coords,
+                                                         typename SecondGeometry::Coords element2_coords ) const
   {
-    QuadratureData output{};
+    Rule output{};
     output.result = generate( element1_coords, element2_coords, output.getOutputView() );
     return output;
   }
@@ -228,10 +229,10 @@ class PairQuadratureRule {
    * @param geometry2 Second current element geometry.
    * @return Local paired quadrature; failed output must not be consumed.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureData generate( const FirstGeometry& geometry1,
-                                                                   const SecondGeometry& geometry2 ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Rule generate( const FirstGeometry& geometry1,
+                                                         const SecondGeometry& geometry2 ) const
   {
-    QuadratureData output{};
+    Rule output{};
     output.result = generate( geometry1, geometry2, output.getOutputView() );
     return output;
   }

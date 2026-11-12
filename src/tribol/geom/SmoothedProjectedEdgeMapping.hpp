@@ -30,8 +30,9 @@ namespace tribol {
  * Only configuration is retained; current endpoint coordinates are supplied to each operation.
  */
 struct SmoothedProjectedEdgeMapping {
-  using FirstGeometry = LinearEdgeGeometry;   ///< Non-mortar integration edge type required by PairQuadratureRule.
-  using SecondGeometry = LinearEdgeGeometry;  ///< Mortar projection edge type required by PairQuadratureRule.
+  using FirstGeometry =
+      LinearEdgeGeometry;  ///< Non-mortar integration edge type required by PairQuadratureRuleGenerator.
+  using SecondGeometry = LinearEdgeGeometry;  ///< Mortar projection edge type required by PairQuadratureRuleGenerator.
   using Point = LinearEdgeGeometry::Point;    ///< Physical point used for forward and reverse projection.
   using Vector = LinearEdgeGeometry::Vector;  ///< Vector in physical space.
   /** @brief Native integration surface, expressed in edge1 parent coordinates. */
@@ -80,7 +81,7 @@ struct SmoothedProjectedEdgeMapping {
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult
   mapToElements( const FirstGeometry& edge1, const SecondGeometry& edge2,
-                 IntegrationSurfaceRuleView<1> integration_surface_rule, PairQuadratureView<1, 1> output ) const
+                 IntegrationSurfaceRuleView<1> integration_surface_rule, PairQuadratureRuleView<1, 1> output ) const
   {
     if ( edge1.squaredLength() < minimum_edge_length_squared_ ||
          edge2.squaredLength() < minimum_edge_length_squared_ ) {

@@ -29,7 +29,7 @@
 #include "tribol/assembly/PairEvaluationAssembly.hpp"
 #include "tribol/physics/PenaltyStiffness.hpp"
 #include "tribol/common/LoopExec.hpp"
-#include "tribol/integ/QuadratureRuleFactory.hpp"
+#include "tribol/integ/QuadratureRuleGeneratorFactory.hpp"
 #include "tribol/search/CoarseSearchFactory.hpp"
 #include "tribol/search/ProjectedEdgeSearch.hpp"
 
@@ -252,15 +252,15 @@ TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
         } ) {
     SCOPED_TRACE( static_cast<int>( execution_mode ) );
     auto alternate = dispatchExecutionMode( execution_mode, [&]<ExecutionMode Exec>() {
-      return createWithQuadratureRule(
-          GetParam(), CommonPlaneEdgeMapping{}, [&]( auto quadrature ) -> std::unique_ptr<ContactFormulation> {
-            using BaseRule = typename decltype( quadrature )::Generator;
+      return createWithQuadratureRuleGenerator(
+          GetParam(), CommonPlaneEdgeMapping{}, [&]( auto rule_generator ) -> std::unique_ptr<ContactFormulation> {
+            using BaseRuleGenerator = typename decltype( rule_generator )::BaseRuleGenerator;
             auto coarse = createCoarseSearch( scheme().spatialDimension(), scheme().getBinningMethod(), execution_mode,
                                               scheme().getEffectiveBinningProximityScale(), 0.0 );
             auto refined = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
-            return std::make_unique<CommonPlaneFormulation<BaseRule, Exec, ResidualForceJacobianEvaluation>>(
+            return std::make_unique<CommonPlaneFormulation<BaseRuleGenerator, Exec, ResidualForceJacobianEvaluation>>(
                 ResidualForceJacobianEvaluation{ *scheme().getMfemMeshData(), *scheme().getMfemJacobianData() },
-                PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( quadrature ),
+                PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( rule_generator ),
                 OffsetGap{ CommonPlaneGap{}, 0.0 }, AveragePenaltyStiffness{}( 2.0, 6.0 ) );
           } );
     } );
@@ -511,17 +511,17 @@ TEST_P( MfemCommonPlaneTest, selects_execution_specialization )
     enable( false );
     const auto check = [&]( bool compute_jacobian ) {
       return dispatchExecutionMode( mode, [&]<ExecutionMode Exec>() {
-        return createWithQuadratureRule( GetParam(), CommonPlaneEdgeMapping{}, [&]( auto rule ) {
-          using BaseRule = typename decltype( rule )::Generator;
+        return createWithQuadratureRuleGenerator( GetParam(), CommonPlaneEdgeMapping{}, [&]( auto rule_generator ) {
+          using BaseRuleGenerator = typename decltype( rule_generator )::BaseRuleGenerator;
 #ifdef TRIBOL_USE_ENZYME
           if ( compute_jacobian ) {
-            return dynamic_cast<CommonPlaneFormulation<BaseRule, Exec, ResidualForceJacobianEvaluation>*>(
+            return dynamic_cast<CommonPlaneFormulation<BaseRuleGenerator, Exec, ResidualForceJacobianEvaluation>*>(
                        scheme().getContactFormulation() ) != nullptr;
           }
 #else
           (void)compute_jacobian;
 #endif
-          return dynamic_cast<CommonPlaneFormulation<BaseRule, Exec, ResidualForceEvaluation>*>(
+          return dynamic_cast<CommonPlaneFormulation<BaseRuleGenerator, Exec, ResidualForceEvaluation>*>(
                      scheme().getContactFormulation() ) != nullptr;
         } );
       } );

@@ -13,7 +13,7 @@
 #include "tribol/geom/OffsetGap.hpp"
 #include "tribol/integ/BasisFunction.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
-#include "tribol/integ/PairQuadratureRule.hpp"
+#include "tribol/integ/PairQuadratureRuleGenerator.hpp"
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/physics/ContactEnforcement.hpp"
 #include "tribol/physics/ContactFormulation.hpp"
@@ -24,22 +24,24 @@ namespace tribol {
 
 /**
  * @brief Fixed-size Common Plane residual function for direct evaluation and optional Enzyme differentiation.
- * @tparam BaseRule Reference Gauss rule.
+ * @tparam BaseRuleGenerator Reference Gauss rule generator.
  * @tparam GapDefinition Geometric or offset common-plane gap.
  */
-template <typename BaseRule, typename GapDefinition = CommonPlaneGap>
+template <typename BaseRuleGenerator, typename GapDefinition = CommonPlaneGap>
 class CommonPlanePairFunction {
  public:
-  using Quadrature = PairQuadratureRule<CommonPlaneEdgeMapping, BaseRule>;  ///< Pair quadrature type.
   static constexpr IndexT first_dofs = LinearEdgeGeometry::Coords::size();  ///< First edge coordinate count.
   static constexpr IndexT dof_count = 2 * first_dofs;                       ///< Pair coordinate count.
   static constexpr IndexT value_count = dof_count;                          ///< Residual entry count.
   using PrimalResult = PairResidualValue<dof_count>;                        ///< Residual and quadrature state.
 
-  /** @brief Store fixed configuration. @param rule Pair quadrature. @param penalty Stiffness. @param gap Gap callable.
+  /** @brief Store fixed configuration. @param rule_generator Pair quadrature rule generator. @param penalty Stiffness.
+   * @param gap Gap callable.
    */
-  TRIBOL_HOST_DEVICE CommonPlanePairFunction( Quadrature rule, RealT penalty, GapDefinition gap = {} )
-      : quadrature_( rule ), penalty_( penalty ), gap_( gap )
+  TRIBOL_HOST_DEVICE CommonPlanePairFunction(
+      PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, BaseRuleGenerator> rule_generator, RealT penalty,
+      GapDefinition gap = {} )
+      : rule_generator_( rule_generator ), penalty_( penalty ), gap_( gap )
   {
   }
 
@@ -48,7 +50,7 @@ class CommonPlanePairFunction {
   {
     const LinearEdgeGeometry geometry1( { coordinates.data(), first_dofs } );
     const LinearEdgeGeometry geometry2( { coordinates.data() + first_dofs, first_dofs } );
-    const auto points = quadrature_.generate( geometry1, geometry2 );
+    const auto points = rule_generator_.generate( geometry1, geometry2 );
     PrimalResult result{ {}, points.result, false };
     if ( points.result.status != QuadratureStatus::Success || points.result.required_point_count == 0 ) {
       return result;
@@ -87,19 +89,20 @@ class CommonPlanePairFunction {
   }
 
  private:
-  Quadrature quadrature_;  ///< Owned pair quadrature configuration.
-  RealT penalty_;          ///< Effective pair stiffness.
-  GapDefinition gap_;      ///< Owned gap definition.
+  PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, BaseRuleGenerator>
+      rule_generator_;  ///< Owned pair quadrature rule generator.
+  RealT penalty_;       ///< Effective pair stiffness.
+  GapDefinition gap_;   ///< Owned gap definition.
 };
 
 #ifdef BUILD_REDECOMP
 /**
  * @brief Common Plane pair search and force assembly, with optional Enzyme Jacobians.
- * @tparam BaseRule Reference Gauss rule.
+ * @tparam BaseRuleGenerator Reference Gauss rule generator.
  * @tparam Exec Concrete execution mode for evaluation and numerical assembly.
  * @tparam Evaluation ResidualForceEvaluation or ResidualForceJacobianEvaluation prerequisites.
  */
-template <typename BaseRule, ExecutionMode Exec, typename Evaluation>
+template <typename BaseRuleGenerator, ExecutionMode Exec, typename Evaluation>
 class CommonPlaneFormulation final : public ContactFormulation {
  public:
   /**
@@ -107,17 +110,17 @@ class CommonPlaneFormulation final : public ContactFormulation {
    * @param evaluation Transfer-data references selecting force-only or force/Jacobian calculation. The referenced
    * data must remain valid for this formulation's lifetime.
    * @param pair_builder Owned pair search composition.
-   * @param quadrature Owned common-line quadrature.
+   * @param rule_generator Owned common-line quadrature rule generator.
    * @param gap Owned gap definition.
    * @param penalty Positive, finite effective stiffness fixed for this formulation's lifetime.
    * @throws std::invalid_argument Stiffness is nonpositive or nonfinite; no formulation is constructed.
    */
   CommonPlaneFormulation( Evaluation evaluation, PairListBuilder pair_builder,
-                          PairQuadratureRule<CommonPlaneEdgeMapping, BaseRule> quadrature,
+                          PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, BaseRuleGenerator> rule_generator,
                           OffsetGap<CommonPlaneGap> gap, RealT penalty )
       : evaluation_( evaluation ),
         pair_builder_( std::move( pair_builder ) ),
-        function_( std::move( quadrature ), detail::checkedPenaltyStiffness( penalty ), std::move( gap ) )
+        function_( std::move( rule_generator ), detail::checkedPenaltyStiffness( penalty ), std::move( gap ) )
   {
   }
 
@@ -128,8 +131,8 @@ class CommonPlaneFormulation final : public ContactFormulation {
  private:
   Evaluation evaluation_;         ///< References to transfer data used by the selected calculation.
   PairListBuilder pair_builder_;  ///< Owned search composition.
-  /// Owned pair quadrature, fixed stiffness, and gap definition.
-  const CommonPlanePairFunction<BaseRule, OffsetGap<CommonPlaneGap>> function_;
+  /// Owned pair quadrature rule generator, fixed stiffness, and gap definition.
+  const CommonPlanePairFunction<BaseRuleGenerator, OffsetGap<CommonPlaneGap>> function_;
 };
 #endif
 

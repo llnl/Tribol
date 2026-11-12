@@ -5,7 +5,7 @@
 
 /**
  * @file
- * @brief Integration-surface and element-pair quadrature arrays, views, generation results, and validation.
+ * @brief Integration-surface and element-pair quadrature rules, views, generation results, and validation.
  *
  * Integration-surface representations shared by mappings and rule generators belong in this header. Keep
  * representations for additional element topologies or geometries here alongside EdgeQuadratureInterval.
@@ -189,7 +189,7 @@ struct IntegrationSurfaceRule {
  * @tparam ReadOnly Whether array entries are read-only.
  */
 template <int ParametricDimension1, int ParametricDimension2, bool ReadOnly = false>
-struct PairQuadratureView {
+struct PairQuadratureRuleView {
   using Value = std::conditional_t<ReadOnly, const RealT, RealT>;  ///< RealT with the requested write access.
   ArrayViewT<Value, 2> geometry1_coords;  ///< Quadrature-point coordinates in geometry1's element parameterization.
   ArrayViewT<Value, 2> geometry2_coords;  ///< Quadrature-point coordinates in geometry2's element parameterization.
@@ -204,9 +204,9 @@ struct PairQuadratureView {
    * @param geometry2_points Quadrature-point coordinates in geometry2's element parameterization.
    * @param weights Physical integration weights.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureView( ArrayViewT<Value, 2> geometry1_points,
-                                                              ArrayViewT<Value, 2> geometry2_points,
-                                                              ArrayViewT<Value> weights )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureRuleView( ArrayViewT<Value, 2> geometry1_points,
+                                                                  ArrayViewT<Value, 2> geometry2_points,
+                                                                  ArrayViewT<Value> weights )
       : geometry1_coords( geometry1_points ), geometry2_coords( geometry2_points ), weights( weights )
   {
     assert( geometry1_points.shape()[0] == weights.size() && geometry1_points.shape()[1] == ParametricDimension1 );
@@ -226,7 +226,7 @@ struct PairQuadratureView {
  * @tparam Capacity Available points in the local backing arrays.
  */
 template <int ParametricDimension1, int ParametricDimension2, IndexT Capacity>
-struct PairQuadratureData {
+struct PairQuadratureRule {
   MdArray<RealT, Capacity, ParametricDimension1>
       geometry1_coords{};  ///< Quadrature-point coordinates in geometry1's element parameterization.
   MdArray<RealT, Capacity, ParametricDimension2>
@@ -235,7 +235,7 @@ struct PairQuadratureData {
   QuadratureResult result{};           ///< Status and initialized point count.
 
   /** @brief Return views of all available output storage. @return Writable views valid while this object is alive. */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureView<ParametricDimension1, ParametricDimension2>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureRuleView<ParametricDimension1, ParametricDimension2>
   getOutputView() &
   {
     return { { geometry1_coords.data(), { Capacity, ParametricDimension1 } },
@@ -248,8 +248,8 @@ struct PairQuadratureData {
    * @pre result.status is Success and required_point_count does not exceed Capacity.
    * @return Read-only arrays valid while this owner is alive.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureView<ParametricDimension1, ParametricDimension2, true> getView()
-      const&
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureRuleView<ParametricDimension1, ParametricDimension2, true>
+  getView() const&
   {
     assert( result.status == QuadratureStatus::Success );
     assert( result.required_point_count >= 0 && result.required_point_count <= Capacity );
@@ -260,9 +260,9 @@ struct PairQuadratureData {
   }
 
   /** @brief Prevent returning output views from a temporary rule. */
-  PairQuadratureView<ParametricDimension1, ParametricDimension2> getOutputView() && = delete;
+  PairQuadratureRuleView<ParametricDimension1, ParametricDimension2> getOutputView() && = delete;
   /** @brief Prevent returning initialized point views from a temporary rule. */
-  PairQuadratureView<ParametricDimension1, ParametricDimension2, true> getView() const&& = delete;
+  PairQuadratureRuleView<ParametricDimension1, ParametricDimension2, true> getView() const&& = delete;
 };
 
 }  // namespace tribol

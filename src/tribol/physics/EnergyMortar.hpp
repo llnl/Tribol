@@ -21,10 +21,10 @@ namespace tribol {
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
 /**
  * @brief Energy Mortar with independent pair energies evaluated at quadrature points.
- * @tparam QuadratureRule Smoothed projected-edge pair quadrature.
+ * @tparam PairRuleGenerator Smoothed projected-edge pair quadrature rule generator.
  * @tparam Exec Concrete execution mode for evaluation and numerical assembly.
  */
-template <typename QuadratureRule, ExecutionMode Exec>
+template <typename PairRuleGenerator, ExecutionMode Exec>
 class QuadraturePointEnergyMortar final : public ContactFormulation {
  public:
   /**
@@ -32,17 +32,17 @@ class QuadraturePointEnergyMortar final : public ContactFormulation {
    * @param mesh_data Parent displacement transfer data.
    * @param jacobian_data Parent Jacobian transfer data.
    * @param pair_builder Owned pair search composition.
-   * @param quadrature Owned pair quadrature.
+   * @param rule_generator Owned pair quadrature rule generator.
    * @param gap Offset opposing-normal gap.
    * @param penalty Effective stiffness fixed for the lifetime of this formulation.
    * @throws std::invalid_argument Penalty is nonpositive or nonfinite; no formulation is constructed.
    */
   QuadraturePointEnergyMortar( MfemMeshData& mesh_data, MfemJacobianData& jacobian_data, PairListBuilder pair_builder,
-                               QuadratureRule quadrature, OffsetGap<OpposingNormalGap> gap, RealT penalty )
+                               PairRuleGenerator rule_generator, OffsetGap<OpposingNormalGap> gap, RealT penalty )
       : mesh_data_( mesh_data ),
         jacobian_data_( jacobian_data ),
         pair_builder_( std::move( pair_builder ) ),
-        function_( std::move( quadrature ), detail::checkedPenaltyStiffness( penalty ), std::move( gap ) )
+        function_( std::move( rule_generator ), detail::checkedPenaltyStiffness( penalty ), std::move( gap ) )
   {
   }
 
@@ -54,17 +54,17 @@ class QuadraturePointEnergyMortar final : public ContactFormulation {
   MfemMeshData& mesh_data_;          ///< Displacement transfer data; must remain valid for this formulation's lifetime.
   MfemJacobianData& jacobian_data_;  ///< Jacobian transfer data; must remain valid for this formulation's lifetime.
   PairListBuilder pair_builder_;     ///< Owned search composition.
-  const EnergyMortarEnergy<QuadratureRule, OffsetGap<OpposingNormalGap>>
-      function_;  ///< Owned pair quadrature, fixed stiffness, and gap definition.
+  const EnergyMortarEnergy<PairRuleGenerator, OffsetGap<OpposingNormalGap>>
+      function_;  ///< Owned pair quadrature rule generator, fixed stiffness, and gap definition.
 };
 
 /**
  * @brief Energy Mortar assembled from nodal weighted gaps and tributary areas.
- * @tparam QuadratureRule Smoothed projected-edge pair quadrature.
+ * @tparam PairRuleGenerator Smoothed projected-edge pair quadrature rule generator.
  * @tparam Exec Concrete execution mode for evaluation and numerical assembly.
  * @tparam Enforcement PenaltyEnforcement or LagrangeMultiplierEnforcement, fixed at construction.
  */
-template <typename QuadratureRule, ExecutionMode Exec, typename Enforcement>
+template <typename PairRuleGenerator, ExecutionMode Exec, typename Enforcement>
 class NodalEnergyMortar final : public ContactFormulation {
  public:
   /**
@@ -73,18 +73,18 @@ class NodalEnergyMortar final : public ContactFormulation {
    * @param submesh_data Dual pressure/gap transfer data.
    * @param jacobian_data Parent and dual Jacobian transfer data.
    * @param pair_builder Owned pair search composition.
-   * @param quadrature Owned pair quadrature.
+   * @param rule_generator Owned pair quadrature rule generator.
    * @param gap Offset opposing-normal gap.
    * @param enforcement Explicit penalty or Lagrange multiplier enforcement.
    */
   NodalEnergyMortar( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jacobian_data,
-                     PairListBuilder pair_builder, QuadratureRule quadrature, OffsetGap<OpposingNormalGap> gap,
+                     PairListBuilder pair_builder, PairRuleGenerator rule_generator, OffsetGap<OpposingNormalGap> gap,
                      Enforcement enforcement )
       : mesh_data_( mesh_data ),
         submesh_data_( submesh_data ),
         jacobian_data_( jacobian_data ),
         pair_builder_( std::move( pair_builder ) ),
-        function_( std::move( quadrature ), std::move( gap ) ),
+        function_( std::move( rule_generator ), std::move( gap ) ),
         enforcement_( std::move( enforcement ) )
   {
   }
@@ -127,8 +127,8 @@ class NodalEnergyMortar final : public ContactFormulation {
   MfemSubmeshData& submesh_data_;    ///< Dual transfer data; must remain valid for this formulation's lifetime.
   MfemJacobianData& jacobian_data_;  ///< Jacobian transfer data; must remain valid for this formulation's lifetime.
   PairListBuilder pair_builder_;     ///< Owned search composition.
-  const EnergyMortarNodalEnergy<QuadratureRule, OffsetGap<OpposingNormalGap>>
-      function_;                   ///< Owned pair quadrature and gap definition.
+  const EnergyMortarNodalEnergy<PairRuleGenerator, OffsetGap<OpposingNormalGap>>
+      function_;                   ///< Owned pair quadrature rule generator and gap definition.
   const Enforcement enforcement_;  ///< Explicit nodal enforcement equation.
 };
 #endif

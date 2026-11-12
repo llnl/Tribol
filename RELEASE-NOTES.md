@@ -80,6 +80,14 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Quadrature generators and generated rules now have distinct names. `PairQuadratureRule` was renamed to
+  `PairQuadratureRuleGenerator`, `PairQuadratureData` to `PairQuadratureRule`, and `PairQuadratureView` to
+  `PairQuadratureRuleView`. The generator is declared in `integ/PairQuadratureRuleGenerator.hpp`; generated rules remain
+  in `integ/QuadratureCommon.hpp`. Its nested `Generator` and `QuadratureData` aliases are now `BaseRuleGenerator` and
+  `Rule`. `QuadratureRuleGeneratorFactory.hpp` and `createWithQuadratureRuleGenerator()` replace the previous factory
+  header and function names. The compatibility concept is now `CompatibleQuadratureMappingAndGenerator`.
+  Formulation template parameters and local configuration objects use rule-generator terminology. Update direct
+  callers and includes to these names; quadrature generation and contact calculations are unchanged.
 - Common Plane selects force-only or force/Jacobian evaluation through the third `CommonPlaneFormulation` template
   argument, `ResidualForceEvaluation` or `ResidualForceJacobianEvaluation`. Its constructor takes the selected transfer
   prerequisites instead of nullable Jacobian data. Nodal Energy Mortar takes `PenaltyEnforcement` or
@@ -142,7 +150,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   retained; residual-gap offsets affect pressure after geometric clipping.
 - Renamed `CommonPlaneEdgeMapping::Frame` to `CommonPlaneLine` and `makeFrame()` to `computeCommonPlaneLine()`.
 - Removed the `CommonPlaneQuadratureRule`, `CommonPlaneResidualData`, and `CommonPlaneFormulation::PairFunction` aliases;
-  use `PairQuadratureRule<CommonPlaneEdgeMapping, BaseRule>`, `PairResidualValue`, and `CommonPlanePairFunction` directly.
+  use `PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, BaseRuleGenerator>`, `PairResidualValue`, and
+  `CommonPlanePairFunction` directly.
 - Common Plane and quadrature-point Energy Mortar use separate `evaluateAndAssembleResidualPairs()` and
   `evaluateAndAssembleEnergyPairs()` helpers for pair evaluation and MFEM force/Jacobian assembly. The energy calculation
   continues to reuse its gradient as the force.
@@ -175,8 +184,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Primal points, parent projection coordinates, normals, and Jacobians.
 - Energy Mortar generates and consumes quadrature locally for each pair during gap and force calculations. Independent
   quadrature output is deferred, and the unused `ContactFormulation::updateIntegrationRule()` operation is removed.
-- `PairQuadratureRule<Mapping, IntegrationSurfaceRuleGenerator>` combines an element-pair integration mapping with an
-  integration-surface rule generator. `SmoothedProjectedEdgeMapping` selects the integration interval and maps
+- `PairQuadratureRuleGenerator<Mapping, IntegrationSurfaceRuleGenerator>` combines an element-pair integration mapping
+  with an integration-surface rule generator. `SmoothedProjectedEdgeMapping` selects the integration interval and maps
   its quadrature points to both elements' parametric coordinates, applying the first geometry's physical Jacobian once.
   `EdgeQuadratureRuleGenerator<NumPoints>` generates an `IntegrationSurfaceRule` containing Gauss points and weights
   expressed in the supplied interval's coordinates. `IntegrationSurfaceRuleView` provides read-only access to those
@@ -186,7 +195,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   surface and the mapping accepts the generated rule's view.
   Rule generators expose `coordinate_dimension`, the number of coordinate components per integration-surface point.
   `LinearEdgeGeometry`, `FaceElementTraits`, and `BasisFunction` use `parametric_dimension` in place of `parent_dimension`.
-  Consumers access geometry properties through the rule's `FirstGeometry` and `SecondGeometry` types. Energy Mortar
+  Consumers access geometry properties through the generator's `FirstGeometry` and `SecondGeometry` types. Energy Mortar
   checks both geometries' parametric dimensions, vertex counts, and spatial dimensions.
   Coordinate fields use `coords`, `geometry1_coords`, and `geometry2_coords`; geometry input views use the `Coords`
   alias.

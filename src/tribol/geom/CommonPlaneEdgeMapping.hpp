@@ -108,7 +108,7 @@ struct CommonPlaneEdgeMapping {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult mapToElements( const FirstGeometry& edge1,
                                                                           const SecondGeometry& edge2,
                                                                           IntegrationSurfaceRuleView<1> reference,
-                                                                          PairQuadratureView<1, 1> output ) const
+                                                                          PairQuadratureRuleView<1, 1> output ) const
   {
     if ( !validEdges( edge1, edge2 ) ) {
       return { QuadratureStatus::InvalidGeometry, 0 };

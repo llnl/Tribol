@@ -10,8 +10,8 @@
 
 namespace tribol {
 
-template <typename BaseRule, ExecutionMode Exec, typename Evaluation>
-ContactFormulationResult CommonPlaneFormulation<BaseRule, Exec, Evaluation>::computeNodalForces(
+template <typename BaseRuleGenerator, ExecutionMode Exec, typename Evaluation>
+ContactFormulationResult CommonPlaneFormulation<BaseRuleGenerator, Exec, Evaluation>::computeNodalForces(
     MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
 {
   const auto pairs = pair_builder_.build( mesh1, mesh2 );

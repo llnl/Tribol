@@ -10,7 +10,7 @@
 #include "tribol/common/Parameters.hpp"
 #include "tribol/search/CoarseSearchFactory.hpp"
 #include "tribol/search/ProjectedEdgeSearch.hpp"
-#include "tribol/integ/QuadratureRuleFactory.hpp"
+#include "tribol/integ/QuadratureRuleGeneratorFactory.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 
 #include <utility>
@@ -128,34 +128,34 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
   const RealT penalty2 =
       detail::checkedPenaltyStiffness( *data.GetMesh2KinematicConstantPenalty() * ( scale2 ? *scale2 : 1.0 ) );
   const RealT penalty = SeriesPenaltyStiffness{}( penalty1, penalty2 );
-  return createWithQuadratureRule(
+  return createWithQuadratureRuleGenerator(
       cs->getParameters().quadrature_order, CommonPlaneEdgeMapping{},
-      [&]( auto quadrature ) -> std::unique_ptr<ContactFormulation> {
-        using Quadrature = decltype( quadrature );
-        using BaseRule = typename Quadrature::Generator;
+      [&]( auto rule_generator ) -> std::unique_ptr<ContactFormulation> {
+        using BaseRuleGenerator = typename decltype( rule_generator )::BaseRuleGenerator;
         auto coarse = createCoarseSearch( cs->spatialDimension(), cs->getBinningMethod(), Exec,
                                           cs->getEffectiveBinningProximityScale(), cs->getParameters().residual_gap );
         auto refined = std::make_unique<ProjectedEdgeSearch>( Exec, cs->getContactCase() == AUTO );
         if ( cs->getParameters().common_plane_compute_jacobian ) {
 #ifdef TRIBOL_USE_ENZYME
-          return std::make_unique<CommonPlaneFormulation<BaseRule, Exec, ResidualForceJacobianEvaluation>>(
+          return std::make_unique<CommonPlaneFormulation<BaseRuleGenerator, Exec, ResidualForceJacobianEvaluation>>(
               ResidualForceJacobianEvaluation{ *cs->getMfemMeshData(), *cs->getMfemJacobianData() },
-              PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( quadrature ),
+              PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( rule_generator ),
               OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap }, penalty );
 #else
           throw std::runtime_error( "Common Plane Jacobian calculation requires Enzyme." );
 #endif
         }
-        return std::make_unique<CommonPlaneFormulation<BaseRule, Exec, ResidualForceEvaluation>>(
+        return std::make_unique<CommonPlaneFormulation<BaseRuleGenerator, Exec, ResidualForceEvaluation>>(
             ResidualForceEvaluation{ *cs->getMfemMeshData() },
-            PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( quadrature ),
+            PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( rule_generator ),
             OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap }, penalty );
       } );
 }
 
 #ifdef TRIBOL_USE_ENZYME
-template <ExecutionMode Exec, typename QuadratureRule>
-std::unique_ptr<ContactFormulation> createEnergyMortarForRule( CouplingScheme* cs, QuadratureRule quadrature_rule )
+template <ExecutionMode Exec, typename PairRuleGenerator>
+std::unique_ptr<ContactFormulation> createEnergyMortarForRuleGenerator( CouplingScheme* cs,
+                                                                        PairRuleGenerator rule_generator )
 {
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(), "ENERGY_MORTAR requires MFEM mesh data." );
   SLIC_ERROR_ROOT_IF( !cs->hasMfemJacobianData(), "ENERGY_MORTAR requires MFEM Jacobian data." );
@@ -173,19 +173,19 @@ std::unique_ptr<ContactFormulation> createEnergyMortarForRule( CouplingScheme* c
                                     : 0.0;
   PairListBuilder pair_builder{ std::move( coarse_search ), std::move( refined_search ) };
   if ( cs->getParameters().enforcement_location == EnforcementLocation::QuadraturePoint ) {
-    return std::make_unique<QuadraturePointEnergyMortar<QuadratureRule, Exec>>(
-        *cs->getMfemMeshData(), *cs->getMfemJacobianData(), std::move( pair_builder ), std::move( quadrature_rule ),
+    return std::make_unique<QuadraturePointEnergyMortar<PairRuleGenerator, Exec>>(
+        *cs->getMfemMeshData(), *cs->getMfemJacobianData(), std::move( pair_builder ), std::move( rule_generator ),
         OffsetGap{ OpposingNormalGap{}, residual_gap }, penalty );
   }
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "Nodal Energy Mortar requires pressure/gap data." );
   if ( use_penalty ) {
-    return std::make_unique<NodalEnergyMortar<QuadratureRule, Exec, PenaltyEnforcement>>(
+    return std::make_unique<NodalEnergyMortar<PairRuleGenerator, Exec, PenaltyEnforcement>>(
         *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( pair_builder ),
-        std::move( quadrature_rule ), OffsetGap{ OpposingNormalGap{}, residual_gap }, PenaltyEnforcement{ penalty } );
+        std::move( rule_generator ), OffsetGap{ OpposingNormalGap{}, residual_gap }, PenaltyEnforcement{ penalty } );
   }
-  return std::make_unique<NodalEnergyMortar<QuadratureRule, Exec, LagrangeMultiplierEnforcement>>(
+  return std::make_unique<NodalEnergyMortar<PairRuleGenerator, Exec, LagrangeMultiplierEnforcement>>(
       *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( pair_builder ),
-      std::move( quadrature_rule ), OffsetGap{ OpposingNormalGap{}, residual_gap }, LagrangeMultiplierEnforcement{} );
+      std::move( rule_generator ), OffsetGap{ OpposingNormalGap{}, residual_gap }, LagrangeMultiplierEnforcement{} );
 }
 
 template <ExecutionMode Exec>
@@ -209,10 +209,10 @@ std::unique_ptr<ContactFormulation> createEnergyMortar( CouplingScheme* cs )
     throw std::invalid_argument( "Energy Mortar requires penalty enforcement or nodal Lagrange multipliers." );
   }
   const SmoothedProjectedEdgeMapping mapping{};
-  return createWithQuadratureRule( cs->getParameters().quadrature_order, mapping,
-                                   [&]( auto quadrature_rule ) -> std::unique_ptr<ContactFormulation> {
-                                     return createEnergyMortarForRule<Exec>( cs, std::move( quadrature_rule ) );
-                                   } );
+  return createWithQuadratureRuleGenerator(
+      cs->getParameters().quadrature_order, mapping, [&]( auto rule_generator ) -> std::unique_ptr<ContactFormulation> {
+        return createEnergyMortarForRuleGenerator<Exec>( cs, std::move( rule_generator ) );
+      } );
 }
 
 #endif  // TRIBOL_USE_ENZYME

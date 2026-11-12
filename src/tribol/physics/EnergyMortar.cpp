@@ -172,16 +172,16 @@ ContactFormulationResult takeGapResult( EnergyMortarNodalQuantities& quantities,
 
 }  // namespace
 
-template <typename QuadratureRule, ExecutionMode Exec>
-ContactFormulationResult QuadraturePointEnergyMortar<QuadratureRule, Exec>::computeNodalForces(
+template <typename PairRuleGenerator, ExecutionMode Exec>
+ContactFormulationResult QuadraturePointEnergyMortar<PairRuleGenerator, Exec>::computeNodalForces(
     MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
 {
   const auto pairs = pair_builder_.build( mesh1, mesh2 );
   return detail::evaluateAndAssembleEnergyPairs<Exec>( pairs, mesh1, mesh2, function_, mesh_data_, jacobian_data_ );
 }
 
-template <typename QuadratureRule, ExecutionMode Exec, typename Enforcement>
-ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec, Enforcement>::computeNodalGaps(
+template <typename PairRuleGenerator, ExecutionMode Exec, typename Enforcement>
+ContactFormulationResult NodalEnergyMortar<PairRuleGenerator, Exec, Enforcement>::computeNodalGaps(
     MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
 {
   const auto pairs = pair_builder_.build( mesh1, mesh2 );
@@ -190,15 +190,15 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec, Enforcement>::c
   return takeGapResult( quantities, enforcement_ );
 }
 
-template <typename QuadratureRule, ExecutionMode Exec, typename Enforcement>
-ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec, Enforcement>::computeNodalForces(
+template <typename PairRuleGenerator, ExecutionMode Exec, typename Enforcement>
+ContactFormulationResult NodalEnergyMortar<PairRuleGenerator, Exec, Enforcement>::computeNodalForces(
     MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
 {
   return computeForces( mesh1, mesh2, enforcement_ );
 }
 
-template <typename QuadratureRule, ExecutionMode Exec, typename Enforcement>
-ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec, Enforcement>::computeForces(
+template <typename PairRuleGenerator, ExecutionMode Exec, typename Enforcement>
+ContactFormulationResult NodalEnergyMortar<PairRuleGenerator, Exec, Enforcement>::computeForces(
     MeshData::Viewer mesh1, MeshData::Viewer mesh2, const PenaltyEnforcement& penalty ) const
 {
   const RealT stiffness = penalty.stiffness();
@@ -271,8 +271,8 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec, Enforcement>::c
   return result;
 }
 
-template <typename QuadratureRule, ExecutionMode Exec, typename Enforcement>
-ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec, Enforcement>::computeForces(
+template <typename PairRuleGenerator, ExecutionMode Exec, typename Enforcement>
+ContactFormulationResult NodalEnergyMortar<PairRuleGenerator, Exec, Enforcement>::computeForces(
     MeshData::Viewer mesh1, MeshData::Viewer mesh2, LagrangeMultiplierEnforcement enforcement ) const
 {
   const auto pairs = pair_builder_.build( mesh1, mesh2 );
@@ -301,18 +301,18 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec, Enforcement>::c
   return result;
 }
 
-using EnergyRule1 = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>;
-using EnergyRule2 = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
-using EnergyRule3 = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>;
+using EnergyRuleGenerator1 = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>;
+using EnergyRuleGenerator2 = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
+using EnergyRuleGenerator3 = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>;
 
-#define TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE( Rule, Exec )         \
-  template class QuadraturePointEnergyMortar<Rule, Exec>;           \
-  template class NodalEnergyMortar<Rule, Exec, PenaltyEnforcement>; \
-  template class NodalEnergyMortar<Rule, Exec, LagrangeMultiplierEnforcement>
-#define TRIBOL_INSTANTIATE_ENERGY_MORTAR( Exec )              \
-  TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE( EnergyRule1, Exec ); \
-  TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE( EnergyRule2, Exec ); \
-  TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE( EnergyRule3, Exec )
+#define TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE_GENERATOR( RuleGenerator, Exec ) \
+  template class QuadraturePointEnergyMortar<RuleGenerator, Exec>;             \
+  template class NodalEnergyMortar<RuleGenerator, Exec, PenaltyEnforcement>;   \
+  template class NodalEnergyMortar<RuleGenerator, Exec, LagrangeMultiplierEnforcement>
+#define TRIBOL_INSTANTIATE_ENERGY_MORTAR( Exec )                                 \
+  TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE_GENERATOR( EnergyRuleGenerator1, Exec ); \
+  TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE_GENERATOR( EnergyRuleGenerator2, Exec ); \
+  TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE_GENERATOR( EnergyRuleGenerator3, Exec )
 
 TRIBOL_INSTANTIATE_ENERGY_MORTAR( ExecutionMode::Sequential );
 #ifdef TRIBOL_USE_OPENMP
@@ -325,7 +325,7 @@ TRIBOL_INSTANTIATE_ENERGY_MORTAR( ExecutionMode::Cuda );
 TRIBOL_INSTANTIATE_ENERGY_MORTAR( ExecutionMode::Hip );
 #endif
 #undef TRIBOL_INSTANTIATE_ENERGY_MORTAR
-#undef TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE
+#undef TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE_GENERATOR
 
 }  // namespace tribol
 #endif

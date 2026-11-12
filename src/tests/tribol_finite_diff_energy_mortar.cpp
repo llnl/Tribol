@@ -10,7 +10,7 @@
 #include <gtest/gtest.h>
 
 #include "axom/slic/core/SimpleLogger.hpp"
-#include "FrozenPairQuadratureRule.hpp"
+#include "FrozenPairQuadratureRuleGenerator.hpp"
 #include "tribol/geom/OffsetGap.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
@@ -66,14 +66,15 @@ void checkFiniteDifferences( const Function& function, const MdArray<RealT, Func
 
 /** @brief Check varying and frozen quadrature derivatives. @tparam PointCount Gauss point count. */
 template <int PointCount>
-void checkRule()
+void checkRuleGenerator()
 {
-  using Rule = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<PointCount>>;
+  using RuleGenerator =
+      PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<PointCount>>;
   using Gap = OffsetGap<OpposingNormalGap>;
-  const Rule rule;
+  const RuleGenerator rule_generator;
   const Gap gap{ {}, 0.05 };
-  const EnergyMortarEnergy<Rule, Gap> energy{ rule, 7.0, gap };
-  const EnergyMortarNodalEnergy<Rule, Gap> nodal{ rule, gap };
+  const EnergyMortarEnergy<RuleGenerator, Gap> energy{ rule_generator, 7.0, gap };
+  const EnergyMortarNodalEnergy<RuleGenerator, Gap> nodal{ rule_generator, gap };
   const MdArray<RealT, decltype( energy )::dof_count> coordinates{ 0.0, 0.0, 2.0, 0.15, 1.7, 0.35, 0.3, 0.15 };
   const auto check = [&]( const auto& selected_energy, const auto& selected_nodal ) {
     using SelectedEnergy = std::remove_cvref_t<decltype( selected_energy )>;
@@ -85,23 +86,23 @@ void checkRule()
 
   SCOPED_TRACE( testing::Message() << "Gauss points: " << PointCount );
   check( energy, nodal );
-  using FrozenRule = detail::FrozenPairQuadratureRule<Rule>;
-  const FrozenRule frozen_rule{ rule, coordinates.view() };
-  check( EnergyMortarEnergy<FrozenRule, Gap>{ frozen_rule, 7.0, gap },
-         EnergyMortarNodalEnergy<FrozenRule, Gap>{ frozen_rule, gap } );
+  using FrozenRuleGenerator = detail::FrozenPairQuadratureRuleGenerator<RuleGenerator>;
+  const FrozenRuleGenerator frozen_rule_generator{ rule_generator, coordinates.view() };
+  check( EnergyMortarEnergy<FrozenRuleGenerator, Gap>{ frozen_rule_generator, 7.0, gap },
+         EnergyMortarNodalEnergy<FrozenRuleGenerator, Gap>{ frozen_rule_generator, gap } );
 }
 
 TEST( EnergyMortarFiniteDifference, varying_and_frozen_quadrature )
 {
-  checkRule<1>();
-  checkRule<2>();
-  checkRule<3>();
+  checkRuleGenerator<1>();
+  checkRuleGenerator<2>();
+  checkRuleGenerator<3>();
 }
 
 TEST( EnergyMortarFiniteDifference, invalid_geometry_reports_status_before_derivatives )
 {
-  using Rule = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
-  const EnergyMortarEnergy<Rule> energy{ Rule{}, 1.0 };
+  using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
+  const EnergyMortarEnergy<RuleGenerator> energy{ RuleGenerator{}, 1.0 };
   const MdArray<RealT, decltype( energy )::dof_count> coordinates{ 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0 };
   EXPECT_NE( energy.evaluate( coordinates.view() ).quadrature_result.status, QuadratureStatus::Success );
 }
