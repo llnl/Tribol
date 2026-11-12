@@ -37,6 +37,17 @@ using namespace tribol;
 constexpr RealT tolerance = 1.0e-12;  ///< Roundoff allowance for primal integrals and exact partials.
 using EnergyMortarDefinitionTest = detail::ExecutionTest;
 
+/** @brief Generic fixed-size values and pair state for checking the pair-function interface. @tparam NumValues Size. */
+template <IndexT NumValues>
+struct TestPairValue {
+  MdArray<RealT, NumValues> function_values{};  ///< Values without residual-layout semantics.
+  QuadratureResult quadrature_result{};         ///< Quadrature state supplied by the test function.
+  bool has_active_points = false;               ///< Whether the test function reports active integration points.
+
+  /** @brief Return the function value vector. @return Fixed-size test values. */
+  TRIBOL_HOST_DEVICE MdArray<RealT, NumValues> values() const { return function_values; }
+};
+
 /** @brief Declaration-only coordinate pair function for checking the interface without executing it. */
 struct PairFunctionCandidate {
   using Coords1 = MdSpan<const RealT, 2>;                                    ///< Two geometry1 coordinates.
@@ -48,7 +59,7 @@ struct PairFunctionCandidate {
 
   /** @brief Declare a const evaluation. @param coords1 Geometry1 inputs. @param coords2 Geometry2 inputs.
    * @return Values and quadrature state. */
-  PairResidualValue<num_values> evaluate( Coords1 coords1, Coords2 coords2 ) const;
+  TestPairValue<num_values> evaluate( Coords1 coords1, Coords2 coords2 ) const;
 };
 
 /** @brief Zero outputs must be rejected before instantiating fixed-size numerical arrays. */
@@ -75,7 +86,7 @@ struct WrongNumValuesPairFunction : PairFunctionCandidate {
 struct MutablePairFunction : PairFunctionCandidate {
   /** @brief Declare a mutable-only evaluation. @param coords1 Geometry1 inputs. @param coords2 Geometry2 inputs.
    * @return Values and quadrature state. */
-  PairResidualValue<num_values> evaluate( Coords1 coords1, Coords2 coords2 );
+  TestPairValue<num_values> evaluate( Coords1 coords1, Coords2 coords2 );
 };
 
 /** @brief An array alone supplies no quadrature status or activation. */
@@ -89,7 +100,7 @@ struct MissingStatePairFunction : PairFunctionCandidate {
 /** @brief The numerical values must be readable from a const evaluation result. */
 struct MutableValuesPairFunction : PairFunctionCandidate {
   /** @brief Result that hides the const values() accessor with a mutable-only accessor. */
-  struct Result : PairResidualValue<num_values> {
+  struct Result : TestPairValue<num_values> {
     /** @brief Declare mutable-only value access. @return Pair values. */
     MdArray<RealT, num_values> values();
   };
@@ -101,7 +112,7 @@ struct MutableValuesPairFunction : PairFunctionCandidate {
 /** @brief Activation must have the expected bool type. */
 struct WrongActivationPairFunction : PairFunctionCandidate {
   /** @brief Result with an integer flag that hides the required bool member. */
-  struct Result : PairResidualValue<num_values> {
+  struct Result : TestPairValue<num_values> {
     IndexT has_active_points = 0;  ///< Incompatible activation type.
   };
   /** @brief Declare an incompatible result. @param coords1 Geometry1 inputs. @param coords2 Geometry2 inputs. @return
@@ -112,7 +123,7 @@ struct WrongActivationPairFunction : PairFunctionCandidate {
 /** @brief Quadrature state must have the expected QuadratureResult type. */
 struct WrongQuadraturePairFunction : PairFunctionCandidate {
   /** @brief Result whose status member omits the required point count. */
-  struct Result : PairResidualValue<num_values> {
+  struct Result : TestPairValue<num_values> {
     QuadratureStatus quadrature_result{};  ///< Incompatible quadrature result type.
   };
   /** @brief Declare an incompatible result. @param coords1 Geometry1 inputs. @param coords2 Geometry2 inputs. @return
@@ -497,7 +508,7 @@ struct PolynomialPairFunction {
   /** @brief Evaluate two coupled polynomial outputs. @param coords1 First scalar input. @param coords2 Second scalar
    * input.
    * @return Function values with successful, active quadrature state. */
-  TRIBOL_HOST_DEVICE PairResidualValue<num_values> evaluate( Coords1 coords1, Coords2 coords2 ) const
+  TRIBOL_HOST_DEVICE TestPairValue<num_values> evaluate( Coords1 coords1, Coords2 coords2 ) const
   {
     if ( num_evaluations != nullptr ) {
       ++*num_evaluations;

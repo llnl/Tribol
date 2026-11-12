@@ -32,12 +32,16 @@ class CommonPlanePairFunction {
  public:
   using FirstGeometry = LinearEdgeGeometry;                                  ///< Geometry of the first directed edge.
   using SecondGeometry = LinearEdgeGeometry;                                 ///< Geometry of the second directed edge.
+  using ResidualBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;                ///< Basis defining element residual DOFs.
   using Coords1 = typename FirstGeometry::Coords;                            ///< Geometry1 coordinate view.
   using Coords2 = typename SecondGeometry::Coords;                           ///< Geometry2 coordinate view.
   static constexpr IndexT num_geom1_coords = Coords1::size();                ///< Geometry1 coordinate count.
   static constexpr IndexT num_geom2_coords = Coords2::size();                ///< Geometry2 coordinate count.
   static constexpr IndexT num_coords = num_geom1_coords + num_geom2_coords;  ///< Combined coordinate count.
-  static constexpr IndexT num_values = num_coords;                           ///< Residual entry count.
+  using Result = PairResidualValue<ResidualBasis::num_nodes, ResidualBasis::num_nodes,
+                                   FirstGeometry::spatial_dimension>;  ///< Pair-local residual and state.
+  static_assert( FirstGeometry::spatial_dimension == SecondGeometry::spatial_dimension );
+  static constexpr IndexT num_values = Result::num_values;  ///< Residual entry count.
 
   /** @brief Store fixed configuration. @param rule_generator Pair quadrature rule generator. @param penalty Stiffness.
    * @param gap Gap callable.
@@ -52,15 +56,15 @@ class CommonPlanePairFunction {
   /** @brief Evaluate one pair residual. @param coords1 First current edge coordinates. @param coords2 Second current
    * edge coordinates.
    * @return Residual and status; failed, empty, and open pairs return zero residual and inactive state. */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairResidualValue<num_coords> evaluate( Coords1 coords1,
-                                                                                  Coords2 coords2 ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Result evaluate( Coords1 coords1, Coords2 coords2 ) const
   {
     const FirstGeometry geometry1( coords1 );
     const SecondGeometry geometry2( coords2 );
     const auto points = rule_generator_.generate( geometry1, geometry2 );
-    PairResidualValue<num_coords> result{ {}, points.result, false };
+    Result pair_residual_data;
+    pair_residual_data.quadrature_result = points.result;
     if ( points.result.status != QuadratureStatus::Success || points.result.num_required_points == 0 ) {
-      return result;
+      return pair_residual_data;
     }
     const auto line = CommonPlaneEdgeMapping::computeCommonPlaneLine( geometry1, geometry2 );
     // The linear coordinate maps make the weighted parent coordinates the overlap centroid for every base rule.
@@ -74,25 +78,25 @@ class CommonPlanePairFunction {
     }
     const RealT gap = gap_( geometry1.position( center1 / measure ), geometry2.position( center2 / measure ), line );
     if ( gap > 0.0 ) {
-      return result;
+      return pair_residual_data;
     }
-    result.has_active_points = true;
+    pair_residual_data.has_active_points = true;
     const RealT pressure = penalty_ * gap;
-    using Basis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
     for ( IndexT point = 0; point < points.result.num_required_points; ++point ) {
-      MdArray<RealT, Basis::num_nodes> basis1{}, basis2{};
-      Basis::eval( { &points.geometry1_coords( point, 0 ), Basis::parametric_dimension }, basis1.view() );
-      Basis::eval( { &points.geometry2_coords( point, 0 ), Basis::parametric_dimension }, basis2.view() );
-      for ( IndexT node = 0; node < Basis::num_nodes; ++node ) {
+      MdArray<RealT, ResidualBasis::num_nodes> basis1{}, basis2{};
+      ResidualBasis::eval( { &points.geometry1_coords( point, 0 ), ResidualBasis::parametric_dimension },
+                           basis1.view() );
+      ResidualBasis::eval( { &points.geometry2_coords( point, 0 ), ResidualBasis::parametric_dimension },
+                           basis2.view() );
+      for ( IndexT node = 0; node < ResidualBasis::num_nodes; ++node ) {
         for ( IndexT component = 0; component < LinearEdgeGeometry::spatial_dimension; ++component ) {
-          const IndexT row = node * LinearEdgeGeometry::spatial_dimension + component;
           const RealT traction = points.weights[point] * pressure * line.normal[component];
-          result.residual[row] += basis1[node] * traction;
-          result.residual[num_geom1_coords + row] -= basis2[node] * traction;
+          pair_residual_data.geometry1( node, component ) += basis1[node] * traction;
+          pair_residual_data.geometry2( node, component ) -= basis2[node] * traction;
         }
       }
     }
-    return result;
+    return pair_residual_data;
   }
 
  private:

@@ -27,15 +27,81 @@ struct PairEnergyValue {
   /** @brief Return the scalar energy as a one-entry function value vector. @return Integrated pair energy. */
   TRIBOL_HOST_DEVICE MdArray<RealT, 1> values() const { return MdArray<RealT, 1>{ energy }; }
 };
-/** @brief Pair residual, quadrature status, and activation. @tparam NumCoords Pair coordinate count. */
-template <IndexT NumCoords>
-struct PairResidualValue {
-  MdArray<RealT, NumCoords> residual{};  ///< Residual in element/node/component order.
+/**
+ * @brief Pair residual split into two element-local DOF/component blocks, with quadrature status and activation.
+ * @tparam NumGeometry1Dofs Number of scalar finite-element DOFs associated with geometry1.
+ * @tparam NumGeometry2Dofs Number of scalar finite-element DOFs associated with geometry2.
+ * @tparam NumComponents Number of residual components associated with each scalar DOF.
+ */
+template <IndexT NumGeometry1Dofs, IndexT NumGeometry2Dofs, IndexT NumComponents>
+class PairResidualValue {
+  static_assert( NumGeometry1Dofs > 0 );
+  static_assert( NumGeometry2Dofs > 0 );
+  static_assert( NumComponents > 0 );
+
+ public:
+  static constexpr IndexT num_geometry1_dofs = NumGeometry1Dofs;  ///< Geometry1 scalar DOF count.
+  static constexpr IndexT num_geometry2_dofs = NumGeometry2Dofs;  ///< Geometry2 scalar DOF count.
+  static constexpr IndexT num_components = NumComponents;         ///< Residual components per scalar DOF.
+  static constexpr IndexT num_geometry1_values = NumGeometry1Dofs * NumComponents;   ///< Geometry1 residual extent.
+  static constexpr IndexT num_geometry2_values = NumGeometry2Dofs * NumComponents;   ///< Geometry2 residual extent.
+  static constexpr IndexT num_values = num_geometry1_values + num_geometry2_values;  ///< Total residual extent.
+
+  /** @brief Construct a zero residual with default quadrature state and no active points. */
+  TRIBOL_HOST_DEVICE PairResidualValue() = default;
+
   QuadratureResult quadrature_result{};  ///< Failed quadrature output must not be consumed.
   bool has_active_points = false;        ///< Whether a compressive point exists, including zero gap.
 
-  /** @brief Return the residual as the function value vector. @return Residual in element/node/component order. */
-  TRIBOL_HOST_DEVICE MdArray<RealT, NumCoords> values() const { return residual; }
+  /**
+   * @brief Access one geometry1 residual entry.
+   * @param local_dof Geometry1-local scalar finite-element DOF.
+   * @param component Residual component at the local DOF.
+   * @return Mutable entry.
+   */
+  TRIBOL_HOST_DEVICE RealT& geometry1( IndexT local_dof, IndexT component )
+  {
+    return residual_[local_dof * NumComponents + component];
+  }
+
+  /**
+   * @brief Access one geometry1 residual entry.
+   * @param local_dof Geometry1-local scalar finite-element DOF.
+   * @param component Residual component at the local DOF.
+   * @return Read-only entry.
+   */
+  TRIBOL_HOST_DEVICE const RealT& geometry1( IndexT local_dof, IndexT component ) const
+  {
+    return residual_[local_dof * NumComponents + component];
+  }
+
+  /**
+   * @brief Access one geometry2 residual entry.
+   * @param local_dof Geometry2-local scalar finite-element DOF.
+   * @param component Residual component at the local DOF.
+   * @return Mutable entry.
+   */
+  TRIBOL_HOST_DEVICE RealT& geometry2( IndexT local_dof, IndexT component )
+  {
+    return residual_[num_geometry1_values + local_dof * NumComponents + component];
+  }
+
+  /**
+   * @brief Access one geometry2 residual entry.
+   * @param local_dof Geometry2-local scalar finite-element DOF.
+   * @param component Residual component at the local DOF.
+   * @return Read-only entry.
+   */
+  TRIBOL_HOST_DEVICE const RealT& geometry2( IndexT local_dof, IndexT component ) const
+  {
+    return residual_[num_geometry1_values + local_dof * NumComponents + component];
+  }
+
+  /** @brief Return the residual as the function value vector. @return Geometry1 then geometry2 DOF/component values. */
+  TRIBOL_HOST_DEVICE MdArray<RealT, num_values> values() const { return residual_; }
+
+ private:
+  MdArray<RealT, num_values> residual_{};  ///< Geometry1 values followed by geometry2 values in DOF/component order.
 };
 
 /**

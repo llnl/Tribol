@@ -120,7 +120,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Geometry blocks select input entries and connectivity; explicit FE spaces and a host transfer callback select the
   destination. No Jacobian data or assembly-mode flags are required. Use `MfemMatrixAssembler` for matrices; callers
   can compose vector and matrix views in one pair kernel and collect separate owned results.
-- Common Plane and quadrature-point Energy Mortar functions return `PairResidualValue<num_coords>` and
+- Common Plane and quadrature-point Energy Mortar functions return
+  `PairResidualValue<num_geom1_dofs, num_geom2_dofs, num_components>` and
   `PairEnergyValue` directly, without `PrimalResult` aliases. Nodal Energy Mortar's result struct is named
   `NodalIntegralValue` and contains the weighted-gap and area integrals, activation, and quadrature status.
 - Pair functions expose `evaluate(coords1, coords2)` with separate `Coords1` and `Coords2` view types. Common Plane and
