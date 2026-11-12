@@ -425,7 +425,6 @@ TEST_P( MfemBatchAssemblerTest, assembles_rectangular_matrices_in_both_orientati
   const auto& data = *cs.getMfemMeshData();
   const auto& dual = *cs.getMfemSubmeshData();
   const auto& transfer = *cs.getMfemJacobianData();
-  const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
   const auto pair_list = pairs();
   const auto& map1 = data.GetElemMap1();
   const auto& map2 = data.GetElemMap2();

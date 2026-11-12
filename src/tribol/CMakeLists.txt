@@ -163,12 +163,6 @@ if(TRIBOL_USE_ENZYME)
     # Optimize only the translation unit that generates those derivatives so every other Debug source remains at -O0.
     set_property(SOURCE physics/EnergyMortar.cpp physics/CommonPlaneFormulation.cpp APPEND PROPERTY COMPILE_OPTIONS
         "$<$<CONFIG:Debug>:-O2>")
-
-    # Optimized CUDA geometry contains PHI nodes whose pointer provenance is no longer explicit. Enzyme's loose mode
-    # uses the surrounding floating-point operations to recover those types instead of rejecting valid device IR.
-    set_property(SOURCE physics/EnergyMortar.cpp physics/CommonPlaneFormulation.cpp APPEND PROPERTY COMPILE_OPTIONS
-        "$<$<COMPILE_LANG_AND_ID:CUDA,Clang>:-mllvm>"
-        "$<$<COMPILE_LANG_AND_ID:CUDA,Clang>:-enzyme-loose-types>")
 endif()
 
 ## create the library

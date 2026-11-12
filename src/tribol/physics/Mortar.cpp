@@ -264,7 +264,7 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
 template <>
 int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
 {
-#ifdef TRIBOL_USE_ENZYME
+#if defined( TRIBOL_USE_ENZYME ) && !defined( TRIBOL_DEVICE_CODE )
   if ( cs->isEnzymeEnabled() ) {
     return ApplyNormalEnzyme( cs );
   }
@@ -589,7 +589,7 @@ void ComputeSingleMortarJacobian( SurfaceContactElem& elem )
   return;
 }
 
-#ifdef TRIBOL_USE_ENZYME
+#if defined( TRIBOL_USE_ENZYME ) && !defined( TRIBOL_DEVICE_CODE )
 
 //------------------------------------------------------------------------------
 int ApplyNormalEnzyme( CouplingScheme* cs )

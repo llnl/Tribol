@@ -41,6 +41,14 @@ if (ENZYME_DIR)
       "code and leaves the derivative intrinsics unresolved during device linking.")
   endif()
 
+  if(TRIBOL_USE_CUDA)
+    # Clang-CUDA creates PHI nodes without enough pointer type information in every translation unit that calls Enzyme,
+    # including tests and the nodal-normal calculation. Loose type analysis lets Enzyme recover those valid types.
+    set_property(TARGET ClangEnzymeFlags APPEND PROPERTY INTERFACE_COMPILE_OPTIONS
+      "$<$<COMPILE_LANG_AND_ID:CUDA,Clang>:-mllvm>"
+      "$<$<COMPILE_LANG_AND_ID:CUDA,Clang>:-enzyme-loose-types>")
+  endif()
+
   set(TRIBOL_USE_ENZYME TRUE)
 else()
   message(STATUS "Enzyme support is OFF")

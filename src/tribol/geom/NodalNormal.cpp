@@ -215,7 +215,7 @@ void ElementEdgeAvgNodalNormalJacobian( [[maybe_unused]] const RealT* x, [[maybe
                                         [[maybe_unused]] RealT* n, [[maybe_unused]] RealT* dndx,
                                         [[maybe_unused]] int num_nodes_per_elem )
 {
-#ifdef TRIBOL_USE_ENZYME
+#if defined( TRIBOL_USE_ENZYME ) && !defined( TRIBOL_DEVICE_CODE )
   RealT x_dot[12] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
   for ( int i{ 0 }; i < num_nodes_per_elem * 3; ++i ) {
     x_dot[i] = 1.0;
@@ -224,7 +224,7 @@ void ElementEdgeAvgNodalNormalJacobian( [[maybe_unused]] const RealT* x, [[maybe
                             num_nodes_per_elem );
     x_dot[i] = 0.0;
   }
-#else
+#elif !defined( TRIBOL_DEVICE_CODE )
   SLIC_ERROR( "ElementEdgeAvgNodalNormalJacobian requires Tribol built with Enzyme support." );
 #endif
 }
