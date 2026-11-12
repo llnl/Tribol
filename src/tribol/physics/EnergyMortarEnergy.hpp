@@ -57,10 +57,9 @@ struct EnergyMortarNodalPartials {
 template <typename PairRuleGenerator, typename GapDefinition = OpposingNormalGap>
 class EnergyMortarEnergy {
  public:
-  using FirstGeometry = typename PairRuleGenerator::FirstGeometry;    ///< First element geometry.
-  using SecondGeometry = typename PairRuleGenerator::SecondGeometry;  ///< Second element geometry.
-  using PrimalResult = PairEnergyValue;                               ///< Energy, activation, and quadrature status.
-  static constexpr IndexT num_values = 1;                             ///< Scalar pair energy output.
+  using FirstGeometry = typename PairRuleGenerator::FirstGeometry;            ///< First element geometry.
+  using SecondGeometry = typename PairRuleGenerator::SecondGeometry;          ///< Second element geometry.
+  static constexpr IndexT num_values = 1;                                     ///< Scalar pair energy output.
   static constexpr IndexT num_geom1_coords = FirstGeometry::Coords::size();   ///< Geometry1 coordinate count.
   static constexpr IndexT num_geom2_coords = SecondGeometry::Coords::size();  ///< Geometry2 coordinate count.
   static constexpr IndexT num_coords = num_geom1_coords + num_geom2_coords;   ///< Combined coordinate count.
@@ -76,11 +75,11 @@ class EnergyMortarEnergy {
    * @param geometry2 Second current element geometry.
    * @return Energy and status. Failed, empty, or open rules give zero energy; failure must be reported by the caller.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PrimalResult evaluate( const FirstGeometry& geometry1,
-                                                                 const SecondGeometry& geometry2 ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairEnergyValue evaluate( const FirstGeometry& geometry1,
+                                                                    const SecondGeometry& geometry2 ) const
   {
     const auto points = rule_generator_.generate( geometry1, geometry2 );
-    PrimalResult result{ 0.0, false, points.result };
+    PairEnergyValue result{ 0.0, false, points.result };
     if ( points.result.status != QuadratureStatus::Success || points.result.num_required_points == 0 ) {
       return result;
     }
@@ -120,7 +119,7 @@ class EnergyMortarNodalEnergy {
   static constexpr IndexT num_geom2_coords = SecondGeometry::Coords::size();  ///< Geometry2 coordinate count.
   static constexpr IndexT num_coords = num_geom1_coords + num_geom2_coords;   ///< Combined coordinate count.
   /** @brief Nodal values with activation and quadrature status. */
-  struct PrimalResult {
+  struct NodalIntegralValue {
     MdArray<RealT, num_values> value{};    ///< Weighted gaps, then areas, in local-node order.
     bool has_active_points = false;        ///< Whether quadrature contains any integration points.
     QuadratureResult quadrature_result{};  ///< Failed output must not be consumed.
@@ -140,11 +139,11 @@ class EnergyMortarNodalEnergy {
    * @param geometry2 Second current element geometry.
    * @return Nodal values and status; failed or empty rules give zeros. Failure must be reported by the caller.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PrimalResult evaluate( const FirstGeometry& geometry1,
-                                                                 const SecondGeometry& geometry2 ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE NodalIntegralValue evaluate( const FirstGeometry& geometry1,
+                                                                       const SecondGeometry& geometry2 ) const
   {
     const auto points = rule_generator_.generate( geometry1, geometry2 );
-    PrimalResult result{ {}, false, points.result };
+    NodalIntegralValue result{ {}, false, points.result };
     if ( points.result.status != QuadratureStatus::Success || points.result.num_required_points == 0 ) {
       return result;
     }

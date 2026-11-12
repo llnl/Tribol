@@ -31,7 +31,7 @@ namespace tribol {
  * inactive values follow the pair function's evaluate() behavior; callers must check quadrature before assembly.
  * For example, Common Plane explicit contact could obtain a PairValueBuffer from evaluatePairValues(), check its
  * quadratureResults(), and assemble its active residual values as nodal forces.
- * @tparam PairFunction Function evaluating two current element geometries.
+ * @tparam PairFunction Function evaluating two current element geometries with rank-two node/component Coords views.
  * @tparam Exec Concrete execution mode for pair evaluation.
  * @param pairs Supplied element pairs in execution-accessible memory.
  * @param mesh1 Current first mesh.
@@ -42,30 +42,31 @@ namespace tribol {
  * the input meshes are destroyed. Quadrature failures are recorded for the caller to check.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
+  requires( PairFunction::FirstGeometry::Coords::rank() == 2 && PairFunction::SecondGeometry::Coords::rank() == 2 )
 PairValueBuffer<PairFunction::num_values> evaluatePairValues( const ArrayT<InterfacePair>& pairs,
                                                               MeshData::Viewer mesh1, MeshData::Viewer mesh2,
                                                               PairFunction pair_function )
 {
-  PairValueBuffer<PairFunction::num_values> result( pairs.size(), pairs.getAllocatorID() );
-  const auto contributions_view = result.view();
+  PairValueBuffer<PairFunction::num_values> all_pair_values( pairs.size(), pairs.getAllocatorID() );
+  const auto all_pair_values_view = all_pair_values.view();
   const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = pairs_view[pair_index];
-    MdArray<RealT, PairFunction::num_geom1_coords> coordinates1{};
-    MdArray<RealT, PairFunction::num_geom2_coords> coordinates2{};
-    mesh1.getFaceCoords( pair.element_id1_, coordinates1.data() );
-    mesh2.getFaceCoords( pair.element_id2_, coordinates2.data() );
-    const typename PairFunction::FirstGeometry geometry1( { coordinates1.data(), coordinates1.size() } );
-    const typename PairFunction::SecondGeometry geometry2( { coordinates2.data(), coordinates2.size() } );
-    const auto pair_values = pair_function.evaluate( geometry1, geometry2 );
-    const auto values = pair_values.values();
-    contributions_view.quadrature[pair_index] = pair_values.quadrature_result;
-    contributions_view.has_active_points[pair_index] = pair_values.has_active_points;
-    for ( IndexT value = 0; value < PairFunction::num_values; ++value ) {
-      contributions_view.setValue( pair_index, value, values[value] );
+    // Call pair_function to evaluate pair quantity
+    const auto coords1 = mesh1.getFaceCoords<typename PairFunction::FirstGeometry::Coords>( pair.element_id1_ );
+    const auto coords2 = mesh2.getFaceCoords<typename PairFunction::SecondGeometry::Coords>( pair.element_id2_ );
+    const typename PairFunction::FirstGeometry geometry1( coords1.view() );
+    const typename PairFunction::SecondGeometry geometry2( coords2.view() );
+    const auto pair_values_struct = pair_function.evaluate( geometry1, geometry2 );
+    // Fill the buffer with quantities evaluated at the pair
+    all_pair_values_view.quadrature[pair_index] = pair_values_struct.quadrature_result;
+    all_pair_values_view.has_active_points[pair_index] = pair_values_struct.has_active_points;
+    const auto pair_values = pair_values_struct.values();
+    for ( IndexT i{ 0 }; i < PairFunction::num_values; ++i ) {
+      all_pair_values_view.setValue( pair_index, i, pair_values[i] );
     }
   } );
-  return result;
+  return all_pair_values;
 }
 
 #ifdef TRIBOL_USE_ENZYME

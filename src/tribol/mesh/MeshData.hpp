@@ -7,6 +7,7 @@
 #define SRC_TRIBOL_MESH_MESHDATA_HPP_
 
 // C++ includes
+#include <cassert>
 #include <ostream>
 
 // Shared includes
@@ -14,6 +15,7 @@
 
 // Tribol includes
 #include "tribol/common/ArrayTypes.hpp"
+#include "tribol/common/MdArray.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/utils/DataManager.hpp"
 
@@ -362,15 +364,33 @@ class MeshData {
      */
     TRIBOL_HOST_DEVICE const Array2DView<const IndexT>& getConnectivity() const { return m_connectivity; }
 
-    /*!
-     *
-     * \brief returns pointer to array of stacked nodal coordinates for given face
-     *
-     * \param [in] face_id integer id of face
-     * \param [in/out] coords pointer to an array of stacked (x,y,z) nodal coordinates
-     *
+    /**
+     * @brief Gather one face's coordinates into caller-provided node/component storage.
+     * @param face_id Face index in this mesh.
+     * @param[out] coords Contiguous output with numberOfNodesPerElement()*spatialDimension() entries.
+     * @pre face_id identifies an existing face, and the output storage is accessible on the executing backend.
      */
     TRIBOL_HOST_DEVICE inline void getFaceCoords( IndexT face_id, RealT* coords ) const;
+
+    /**
+     * @brief Gather one face's coordinates into an owning node-by-component array.
+     * @tparam Coords Fixed rank-two coordinate span or array type specifying nodes per face and spatial components.
+     * @param face_id Face index in this mesh.
+     * @return MdArray<RealT, Coords::extent<0>(), Coords::extent<1>()> in local finite-element node/component order.
+     * Changing mesh coordinates after the call does not change the returned array. No dynamic storage is allocated.
+     * @pre face_id identifies an existing face, and the requested extents match the mesh's nodal layout.
+     */
+    template <typename Coords>
+      requires( Coords::rank() == 2 )
+    TRIBOL_HOST_DEVICE auto getFaceCoords( IndexT face_id ) const
+    {
+      assert( face_id >= 0 && face_id < numberOfElements() );
+      assert( Coords::template extent<0>() == numberOfNodesPerElement() );
+      assert( Coords::template extent<1>() == spatialDimension() );
+      MdArray<RealT, Coords::template extent<0>(), Coords::template extent<1>()> coordinates{};
+      getFaceCoords( face_id, coordinates.data() );
+      return coordinates;
+    }
 
     /*!
      *

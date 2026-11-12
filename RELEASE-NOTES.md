@@ -8,6 +8,9 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- `MeshData::Viewer::getFaceCoords<Coords>(face_id)` returns an owning, fixed-size `MdArray` with the requested
+  node/component extents. Value-only pair kernels pass the returned array's view to geometry constructors. The existing
+  output-pointer overload remains available, and geometry construction for coordinate differentiation is unchanged.
 - Added `MfemMatrixAssembler` for rectangular element-pair matrices with independent row and column spaces, maps,
   and local DOF ordering. Pair-force and scalar-field assemblers share its host and execution-space block packing
   and true-DOF transfers. Matrix batch views can pack blocks alongside vector accumulation in the same kernel.
@@ -114,6 +117,9 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Geometry blocks select input entries and connectivity; explicit FE spaces and a host transfer callback select the
   destination. No Jacobian data or assembly-mode flags are required. Use `MfemMatrixAssembler` for matrices; callers
   can compose vector and matrix views in one pair kernel and collect separate owned results.
+- Common Plane and quadrature-point Energy Mortar functions return `PairResidualValue<num_coords>` and
+  `PairEnergyValue` directly, without `PrimalResult` aliases. Nodal Energy Mortar's result struct is named
+  `NodalIntegralValue` and contains the weighted-gap and area integrals, activation, and quadrature status.
 - Pair functions expose `evaluate(geometry1, geometry2)` as their single calculation interface, with `FirstGeometry`
   and `SecondGeometry` types. Callers construct the geometries from their separate coordinate views and obtain
   numerical values through the result's `values()` method. `PairFunctionType` checks geometry construction, coordinate

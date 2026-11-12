@@ -9,7 +9,8 @@
  * the full pair Jacobian with finite differences; MFEM assembly and selection have separate integration tests.
  * Crossing edges check clipped interval bounds, point locations, and uniform centroid pressure for every base rule.
  * Value-only pair kernels check activation, quadrature failures, allocator selection, and empty input on every enabled
- * execution backend. Values from an earlier call remain unchanged after another evaluation.
+ * execution backend. Values from an earlier call remain unchanged after another evaluation. Returned face-coordinate
+ * arrays follow reordered connectivity and remain valid when mesh coordinates change; geometry copies their values.
  */
 #include <cmath>
 #include "gtest/gtest.h"
@@ -225,6 +226,57 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
     }
   }
 };
+
+// Reordered connectivity distinguishes the two faces. Mesh and array updates must not change constructed geometry.
+TEST_P( CommonPlaneTest, constructs_geometry_from_returned_face_coordinate_arrays )
+{
+  auto x = copyToExecutionSpace<RealT>( { 1.0, 3.0, -2.0, 0.0 } );
+  auto y = copyToExecutionSpace<RealT>( { 1.0, 4.0, 1.0, 0.0 } );
+  const auto connectivity = copyToExecutionSpace<IndexT>( { 3, 1, 2, 0 } );
+  MeshData mesh( 0, 2, x.size(), connectivity.data(), EDGE, LINEAR_LAGRANGE, x.data(), y.data(), nullptr,
+                 memorySpace() );
+  const auto mesh_view = mesh.getView();
+  const auto x_view = x.view();
+  const auto y_view = y.view();
+  ArrayT<MdArray<RealT, 4, 5>> results( 1, 1, allocatorId() );
+  const auto output = results.view();
+  forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
+    auto coordinates = mesh_view.getFaceCoords<LinearEdgeGeometry::Coords>( 0 );
+    const auto other_coordinates = mesh_view.getFaceCoords<LinearEdgeGeometry::Coords>( 1 );
+    const LinearEdgeGeometry original( coordinates.view() ), other( other_coordinates.view() );
+    // Translate only face zero; its returned array must retain the original coordinates.
+    x_view[3] += 2.0;
+    x_view[1] += 2.0;
+    y_view[3] -= 1.0;
+    y_view[1] -= 1.0;
+    for ( IndexT i = 0; i < coordinates.size(); ++i ) {
+      output[0]( 3, i ) = coordinates[i];
+    }
+    output[0]( 3, 4 ) = coordinates.size();
+    const auto updated_coordinates = mesh_view.getFaceCoords<LinearEdgeGeometry::Coords>( 0 );
+    const LinearEdgeGeometry updated( updated_coordinates.view() );
+    // The geometry must retain its own values when its input array is modified as well.
+    coordinates( 0, 0 ) = -3.0;
+    coordinates( 1, 1 ) = -2.0;
+    const LinearEdgeGeometry geometries[] = { original, other, updated };
+    for ( IndexT i = 0; i < 3; ++i ) {
+      const auto first = geometries[i].position( -1.0 );
+      const auto second = geometries[i].position( 1.0 );
+      output[0]( i, 0 ) = first[0];
+      output[0]( i, 1 ) = first[1];
+      output[0]( i, 2 ) = second[0];
+      output[0]( i, 3 ) = second[1];
+      output[0]( i, 4 ) = geometries[i].length();
+    }
+  } );
+  const ArrayT<MdArray<RealT, 4, 5>, 1, MemorySpace::Host> host( results );
+  const MdArray<RealT, 4, 5> expected{
+      MdArray<RealT, 5>{ 0.0, 0.0, 3.0, 4.0, 5.0 }, MdArray<RealT, 5>{ -2.0, 1.0, 1.0, 1.0, 3.0 },
+      MdArray<RealT, 5>{ 2.0, -1.0, 5.0, 3.0, 5.0 }, MdArray<RealT, 5>{ 0.0, 0.0, 3.0, 4.0, 4.0 } };
+  for ( IndexT i = 0; i < expected.size(); ++i ) {
+    EXPECT_DOUBLE_EQ( host[0][i], expected[i] );
+  }
+}
 
 // Each supported rule must integrate the physical overlap without multiplying by either edge Jacobian again.
 TEST_P( CommonPlaneTest, maps_partial_overlap_and_physical_weights )

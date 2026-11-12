@@ -36,7 +36,6 @@ class CommonPlanePairFunction {
   static constexpr IndexT num_geom2_coords = SecondGeometry::Coords::size();  ///< Geometry2 coordinate count.
   static constexpr IndexT num_coords = num_geom1_coords + num_geom2_coords;   ///< Combined coordinate count.
   static constexpr IndexT num_values = num_coords;                            ///< Residual entry count.
-  using PrimalResult = PairResidualValue<num_coords>;                         ///< Residual and quadrature state.
 
   /** @brief Store fixed configuration. @param rule_generator Pair quadrature rule generator. @param penalty Stiffness.
    * @param gap Gap callable.
@@ -50,11 +49,11 @@ class CommonPlanePairFunction {
 
   /** @brief Evaluate one pair residual. @param geometry1 First current edge. @param geometry2 Second current edge.
    * @return Residual and status; failed, empty, and open pairs return zero residual and inactive state. */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PrimalResult evaluate( const FirstGeometry& geometry1,
-                                                                 const SecondGeometry& geometry2 ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairResidualValue<num_coords> evaluate(
+      const FirstGeometry& geometry1, const SecondGeometry& geometry2 ) const
   {
     const auto points = rule_generator_.generate( geometry1, geometry2 );
-    PrimalResult result{ {}, points.result, false };
+    PairResidualValue<num_coords> result{ {}, points.result, false };
     if ( points.result.status != QuadratureStatus::Success || points.result.num_required_points == 0 ) {
       return result;
     }

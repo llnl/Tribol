@@ -207,8 +207,8 @@ template <int NumPoints>
 struct ParallelIntegralResult {
   using RuleGenerator =
       PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>;
-  PairEnergyValue energy;                                               ///< Quadrature-point energy and status.
-  typename EnergyMortarNodalEnergy<RuleGenerator>::PrimalResult nodal;  ///< Nodal integrals and status.
+  PairEnergyValue energy;                                                     ///< Quadrature-point energy and status.
+  typename EnergyMortarNodalEnergy<RuleGenerator>::NodalIntegralValue nodal;  ///< Nodal integrals and status.
 };
 
 /** @brief Nodal field inputs and exact penalty partials for one backend test case. */
@@ -494,14 +494,13 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_h
 
 /** @brief Small fixed-size pair function used to compile and execute both Enzyme operations on every backend. */
 struct PolynomialPairFunction {
-  static constexpr IndexT num_values = 2;              ///< Number of outputs.
-  static constexpr IndexT num_coords = 2;              ///< Number of active coordinates.
-  using PrimalResult = PairResidualValue<num_values>;  ///< Polynomial values with quadrature state.
-  IndexT* num_evaluations = nullptr;                   ///< Optional counter for complete function evaluations.
+  static constexpr IndexT num_values = 2;  ///< Number of outputs.
+  static constexpr IndexT num_coords = 2;  ///< Number of active coordinates.
+  IndexT* num_evaluations = nullptr;       ///< Optional counter for complete function evaluations.
 
   /** @brief Evaluate two coupled polynomial outputs. @param coordinates Active coordinates.
    * @return Function values with successful, active quadrature state. */
-  TRIBOL_HOST_DEVICE PrimalResult evaluate( MdSpan<const RealT, num_coords> coordinates ) const
+  TRIBOL_HOST_DEVICE PairResidualValue<num_values> evaluate( MdSpan<const RealT, num_coords> coordinates ) const
   {
     if ( num_evaluations != nullptr ) {
       ++*num_evaluations;
