@@ -28,28 +28,30 @@ constexpr RealT hessian_tolerance = 2.0e-5;       ///< Second-derivative compari
  * @brief Check one vector pair function and weighted contraction against coordinate differences.
  * @tparam Function Fixed-size Energy Mortar pair function.
  * @param function Pair function with varying or frozen quadrature.
- * @param coordinates Current pair coordinates away from overlap and activation transitions.
+ * @param coordinates Current pair coordinates in Jacobian column order, away from overlap and activation transitions.
  * @param weights Output weights used for the Hessian contraction.
  */
 template <typename Function>
 void checkFiniteDifferences( const Function& function, const MdArray<RealT, Function::num_coords>& coordinates,
                              const MdArray<RealT, Function::num_values>& weights )
 {
-  using CoordinateFunction = PairCoordinateFunction<Function>;
-  const CoordinateFunction coordinate_function{ function };
-  const auto base =
-      EnzymePairDerivative<CoordinateFunction>::valuesAndJacobian( coordinates.view(), coordinate_function );
-  const auto weighted = EnzymePairDerivative<CoordinateFunction>::weightedJacobianAndHessian(
-      coordinates.view(), coordinate_function, weights.view() );
+  const auto base = EnzymePairDerivative<Function>::valuesAndJacobian(
+      { coordinates.data(), Function::num_geom1_coords },
+      { coordinates.data() + Function::num_geom1_coords, Function::num_geom2_coords }, function );
+  const auto weighted = EnzymePairDerivative<Function>::weightedJacobianAndHessian(
+      { coordinates.data(), Function::num_geom1_coords },
+      { coordinates.data() + Function::num_geom1_coords, Function::num_geom2_coords }, function, weights.view() );
   for ( IndexT column = 0; column < Function::num_coords; ++column ) {
     auto positive_coordinates = coordinates;
     auto negative_coordinates = coordinates;
     positive_coordinates[column] += finite_difference_step;
     negative_coordinates[column] -= finite_difference_step;
-    const auto positive =
-        EnzymePairDerivative<CoordinateFunction>::valuesAndJacobian( positive_coordinates.view(), coordinate_function );
-    const auto negative =
-        EnzymePairDerivative<CoordinateFunction>::valuesAndJacobian( negative_coordinates.view(), coordinate_function );
+    const auto positive = EnzymePairDerivative<Function>::valuesAndJacobian(
+        { positive_coordinates.data(), Function::num_geom1_coords },
+        { positive_coordinates.data() + Function::num_geom1_coords, Function::num_geom2_coords }, function );
+    const auto negative = EnzymePairDerivative<Function>::valuesAndJacobian(
+        { negative_coordinates.data(), Function::num_geom1_coords },
+        { negative_coordinates.data() + Function::num_geom1_coords, Function::num_geom2_coords }, function );
 
     for ( IndexT value = 0; value < Function::num_values; ++value ) {
       EXPECT_NEAR( base.jacobian( value, column ),
@@ -109,7 +111,11 @@ TEST( EnergyMortarFiniteDifference, invalid_geometry_reports_status_before_deriv
   using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
   const EnergyMortarEnergy<RuleGenerator> energy{ RuleGenerator{}, 1.0 };
   const MdArray<RealT, decltype( energy )::num_coords> coordinates{ 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0 };
-  EXPECT_NE( PairCoordinateFunction{ energy }.evaluate( coordinates.view() ).quadrature_result.status,
+  EXPECT_NE( energy
+                 .evaluate( { coordinates.data(), decltype( energy )::num_geom1_coords },
+                            { coordinates.data() + decltype( energy )::num_geom1_coords,
+                              decltype( energy )::num_geom2_coords } )
+                 .quadrature_result.status,
              QuadratureStatus::Success );
 }
 

@@ -7,9 +7,9 @@
  * @file
  * @brief Evaluate pair functions f and return buffers of their values, coordinate Jacobians, and Hessians.
  *
- * Pair functions accept two geometry objects. Value-only evaluation constructs them from separate mesh coordinate
- * arrays. Derivative kernels use PairCoordinateFunction to construct both geometries inside AD; the combined
- * coordinate array defines Jacobian columns in geometry1 node/component order, followed by geometry2 order.
+ * Pair functions accept two coordinate views and construct any needed geometry inside evaluate(). Both coordinate
+ * arrays are active inputs for differentiation. Jacobian columns and Hessian rows/columns follow geometry1
+ * node/component order, followed by geometry2 order.
  */
 #ifndef SRC_TRIBOL_ASSEMBLY_PAIRKERNEL_HPP_
 #define SRC_TRIBOL_ASSEMBLY_PAIRKERNEL_HPP_
@@ -31,7 +31,7 @@ namespace tribol {
  * inactive values follow the pair function's evaluate() behavior; callers must check quadrature before assembly.
  * For example, Common Plane explicit contact could obtain a PairValueBuffer from evaluatePairValues(), check its
  * quadratureResults(), and assemble its active residual values as nodal forces.
- * @tparam PairFunction Function evaluating two current element geometries with rank-two node/component Coords views.
+ * @tparam PairFunction Function evaluating two rank-two node/component coordinate views.
  * @tparam Exec Concrete execution mode for pair evaluation.
  * @param pairs Supplied element pairs in execution-accessible memory.
  * @param mesh1 Current first mesh.
@@ -42,7 +42,7 @@ namespace tribol {
  * the input meshes are destroyed. Quadrature failures are recorded for the caller to check.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
-  requires( PairFunction::FirstGeometry::Coords::rank() == 2 && PairFunction::SecondGeometry::Coords::rank() == 2 )
+  requires( PairFunction::Coords1::rank() == 2 && PairFunction::Coords2::rank() == 2 )
 PairValueBuffer<PairFunction::num_values> evaluatePairValues( const ArrayT<InterfacePair>& pairs,
                                                               MeshData::Viewer mesh1, MeshData::Viewer mesh2,
                                                               PairFunction pair_function )
@@ -53,11 +53,9 @@ PairValueBuffer<PairFunction::num_values> evaluatePairValues( const ArrayT<Inter
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = pairs_view[pair_index];
     // Call pair_function to evaluate pair quantity
-    const auto coords1 = mesh1.getFaceCoords<typename PairFunction::FirstGeometry::Coords>( pair.element_id1_ );
-    const auto coords2 = mesh2.getFaceCoords<typename PairFunction::SecondGeometry::Coords>( pair.element_id2_ );
-    const typename PairFunction::FirstGeometry geometry1( coords1.view() );
-    const typename PairFunction::SecondGeometry geometry2( coords2.view() );
-    const auto pair_values_struct = pair_function.evaluate( geometry1, geometry2 );
+    const auto coords1 = mesh1.getFaceCoords<typename PairFunction::Coords1>( pair.element_id1_ );
+    const auto coords2 = mesh2.getFaceCoords<typename PairFunction::Coords2>( pair.element_id2_ );
+    const auto pair_values_struct = pair_function.evaluate( coords1.view(), coords2.view() );
     // Fill the buffer with quantities evaluated at the pair
     all_pair_values_view.quadrature[pair_index] = pair_values_struct.quadrature_result;
     all_pair_values_view.has_active_points[pair_index] = pair_values_struct.has_active_points;
@@ -92,39 +90,39 @@ PairValueBuffer<PairFunction::num_values> evaluatePairValues( const ArrayT<Inter
  * @param pairs Current pair list in execution-accessible memory.
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
- * @param pair_function Fixed geometry-pair function configuration.
+ * @param pair_function Fixed pair-function configuration.
  * @return Owned values, Jacobians, quadrature results, and activation flags in pairs.getAllocatorID(). Empty input
  * returns zero slots. Evaluation finishes before returning; the arrays remain valid after pairs and the input meshes
  * are destroyed. Quadrature failures are recorded for the caller to check.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
+  requires( PairFunction::Coords1::rank() == 2 && PairFunction::Coords2::rank() == 2 )
 PairValueJacobianBuffer<PairFunction::num_values, PairFunction::num_coords> evaluatePairValuesAndJacobians(
     const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function )
 {
-  PairValueJacobianBuffer<PairFunction::num_values, PairFunction::num_coords> result( pairs.size(),
-                                                                                      pairs.getAllocatorID() );
-  const auto contributions_view = result.view();
+  PairValueJacobianBuffer<PairFunction::num_values, PairFunction::num_coords> all_pair_values( pairs.size(),
+                                                                                               pairs.getAllocatorID() );
+  const auto all_pair_values_view = all_pair_values.view();
   const auto pairs_view = pairs.view();
-  const PairCoordinateFunction coordinate_function{ pair_function };
-  constexpr IndexT num_geom1_coords = PairFunction::num_geom1_coords;
-  constexpr IndexT num_coords = PairFunction::num_coords;
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = pairs_view[pair_index];
-    MdArray<RealT, num_coords> coordinates{};
-    mesh1.getFaceCoords( pair.element_id1_, coordinates.data() );
-    mesh2.getFaceCoords( pair.element_id2_, coordinates.data() + num_geom1_coords );
-    const auto pair_values = EnzymePairDerivative<PairCoordinateFunction<PairFunction>>::valuesAndJacobian(
-        coordinates.view(), coordinate_function );
-    contributions_view.quadrature[pair_index] = pair_values.quadrature_result;
-    contributions_view.has_active_points[pair_index] = pair_values.has_active_points;
-    for ( IndexT value = 0; value < PairFunction::num_values; ++value ) {
-      contributions_view.setValue( pair_index, value, pair_values.values[value] );
-      for ( IndexT coordinate = 0; coordinate < num_coords; ++coordinate ) {
-        contributions_view.setJacobian( pair_index, value, coordinate, pair_values.jacobian( value, coordinate ) );
+    // Evaluate pair values and their coordinate Jacobian
+    const auto coords1 = mesh1.getFaceCoords<typename PairFunction::Coords1>( pair.element_id1_ );
+    const auto coords2 = mesh2.getFaceCoords<typename PairFunction::Coords2>( pair.element_id2_ );
+    const auto pair_values_struct =
+        EnzymePairDerivative<PairFunction>::valuesAndJacobian( coords1.view(), coords2.view(), pair_function );
+    // Fill the buffer with quantities evaluated at the pair
+    all_pair_values_view.quadrature[pair_index] = pair_values_struct.quadrature_result;
+    all_pair_values_view.has_active_points[pair_index] = pair_values_struct.has_active_points;
+    const auto& pair_values = pair_values_struct.values;
+    for ( IndexT i{ 0 }; i < PairFunction::num_values; ++i ) {
+      all_pair_values_view.setValue( pair_index, i, pair_values[i] );
+      for ( IndexT j{ 0 }; j < PairFunction::num_coords; ++j ) {
+        all_pair_values_view.setJacobian( pair_index, i, j, pair_values_struct.jacobian( i, j ) );
       }
     }
   } );
-  return result;
+  return all_pair_values;
 }
 
 /**
@@ -156,7 +154,7 @@ PairValueJacobianBuffer<PairFunction::num_values, PairFunction::num_coords> eval
  * @param pairs Current pair list in execution-accessible memory.
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
- * @param pair_function Fixed geometry-pair function configuration.
+ * @param pair_function Fixed pair-function configuration.
  * @param read_weights Callable with signature `MdArray<RealT, PairFunction::num_values>(IndexT)`.
  * @return Owned weighted Jacobians and Hessians in pairs.getAllocatorID(), with one slot per pair. Empty input
  * returns zero slots. Evaluation finishes before returning; the arrays remain valid after pairs and the input meshes
@@ -164,32 +162,31 @@ PairValueJacobianBuffer<PairFunction::num_values, PairFunction::num_coords> eval
  * @pre The caller has checked pair quadrature for errors at these coordinates.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction, typename WeightReader>
+  requires( PairFunction::Coords1::rank() == 2 && PairFunction::Coords2::rank() == 2 )
 PairJacobianHessianBuffer<PairFunction::num_coords> evaluatePairWeightedJacobiansAndHessians(
     const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function,
     WeightReader read_weights )
 {
-  PairJacobianHessianBuffer<PairFunction::num_coords> result( pairs.size(), pairs.getAllocatorID() );
-  const auto contributions_view = result.view();
+  PairJacobianHessianBuffer<PairFunction::num_coords> all_pair_values( pairs.size(), pairs.getAllocatorID() );
+  const auto all_pair_values_view = all_pair_values.view();
   const auto pairs_view = pairs.view();
-  const PairCoordinateFunction coordinate_function{ pair_function };
-  constexpr IndexT num_geom1_coords = PairFunction::num_geom1_coords;
-  constexpr IndexT num_coords = PairFunction::num_coords;
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = pairs_view[pair_index];
-    MdArray<RealT, num_coords> coordinates{};
-    mesh1.getFaceCoords( pair.element_id1_, coordinates.data() );
-    mesh2.getFaceCoords( pair.element_id2_, coordinates.data() + num_geom1_coords );
+    // Evaluate the weighted coordinate Jacobian and Hessian
+    const auto coords1 = mesh1.getFaceCoords<typename PairFunction::Coords1>( pair.element_id1_ );
+    const auto coords2 = mesh2.getFaceCoords<typename PairFunction::Coords2>( pair.element_id2_ );
     const auto weights = read_weights( pair_index );
-    const auto pair_values = EnzymePairDerivative<PairCoordinateFunction<PairFunction>>::weightedJacobianAndHessian(
-        coordinates.view(), coordinate_function, weights.view() );
-    for ( IndexT row = 0; row < num_coords; ++row ) {
-      contributions_view.setJacobian( pair_index, row, pair_values.jacobian[row] );
-      for ( IndexT column = 0; column < num_coords; ++column ) {
-        contributions_view.setHessian( pair_index, row, column, pair_values.hessian( row, column ) );
+    const auto pair_values_struct = EnzymePairDerivative<PairFunction>::weightedJacobianAndHessian(
+        coords1.view(), coords2.view(), pair_function, weights.view() );
+    // Fill the buffer with quantities evaluated at the pair
+    for ( IndexT i{ 0 }; i < PairFunction::num_coords; ++i ) {
+      all_pair_values_view.setJacobian( pair_index, i, pair_values_struct.jacobian[i] );
+      for ( IndexT j{ 0 }; j < PairFunction::num_coords; ++j ) {
+        all_pair_values_view.setHessian( pair_index, i, j, pair_values_struct.hessian( i, j ) );
       }
     }
   } );
-  return result;
+  return all_pair_values;
 }
 
 /**
@@ -222,33 +219,31 @@ PairJacobianHessianBuffer<PairFunction::num_coords> evaluatePairWeightedJacobian
  * and the input meshes are destroyed. Quadrature failures are recorded for the caller to check.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
-  requires( PairFunction::num_values == 1 )
+  requires( PairFunction::num_values == 1 && PairFunction::Coords1::rank() == 2 && PairFunction::Coords2::rank() == 2 )
 PairValueJacobianHessianBuffer<PairFunction::num_coords> evaluatePairValuesJacobiansAndHessians(
     const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function )
 {
-  PairValueJacobianHessianBuffer<PairFunction::num_coords> result( pairs.size(), pairs.getAllocatorID() );
-  const auto contributions_view = result.view();
+  PairValueJacobianHessianBuffer<PairFunction::num_coords> all_pair_values( pairs.size(), pairs.getAllocatorID() );
+  const auto all_pair_values_view = all_pair_values.view();
   const auto pairs_view = pairs.view();
-  const PairCoordinateFunction coordinate_function{ pair_function };
-  constexpr IndexT num_geom1_coords = PairFunction::num_geom1_coords;
-  constexpr IndexT num_coords = PairFunction::num_coords;
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = pairs_view[pair_index];
-    MdArray<RealT, num_coords> coordinates{};
-    mesh1.getFaceCoords( pair.element_id1_, coordinates.data() );
-    mesh2.getFaceCoords( pair.element_id2_, coordinates.data() + num_geom1_coords );
-    const auto pair_values = EnzymePairDerivative<PairCoordinateFunction<PairFunction>>::valueJacobianAndHessian(
-        coordinates.view(), coordinate_function );
-    contributions_view.values[pair_index] = pair_values.value;
-    contributions_view.quadrature[pair_index] = pair_values.quadrature_result;
-    for ( IndexT row = 0; row < num_coords; ++row ) {
-      contributions_view.derivatives.setJacobian( pair_index, row, pair_values.jacobian[row] );
-      for ( IndexT column = 0; column < num_coords; ++column ) {
-        contributions_view.derivatives.setHessian( pair_index, row, column, pair_values.hessian( row, column ) );
+    // Evaluate the scalar pair value, coordinate Jacobian, and Hessian
+    const auto coords1 = mesh1.getFaceCoords<typename PairFunction::Coords1>( pair.element_id1_ );
+    const auto coords2 = mesh2.getFaceCoords<typename PairFunction::Coords2>( pair.element_id2_ );
+    const auto pair_values_struct =
+        EnzymePairDerivative<PairFunction>::valueJacobianAndHessian( coords1.view(), coords2.view(), pair_function );
+    // Fill the buffer with quantities evaluated at the pair
+    all_pair_values_view.values[pair_index] = pair_values_struct.value;
+    all_pair_values_view.quadrature[pair_index] = pair_values_struct.quadrature_result;
+    for ( IndexT i{ 0 }; i < PairFunction::num_coords; ++i ) {
+      all_pair_values_view.derivatives.setJacobian( pair_index, i, pair_values_struct.jacobian[i] );
+      for ( IndexT j{ 0 }; j < PairFunction::num_coords; ++j ) {
+        all_pair_values_view.derivatives.setHessian( pair_index, i, j, pair_values_struct.hessian( i, j ) );
       }
     }
   } );
-  return result;
+  return all_pair_values;
 }
 #endif  // TRIBOL_USE_ENZYME
 

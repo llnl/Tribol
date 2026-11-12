@@ -30,12 +30,14 @@ namespace tribol {
 template <typename BaseRuleGenerator, typename GapDefinition = CommonPlaneGap>
 class CommonPlanePairFunction {
  public:
-  using FirstGeometry = LinearEdgeGeometry;                                   ///< Geometry of the first directed edge.
-  using SecondGeometry = LinearEdgeGeometry;                                  ///< Geometry of the second directed edge.
-  static constexpr IndexT num_geom1_coords = FirstGeometry::Coords::size();   ///< Geometry1 coordinate count.
-  static constexpr IndexT num_geom2_coords = SecondGeometry::Coords::size();  ///< Geometry2 coordinate count.
-  static constexpr IndexT num_coords = num_geom1_coords + num_geom2_coords;   ///< Combined coordinate count.
-  static constexpr IndexT num_values = num_coords;                            ///< Residual entry count.
+  using FirstGeometry = LinearEdgeGeometry;                                  ///< Geometry of the first directed edge.
+  using SecondGeometry = LinearEdgeGeometry;                                 ///< Geometry of the second directed edge.
+  using Coords1 = typename FirstGeometry::Coords;                            ///< Geometry1 coordinate view.
+  using Coords2 = typename SecondGeometry::Coords;                           ///< Geometry2 coordinate view.
+  static constexpr IndexT num_geom1_coords = Coords1::size();                ///< Geometry1 coordinate count.
+  static constexpr IndexT num_geom2_coords = Coords2::size();                ///< Geometry2 coordinate count.
+  static constexpr IndexT num_coords = num_geom1_coords + num_geom2_coords;  ///< Combined coordinate count.
+  static constexpr IndexT num_values = num_coords;                           ///< Residual entry count.
 
   /** @brief Store fixed configuration. @param rule_generator Pair quadrature rule generator. @param penalty Stiffness.
    * @param gap Gap callable.
@@ -47,11 +49,14 @@ class CommonPlanePairFunction {
   {
   }
 
-  /** @brief Evaluate one pair residual. @param geometry1 First current edge. @param geometry2 Second current edge.
+  /** @brief Evaluate one pair residual. @param coords1 First current edge coordinates. @param coords2 Second current
+   * edge coordinates.
    * @return Residual and status; failed, empty, and open pairs return zero residual and inactive state. */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairResidualValue<num_coords> evaluate(
-      const FirstGeometry& geometry1, const SecondGeometry& geometry2 ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairResidualValue<num_coords> evaluate( Coords1 coords1,
+                                                                                  Coords2 coords2 ) const
   {
+    const FirstGeometry geometry1( coords1 );
+    const SecondGeometry geometry2( coords2 );
     const auto points = rule_generator_.generate( geometry1, geometry2 );
     PairResidualValue<num_coords> result{ {}, points.result, false };
     if ( points.result.status != QuadratureStatus::Success || points.result.num_required_points == 0 ) {

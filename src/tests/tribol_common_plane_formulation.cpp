@@ -32,7 +32,7 @@ static_assert( PairFunctionType<CommonPlanePairFunction<EdgeQuadratureRuleGenera
 
 #ifdef TRIBOL_USE_ENZYME
 /**
- * @brief Copy two edge-coordinate arrays into the coordinate adapter's input order.
+ * @brief Copy two edge-coordinate arrays into Jacobian column order for finite differences.
  * @param coordinates1 First edge's vertex coordinates.
  * @param coordinates2 Second edge's vertex coordinates.
  * @return Owned coordinates ordered by edge, vertex, and component.
@@ -78,8 +78,7 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
         const CommonPlanePairFunction<EdgeQuadratureRuleGenerator<NumPoints>, OffsetGap<CommonPlaneGap>> function{
             rule_generator, ComputePenaltyStiffnessPerArea( 2.0, 6.0 ),
             OffsetGap{ CommonPlaneGap{}, test.residual_gap } };
-        const LinearEdgeGeometry geometry1( edge1.view() ), geometry2( edge2.view() );
-        output[0] = function.evaluate( geometry1, geometry2 );
+        output[0] = function.evaluate( edge1.view(), edge2.view() );
       } );
       const ArrayT<PairResidualValue<2 * Coordinates::size()>, 1, MemorySpace::Host> host( results );
       ASSERT_EQ( host[0].quadrature_result.status, QuadratureStatus::Success );
@@ -184,7 +183,7 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
         output[0].interval = CommonPlaneEdgeMapping{}.makeIntegrationSurface( geometry1, geometry2 );
         const CommonPlanePairFunction<EdgeQuadratureRuleGenerator<NumPoints>, OffsetGap<CommonPlaneGap>> function{
             rule_generator, 1.0, OffsetGap{ CommonPlaneGap{}, test.residual_gap } };
-        output[0].residual = function.evaluate( geometry1, geometry2 );
+        output[0].residual = function.evaluate( edge1.view(), edge2.view() );
         for ( int point = 0; point < NumPoints; ++point ) {
           const auto point1 = geometry1.position( points.geometry1_coords( point, 0 ) );
           const auto point2 = geometry2.position( points.geometry2_coords( point, 0 ) );
@@ -304,8 +303,7 @@ TEST_P( CommonPlaneTest, balances_rotated_pair_forces_and_moments )
     const Coordinates edge2{ MdArray<RealT, 2>{ 3.8, 6.15 }, MdArray<RealT, 2>{ 0.8, 2.15 } };
     const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>> rule_generator;
     const CommonPlanePairFunction<EdgeQuadratureRuleGenerator<3>> function{ rule_generator, 2.0 };
-    const LinearEdgeGeometry geometry1( edge1.view() ), geometry2( edge2.view() );
-    const auto result = function.evaluate( geometry1, geometry2 );
+    const auto result = function.evaluate( edge1.view(), edge2.view() );
     for ( int i = 0; i < 2 * Coordinates::size(); ++i ) {
       output[i] = result.residual[i];
     }
@@ -457,8 +455,6 @@ void checkJacobian()
   using Function = CommonPlanePairFunction<EdgeQuadratureRuleGenerator<NumPoints>, OffsetGap<CommonPlaneGap>>;
   const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>> rule_generator;
   const Function function{ rule_generator, 2.5, OffsetGap{ CommonPlaneGap{}, 0.03 } };
-  using CoordinateFunction = PairCoordinateFunction<Function>;
-  const CoordinateFunction coordinate_function{ function };
   constexpr RealT step =
       2.0e-7;  // Small enough to resolve derivatives without changing the active or overlap branches.
   const Coordinates cases1[] = { Coordinates{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.2 } },
@@ -467,9 +463,9 @@ void checkJacobian()
                                  Coordinates{ MdArray<RealT, 2>{ 0.8, 0.2 }, MdArray<RealT, 2>{ -0.8, -0.2 } } };
   for ( int geometry = 0; geometry < 2; ++geometry ) {
     const auto coordinates = packPairCoordinates( cases1[geometry].view(), cases2[geometry].view() );
-    const auto expected = coordinate_function.evaluate( coordinates.view() );
+    const auto expected = function.evaluate( cases1[geometry].view(), cases2[geometry].view() );
     const auto result =
-        EnzymePairDerivative<CoordinateFunction>::valuesAndJacobian( coordinates.view(), coordinate_function );
+        EnzymePairDerivative<Function>::valuesAndJacobian( cases1[geometry].view(), cases2[geometry].view(), function );
     ASSERT_EQ( result.quadrature_result.status, QuadratureStatus::Success );
     EXPECT_EQ( result.quadrature_result.num_required_points, NumPoints );
     EXPECT_TRUE( result.has_active_points );
@@ -481,8 +477,12 @@ void checkJacobian()
       auto minus_coordinates = coordinates;
       plus_coordinates[column] += step;
       minus_coordinates[column] -= step;
-      const auto plus = coordinate_function.evaluate( plus_coordinates.view() );
-      const auto minus = coordinate_function.evaluate( minus_coordinates.view() );
+      const auto plus =
+          function.evaluate( { plus_coordinates.data(), Function::num_geom1_coords },
+                             { plus_coordinates.data() + Function::num_geom1_coords, Function::num_geom2_coords } );
+      const auto minus =
+          function.evaluate( { minus_coordinates.data(), Function::num_geom1_coords },
+                             { minus_coordinates.data() + Function::num_geom1_coords, Function::num_geom2_coords } );
       ASSERT_EQ( plus.quadrature_result.status, QuadratureStatus::Success );
       ASSERT_EQ( minus.quadrature_result.status, QuadratureStatus::Success );
       for ( int row = 0; row < Function::num_values; ++row ) {
@@ -496,22 +496,18 @@ void checkJacobian()
   const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, 0.0 }, MdArray<RealT, 2>{ 0.0, 0.0 } };
   using UnshiftedFunction = CommonPlanePairFunction<EdgeQuadratureRuleGenerator<NumPoints>>;
   const UnshiftedFunction unshifted{ rule_generator, 1.0 };
-  using UnshiftedCoordinateFunction = PairCoordinateFunction<UnshiftedFunction>;
-  const UnshiftedCoordinateFunction unshifted_coordinate_function{ unshifted };
-  const auto coordinates = packPairCoordinates( edge1.view(), edge2.view() );
-  const auto zero = unshifted_coordinate_function.evaluate( coordinates.view() );
+  const auto zero = unshifted.evaluate( edge1.view(), edge2.view() );
   EXPECT_TRUE( zero.has_active_points );
-  const auto derivatives = EnzymePairDerivative<UnshiftedCoordinateFunction>::valuesAndJacobian(
-      coordinates.view(), unshifted_coordinate_function );
+  const auto derivatives =
+      EnzymePairDerivative<UnshiftedFunction>::valuesAndJacobian( edge1.view(), edge2.view(), unshifted );
   EXPECT_TRUE( derivatives.has_active_points );
   for ( IndexT row = 0; row < UnshiftedFunction::num_values; ++row ) {
     EXPECT_EQ( derivatives.values[row], 0.0 );
   }
   EXPECT_GT( derivatives.jacobian( 1, 1 ), 0.0 );
   const Coordinates invalid{};
-  const auto invalid_coordinates = packPairCoordinates( invalid.view(), edge2.view() );
-  const auto failure = EnzymePairDerivative<UnshiftedCoordinateFunction>::valuesAndJacobian(
-      invalid_coordinates.view(), unshifted_coordinate_function );
+  const auto failure =
+      EnzymePairDerivative<UnshiftedFunction>::valuesAndJacobian( invalid.view(), edge2.view(), unshifted );
   EXPECT_EQ( failure.quadrature_result.status, QuadratureStatus::InvalidGeometry );
   EXPECT_EQ( failure.quadrature_result.num_required_points, 0 );
   EXPECT_FALSE( failure.has_active_points );

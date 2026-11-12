@@ -50,19 +50,21 @@ struct EnergyMortarNodalPartials {
 };
 
 /**
- * @brief Integrate quadrature-point penalty energy from two current element geometries.
+ * @brief Integrate quadrature-point penalty energy from two current element coordinate views.
  * @tparam PairRuleGenerator Smoothed projected-edge pair rule generator.
  * @tparam GapDefinition Geometric or offset gap callable.
  */
 template <typename PairRuleGenerator, typename GapDefinition = OpposingNormalGap>
 class EnergyMortarEnergy {
  public:
-  using FirstGeometry = typename PairRuleGenerator::FirstGeometry;            ///< First element geometry.
-  using SecondGeometry = typename PairRuleGenerator::SecondGeometry;          ///< Second element geometry.
-  static constexpr IndexT num_values = 1;                                     ///< Scalar pair energy output.
-  static constexpr IndexT num_geom1_coords = FirstGeometry::Coords::size();   ///< Geometry1 coordinate count.
-  static constexpr IndexT num_geom2_coords = SecondGeometry::Coords::size();  ///< Geometry2 coordinate count.
-  static constexpr IndexT num_coords = num_geom1_coords + num_geom2_coords;   ///< Combined coordinate count.
+  using FirstGeometry = typename PairRuleGenerator::FirstGeometry;           ///< First element geometry.
+  using SecondGeometry = typename PairRuleGenerator::SecondGeometry;         ///< Second element geometry.
+  using Coords1 = typename FirstGeometry::Coords;                            ///< Geometry1 coordinate view.
+  using Coords2 = typename SecondGeometry::Coords;                           ///< Geometry2 coordinate view.
+  static constexpr IndexT num_values = 1;                                    ///< Scalar pair energy output.
+  static constexpr IndexT num_geom1_coords = Coords1::size();                ///< Geometry1 coordinate count.
+  static constexpr IndexT num_geom2_coords = Coords2::size();                ///< Geometry2 coordinate count.
+  static constexpr IndexT num_coords = num_geom1_coords + num_geom2_coords;  ///< Combined coordinate count.
   /** @brief Store fixed inputs. @param rule_generator Pair quadrature rule generator. @param penalty Stiffness. @param
    * gap Gap callable. */
   TRIBOL_HOST_DEVICE EnergyMortarEnergy( PairRuleGenerator rule_generator, RealT penalty, GapDefinition gap = {} )
@@ -71,13 +73,14 @@ class EnergyMortarEnergy {
   }
   /**
    * @brief Integrate energy, retaining zero-gap activation for differentiation.
-   * @param geometry1 First current element geometry.
-   * @param geometry2 Second current element geometry.
+   * @param coords1 First current element coordinates.
+   * @param coords2 Second current element coordinates.
    * @return Energy and status. Failed, empty, or open rules give zero energy; failure must be reported by the caller.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairEnergyValue evaluate( const FirstGeometry& geometry1,
-                                                                    const SecondGeometry& geometry2 ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairEnergyValue evaluate( Coords1 coords1, Coords2 coords2 ) const
   {
+    const FirstGeometry geometry1( coords1 );
+    const SecondGeometry geometry2( coords2 );
     const auto points = rule_generator_.generate( geometry1, geometry2 );
     PairEnergyValue result{ 0.0, false, points.result };
     if ( points.result.status != QuadratureStatus::Success || points.result.num_required_points == 0 ) {
@@ -103,21 +106,23 @@ class EnergyMortarEnergy {
 };
 
 /**
- * @brief Integrate nodal weighted gaps and areas from two current element geometries.
+ * @brief Integrate nodal weighted gaps and areas from two current element coordinate views.
  * @tparam PairRuleGenerator Smoothed projected-edge pair rule generator.
  * @tparam GapDefinition Geometric or offset gap callable.
  */
 template <typename PairRuleGenerator, typename GapDefinition = OpposingNormalGap>
 class EnergyMortarNodalEnergy {
  public:
-  using FirstGeometry = typename PairRuleGenerator::FirstGeometry;            ///< First element geometry.
-  using SecondGeometry = typename PairRuleGenerator::SecondGeometry;          ///< Second element geometry.
-  using Basis = BasisFunction<EDGE, LINEAR_LAGRANGE>;                         ///< Non-mortar nodal basis.
-  static constexpr IndexT num_nodes = Basis::num_nodes;                       ///< Non-mortar nodes per edge.
-  static constexpr IndexT num_values = 2 * num_nodes;                         ///< Weighted gaps followed by areas.
-  static constexpr IndexT num_geom1_coords = FirstGeometry::Coords::size();   ///< Geometry1 coordinate count.
-  static constexpr IndexT num_geom2_coords = SecondGeometry::Coords::size();  ///< Geometry2 coordinate count.
-  static constexpr IndexT num_coords = num_geom1_coords + num_geom2_coords;   ///< Combined coordinate count.
+  using FirstGeometry = typename PairRuleGenerator::FirstGeometry;           ///< First element geometry.
+  using SecondGeometry = typename PairRuleGenerator::SecondGeometry;         ///< Second element geometry.
+  using Coords1 = typename FirstGeometry::Coords;                            ///< Geometry1 coordinate view.
+  using Coords2 = typename SecondGeometry::Coords;                           ///< Geometry2 coordinate view.
+  using Basis = BasisFunction<EDGE, LINEAR_LAGRANGE>;                        ///< Non-mortar nodal basis.
+  static constexpr IndexT num_nodes = Basis::num_nodes;                      ///< Non-mortar nodes per edge.
+  static constexpr IndexT num_values = 2 * num_nodes;                        ///< Weighted gaps followed by areas.
+  static constexpr IndexT num_geom1_coords = Coords1::size();                ///< Geometry1 coordinate count.
+  static constexpr IndexT num_geom2_coords = Coords2::size();                ///< Geometry2 coordinate count.
+  static constexpr IndexT num_coords = num_geom1_coords + num_geom2_coords;  ///< Combined coordinate count.
   /** @brief Nodal values with activation and quadrature status. */
   struct NodalIntegralValue {
     MdArray<RealT, num_values> value{};    ///< Weighted gaps, then areas, in local-node order.
@@ -135,13 +140,14 @@ class EnergyMortarNodalEnergy {
   }
   /**
    * @brief Integrate both nodal quantities in the same quadrature loop, before nodal contact activation.
-   * @param geometry1 First current element geometry.
-   * @param geometry2 Second current element geometry.
+   * @param coords1 First current element coordinates.
+   * @param coords2 Second current element coordinates.
    * @return Nodal values and status; failed or empty rules give zeros. Failure must be reported by the caller.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE NodalIntegralValue evaluate( const FirstGeometry& geometry1,
-                                                                       const SecondGeometry& geometry2 ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE NodalIntegralValue evaluate( Coords1 coords1, Coords2 coords2 ) const
   {
+    const FirstGeometry geometry1( coords1 );
+    const SecondGeometry geometry2( coords2 );
     const auto points = rule_generator_.generate( geometry1, geometry2 );
     NodalIntegralValue result{ {}, false, points.result };
     if ( points.result.status != QuadratureStatus::Success || points.result.num_required_points == 0 ) {

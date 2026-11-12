@@ -9,8 +9,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 
 ### Added
 - `MeshData::Viewer::getFaceCoords<Coords>(face_id)` returns an owning, fixed-size `MdArray` with the requested
-  node/component extents. Value-only pair kernels pass the returned array's view to geometry constructors. The existing
-  output-pointer overload remains available, and geometry construction for coordinate differentiation is unchanged.
+  node/component extents. Pair kernels pass the two returned array views to pair functions. The existing output-pointer
+  overload remains available.
 - Added `MfemMatrixAssembler` for rectangular element-pair matrices with independent row and column spaces, maps,
   and local DOF ordering. Pair-force and scalar-field assemblers share its host and execution-space block packing
   and true-DOF transfers. Matrix batch views can pack blocks alongside vector accumulation in the same kernel.
@@ -120,15 +120,13 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Common Plane and quadrature-point Energy Mortar functions return `PairResidualValue<num_coords>` and
   `PairEnergyValue` directly, without `PrimalResult` aliases. Nodal Energy Mortar's result struct is named
   `NodalIntegralValue` and contains the weighted-gap and area integrals, activation, and quadrature status.
-- Pair functions expose `evaluate(geometry1, geometry2)` as their single calculation interface, with `FirstGeometry`
-  and `SecondGeometry` types. Callers construct the geometries from their separate coordinate views and obtain
-  numerical values through the result's `values()` method. `PairFunctionType` checks geometry construction, coordinate
-  counts (`num_geom1_coords`, `num_geom2_coords`, and their sum `num_coords`), and result types. Coordinate functions and
-  `EnzymePairDerivative` likewise use `num_coords` for their input size. `PairCoordinateFunction` adapts geometry pair
-  functions for coordinate differentiation and constructs both geometries inside AD, including derivatives of cached
-  geometry quantities. `CoordinateFunctionType` checks the coordinate interface used by `EnzymePairDerivative`;
-  functions without geometry types can still implement that interface directly. Scalar value/Jacobian/Hessian
-  operations require exactly one output.
+- Pair functions expose `evaluate(coords1, coords2)` with separate `Coords1` and `Coords2` view types. Common Plane and
+  both Energy Mortar functions construct their geometry inside this calculation. `PairFunctionType` checks both input
+  types, coordinate counts, and result types; functions without geometry types can implement the same interface.
+  `EnzymePairDerivative` takes both coordinate views as separate active inputs and includes geometry construction in
+  Jacobians and Hessians. Their coordinate ordering remains geometry1 followed by geometry2. Removed
+  `PairCoordinateFunction` and the separate `CoordinateFunctionType` concept. Scalar value/Jacobian/Hessian operations
+  require exactly one output.
 - Size variables use `num_...`, template parameters use `Num...`, and size accessors use `numberOf...()`, including
   `num_values`, `NumBlocks`, `numberOfPairs()`, and `numberOfValues()`. `FaceElementTraits::node_count` and
   `BasisFunction::node_count` are now `num_nodes`; `getFaceNodeCount()` is now `numberOfFaceNodes()`.
