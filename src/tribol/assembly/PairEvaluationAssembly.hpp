@@ -26,14 +26,14 @@ struct AssembledField {
 };
 /** @brief Configure residual-force calculation without derivatives or Jacobian transfer data. */
 struct ResidualForceEvaluation {
-  const MfemMeshData& mesh_data;  ///< Borrowed displacement transfer data.
+  const MfemMeshData& mesh_data;  ///< Displacement transfer data referenced by the evaluation.
 };
 
 #ifdef TRIBOL_USE_ENZYME
 /** @brief Configure residual-force and coordinate-Jacobian calculation with Enzyme. */
 struct ResidualForceJacobianEvaluation {
-  const MfemMeshData& mesh_data;          ///< Borrowed displacement transfer data.
-  const MfemJacobianData& jacobian_data;  ///< Borrowed coordinate-matrix transfer data.
+  const MfemMeshData& mesh_data;          ///< Displacement transfer data referenced by the evaluation.
+  const MfemJacobianData& jacobian_data;  ///< Coordinate-matrix transfer data referenced by the evaluation.
 };
 #endif
 
@@ -98,8 +98,8 @@ void addNodalValuesAndJacobians( const ArrayT<InterfacePair>& pairs, std::vector
  * @param pairs Supplied execution-accessible pairs.
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
- * @param mesh_data Borrowed displacement transfer data.
- * @param jacobian_data Borrowed, initialized coordinate matrix transfer data.
+ * @param mesh_data Displacement transfer data; must remain valid until the call completes.
+ * @param jacobian_data Initialized coordinate-matrix transfer data; must remain valid until the call completes.
  * @param read_force Pair forces in element/node/component order.
  * @param read_jacobian Pair Jacobians in that same row and column order.
  * @return Owned force and df_dx; empty pairs produce allocated zero outputs. Other outputs are absent.
@@ -141,7 +141,8 @@ ContactFormulationResult assemblePairForcesAndJacobian( const ArrayT<InterfacePa
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
  * @param function Fixed pair residual configuration.
- * @param evaluation Borrowed displacement transfer prerequisites for force-only calculation.
+ * @param evaluation Displacement transfer references for force-only calculation; referenced data must remain valid
+ * until the call completes.
  * @return Owned force on parent true DOFs; df_dx and other outputs are absent. Empty or inactive pairs contribute zero.
  * Scratch arrays remain alive until evaluation and assembly finish.
  * @throws std::invalid_argument Geometry or assembly dimensions are invalid; no result is returned.
@@ -178,8 +179,9 @@ ContactFormulationResult evaluateAndAssembleResidualPairs( const ArrayT<Interfac
  * @param pairs Accepted element pairs in execution-accessible memory.
  * @param mesh1 Current first mesh with execution-accessible coordinates and connectivity.
  * @param mesh2 Current second mesh with execution-accessible coordinates and connectivity.
- * @param function Pair residual configuration; borrowed for this call.
- * @param evaluation Borrowed displacement and Jacobian transfer prerequisites.
+ * @param function Pair residual configuration; not retained after this call.
+ * @param evaluation Displacement and Jacobian transfer references; referenced data must remain valid until the call
+ * completes.
  * @return Owned parent true-DOF force and df_dx; other outputs are absent. Empty or inactive pairs contribute zero.
  * An empty list returns allocated zero force and df_dx.
  * @throws std::invalid_argument Pair geometry or assembly dimensions are invalid; no result is
@@ -221,9 +223,9 @@ ContactFormulationResult evaluateAndAssembleResidualPairs( const ArrayT<Interfac
  * @param pairs Accepted element pairs in execution-accessible memory.
  * @param mesh1 Current first mesh with execution-accessible coordinates and connectivity.
  * @param mesh2 Current second mesh with execution-accessible coordinates and connectivity.
- * @param function Pair energy configuration; borrowed for this call.
- * @param mesh_data Current MFEM displacement transfer data; borrowed for this call.
- * @param jacobian_data Current MFEM Jacobian transfer data; borrowed for this call.
+ * @param function Pair energy configuration; not retained after this call.
+ * @param mesh_data Current MFEM displacement transfer data; must remain valid until the call completes.
+ * @param jacobian_data Current MFEM Jacobian transfer data; must remain valid until the call completes.
  * @return Owned parent true-DOF force and df_dx and energy summed over the parent communicator; other outputs are
  * absent. Empty or inactive pairs contribute zero. An empty list returns allocated zero force and df_dx and zero
  * energy.

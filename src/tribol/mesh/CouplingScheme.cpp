@@ -1207,7 +1207,7 @@ void CouplingScheme::updateEnergyMortarTransferData()
     jacobian_data->UpdateJacobianXfer();
   }
 
-  // Release outputs and formulations before the transfer spaces and fields they borrow.
+  // Release outputs and formulations before the transfer spaces and fields they reference.
   setContactFormulation( nullptr );
   setMfemJacobianData( nullptr );
   for ( auto* mesh : { &getMesh1(), &getMesh2() } ) {

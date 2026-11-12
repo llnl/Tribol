@@ -1659,7 +1659,7 @@ class MfemSubmeshData {
 
   /**
    * @brief Get the current Redecomp finite-element space for fields transferred through this submesh.
-   * @return Borrowed field space, valid until the decomposition is rebuilt.
+   * @return Reference to the field space, valid until the decomposition is rebuilt.
    * @pre UpdateMfemSubmeshData() has initialized the current decomposition.
    */
   const mfem::FiniteElementSpace& GetRedecompFESpace() const { return *pressure_.GetRedecompGridFn().FESpace(); }
@@ -2053,7 +2053,7 @@ class MfemJacobianData {
  public:
   /**
    * @brief Construct displacement-only Jacobian transfer without pressure or gap fields.
-   * @param parent_data Borrowed displacement mesh and transfer data; must outlive this object.
+   * @param parent_data Displacement mesh and transfer data; must outlive this object.
    */
   explicit MfemJacobianData( const MfemMeshData& parent_data );
   /**
@@ -2112,7 +2112,7 @@ class MfemJacobianData {
      * @brief Construct a new UpdateData object
      *
      * @param parent_data MFEM data associated with displacement and velocity
-     * @param submesh_data Optional borrowed pressure/gap data; null builds only the displacement path.
+     * @param submesh_data Optional pressure/gap data; null builds only the displacement path.
      * @param submesh2parent_vdof_list Global parent vdof for each local submesh vdof
      */
     UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData* submesh_data,
@@ -2149,7 +2149,7 @@ class MfemJacobianData {
   const MfemMeshData& parent_data_;
 
   /**
-   * @brief Optional borrowed pressure/gap transfer data; null for displacement-only formulations.
+   * @brief Pointer to pressure/gap transfer data; null for displacement-only formulations.
    */
   const MfemSubmeshData* submesh_data_{ nullptr };
 

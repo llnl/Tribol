@@ -61,7 +61,7 @@ class MfemCommonPlaneTest : public testing::TestWithParam<int> {
                                 FRICTIONLESS, PENALTY, BINNING_GRID, execution_mode );
     setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
   }
-  /** @brief Release coupling data before destroying the borrowed parent mesh and coordinate field. */
+  /** @brief Release coupling data before destroying the parent mesh and coordinate field it references. */
   void TearDown() override { finalize(); }
   /** @brief Enable the formulation and select the requested reference degree.
    * @param compute_jacobian Whether to calculate df_dx as well as forces. */
@@ -99,7 +99,7 @@ class MfemCommonPlaneTest : public testing::TestWithParam<int> {
     }
     return upper_nodes;
   }
-  std::unique_ptr<mfem::ParMesh> mesh_;               ///< Borrowed by the registered coupling scheme.
+  std::unique_ptr<mfem::ParMesh> mesh_;               ///< Parent mesh referenced by the registered coupling scheme.
   std::unique_ptr<mfem::H1_FECollection> fec_;        ///< Linear coordinate basis.
   std::unique_ptr<mfem::ParFiniteElementSpace> fes_;  ///< Parent vector-coordinate space.
   std::unique_ptr<mfem::ParGridFunction> coords_;     ///< Current parent geometry.

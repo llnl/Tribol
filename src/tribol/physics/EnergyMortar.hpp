@@ -28,7 +28,7 @@ template <typename QuadratureRule, ExecutionMode Exec>
 class QuadraturePointEnergyMortar final : public ContactFormulation {
  public:
   /**
-   * @brief Borrow transfer data and own search and formulation configuration.
+   * @brief Store references to transfer data and own search and formulation configuration.
    * @param mesh_data Parent displacement transfer data.
    * @param jacobian_data Parent Jacobian transfer data.
    * @param pair_builder Owned pair search composition.
@@ -51,8 +51,8 @@ class QuadraturePointEnergyMortar final : public ContactFormulation {
   ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override;
 
  private:
-  MfemMeshData& mesh_data_;          ///< Borrowed displacement transfer data.
-  MfemJacobianData& jacobian_data_;  ///< Borrowed Jacobian transfer data.
+  MfemMeshData& mesh_data_;          ///< Displacement transfer data; must remain valid for this formulation's lifetime.
+  MfemJacobianData& jacobian_data_;  ///< Jacobian transfer data; must remain valid for this formulation's lifetime.
   PairListBuilder pair_builder_;     ///< Owned search composition.
   const EnergyMortarEnergy<QuadratureRule, OffsetGap<OpposingNormalGap>>
       function_;  ///< Owned pair quadrature, fixed stiffness, and gap definition.
@@ -68,7 +68,7 @@ template <typename QuadratureRule, ExecutionMode Exec, typename Enforcement>
 class NodalEnergyMortar final : public ContactFormulation {
  public:
   /**
-   * @brief Borrow parent/dual transfer data and own search and formulation configuration.
+   * @brief Store references to parent/dual transfer data and own search and formulation configuration.
    * @param mesh_data Parent displacement transfer data.
    * @param submesh_data Dual pressure/gap transfer data.
    * @param jacobian_data Parent and dual Jacobian transfer data.
@@ -123,9 +123,9 @@ class NodalEnergyMortar final : public ContactFormulation {
   ContactFormulationResult computeForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
                                           LagrangeMultiplierEnforcement enforcement ) const;
 
-  MfemMeshData& mesh_data_;          ///< Borrowed displacement transfer data.
-  MfemSubmeshData& submesh_data_;    ///< Borrowed dual transfer data.
-  MfemJacobianData& jacobian_data_;  ///< Borrowed Jacobian transfer data.
+  MfemMeshData& mesh_data_;          ///< Displacement transfer data; must remain valid for this formulation's lifetime.
+  MfemSubmeshData& submesh_data_;    ///< Dual transfer data; must remain valid for this formulation's lifetime.
+  MfemJacobianData& jacobian_data_;  ///< Jacobian transfer data; must remain valid for this formulation's lifetime.
   PairListBuilder pair_builder_;     ///< Owned search composition.
   const EnergyMortarNodalEnergy<QuadratureRule, OffsetGap<OpposingNormalGap>>
       function_;                   ///< Owned pair quadrature and gap definition.

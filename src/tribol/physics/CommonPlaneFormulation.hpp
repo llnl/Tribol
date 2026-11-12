@@ -103,8 +103,9 @@ template <typename BaseRule, ExecutionMode Exec, typename Evaluation>
 class CommonPlaneFormulation final : public ContactFormulation {
  public:
   /**
-   * @brief Own fixed search and physics settings and the selected evaluation prerequisites.
-   * @param evaluation Borrowed transfer prerequisites selecting force-only or force/Jacobian calculation.
+   * @brief Store fixed search and physics settings and references to transfer data.
+   * @param evaluation Transfer-data references selecting force-only or force/Jacobian calculation. The referenced
+   * data must remain valid for this formulation's lifetime.
    * @param pair_builder Owned pair search composition.
    * @param quadrature Owned common-line quadrature.
    * @param gap Owned gap definition.
@@ -125,7 +126,7 @@ class CommonPlaneFormulation final : public ContactFormulation {
   ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override;
 
  private:
-  Evaluation evaluation_;         ///< Borrowed transfer prerequisites for the selected calculation.
+  Evaluation evaluation_;         ///< References to transfer data used by the selected calculation.
   PairListBuilder pair_builder_;  ///< Owned search composition.
   /// Owned pair quadrature, fixed stiffness, and gap definition.
   const CommonPlanePairFunction<BaseRule, OffsetGap<CommonPlaneGap>> function_;

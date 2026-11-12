@@ -20,7 +20,7 @@
 
 namespace tribol {
 
-/** @brief Borrow the vector FE spaces and the operation transferring Redecomp entries to final local DOFs. */
+/** @brief Configure FE-space references and the operation transferring Redecomp entries to final local DOFs. */
 struct MfemVectorSpace {
   const mfem::ParFiniteElementSpace& final_fes;  ///< Destination FE space, before true-DOF assembly.
   const mfem::FiniteElementSpace& redecomp_fes;  ///< Space containing accumulated pair entries.
@@ -31,7 +31,7 @@ struct MfemVectorSpace {
 /** @brief Configure entries contributed by one geometry in each pair. */
 struct MfemVectorBlock {
   IndexT geometry;                         ///< 0 for geometry1, 1 for geometry2.
-  Array2DView<const IndexT> connectivity;  ///< Borrowed scalar nodal DOF connectivity for that geometry.
+  Array2DView<const IndexT> connectivity;  ///< View of scalar nodal DOF connectivity for that geometry.
   IndexT offset;                           ///< First input entry, in element/node/component order.
 };
 
@@ -41,7 +41,7 @@ struct MfemVectorBlock {
  */
 template <IndexT BlockCount>
 struct MfemVectorAssemblyView {
-  MdArray<MfemVectorBlock, BlockCount> blocks;  ///< Geometry selection and borrowed nodal connectivity.
+  MdArray<MfemVectorBlock, BlockCount> blocks;  ///< Geometry selection and nodal connectivity views.
   RealT* values;                                ///< Writable Redecomp vector.
   int components;                               ///< Entries per node in the vector's FE space.
   IndexT node_stride;                           ///< Redecomp-vector stride between scalar nodal DOFs.
@@ -80,13 +80,14 @@ struct MfemVectorAssemblyView {
  * Geometry blocks specify which pair elements contribute and how their input entries are ordered. The configured
  * FE space supplies the component count and the Redecomp vector ordering. The host transfer callback selects the
  * destination space; it is never invoked inside a pair kernel. Use multiple assemblers for independent fields.
- * FE spaces, transfer prerequisites, and connectivity are borrowed. Recreate after decomposition or mesh registration.
+ * FE spaces, transfer prerequisites, and connectivity must remain valid for the assembler's lifetime. Recreate after
+ * decomposition or mesh registration.
  */
 class MfemVectorAssembler {
  public:
   /**
    * @brief Allocate an initially zero vector in the configured Redecomp FE space.
-   * @param space Borrowed FE spaces and a nonempty host transfer callback, retained by value.
+   * @param space FE-space references and a nonempty host transfer callback, retained by value.
    * @param blocks Nonempty geometry blocks with nonnegative input offsets and positive nodes per element.
    * @throws std::invalid_argument Spaces, callback, geometry selectors, offsets, or node counts are invalid.
    * @throws std::length_error Input extents exceed the supported index range.
@@ -132,7 +133,7 @@ class MfemVectorAssembler {
    * @brief Return a writable view for composing pair kernels with other vector or matrix views.
    * @tparam BlockCount Configured geometry blocks per pair.
    * @tparam Exec Concrete execution mode using the view.
-   * @return View borrowing this vector and the supplied connectivity. Keep both alive until the kernel finishes;
+   * @return View into this vector and the supplied connectivity. Keep both alive until the kernel finishes;
    * do not request another memory space while a kernel is using the view.
    * @throws std::invalid_argument BlockCount does not match the configuration.
    */
@@ -187,26 +188,26 @@ class MfemVectorAssembler {
   shared::ParVector assemble() const;
 
  private:
-  MfemVectorSpace space_;                ///< Borrowed spaces and the host transfer operation.
-  std::vector<MfemVectorBlock> blocks_;  ///< Geometry layout with borrowed nodal connectivity.
+  MfemVectorSpace space_;                ///< FE-space references and the host transfer operation.
+  std::vector<MfemVectorBlock> blocks_;  ///< Geometry layout with nodal connectivity views.
   IndexT value_count_ = 0;               ///< Input extent including block offsets.
   mfem::GridFunction redecomp_values_;   ///< Owned accumulated entries.
 };
 
 namespace detail {
 /** @brief Configure displacement entries from both geometries.
- * @param data Borrowed displacement data, updated for the current decomposition.
+ * @param data Displacement data for the current decomposition; must outlive the returned assembler.
  * @param mesh1 First geometry. @param mesh2 Second geometry.
- * @return Vector assembler borrowing the two connectivities and parent transfer data.
+ * @return Vector assembler referencing the two connectivities and parent transfer data.
  * @throws std::invalid_argument Geometry dimensions do not match the displacement space.
  * @throws std::length_error Input extents exceed the supported index range. */
 MfemVectorAssembler makeDisplacementVectorAssembler( const MfemMeshData& data, MeshData::Viewer mesh1,
                                                      MeshData::Viewer mesh2 );
 
 /** @brief Configure scalar nodal entries from geometry1.
- * @param data Borrowed scalar field data, updated for the current decomposition.
+ * @param data Scalar field data for the current decomposition; must outlive the returned assembler.
  * @param mesh1 Geometry1 connectivity indexing the scalar Redecomp DOFs.
- * @return Vector assembler borrowing scalar submesh transfers and geometry1 connectivity.
+ * @return Vector assembler referencing scalar submesh transfers and geometry1 connectivity.
  * @throws std::invalid_argument The configured FE spaces are not scalar, or the node count is invalid.
  * @throws std::length_error Input extent exceeds the supported index range. */
 MfemVectorAssembler makeNodalVectorAssembler( const MfemSubmeshData& data, MeshData::Viewer mesh1 );

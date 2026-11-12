@@ -44,10 +44,10 @@ struct ContactFormulationResult {
 /**
  * @brief Calculate contact outputs without retaining geometry, intermediate data, or results between calls.
  *
- * Implementations retain method and search configuration and borrow mesh/field transfer data. Each calculation
- * obtains its prerequisites from the current inputs, independently of previous calls. Mortar formulations use mesh1
- * as the non-mortar integration surface and mesh2 as the mortar projection surface. Mesh arrays must remain alive
- * for the duration of the call.
+ * Implementations retain method and search configuration and reference mesh/field transfer data. The transfer data
+ * must remain valid for the formulation's lifetime. Each calculation obtains its prerequisites from the current inputs,
+ * independently of previous calls. Mortar formulations use mesh1 as the non-mortar integration surface and mesh2 as the
+ * mortar projection surface. Mesh arrays must remain alive for the duration of the call.
  */
 class ContactFormulation {
  public:

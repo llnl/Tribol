@@ -21,7 +21,7 @@
 
 namespace tribol {
 
-/** @brief Borrow one nodal FE space on Redecomp and its transfer to solver true DOFs. */
+/** @brief Reference a nodal FE space on Redecomp and its transfer to solver true DOFs. */
 struct MfemMatrixSpace {
   const MfemJacobianPath& path;                  ///< Surface and final FE spaces with their transfer operators.
   const mfem::FiniteElementSpace& redecomp_fes;  ///< Element DOFs before transfer.
@@ -32,7 +32,7 @@ struct MfemMatrixSpace {
  *
  * Geometry indices are 0 for geometry1 and 1 for geometry2. Offsets count input rows and columns, whose DOFs use
  * node/component order. Element maps translate the selected geometry's Tribol element IDs to
- * Redecomp element IDs independently for rows and columns. Maps are borrowed and must outlive assembly.
+ * Redecomp element IDs independently for rows and columns. Maps are referenced directly and must outlive assembly.
  */
 struct MfemMatrixBlock {
   IndexT row_geometry;                     ///< Geometry supplying the row element ID.
@@ -41,8 +41,8 @@ struct MfemMatrixBlock {
   IndexT column_nodes;                     ///< Column FE nodes per element.
   IndexT row_offset;                       ///< First input row of this block.
   IndexT column_offset;                    ///< First input column of this block.
-  const Array1D<int>& row_element_map;     ///< Borrowed row element map.
-  const Array1D<int>& column_element_map;  ///< Borrowed column element map.
+  const Array1D<int>& row_element_map;     ///< Row element map referenced during assembly.
+  const Array1D<int>& column_element_map;  ///< Column element map referenced during assembly.
 };
 
 namespace detail {
@@ -93,8 +93,9 @@ inline IndexT checkedMatrixSize( IndexT count, IndexT size )
  */
 template <IndexT RowDofs, IndexT ColumnDofs, IndexT BlockCount>
 struct MfemMatrixBatchView {
-  MdArray<ElementBlockView<RowDofs, ColumnDofs>, BlockCount> blocks;  ///< Borrowed writable buffers.
-  MdArray<detail::MfemMatrixBlockLayout, BlockCount> layouts;         ///< Independent row and column indexing.
+  MdArray<ElementBlockView<RowDofs, ColumnDofs>, BlockCount>
+      blocks;                                                  ///< Writable views into the matrix batch's buffers.
+  MdArray<detail::MfemMatrixBlockLayout, BlockCount> layouts;  ///< Independent row and column indexing.
 
   /**
    * @brief Pack one pair's blocks, converting node/component inputs to MFEM component/node element order.
@@ -135,7 +136,8 @@ class MfemMatrixAssembler;
 template <IndexT RowDofs, IndexT ColumnDofs, IndexT BlockCount>
 class MfemMatrixBatch {
  public:
-  /** @brief Return a writable kernel view. @return View borrowing this batch's buffers. */
+  /** @brief Return a writable kernel view. @return View into this batch's buffers; the batch must remain alive while
+   * the view is used. */
   MfemMatrixBatchView<RowDofs, ColumnDofs, BlockCount> view()
   {
     MfemMatrixBatchView<RowDofs, ColumnDofs, BlockCount> result{ {}, layouts_ };
@@ -158,7 +160,7 @@ class MfemMatrixBatch {
       blocks_.emplace_back( pair_count, allocator_id );
     }
   }
-  const MfemMatrixAssembler* owner_;  ///< Borrowed assembler; it must remain in place until addBatch().
+  const MfemMatrixAssembler* owner_;  ///< Assembler that created the batch; it must remain in place until addBatch().
   MdArray<detail::MfemMatrixBlockLayout, BlockCount> layouts_;   ///< Indexing copied into the kernel view.
   std::vector<ElementBlockBuffer<RowDofs, ColumnDofs>> blocks_;  ///< Scratch proportional to this batch's pairs.
 };
@@ -169,15 +171,16 @@ class MfemMatrixBatch {
  * Supports the displacement and scalar nodal spaces used by contact assembly in either orientation. Input matrices
  * use node/component DOF order on both axes. Packed MFEM element blocks use component/node DOF order and column-major
  * storage. No symmetry is assumed. Geometry selectors and element maps are independent for each block's two axes.
- * FE spaces, transfer paths, and element maps are borrowed; recreate after decomposition or mesh re-registration.
+ * FE spaces, transfer paths, and element maps must remain valid for the assembler's lifetime. Recreate after
+ * decomposition or mesh re-registration.
  * This class assembles matrices only. Callers can use a batch view alongside vector accumulation in a shared kernel.
  */
 class MfemMatrixAssembler {
  public:
   /**
    * @brief Configure blocks and reserve storage for the expected contributing pairs.
-   * @param rows Borrowed row space and initialized transfer path.
-   * @param columns Borrowed column space and initialized transfer path.
+   * @param rows Row space and initialized transfer path; both must outlive the assembler.
+   * @param columns Column space and initialized transfer path; both must outlive the assembler.
    * @param blocks Nonempty list of rectangular blocks; no storage is allocated for unlisted geometry combinations.
    * @param pair_capacity Expected pair contributions, independent of all possible mesh pairs.
    * @throws std::invalid_argument Capacity, node counts, geometry selectors, or offsets are invalid.
@@ -251,7 +254,7 @@ class MfemMatrixAssembler {
   /**
    * @brief Copy completed execution-space blocks to host accumulation storage.
    * @tparam RowDofs Rows per block. @tparam ColumnDofs Columns per block. @tparam BlockCount Blocks per pair.
-   * @param batch Batch created by this assembler; its scratch is borrowed until the call completes.
+   * @param batch Batch created by this assembler; its buffers must remain valid until the call completes.
    * @throws std::invalid_argument Batch belongs to another assembler; nothing is appended.
    * @throws std::length_error Accumulated blocks exceed the supported index range.
    */
@@ -327,23 +330,24 @@ class MfemMatrixAssembler {
     destination.jacobian_data.append( values.view() );
   }
 
-  MfemJacobianTransfer transfer_;                          ///< Borrowed, independent row and column transfer paths.
-  std::vector<detail::MfemMatrixBlockLayout> layouts_;     ///< Input block indexing, independent of pair count.
-  std::vector<PackedPairJacobianContribs> contributions_;  ///< Accumulated blocks with borrowed FE spaces and maps.
-  IndexT row_count_ = 0;                                   ///< Input rows including configured offsets.
-  IndexT column_count_ = 0;                                ///< Input columns including configured offsets.
-  Array1D<RealT, MemorySpace::Host> block_;                ///< Reused host scratch for the largest configured block.
+  MfemJacobianTransfer transfer_;                       ///< References to independent row and column transfer paths.
+  std::vector<detail::MfemMatrixBlockLayout> layouts_;  ///< Input block indexing, independent of pair count.
+  std::vector<PackedPairJacobianContribs>
+      contributions_;                        ///< Accumulated blocks referencing FE spaces and element maps.
+  IndexT row_count_ = 0;                     ///< Input rows including configured offsets.
+  IndexT column_count_ = 0;                  ///< Input columns including configured offsets.
+  Array1D<RealT, MemorySpace::Host> block_;  ///< Reused host scratch for the largest configured block.
 };
 
 namespace detail {
 /**
  * @brief Configure all four coordinate blocks for a pair of displacement elements.
- * @param mesh_data Borrowed displacement spaces and element maps for the current decomposition.
- * @param jacobian_data Initialized parent-coordinate transfer path; borrowed by the returned assembler.
+ * @param mesh_data Displacement spaces and element maps for the current decomposition; must outlive the assembler.
+ * @param jacobian_data Initialized parent-coordinate transfer path; must outlive the returned assembler.
  * @param mesh1 First geometry's nodal layout.
  * @param mesh2 Second geometry's nodal layout.
  * @param pair_capacity Expected contributing pairs, independent of all possible mesh pairs.
- * @return Matrix assembler borrowing the displacement FE spaces, maps, and transfer path.
+ * @return Matrix assembler referencing the supplied displacement FE spaces, element maps, and transfer path.
  * @throws std::invalid_argument Geometry dimensions or node counts do not match the displacement layout.
  * @throws std::length_error Required storage exceeds the supported index range.
  */
@@ -351,8 +355,8 @@ MfemMatrixAssembler makeCoordinateMatrixAssembler( const MfemMeshData& mesh_data
                                                    MeshData::Viewer mesh1, MeshData::Viewer mesh2,
                                                    IndexT pair_capacity );
 /** @brief Configure a scalar nodal field's two coordinate-Jacobian blocks.
- * @param mesh_data Borrowed displacement spaces and element maps.
- * @param submesh_data Borrowed scalar field spaces, updated for the current decomposition.
+ * @param mesh_data Displacement spaces and element maps; must outlive the returned assembler.
+ * @param submesh_data Scalar field spaces for the current decomposition; must outlive the returned assembler.
  * @param jacobian_data Initialized scalar and parent-coordinate transfer paths.
  * @param mesh1 Geometry carrying scalar rows. @param mesh2 Second geometry contributing coordinate columns.
  * @param pair_capacity Expected contributing pairs.

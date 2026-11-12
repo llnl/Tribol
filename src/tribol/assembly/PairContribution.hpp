@@ -45,7 +45,8 @@ class PairValueBuffer {
         has_active_points_( pair_count, pair_count, allocator_id )
   {
   }
-  /** @brief Return a writable view. @return View borrowing this buffer's arrays. */
+  /** @brief Return a writable view. @return View into this buffer's arrays; the buffer must remain alive while the view
+   * is used. */
   PairValueView<ValueCount> view()
   {
     return { values_.data(), quadrature_.data(), has_active_points_.data(), pair_count_ };

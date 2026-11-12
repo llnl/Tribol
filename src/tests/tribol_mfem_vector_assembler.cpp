@@ -76,7 +76,7 @@ class MfemVectorAssemblerTest : public testing::Test {
     cs.setMfemJacobianData( std::make_unique<MfemJacobianData>( *cs.getMfemMeshData() ) );
     cs.getMfemJacobianData()->UpdateJacobianXfer();
   }
-  /** @brief Destroy coupling transfers before their borrowed MFEM mesh and fields. */
+  /** @brief Destroy coupling transfers before the MFEM mesh and fields they reference. */
   void TearDown() override { finalize(); }
   /** @brief Return the registered scheme. @return Scheme zero. */
   CouplingScheme& scheme() { return CouplingSchemeManager::getInstance().at( 0 ); }
