@@ -27,28 +27,28 @@ struct PairEnergyValue {
   /** @brief Return the scalar energy as a one-entry function value vector. @return Integrated pair energy. */
   TRIBOL_HOST_DEVICE MdArray<RealT, 1> values() const { return MdArray<RealT, 1>{ energy }; }
 };
-/** @brief Pair residual, quadrature status, and activation. @tparam DofCt Pair coordinate count. */
-template <IndexT DofCt>
+/** @brief Pair residual, quadrature status, and activation. @tparam NumCoords Pair coordinate count. */
+template <IndexT NumCoords>
 struct PairResidualValue {
-  MdArray<RealT, DofCt> residual{};      ///< Residual in element/node/component order.
+  MdArray<RealT, NumCoords> residual{};  ///< Residual in element/node/component order.
   QuadratureResult quadrature_result{};  ///< Failed quadrature output must not be consumed.
   bool has_active_points = false;        ///< Whether a compressive point exists, including zero gap.
 
   /** @brief Return the residual as the function value vector. @return Residual in element/node/component order. */
-  TRIBOL_HOST_DEVICE MdArray<RealT, DofCt> values() const { return residual; }
+  TRIBOL_HOST_DEVICE MdArray<RealT, NumCoords> values() const { return residual; }
 };
 
 /**
  * @brief Own one pair function's values f_i(x), Jacobian J_ij = df_i/dx_j, quadrature status, and activation.
- * @tparam ValueCt Number of scalar outputs.
- * @tparam DofCt Number of active coordinate entries.
+ * @tparam NumValues Number of scalar outputs.
+ * @tparam NumCoords Number of active coordinate entries.
  */
-template <IndexT ValueCt, IndexT DofCt>
+template <IndexT NumValues, IndexT NumCoords>
 struct PairValueJacobian {
-  MdArray<RealT, ValueCt> values{};           ///< Function values f_i in function-defined order.
-  MdArray<RealT, ValueCt, DofCt> jacobian{};  ///< J_ij, with value rows and coordinate columns.
-  QuadratureResult quadrature_result{};       ///< Quadrature status from the differentiated evaluation.
-  bool has_active_points = false;             ///< Activation from the differentiated evaluation.
+  MdArray<RealT, NumValues> values{};               ///< Function values f_i in function-defined order.
+  MdArray<RealT, NumValues, NumCoords> jacobian{};  ///< J_ij, with value rows and coordinate columns.
+  QuadratureResult quadrature_result{};             ///< Quadrature status from the differentiated evaluation.
+  bool has_active_points = false;                   ///< Activation from the differentiated evaluation.
 };
 
 /**
@@ -57,25 +57,26 @@ struct PairValueJacobian {
  * For fixed output weights w_i, these are sum_i w_i J_ij and sum_i w_i H_ijk, where J_ij = df_i/dx_j and
  * H_ijk = d^2 f_i/(dx_j dx_k). Function values and the full unweighted Jacobian and Hessians are not stored.
  *
- * @tparam DofCt Number of active coordinate entries.
+ * @tparam NumCoords Number of active coordinate entries.
  */
-template <IndexT DofCt>
+template <IndexT NumCoords>
 struct PairWeightedJacobianHessian {
-  MdArray<RealT, DofCt> jacobian{};        ///< Weighted Jacobian sum_i w_i J_ij, one entry per coordinate.
-  MdArray<RealT, DofCt, DofCt> hessian{};  ///< Weighted Hessian sum_i w_i H_ijk, in coordinate row/column order.
+  MdArray<RealT, NumCoords> jacobian{};  ///< Weighted Jacobian sum_i w_i J_ij, one entry per coordinate.
+  MdArray<RealT, NumCoords, NumCoords>
+      hessian{};  ///< Weighted Hessian sum_i w_i H_ijk, in coordinate row/column order.
 };
 
 /**
  * @brief Own a scalar pair function's value, coordinate Jacobian and Hessian, quadrature status, and activation.
- * @tparam DofCt Number of active coordinate entries.
+ * @tparam NumCoords Number of active coordinate entries.
  */
-template <IndexT DofCt>
+template <IndexT NumCoords>
 struct PairValueJacobianHessian {
-  RealT value = 0.0;                       ///< Scalar function value f(x).
-  MdArray<RealT, DofCt> jacobian{};        ///< Coordinate Jacobian J_j = df/dx_j.
-  MdArray<RealT, DofCt, DofCt> hessian{};  ///< Coordinate Hessian H_jk = d^2 f/(dx_j dx_k).
-  QuadratureResult quadrature_result{};    ///< Quadrature status from the differentiated evaluation.
-  bool has_active_points = false;          ///< Activation from the differentiated evaluation.
+  RealT value = 0.0;                               ///< Scalar function value f(x).
+  MdArray<RealT, NumCoords> jacobian{};            ///< Coordinate Jacobian J_j = df/dx_j.
+  MdArray<RealT, NumCoords, NumCoords> hessian{};  ///< Coordinate Hessian H_jk = d^2 f/(dx_j dx_k).
+  QuadratureResult quadrature_result{};            ///< Quadrature status from the differentiated evaluation.
+  bool has_active_points = false;                  ///< Activation from the differentiated evaluation.
 };
 
 /**
@@ -90,12 +91,12 @@ struct PairValueJacobianHessian {
 template <typename Function>
 concept CoordinateFunctionType =
     requires {
-      typename std::integral_constant<IndexT, Function::value_ct>;
-      typename std::integral_constant<IndexT, Function::coord_ct>;
-      requires( Function::value_ct > 0 && Function::coord_ct > 0 );
-    } && requires( const Function& function, MdSpan<const RealT, Function::coord_ct> coordinates,
+      typename std::integral_constant<IndexT, Function::num_values>;
+      typename std::integral_constant<IndexT, Function::num_coords>;
+      requires( Function::num_values > 0 && Function::num_coords > 0 );
+    } && requires( const Function& function, MdSpan<const RealT, Function::num_coords> coordinates,
                    const std::remove_cvref_t<decltype( function.evaluate( coordinates ) )>& result ) {
-      { result.values() } -> std::same_as<MdArray<RealT, Function::value_ct>>;
+      { result.values() } -> std::same_as<MdArray<RealT, Function::num_values>>;
       requires std::same_as<std::remove_cvref_t<decltype( result.quadrature_result )>, QuadratureResult>;
       requires std::same_as<std::remove_cvref_t<decltype( result.has_active_points )>, bool>;
     };
@@ -113,14 +114,14 @@ concept PairFunctionType =
     requires {
       typename Function::FirstGeometry;
       typename Function::SecondGeometry;
-      typename std::integral_constant<IndexT, Function::value_ct>;
-      typename std::integral_constant<IndexT, Function::geom1_coord_ct>;
-      typename std::integral_constant<IndexT, Function::geom2_coord_ct>;
-      typename std::integral_constant<IndexT, Function::coord_ct>;
-      requires( Function::value_ct > 0 && Function::geom1_coord_ct > 0 && Function::geom2_coord_ct > 0 );
-      requires( Function::FirstGeometry::Coords::size() == Function::geom1_coord_ct );
-      requires( Function::SecondGeometry::Coords::size() == Function::geom2_coord_ct );
-      requires( Function::coord_ct == Function::geom1_coord_ct + Function::geom2_coord_ct );
+      typename std::integral_constant<IndexT, Function::num_values>;
+      typename std::integral_constant<IndexT, Function::num_geom1_coords>;
+      typename std::integral_constant<IndexT, Function::num_geom2_coords>;
+      typename std::integral_constant<IndexT, Function::num_coords>;
+      requires( Function::num_values > 0 && Function::num_geom1_coords > 0 && Function::num_geom2_coords > 0 );
+      requires( Function::FirstGeometry::Coords::size() == Function::num_geom1_coords );
+      requires( Function::SecondGeometry::Coords::size() == Function::num_geom2_coords );
+      requires( Function::num_coords == Function::num_geom1_coords + Function::num_geom2_coords );
     } &&
     requires( const Function& function, typename Function::FirstGeometry::Coords coordinates1,
               typename Function::SecondGeometry::Coords coordinates2, const typename Function::FirstGeometry& geometry1,
@@ -128,7 +129,7 @@ concept PairFunctionType =
               const std::remove_cvref_t<decltype( function.evaluate( geometry1, geometry2 ) )>& result ) {
       { typename Function::FirstGeometry( coordinates1 ) } -> std::same_as<typename Function::FirstGeometry>;
       { typename Function::SecondGeometry( coordinates2 ) } -> std::same_as<typename Function::SecondGeometry>;
-      { result.values() } -> std::same_as<MdArray<RealT, Function::value_ct>>;
+      { result.values() } -> std::same_as<MdArray<RealT, Function::num_values>>;
       requires std::same_as<std::remove_cvref_t<decltype( result.quadrature_result )>, QuadratureResult>;
       requires std::same_as<std::remove_cvref_t<decltype( result.has_active_points )>, bool>;
     };
@@ -144,8 +145,8 @@ concept PairFunctionType =
 template <PairFunctionType PairFunction>
 class PairCoordinateFunction {
  public:
-  static constexpr IndexT value_ct = PairFunction::value_ct;  ///< Number of function outputs.
-  static constexpr IndexT coord_ct = PairFunction::coord_ct;  ///< Combined coordinate count.
+  static constexpr IndexT num_values = PairFunction::num_values;  ///< Number of function outputs.
+  static constexpr IndexT num_coords = PairFunction::num_coords;  ///< Combined coordinate count.
 
   /** @brief Copy the fixed physics configuration. @param pair_function Geometry pair function copied into this object.
    */
@@ -156,11 +157,11 @@ class PairCoordinateFunction {
    * @param coordinates Geometry1 coordinates followed by geometry2 coordinates.
    * @return Function values, quadrature status, and activation, following the pair function's evaluation contract.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto evaluate( MdSpan<const RealT, coord_ct> coordinates ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto evaluate( MdSpan<const RealT, num_coords> coordinates ) const
   {
-    const typename PairFunction::FirstGeometry geometry1( { coordinates.data(), PairFunction::geom1_coord_ct } );
+    const typename PairFunction::FirstGeometry geometry1( { coordinates.data(), PairFunction::num_geom1_coords } );
     const typename PairFunction::SecondGeometry geometry2(
-        { coordinates.data() + PairFunction::geom1_coord_ct, PairFunction::geom2_coord_ct } );
+        { coordinates.data() + PairFunction::num_geom1_coords, PairFunction::num_geom2_coords } );
     return pair_function_.evaluate( geometry1, geometry2 );
   }
 
@@ -175,10 +176,10 @@ class PairCoordinateFunction {
  * sum_i w_i J_ij and sum_i w_i H_ijk, where H_ijk = d^2 f_i/(dx_j dx_k).
  * For scalar f, valueJacobianAndHessian() returns f, its coordinate Jacobian and Hessian, and quadrature state.
  *
- * Function supplies positive static `value_ct` and `coord_ct` members and a host/device-callable evaluate()
- * taking MdSpan<const RealT, coord_ct>. Wrap a geometry pair function in PairCoordinateFunction so geometry
+ * Function supplies positive static `num_values` and `num_coords` members and a host/device-callable evaluate()
+ * taking MdSpan<const RealT, num_coords>. Wrap a geometry pair function in PairCoordinateFunction so geometry
  * construction remains inside the differentiated calculation. The result's values() method returns an
- * MdArray<RealT, value_ct>; quadrature_result and has_active_points describe the calculation. All operations use
+ * MdArray<RealT, num_values>; quadrature_result and has_active_points describe the calculation. All operations use
  * this evaluate() interface. Only coordinates are differentiated; settings and output weights are held fixed. Output
  * weights multiply components of f independently of any quadrature weights already included in f. Scalar energies and
  * vector residuals use the same Jacobian and Hessian terminology, always referring to derivatives of the input function
@@ -197,8 +198,8 @@ class PairCoordinateFunction {
 template <CoordinateFunctionType Function>
 class EnzymePairDerivative {
  public:
-  static constexpr IndexT value_ct = Function::value_ct;  ///< Number of pair-function outputs.
-  static constexpr IndexT coord_ct = Function::coord_ct;  ///< Number of active coordinates.
+  static constexpr IndexT num_values = Function::num_values;  ///< Number of pair-function outputs.
+  static constexpr IndexT num_coords = Function::num_coords;  ///< Number of active coordinates.
 
   /**
    * @brief Calculate all function values and their coordinate Jacobian.
@@ -225,19 +226,19 @@ class EnzymePairDerivative {
    * @return Function values, their value-by-coordinate Jacobian, quadrature status, and activation. Status is not
    * checked.
    */
-  TRIBOL_HOST_DEVICE static PairValueJacobian<value_ct, coord_ct> valuesAndJacobian(
-      MdSpan<const RealT, coord_ct> coordinates, const Function& function )
+  TRIBOL_HOST_DEVICE static PairValueJacobian<num_values, num_coords> valuesAndJacobian(
+      MdSpan<const RealT, num_coords> coordinates, const Function& function )
   {
-    PairValueJacobian<value_ct, coord_ct> result{};
-    for ( IndexT coordinate = 0; coordinate < coord_ct; ++coordinate ) {
-      MdArray<RealT, coord_ct> coordinate_seed{};
-      MdArray<RealT, value_ct> derivatives{};
+    PairValueJacobian<num_values, num_coords> result{};
+    for ( IndexT coordinate = 0; coordinate < num_coords; ++coordinate ) {
+      MdArray<RealT, num_coords> coordinate_seed{};
+      MdArray<RealT, num_values> derivatives{};
       coordinate_seed[coordinate] = 1.0;
       __enzyme_fwddiff<void>( (void*)evaluateKernel, TRIBOL_ENZYME_DUP, coordinates.data(), coordinate_seed.data(),
                               TRIBOL_ENZYME_CONST, (const void*)&function, TRIBOL_ENZYME_DUP, result.values.data(),
                               derivatives.data(), TRIBOL_ENZYME_CONST, &result.quadrature_result, TRIBOL_ENZYME_CONST,
                               &result.has_active_points );
-      for ( IndexT value = 0; value < value_ct; ++value ) {
+      for ( IndexT value = 0; value < num_values; ++value ) {
         result.jacobian( value, coordinate ) = derivatives[value];
       }
     }
@@ -255,7 +256,7 @@ class EnzymePairDerivative {
    * its type, and the outputs are
    * (G0, G1, A0, A1), and its quadrature has been checked. A nodal LM calculation could use fixed multipliers:
    * @code
-   * const MdArray<RealT, Function::value_ct> weights{ 2.0, 3.0, 0.0, 0.0 };
+   * const MdArray<RealT, Function::num_values> weights{ 2.0, 3.0, 0.0, 0.0 };
    * const auto result = EnzymePairDerivative<Function>::weightedJacobianAndHessian(
    *     coordinates.view(), f, weights.view() );
    * @endcode
@@ -268,17 +269,17 @@ class EnzymePairDerivative {
    * @param weights Fixed weights multiplying function outputs, distinct from quadrature weights.
    * @return Weighted Jacobian and Hessian; function values and quadrature status are not returned or checked.
    */
-  TRIBOL_HOST_DEVICE static PairWeightedJacobianHessian<coord_ct> weightedJacobianAndHessian(
-      MdSpan<const RealT, coord_ct> coordinates, const Function& function, MdSpan<const RealT, value_ct> weights )
+  TRIBOL_HOST_DEVICE static PairWeightedJacobianHessian<num_coords> weightedJacobianAndHessian(
+      MdSpan<const RealT, num_coords> coordinates, const Function& function, MdSpan<const RealT, num_values> weights )
   {
-    PairWeightedJacobianHessian<coord_ct> result{};
-    for ( IndexT column = 0; column < coord_ct; ++column ) {
-      MdArray<RealT, coord_ct> coordinate_seed{}, hessian_column{};
+    PairWeightedJacobianHessian<num_coords> result{};
+    for ( IndexT column = 0; column < num_coords; ++column ) {
+      MdArray<RealT, num_coords> coordinate_seed{}, hessian_column{};
       coordinate_seed[column] = 1.0;
       __enzyme_fwddiff<void>( (void*)weightedJacobianKernel, TRIBOL_ENZYME_DUP, coordinates.data(),
                               coordinate_seed.data(), TRIBOL_ENZYME_CONST, (const void*)&function, TRIBOL_ENZYME_CONST,
                               weights.data(), TRIBOL_ENZYME_DUP, result.jacobian.data(), hessian_column.data() );
-      for ( IndexT row = 0; row < coord_ct; ++row ) {
+      for ( IndexT row = 0; row < num_coords; ++row ) {
         result.hessian( row, column ) = hessian_column[row];
       }
     }
@@ -309,16 +310,16 @@ class EnzymePairDerivative {
    * as the force's coordinate Jacobian.
    *
    * @param coordinates Current pair coordinates.
-   * @param function Fixed scalar pair-function configuration, with value_ct equal to one.
+   * @param function Fixed scalar pair-function configuration, with num_values equal to one.
    * @return Scalar value, Jacobian, Hessian, quadrature status, and activation; failed or inactive outputs are zero.
    */
-  TRIBOL_HOST_DEVICE static PairValueJacobianHessian<coord_ct> valueJacobianAndHessian(
-      MdSpan<const RealT, coord_ct> coordinates, const Function& function )
-    requires( value_ct == 1 )
+  TRIBOL_HOST_DEVICE static PairValueJacobianHessian<num_coords> valueJacobianAndHessian(
+      MdSpan<const RealT, num_coords> coordinates, const Function& function )
+    requires( num_values == 1 )
   {
-    PairValueJacobianHessian<coord_ct> result{};
-    for ( IndexT column = 0; column < coord_ct; ++column ) {
-      MdArray<RealT, coord_ct> coordinate_seed{}, hessian_column{};
+    PairValueJacobianHessian<num_coords> result{};
+    for ( IndexT column = 0; column < num_coords; ++column ) {
+      MdArray<RealT, num_coords> coordinate_seed{}, hessian_column{};
       coordinate_seed[column] = 1.0;
       __enzyme_fwddiff<void>( (void*)scalarJacobianKernel, TRIBOL_ENZYME_DUP, coordinates.data(),
                               coordinate_seed.data(), TRIBOL_ENZYME_CONST, (const void*)&function, TRIBOL_ENZYME_DUP,
@@ -330,7 +331,7 @@ class EnzymePairDerivative {
         result.jacobian = {};
         return result;
       }
-      for ( IndexT row = 0; row < coord_ct; ++row ) {
+      for ( IndexT row = 0; row < num_coords; ++row ) {
         result.hessian( row, column ) = hessian_column[row];
       }
     }
@@ -351,12 +352,12 @@ class EnzymePairDerivative {
                                                        RealT* jacobian, RealT* value,
                                                        QuadratureResult* quadrature_result, bool* has_active_points )
   {
-    MdArray<RealT, coord_ct> derivative{};
+    MdArray<RealT, num_coords> derivative{};
     RealT value_seed = 1.0;
     __enzyme_autodiff<void>( (void*)evaluateKernel, TRIBOL_ENZYME_DUP, coordinates, derivative.data(),
                              TRIBOL_ENZYME_CONST, function_void, TRIBOL_ENZYME_DUP, value, &value_seed,
                              TRIBOL_ENZYME_CONST, quadrature_result, TRIBOL_ENZYME_CONST, has_active_points );
-    for ( IndexT coordinate = 0; coordinate < coord_ct; ++coordinate ) {
+    for ( IndexT coordinate = 0; coordinate < num_coords; ++coordinate ) {
       jacobian[coordinate] = derivative[coordinate];
     }
   }
@@ -367,7 +368,7 @@ class EnzymePairDerivative {
    * Keep status and activation in separate inactive outputs so Enzyme differentiates only the numerical values.
    * @param coordinates Active coordinate storage.
    * @param function_void Pointer to the fixed Function configuration, passed without differentiation.
-   * @param[out] values Function values, with value_ct entries written and differentiated.
+   * @param[out] values Function values, with num_values entries written and differentiated.
    * @param[out] quadrature_result Quadrature status, passed without differentiation.
    * @param[out] has_active_points Activation, passed without differentiation.
    */
@@ -375,14 +376,14 @@ class EnzymePairDerivative {
                                                  QuadratureResult* quadrature_result, bool* has_active_points )
   {
     const auto& function = *static_cast<const Function*>( function_void );
-    const auto result = function.evaluate( { coordinates, coord_ct } );
+    const auto result = function.evaluate( { coordinates, num_coords } );
     const auto function_values = result.values();
-    for ( IndexT value = 0; value < value_ct; ++value ) {
+    for ( IndexT value = 0; value < num_values; ++value ) {
       values[value] = function_values[value];
     }
     // Copy fields individually to keep structure padding out of Enzyme's type analysis.
     quadrature_result->status = result.quadrature_result.status;
-    quadrature_result->required_point_count = result.quadrature_result.required_point_count;
+    quadrature_result->num_required_points = result.quadrature_result.num_required_points;
     *has_active_points = result.has_active_points;
   }
 
@@ -390,16 +391,16 @@ class EnzymePairDerivative {
    * @brief Compute sum_i weights_i * f_i(x) for Enzyme's reverse differentiation.
    * @param coordinates Active coordinate storage.
    * @param function_void Pointer to the fixed Function configuration, passed without differentiation.
-   * @param weights Fixed output weights, with value_ct entries.
+   * @param weights Fixed output weights, with num_values entries.
    * @param[out] scalar Weighted scalar value.
    */
   TRIBOL_HOST_DEVICE static void weightedValueKernel( const RealT* coordinates, const void* function_void,
                                                       const RealT* weights, RealT* scalar )
   {
     const auto& function = *static_cast<const Function*>( function_void );
-    const auto values = function.evaluate( { coordinates, coord_ct } ).values();
+    const auto values = function.evaluate( { coordinates, num_coords } ).values();
     *scalar = 0.0;
-    for ( IndexT value = 0; value < value_ct; ++value ) {
+    for ( IndexT value = 0; value < num_values; ++value ) {
       *scalar += weights[value] * values[value];
     }
   }
@@ -408,19 +409,19 @@ class EnzymePairDerivative {
    * @brief Compute the weighted Jacobian by reverse differentiation so Enzyme can differentiate it for the Hessian.
    * @param coordinates Active coordinate storage.
    * @param function_void Pointer to the fixed Function configuration, passed without differentiation.
-   * @param weights Fixed output weights, with value_ct entries.
+   * @param weights Fixed output weights, with num_values entries.
    * @param[out] jacobian Weighted Jacobian sum_i weights_i * df_i/dx_j, with one entry per coordinate.
    */
   TRIBOL_HOST_DEVICE static void weightedJacobianKernel( const RealT* coordinates, const void* function_void,
                                                          const RealT* weights, RealT* jacobian )
   {
-    MdArray<RealT, coord_ct> derivative{};
+    MdArray<RealT, num_coords> derivative{};
     RealT scalar = 0.0;
     RealT scalar_seed = 1.0;
     __enzyme_autodiff<void>( (void*)weightedValueKernel, TRIBOL_ENZYME_DUP, coordinates, derivative.data(),
                              TRIBOL_ENZYME_CONST, function_void, TRIBOL_ENZYME_CONST, weights, TRIBOL_ENZYME_DUP,
                              &scalar, &scalar_seed );
-    for ( IndexT coordinate = 0; coordinate < coord_ct; ++coordinate ) {
+    for ( IndexT coordinate = 0; coordinate < num_coords; ++coordinate ) {
       jacobian[coordinate] = derivative[coordinate];
     }
   }

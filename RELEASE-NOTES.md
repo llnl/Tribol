@@ -117,15 +117,18 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Pair functions expose `evaluate(geometry1, geometry2)` as their single calculation interface, with `FirstGeometry`
   and `SecondGeometry` types. Callers construct the geometries from their separate coordinate views and obtain
   numerical values through the result's `values()` method. `PairFunctionType` checks geometry construction, coordinate
-  counts (`geom1_coord_ct`, `geom2_coord_ct`, and their sum `coord_ct`), and result types. Coordinate functions and
-  `EnzymePairDerivative` likewise use `coord_ct` for their input size. `PairCoordinateFunction` adapts geometry pair
+  counts (`num_geom1_coords`, `num_geom2_coords`, and their sum `num_coords`), and result types. Coordinate functions and
+  `EnzymePairDerivative` likewise use `num_coords` for their input size. `PairCoordinateFunction` adapts geometry pair
   functions for coordinate differentiation and constructs both geometries inside AD, including derivatives of cached
   geometry quantities. `CoordinateFunctionType` checks the coordinate interface used by `EnzymePairDerivative`;
   functions without geometry types can still implement that interface directly. Scalar value/Jacobian/Hessian
   operations require exactly one output.
-- New pair-evaluation and assembly count identifiers use `ct`, including `value_ct`, `node_ct`, `pair_ct`,
-  `ValueCt`, and `BlockCt`. Buffer and vector-assembler accessors are `pairCt()` and `valueCt()`. Existing shared
-  basis and quadrature API names are unchanged.
+- Size variables use `num_...`, template parameters use `Num...`, and size accessors use `numberOf...()`, including
+  `num_values`, `NumBlocks`, `numberOfPairs()`, and `numberOfValues()`. `FaceElementTraits::node_count` and
+  `BasisFunction::node_count` are now `num_nodes`; `getFaceNodeCount()` is now `numberOfFaceNodes()`.
+  `QuadratureResult::required_point_count` is now `num_required_points`, and rule generators expose `max_num_points`
+  instead of `max_points`. `LinearEdgeGeometry::vertex_count` is now `num_vertices`. These API renames require caller
+  updates.
 - Scalar pair differentiation returns the value, Jacobian, Hessian, quadrature status, and activation together through
   `EnzymePairDerivative::valueJacobianAndHessian()`. The scalar value/Jacobian/Hessian kernel reuses those AD outputs,
   removing separate value and Jacobian calculations while retaining active zero-value derivatives.
@@ -215,7 +218,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   The basis coordinate-array alias is renamed from `ParentCoordinates` to `ParentCoords`, and
   `GetParentNodeCoordinates()` is renamed to `getParentNodeCoords()`.
   Methods and functions in `BasisFunction.hpp` use lower camelCase, including `eval()`, `evalParentDerivatives()`,
-  `getFaceNodeCount()`, `mapToPhysical()`, and the interpolation, Jacobian, and derivative utilities.
+  `numberOfFaceNodes()`, `mapToPhysical()`, and the interpolation, Jacobian, and derivative utilities.
   Coordinates and weights use `RealT`. Mapping types identify their element geometries; the implemented mapping supports
   straight two-dimensional edges. Co-oriented edge pairs produce valid zero-point rules before point generation,
   including when mapping existing integration-surface quadrature points; they cannot contribute tributary area or

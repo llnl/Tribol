@@ -83,18 +83,18 @@ class EnergyMortarQuadratureSettingsTest : public testing::TestWithParam<std::tu
 
 /**
  * @brief Check the selected formulation specialization without exposing generated quadrature as a public API.
- * @tparam Ct Expected Gauss point count.
+ * @tparam NumPoints Expected Gauss point count.
  * @param formulation Factory-created contact formulation.
  * @param location Selected enforcement location.
  * @param execution_mode Expected execution specialization.
  * @return Whether the formulation has the expected rule-generator and enforcement types.
  */
-template <int Ct>
-bool usesPointCt( tribol::ContactFormulation* formulation, tribol::EnforcementLocation location,
-                  tribol::ExecutionMode execution_mode )
+template <int NumPoints>
+bool usesNumPoints( tribol::ContactFormulation* formulation, tribol::EnforcementLocation location,
+                    tribol::ExecutionMode execution_mode )
 {
   using RuleGenerator = tribol::PairQuadratureRuleGenerator<tribol::SmoothedProjectedEdgeMapping,
-                                                            tribol::EdgeQuadratureRuleGenerator<Ct>>;
+                                                            tribol::EdgeQuadratureRuleGenerator<NumPoints>>;
   return tribol::dispatchExecutionMode( execution_mode, [&]<tribol::ExecutionMode Exec>() {
     if ( location == tribol::EnforcementLocation::Nodal ) {
       return dynamic_cast<tribol::NodalEnergyMortar<RuleGenerator, Exec, tribol::PenaltyEnforcement>*>( formulation ) !=
@@ -114,11 +114,11 @@ TEST_P( EnergyMortarQuadratureSettingsTest, selects_and_rebuilds_adapter )
     auto* formulation = cs->getContactFormulation();
     ASSERT_NE( formulation, nullptr );
     if ( order <= 1 ) {
-      EXPECT_TRUE( usesPointCt<1>( formulation, location, cs->getExecutionMode() ) );
+      EXPECT_TRUE( usesNumPoints<1>( formulation, location, cs->getExecutionMode() ) );
     } else if ( order <= 3 ) {
-      EXPECT_TRUE( usesPointCt<2>( formulation, location, cs->getExecutionMode() ) );
+      EXPECT_TRUE( usesNumPoints<2>( formulation, location, cs->getExecutionMode() ) );
     } else {
-      EXPECT_TRUE( usesPointCt<3>( formulation, location, cs->getExecutionMode() ) );
+      EXPECT_TRUE( usesNumPoints<3>( formulation, location, cs->getExecutionMode() ) );
     }
   };
   check( quadratureOrder() );
@@ -138,7 +138,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, selects_and_rebuilds_adapter )
   tribol::setQuadratureOrder( 0, 2 );
   EXPECT_FALSE( cs->hasContactFormulation() );
   cs->updateContactFormulation();
-  EXPECT_TRUE( usesPointCt<2>( cs->getContactFormulation(), location, cs->getExecutionMode() ) );
+  EXPECT_TRUE( usesNumPoints<2>( cs->getContactFormulation(), location, cs->getExecutionMode() ) );
 }
 
 // Gap and force calls must work independently, initialize only their outputs, and leave earlier results unchanged.
@@ -339,11 +339,11 @@ TEST_P( EnergyMortarRegistrationTest, constructs_formulation_before_decompositio
   ASSERT_TRUE( cs.hasContactFormulation() );
   const auto location = std::get<0>( GetParam() );
   if ( quadratureOrder() == 1 ) {
-    EXPECT_TRUE( usesPointCt<1>( cs.getContactFormulation(), location, cs.getExecutionMode() ) );
+    EXPECT_TRUE( usesNumPoints<1>( cs.getContactFormulation(), location, cs.getExecutionMode() ) );
   } else if ( quadratureOrder() == 3 ) {
-    EXPECT_TRUE( usesPointCt<2>( cs.getContactFormulation(), location, cs.getExecutionMode() ) );
+    EXPECT_TRUE( usesNumPoints<2>( cs.getContactFormulation(), location, cs.getExecutionMode() ) );
   } else {
-    EXPECT_TRUE( usesPointCt<3>( cs.getContactFormulation(), location, cs.getExecutionMode() ) );
+    EXPECT_TRUE( usesNumPoints<3>( cs.getContactFormulation(), location, cs.getExecutionMode() ) );
   }
   tribol::updateMfemParallelDecomposition( 1, true );
   ASSERT_EQ( tribol::update( 0, 0.0, dt ), 0 );

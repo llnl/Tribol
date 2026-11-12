@@ -26,8 +26,8 @@ namespace tribol {
 template <int NumPoints>
 struct EdgeQuadratureRuleGenerator {
   static_assert( NumPoints >= 1 && NumPoints <= 3 );
-  static constexpr int coordinate_dimension = 1;  ///< Number of coordinate components per integration point.
-  static constexpr int max_points = NumPoints;    ///< Maximum number of points in a successfully generated rule.
+  static constexpr int coordinate_dimension = 1;    ///< Number of coordinate components per integration point.
+  static constexpr int max_num_points = NumPoints;  ///< Maximum number of points in a successfully generated rule.
   /// Maximum polynomial degree integrated exactly in integration-surface coordinates.
   static constexpr int polynomial_order = 2 * NumPoints - 1;
 
@@ -68,7 +68,7 @@ struct EdgeQuadratureRuleGenerator {
       rule.coords( q, 0 ) = scale * gaussPoint( q ) + center;
       rule.weights[q] = scale * gaussWeight( q );
     }
-    rule.result.required_point_count = NumPoints;
+    rule.result.num_required_points = NumPoints;
     return rule;
   }
 

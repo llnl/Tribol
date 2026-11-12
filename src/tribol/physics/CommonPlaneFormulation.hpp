@@ -30,13 +30,13 @@ namespace tribol {
 template <typename BaseRuleGenerator, typename GapDefinition = CommonPlaneGap>
 class CommonPlanePairFunction {
  public:
-  using FirstGeometry = LinearEdgeGeometry;                                 ///< Geometry of the first directed edge.
-  using SecondGeometry = LinearEdgeGeometry;                                ///< Geometry of the second directed edge.
-  static constexpr IndexT geom1_coord_ct = FirstGeometry::Coords::size();   ///< Geometry1 coordinate count.
-  static constexpr IndexT geom2_coord_ct = SecondGeometry::Coords::size();  ///< Geometry2 coordinate count.
-  static constexpr IndexT coord_ct = geom1_coord_ct + geom2_coord_ct;       ///< Combined coordinate count.
-  static constexpr IndexT value_ct = coord_ct;                              ///< Residual entry count.
-  using PrimalResult = PairResidualValue<coord_ct>;                         ///< Residual and quadrature state.
+  using FirstGeometry = LinearEdgeGeometry;                                   ///< Geometry of the first directed edge.
+  using SecondGeometry = LinearEdgeGeometry;                                  ///< Geometry of the second directed edge.
+  static constexpr IndexT num_geom1_coords = FirstGeometry::Coords::size();   ///< Geometry1 coordinate count.
+  static constexpr IndexT num_geom2_coords = SecondGeometry::Coords::size();  ///< Geometry2 coordinate count.
+  static constexpr IndexT num_coords = num_geom1_coords + num_geom2_coords;   ///< Combined coordinate count.
+  static constexpr IndexT num_values = num_coords;                            ///< Residual entry count.
+  using PrimalResult = PairResidualValue<num_coords>;                         ///< Residual and quadrature state.
 
   /** @brief Store fixed configuration. @param rule_generator Pair quadrature rule generator. @param penalty Stiffness.
    * @param gap Gap callable.
@@ -55,7 +55,7 @@ class CommonPlanePairFunction {
   {
     const auto points = rule_generator_.generate( geometry1, geometry2 );
     PrimalResult result{ {}, points.result, false };
-    if ( points.result.status != QuadratureStatus::Success || points.result.required_point_count == 0 ) {
+    if ( points.result.status != QuadratureStatus::Success || points.result.num_required_points == 0 ) {
       return result;
     }
     const auto line = CommonPlaneEdgeMapping::computeCommonPlaneLine( geometry1, geometry2 );
@@ -63,7 +63,7 @@ class CommonPlanePairFunction {
     RealT measure = 0.0;
     RealT center1 = 0.0;
     RealT center2 = 0.0;
-    for ( IndexT point = 0; point < points.result.required_point_count; ++point ) {
+    for ( IndexT point = 0; point < points.result.num_required_points; ++point ) {
       measure += points.weights[point];
       center1 += points.weights[point] * points.geometry1_coords( point, 0 );
       center2 += points.weights[point] * points.geometry2_coords( point, 0 );
@@ -75,16 +75,16 @@ class CommonPlanePairFunction {
     result.has_active_points = true;
     const RealT pressure = penalty_ * gap;
     using Basis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
-    for ( IndexT point = 0; point < points.result.required_point_count; ++point ) {
-      MdArray<RealT, Basis::node_count> basis1{}, basis2{};
+    for ( IndexT point = 0; point < points.result.num_required_points; ++point ) {
+      MdArray<RealT, Basis::num_nodes> basis1{}, basis2{};
       Basis::eval( { &points.geometry1_coords( point, 0 ), Basis::parametric_dimension }, basis1.view() );
       Basis::eval( { &points.geometry2_coords( point, 0 ), Basis::parametric_dimension }, basis2.view() );
-      for ( IndexT node = 0; node < Basis::node_count; ++node ) {
+      for ( IndexT node = 0; node < Basis::num_nodes; ++node ) {
         for ( IndexT component = 0; component < LinearEdgeGeometry::spatial_dimension; ++component ) {
           const IndexT row = node * LinearEdgeGeometry::spatial_dimension + component;
           const RealT traction = points.weights[point] * pressure * line.normal[component];
           result.residual[row] += basis1[node] * traction;
-          result.residual[geom1_coord_ct + row] -= basis2[node] * traction;
+          result.residual[num_geom1_coords + row] -= basis2[node] * traction;
         }
       }
     }

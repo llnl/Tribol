@@ -52,10 +52,10 @@ concept CompatibleQuadratureMappingAndGenerator =
     requires {
       typename Generator::IntegrationSurfaceRule;
       typename std::integral_constant<int, Generator::coordinate_dimension>;
-      typename std::integral_constant<int, Generator::max_points>;
+      typename std::integral_constant<int, Generator::max_num_points>;
       typename std::integral_constant<int, Generator::polynomial_order>;
       requires( Generator::coordinate_dimension == 1 || Generator::coordinate_dimension == 2 );
-      requires( Generator::max_points > 0 );
+      requires( Generator::max_num_points > 0 );
     } &&
     requires( const Generator& generator, const Mapping& mapping, const typename Mapping::FirstGeometry& geometry1,
               const typename Mapping::SecondGeometry& geometry2,
@@ -70,7 +70,7 @@ concept CompatibleQuadratureMappingAndGenerator =
       {
         integration_surface_rule.getView()
       } -> std::same_as<IntegrationSurfaceRuleView<Generator::coordinate_dimension>>;
-      QuadratureResult{ integration_surface_rule.result.status, integration_surface_rule.result.required_point_count };
+      QuadratureResult{ integration_surface_rule.result.status, integration_surface_rule.result.num_required_points };
       {
         mapping.mapToElements( geometry1, geometry2, integration_surface_rule_view, output )
       } -> std::same_as<QuadratureResult>;
@@ -98,7 +98,7 @@ class PairQuadratureRuleGenerator {
   using FirstGeometry = typename Mapping::FirstGeometry;      ///< Geometry type of the first element.
   using SecondGeometry = typename Mapping::SecondGeometry;    ///< Geometry type of the second element.
   /// Maximum number of points in a successfully generated rule.
-  static constexpr int max_points = IntegrationSurfaceRuleGenerator::max_points;
+  static constexpr int max_num_points = IntegrationSurfaceRuleGenerator::max_num_points;
   /// Maximum polynomial degree integrated exactly in integration-surface coordinates.
   static constexpr int polynomial_order = IntegrationSurfaceRuleGenerator::polynomial_order;
 
@@ -120,7 +120,7 @@ class PairQuadratureRuleGenerator {
   /** @brief Generated pair quadrature rule containing parametric coordinates, physical weights, and generation status.
    */
   using Rule =
-      PairQuadratureRule<FirstGeometry::parametric_dimension, SecondGeometry::parametric_dimension, max_points>;
+      PairQuadratureRule<FirstGeometry::parametric_dimension, SecondGeometry::parametric_dimension, max_num_points>;
 
   /**
    * @brief Construct the integration surface and generate quadrature points and weights in its coordinates.
@@ -204,7 +204,7 @@ class PairQuadratureRuleGenerator {
         integration_surface_rule_generator_.generate( mapping_.makeIntegrationSurface( geometry1, geometry2 ) );
     // Return fields explicitly so Enzyme can identify their integer types.
     if ( integration_surface_rule.result.status != QuadratureStatus::Success ) {
-      return { integration_surface_rule.result.status, integration_surface_rule.result.required_point_count };
+      return { integration_surface_rule.result.status, integration_surface_rule.result.num_required_points };
     }
     return mapping_.mapToElements( geometry1, geometry2, integration_surface_rule.getView(), output );
   }

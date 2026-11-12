@@ -116,17 +116,17 @@ struct CommonPlaneEdgeMapping {
     if ( !opposingNormals( edge1, edge2 ) ) {
       return { QuadratureStatus::Success, 0 };
     }
-    const auto ct = reference.numberOfPoints();
-    if ( output.capacity() < ct ) {
-      return { QuadratureStatus::InsufficientCapacity, ct };
+    const auto num_points = reference.numberOfPoints();
+    if ( output.capacity() < num_points ) {
+      return { QuadratureStatus::InsufficientCapacity, num_points };
     }
-    if ( ct == 0 ) {
+    if ( num_points == 0 ) {
       return { QuadratureStatus::Success, 0 };
     }
     const auto line = computeCommonPlaneLine( edge1, edge2 );
     const RealT determinant1 = Vector::cross_product( edge1.direction(), line.normal )[2];
     const RealT determinant2 = Vector::cross_product( edge2.direction(), line.normal )[2];
-    for ( IndexT q = 0; q < ct; ++q ) {
+    for ( IndexT q = 0; q < num_points; ++q ) {
       const auto point = line.origin + reference.coords( q, 0 ) * line.tangent;
       output.geometry1_coords( q, 0 ) =
           2.0 * Vector::cross_product( Vector( edge1.origin(), point ), line.normal )[2] / determinant1 - 1.0;
@@ -134,7 +134,7 @@ struct CommonPlaneEdgeMapping {
           2.0 * Vector::cross_product( Vector( edge2.origin(), point ), line.normal )[2] / determinant2 - 1.0;
       output.weights[q] = reference.weights[q];
     }
-    return { QuadratureStatus::Success, ct };
+    return { QuadratureStatus::Success, num_points };
   }
 
  private:

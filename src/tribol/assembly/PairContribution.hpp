@@ -16,40 +16,43 @@
 
 namespace tribol {
 
-/** @brief Device-copyable pair values and quadrature state without derivatives. @tparam ValueCt Values per pair. */
-template <IndexT ValueCt>
+/** @brief Device-copyable pair values and quadrature state without derivatives. @tparam NumValues Values per pair. */
+template <IndexT NumValues>
 struct PairValueView {
   RealT* values{ nullptr };                 ///< Values in `[value][pair]` order.
   QuadratureResult* quadrature{ nullptr };  ///< Pair quadrature status and point count.
   IndexT* has_active_points{ nullptr };     ///< Nonzero when a pair contains an active contact point.
-  IndexT pair_ct{ 0 };                      ///< Number of writable pair slots.
+  IndexT num_pairs{ 0 };                    ///< Number of writable pair slots.
 
   /** @brief Store one value. @param pair Pair slot. @param value Value component. @param result Numerical value. */
   TRIBOL_HOST_DEVICE void setValue( IndexT pair, IndexT value, RealT result ) const
   {
-    values[value * pair_ct + pair] = result;
+    values[value * num_pairs + pair] = result;
   }
   /** @brief Read one value. @param pair Pair slot. @param value Value component. @return Numerical value. */
-  TRIBOL_HOST_DEVICE RealT value( IndexT pair, IndexT value ) const { return values[value * pair_ct + pair]; }
+  TRIBOL_HOST_DEVICE RealT value( IndexT pair, IndexT value ) const { return values[value * num_pairs + pair]; }
 };
 
-/** @brief Own pair values and quadrature state without derivative storage. @tparam ValueCt Values per pair. */
-template <IndexT ValueCt>
+/** @brief Own pair values and quadrature state without derivative storage. @tparam NumValues Values per pair. */
+template <IndexT NumValues>
 class PairValueBuffer {
  public:
-  /** @brief Allocate the supplied pair slots. @param pair_ct Pair count. @param allocator_id Execution allocator. */
-  PairValueBuffer( IndexT pair_ct, int allocator_id )
-      : pair_ct_( pair_ct ),
-        values_( ValueCt * pair_ct, ValueCt * pair_ct, allocator_id ),
-        quadrature_( pair_ct, pair_ct, allocator_id ),
-        has_active_points_( pair_ct, pair_ct, allocator_id )
+  /** @brief Allocate the supplied pair slots. @param num_pairs Pair count. @param allocator_id Execution allocator. */
+  PairValueBuffer( IndexT num_pairs, int allocator_id )
+      : num_pairs_( num_pairs ),
+        values_( NumValues * num_pairs, NumValues * num_pairs, allocator_id ),
+        quadrature_( num_pairs, num_pairs, allocator_id ),
+        has_active_points_( num_pairs, num_pairs, allocator_id )
   {
   }
   /** @brief Return a writable view. @return View into this buffer's arrays; the buffer must remain alive while the view
    * is used. */
-  PairValueView<ValueCt> view() { return { values_.data(), quadrature_.data(), has_active_points_.data(), pair_ct_ }; }
+  PairValueView<NumValues> view()
+  {
+    return { values_.data(), quadrature_.data(), has_active_points_.data(), num_pairs_ };
+  }
   /** @brief Return pair slots. @return Number of pairs allocated. */
-  IndexT pairCt() const { return pair_ct_; }
+  IndexT numberOfPairs() const { return num_pairs_; }
   /** @brief Return the owning values. @return Values in `[value][pair]` order. */
   const Array1D<RealT>& values() const { return values_; }
   /** @brief Return quadrature results. @return One result per pair. */
@@ -58,7 +61,7 @@ class PairValueBuffer {
   const Array1D<IndexT>& activePoints() const { return has_active_points_; }
 
  private:
-  IndexT pair_ct_;                        ///< Allocated pair slots.
+  IndexT num_pairs_;                      ///< Allocated pair slots.
   Array1D<RealT> values_;                 ///< Numerical values in structure-of-arrays order.
   Array1D<QuadratureResult> quadrature_;  ///< Quadrature status for each pair.
   Array1D<IndexT> has_active_points_;     ///< Contact activation for each pair.
@@ -70,25 +73,25 @@ class PairValueBuffer {
  * Pair index is the contiguous dimension. When adjacent GPU threads write the same value or derivative component,
  * their writes are coalesced.
  *
- * @tparam ValueCt Number of scalar values produced by one pair.
- * @tparam DofCt Number of active pair coordinates.
+ * @tparam NumValues Number of scalar values produced by one pair.
+ * @tparam NumCoords Number of active pair coordinates.
  */
-template <IndexT ValueCt, IndexT DofCt>
+template <IndexT NumValues, IndexT NumCoords>
 struct PairValueJacobianView {
   RealT* values{ nullptr };                 ///< Values in `[value][pair]` order.
   RealT* jacobians{ nullptr };              ///< Derivatives in `[value][coordinate][pair]` order.
   QuadratureResult* quadrature{ nullptr };  ///< Pair quadrature status and point count.
   IndexT* has_active_points{ nullptr };     ///< Nonzero when a pair contains an active contact point.
-  IndexT pair_ct{ 0 };                      ///< Number of writable pair slots.
+  IndexT num_pairs{ 0 };                    ///< Number of writable pair slots.
 
   /** @brief Store one pair value. @param pair Pair slot. @param value Value component. @param result Scalar value. */
   TRIBOL_HOST_DEVICE void setValue( IndexT pair, IndexT value, RealT result ) const
   {
-    values[value * pair_ct + pair] = result;
+    values[value * num_pairs + pair] = result;
   }
 
   /** @brief Read one pair value. @param pair Pair slot. @param value Value component. @return Scalar value. */
-  TRIBOL_HOST_DEVICE RealT value( IndexT pair, IndexT value ) const { return values[value * pair_ct + pair]; }
+  TRIBOL_HOST_DEVICE RealT value( IndexT pair, IndexT value ) const { return values[value * num_pairs + pair]; }
 
   /**
    * @brief Store one coordinate derivative.
@@ -99,7 +102,7 @@ struct PairValueJacobianView {
    */
   TRIBOL_HOST_DEVICE void setJacobian( IndexT pair, IndexT value, IndexT coordinate, RealT result ) const
   {
-    jacobians[( value * DofCt + coordinate ) * pair_ct + pair] = result;
+    jacobians[( value * NumCoords + coordinate ) * num_pairs + pair] = result;
   }
 
   /**
@@ -111,40 +114,40 @@ struct PairValueJacobianView {
    */
   TRIBOL_HOST_DEVICE RealT jacobian( IndexT pair, IndexT value, IndexT coordinate ) const
   {
-    return jacobians[( value * DofCt + coordinate ) * pair_ct + pair];
+    return jacobians[( value * NumCoords + coordinate ) * num_pairs + pair];
   }
 };
 
 /**
  * @brief Own pair values and Jacobians in an execution-space allocation.
- * @tparam ValueCt Number of scalar values produced by one pair.
- * @tparam DofCt Number of active pair coordinates.
+ * @tparam NumValues Number of scalar values produced by one pair.
+ * @tparam NumCoords Number of active pair coordinates.
  */
-template <IndexT ValueCt, IndexT DofCt>
+template <IndexT NumValues, IndexT NumCoords>
 class PairValueJacobianBuffer {
  public:
   /**
    * @brief Allocate every pair slot before evaluation begins.
-   * @param pair_ct Number of pair contributions.
+   * @param num_pairs Number of pair contributions.
    * @param allocator_id Axom/Umpire allocator accessible from the selected execution mode.
    */
-  PairValueJacobianBuffer( IndexT pair_ct, int allocator_id )
-      : pair_ct_( pair_ct ),
-        values_( ValueCt * pair_ct, ValueCt * pair_ct, allocator_id ),
-        jacobians_( ValueCt * DofCt * pair_ct, ValueCt * DofCt * pair_ct, allocator_id ),
-        quadrature_( pair_ct, pair_ct, allocator_id ),
-        has_active_points_( pair_ct, pair_ct, allocator_id )
+  PairValueJacobianBuffer( IndexT num_pairs, int allocator_id )
+      : num_pairs_( num_pairs ),
+        values_( NumValues * num_pairs, NumValues * num_pairs, allocator_id ),
+        jacobians_( NumValues * NumCoords * num_pairs, NumValues * NumCoords * num_pairs, allocator_id ),
+        quadrature_( num_pairs, num_pairs, allocator_id ),
+        has_active_points_( num_pairs, num_pairs, allocator_id )
   {
   }
 
   /** @brief Return a device-copyable writable view. @return View retaining no ownership. */
-  PairValueJacobianView<ValueCt, DofCt> view()
+  PairValueJacobianView<NumValues, NumCoords> view()
   {
-    return { values_.data(), jacobians_.data(), quadrature_.data(), has_active_points_.data(), pair_ct_ };
+    return { values_.data(), jacobians_.data(), quadrature_.data(), has_active_points_.data(), num_pairs_ };
   }
 
   /** @brief Return the number of pair slots. @return Pair count. */
-  IndexT pairCt() const { return pair_ct_; }
+  IndexT numberOfPairs() const { return num_pairs_; }
 
   /** @brief Return the owning value array. @return Values in structure-of-arrays order. */
   const Array1D<RealT>& values() const { return values_; }
@@ -159,7 +162,7 @@ class PairValueJacobianBuffer {
   const Array1D<IndexT>& activePoints() const { return has_active_points_; }
 
  private:
-  IndexT pair_ct_;                        ///< Pair slots allocated in every array.
+  IndexT num_pairs_;                      ///< Pair slots allocated in every array.
   Array1D<RealT> values_;                 ///< Values in `[value][pair]` order.
   Array1D<RealT> jacobians_;              ///< Derivatives in `[value][coordinate][pair]` order.
   Array1D<QuadratureResult> quadrature_;  ///< Quadrature status for each pair.
@@ -168,24 +171,24 @@ class PairValueJacobianBuffer {
 
 /**
  * @brief Device-copyable coordinate Jacobians and Hessians of scalar functions or fixed weighted sums.
- * @tparam DofCt Number of active pair coordinates.
+ * @tparam NumCoords Number of active pair coordinates.
  */
-template <IndexT DofCt>
+template <IndexT NumCoords>
 struct PairJacobianHessianView {
   RealT* jacobians{ nullptr };  ///< Coordinate Jacobians in `[coordinate][pair]` order.
   RealT* hessians{ nullptr };   ///< Coordinate Hessians in `[row][column][pair]` order.
-  IndexT pair_ct{ 0 };          ///< Number of writable pair slots.
+  IndexT num_pairs{ 0 };        ///< Number of writable pair slots.
 
   /** @brief Store a Jacobian entry. @param pair Pair slot. @param coordinate Coordinate. @param value Entry value. */
   TRIBOL_HOST_DEVICE void setJacobian( IndexT pair, IndexT coordinate, RealT value ) const
   {
-    jacobians[coordinate * pair_ct + pair] = value;
+    jacobians[coordinate * num_pairs + pair] = value;
   }
 
   /** @brief Read a Jacobian entry. @param pair Pair slot. @param coordinate Coordinate. @return Entry value. */
   TRIBOL_HOST_DEVICE RealT jacobian( IndexT pair, IndexT coordinate ) const
   {
-    return jacobians[coordinate * pair_ct + pair];
+    return jacobians[coordinate * num_pairs + pair];
   }
 
   /**
@@ -197,34 +200,34 @@ struct PairJacobianHessianView {
    */
   TRIBOL_HOST_DEVICE void setHessian( IndexT pair, IndexT row, IndexT column, RealT value ) const
   {
-    hessians[( row * DofCt + column ) * pair_ct + pair] = value;
+    hessians[( row * NumCoords + column ) * num_pairs + pair] = value;
   }
 
   /** @brief Read a Hessian entry. @param pair Pair slot. @param row Row. @param column Column. @return Entry value. */
   TRIBOL_HOST_DEVICE RealT hessian( IndexT pair, IndexT row, IndexT column ) const
   {
-    return hessians[( row * DofCt + column ) * pair_ct + pair];
+    return hessians[( row * NumCoords + column ) * num_pairs + pair];
   }
 };
 
-/** @brief Own pair Jacobians and Hessians in execution-space memory. @tparam DofCt Pair coordinate count.
+/** @brief Own pair Jacobians and Hessians in execution-space memory. @tparam NumCoords Pair coordinate count.
  */
-template <IndexT DofCt>
+template <IndexT NumCoords>
 class PairJacobianHessianBuffer {
  public:
-  /** @brief Allocate all derivative slots. @param pair_ct Pair count. @param allocator_id Execution allocator. */
-  PairJacobianHessianBuffer( IndexT pair_ct, int allocator_id )
-      : pair_ct_( pair_ct ),
-        jacobians_( DofCt * pair_ct, DofCt * pair_ct, allocator_id ),
-        hessians_( DofCt * DofCt * pair_ct, DofCt * DofCt * pair_ct, allocator_id )
+  /** @brief Allocate all derivative slots. @param num_pairs Pair count. @param allocator_id Execution allocator. */
+  PairJacobianHessianBuffer( IndexT num_pairs, int allocator_id )
+      : num_pairs_( num_pairs ),
+        jacobians_( NumCoords * num_pairs, NumCoords * num_pairs, allocator_id ),
+        hessians_( NumCoords * NumCoords * num_pairs, NumCoords * NumCoords * num_pairs, allocator_id )
   {
   }
 
   /** @brief Return a device-copyable writable view. @return View retaining no ownership. */
-  PairJacobianHessianView<DofCt> view() { return { jacobians_.data(), hessians_.data(), pair_ct_ }; }
+  PairJacobianHessianView<NumCoords> view() { return { jacobians_.data(), hessians_.data(), num_pairs_ }; }
 
   /** @brief Return the number of pair slots. @return Pair count. */
-  IndexT pairCt() const { return pair_ct_; }
+  IndexT numberOfPairs() const { return num_pairs_; }
 
   /** @brief Return the owning Jacobian array. @return Jacobians in structure-of-arrays order. */
   const Array1D<RealT>& jacobians() const { return jacobians_; }
@@ -233,43 +236,43 @@ class PairJacobianHessianBuffer {
   const Array1D<RealT>& hessians() const { return hessians_; }
 
  private:
-  IndexT pair_ct_;            ///< Pair slots allocated in both arrays.
+  IndexT num_pairs_;          ///< Pair slots allocated in both arrays.
   Array1D<RealT> jacobians_;  ///< Coordinate Jacobians in structure-of-arrays order.
   Array1D<RealT> hessians_;   ///< Coordinate Hessians in structure-of-arrays order.
 };
 
-/** @brief Device-copyable pair values, quadrature results, Jacobians, and Hessians. @tparam DofCt Coordinates.
+/** @brief Device-copyable pair values, quadrature results, Jacobians, and Hessians. @tparam NumCoords Coordinates.
  */
-template <IndexT DofCt>
+template <IndexT NumCoords>
 struct PairValueJacobianHessianView {
-  RealT* values{ nullptr };                      ///< One scalar value per pair.
-  QuadratureResult* quadrature{ nullptr };       ///< One quadrature result per pair.
-  PairJacobianHessianView<DofCt> derivatives{};  ///< Coordinate Jacobians and Hessians.
+  RealT* values{ nullptr };                          ///< One scalar value per pair.
+  QuadratureResult* quadrature{ nullptr };           ///< One quadrature result per pair.
+  PairJacobianHessianView<NumCoords> derivatives{};  ///< Coordinate Jacobians and Hessians.
 };
 
-/** @brief Own pair values and their coordinate derivatives in execution-space memory. @tparam DofCt Coordinates.
+/** @brief Own pair values and their coordinate derivatives in execution-space memory. @tparam NumCoords Coordinates.
  */
-template <IndexT DofCt>
+template <IndexT NumCoords>
 class PairValueJacobianHessianBuffer {
  public:
-  /** @brief Allocate all pair outputs. @param pair_ct Pair count. @param allocator_id Execution allocator. */
-  PairValueJacobianHessianBuffer( IndexT pair_ct, int allocator_id )
-      : values_( pair_ct, pair_ct, allocator_id ),
-        quadrature_( pair_ct, pair_ct, allocator_id ),
-        derivatives_( pair_ct, allocator_id )
+  /** @brief Allocate all pair outputs. @param num_pairs Pair count. @param allocator_id Execution allocator. */
+  PairValueJacobianHessianBuffer( IndexT num_pairs, int allocator_id )
+      : values_( num_pairs, num_pairs, allocator_id ),
+        quadrature_( num_pairs, num_pairs, allocator_id ),
+        derivatives_( num_pairs, allocator_id )
   {
   }
 
   /** @brief Return a device-copyable writable view. @return View retaining no ownership. */
-  PairValueJacobianHessianView<DofCt> view() { return { values_.data(), quadrature_.data(), derivatives_.view() }; }
+  PairValueJacobianHessianView<NumCoords> view() { return { values_.data(), quadrature_.data(), derivatives_.view() }; }
 
   /** @brief Return quadrature results. @return One result per pair. */
   const Array1D<QuadratureResult>& quadratureResults() const { return quadrature_; }
 
  private:
-  Array1D<RealT> values_;                         ///< Scalar values, zero for empty or inactive pairs.
-  Array1D<QuadratureResult> quadrature_;          ///< Quadrature status for each pair.
-  PairJacobianHessianBuffer<DofCt> derivatives_;  ///< Coordinate Jacobians and Hessians.
+  Array1D<RealT> values_;                             ///< Scalar values, zero for empty or inactive pairs.
+  Array1D<QuadratureResult> quadrature_;              ///< Quadrature status for each pair.
+  PairJacobianHessianBuffer<NumCoords> derivatives_;  ///< Coordinate Jacobians and Hessians.
 };
 
 /**
@@ -283,7 +286,7 @@ struct ElementBlockView {
   IndexT* column_element_ids{ nullptr };  ///< Column element ID for each block.
   IndexT* value_offsets{ nullptr };       ///< Offset of each block in values.
   RealT* values{ nullptr };               ///< Column-major dense block values.
-  IndexT pair_ct{ 0 };                    ///< Number of writable blocks.
+  IndexT num_pairs{ 0 };                  ///< Number of writable blocks.
 
   /** @brief Set element IDs and offset. @param pair Pair slot. @param row Row element. @param column Column element. */
   TRIBOL_HOST_DEVICE void setElements( IndexT pair, IndexT row, IndexT column ) const
@@ -309,21 +312,21 @@ struct ElementBlockView {
 template <IndexT RowDofs, IndexT ColumnDofs>
 class ElementBlockBuffer {
  public:
-  /** @brief Allocate all blocks before packing. @param pair_ct Pair count. @param allocator_id Execution allocator.
+  /** @brief Allocate all blocks before packing. @param num_pairs Pair count. @param allocator_id Execution allocator.
    */
-  ElementBlockBuffer( IndexT pair_ct, int allocator_id )
-      : pair_ct_( pair_ct ),
-        row_element_ids_( pair_ct, pair_ct, allocator_id ),
-        column_element_ids_( pair_ct, pair_ct, allocator_id ),
-        value_offsets_( pair_ct, pair_ct, allocator_id ),
-        values_( RowDofs * ColumnDofs * pair_ct, RowDofs * ColumnDofs * pair_ct, allocator_id )
+  ElementBlockBuffer( IndexT num_pairs, int allocator_id )
+      : num_pairs_( num_pairs ),
+        row_element_ids_( num_pairs, num_pairs, allocator_id ),
+        column_element_ids_( num_pairs, num_pairs, allocator_id ),
+        value_offsets_( num_pairs, num_pairs, allocator_id ),
+        values_( RowDofs * ColumnDofs * num_pairs, RowDofs * ColumnDofs * num_pairs, allocator_id )
   {
   }
 
   /** @brief Return a device-copyable writable view. @return View retaining no ownership. */
   ElementBlockView<RowDofs, ColumnDofs> view()
   {
-    return { row_element_ids_.data(), column_element_ids_.data(), value_offsets_.data(), values_.data(), pair_ct_ };
+    return { row_element_ids_.data(), column_element_ids_.data(), value_offsets_.data(), values_.data(), num_pairs_ };
   }
 
   /** @brief Return row element IDs. @return Owning array. */
@@ -336,7 +339,7 @@ class ElementBlockBuffer {
   const Array1D<RealT>& values() const { return values_; }
 
  private:
-  IndexT pair_ct_;                      ///< Number of blocks in each metadata array.
+  IndexT num_pairs_;                    ///< Number of blocks in each metadata array.
   Array1D<IndexT> row_element_ids_;     ///< Row element IDs.
   Array1D<IndexT> column_element_ids_;  ///< Column element IDs.
   Array1D<IndexT> value_offsets_;       ///< Block value offsets.

@@ -57,13 +57,13 @@ MFEM_ENZYME_INACTIVE
 /**
  * @brief Reports the complete point count, even when the supplied storage is too small
  *
- * Success initializes every point below required_point_count; success with zero points means zero integration
+ * Success initializes every point below num_required_points; success with zero points means zero integration
  * measure. InsufficientCapacity may leave partial output, which must be discarded. InvalidGeometry
  * returns zero points and its output must also be discarded. Unused capacity is never part of a completed rule.
  */
 struct QuadratureResult {
   QuadratureStatus status{ QuadratureStatus::Success };  ///< Whether the complete rule can be consumed.
-  IndexT required_point_count{ 0 };  ///< Complete count on success or overflow; zero for invalid geometry.
+  IndexT num_required_points{ 0 };  ///< Complete count on success or overflow; zero for invalid geometry.
 };
 
 namespace detail {
@@ -157,17 +157,17 @@ struct IntegrationSurfaceRule {
   /**
    * @brief Return a view of the completed integration-surface quadrature points and weights.
    *
-   * @pre result.status is Success and required_point_count does not exceed Capacity.
+   * @pre result.status is Success and num_required_points does not exceed Capacity.
    *
    * @return Read-only views of the initialized points and weights, valid while this object remains alive.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceRuleView<CoordinateDimension> getView() const&
   {
     assert( result.status == QuadratureStatus::Success );
-    assert( result.required_point_count >= 0 && result.required_point_count <= Capacity );
-    const axom::StackArray<axom::IndexType, 2> shape{ result.required_point_count, CoordinateDimension };
+    assert( result.num_required_points >= 0 && result.num_required_points <= Capacity );
+    const axom::StackArray<axom::IndexType, 2> shape{ result.num_required_points, CoordinateDimension };
     return { ArrayViewT<const RealT, 2>{ coords.data(), shape },
-             ArrayViewT<const RealT>{ weights.data(), result.required_point_count } };
+             ArrayViewT<const RealT>{ weights.data(), result.num_required_points } };
   }
 
   /**
@@ -245,18 +245,18 @@ struct PairQuadratureRule {
 
   /**
    * @brief Return read-only views of the initialized quadrature coordinates and weights.
-   * @pre result.status is Success and required_point_count does not exceed Capacity.
+   * @pre result.status is Success and num_required_points does not exceed Capacity.
    * @return Read-only arrays valid while this owner is alive.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureRuleView<ParametricDimension1, ParametricDimension2, true>
   getView() const&
   {
     assert( result.status == QuadratureStatus::Success );
-    assert( result.required_point_count >= 0 && result.required_point_count <= Capacity );
-    const IndexT count = result.required_point_count;
-    return { { geometry1_coords.data(), { count, ParametricDimension1 } },
-             { geometry2_coords.data(), { count, ParametricDimension2 } },
-             { weights.data(), count } };
+    assert( result.num_required_points >= 0 && result.num_required_points <= Capacity );
+    const IndexT num_points = result.num_required_points;
+    return { { geometry1_coords.data(), { num_points, ParametricDimension1 } },
+             { geometry2_coords.data(), { num_points, ParametricDimension2 } },
+             { weights.data(), num_points } };
   }
 
   /** @brief Prevent returning output views from a temporary rule. */

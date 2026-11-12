@@ -11,8 +11,9 @@
 
 ## Naming
 
-- Use `ct` as shorthand for `count` in new identifiers, following the surrounding capitalization: `pair_ct`,
-  `ValueCt`, and `pairCt()`. Keep existing shared and external API names.
+- Use `num_...` for size variables, `Num...` for size template parameters, and `numberOf...()` for functions returning
+  sizes, for example `num_pairs`, `NumValues`, and `numberOfPairs()`. Retain `size()` and `capacity()` where they
+  distinguish stored entries from allocated storage. Preserve external API names.
 
 ## Numeric literals
 

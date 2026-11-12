@@ -52,31 +52,31 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<Int
                                                                 const MfemSubmeshData& submesh_data,
                                                                 const MfemJacobianData& jacobian_data )
 {
-  constexpr IndexT node_ct = Function::node_ct;
-  constexpr IndexT coord_ct = Function::coord_ct;
-  static_assert( Function::value_ct == 2 * node_ct );
+  constexpr IndexT num_nodes = Function::num_nodes;
+  constexpr IndexT num_coords = Function::num_coords;
+  static_assert( Function::num_values == 2 * num_nodes );
   auto buffer = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, function );
   const auto contributions_view = buffer.view();
   checkPairQuadratureResults<Exec>( buffer.quadratureResults() );
-  constexpr IndexT field_ct = 2;
+  constexpr IndexT num_fields = 2;
   std::vector<MfemVectorAssembler> vectors;
   std::vector<MfemMatrixAssembler> matrices;
-  vectors.reserve( field_ct );
-  matrices.reserve( field_ct );
-  for ( IndexT field = 0; field < field_ct; ++field ) {
+  vectors.reserve( num_fields );
+  matrices.reserve( num_fields );
+  for ( IndexT field = 0; field < num_fields; ++field ) {
     vectors.push_back( detail::makeNodalVectorAssembler( submesh_data, mesh1 ) );
     matrices.push_back( detail::makeNodalCoordinateMatrixAssembler( mesh_data, submesh_data, jacobian_data, mesh1,
                                                                     mesh2, pairs.size() ) );
   }
-  detail::addNodalValuesAndJacobians<Exec, field_ct, node_ct, coord_ct>(
+  detail::addNodalValuesAndJacobians<Exec, num_fields, num_nodes, num_coords>(
       pairs, vectors, matrices,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node ) {
-        return contributions_view.has_active_points[pair] ? contributions_view.value( pair, field * node_ct + node )
+        return contributions_view.has_active_points[pair] ? contributions_view.value( pair, field * num_nodes + node )
                                                           : 0.0;
       },
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node, IndexT coordinate ) {
         return contributions_view.has_active_points[pair]
-                   ? contributions_view.jacobian( pair, field * node_ct + node, coordinate )
+                   ? contributions_view.jacobian( pair, field * num_nodes + node, coordinate )
                    : 0.0;
       } );
   return { { vectors[0].assemble(), matrices[0].assemble() }, { vectors[1].assemble(), matrices[1].assemble() } };
@@ -104,25 +104,25 @@ shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& 
                                                    const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
                                                    WeightReader read_weights )
 {
-  constexpr IndexT node_ct = Function::node_ct;
-  static_assert( Function::value_ct == 2 * node_ct );
-  const IndexT pair_ct = pairs.size();
+  constexpr IndexT num_nodes = Function::num_nodes;
+  static_assert( Function::num_values == 2 * num_nodes );
+  const IndexT num_pairs = pairs.size();
   const auto pairs_view = pairs.view();
   const auto connectivity = mesh1.getConnectivity();
   auto hessians = evaluatePairWeightedJacobiansAndHessians<Exec>(
       pairs, mesh1, mesh2, function, [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
-        MdArray<RealT, Function::value_ct> weights{};
+        MdArray<RealT, Function::num_values> weights{};
         const auto nodes = connectivity( pairs_view[pair_index].element_id1_ );
-        for ( IndexT node = 0; node < node_ct; ++node ) {
+        for ( IndexT node = 0; node < num_nodes; ++node ) {
           const auto nodal_weights = read_weights( nodes[node] );
           weights[node] = nodal_weights[0];
-          weights[node_ct + node] = nodal_weights[1];
+          weights[num_nodes + node] = nodal_weights[1];
         }
         return weights;
       } );
   const auto hessian_view = hessians.view();
-  auto assembler = detail::makeCoordinateMatrixAssembler( mesh_data, jacobian_data, mesh1, mesh2, pair_ct );
-  assembler.addPairs<Exec, Function::coord_ct / 2, Function::coord_ct / 2, 4>(
+  auto assembler = detail::makeCoordinateMatrixAssembler( mesh_data, jacobian_data, mesh1, mesh2, num_pairs );
+  assembler.addPairs<Exec, Function::num_coords / 2, Function::num_coords / 2, 4>(
       pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
         return hessian_view.hessian( pair, row, column );
       } );
