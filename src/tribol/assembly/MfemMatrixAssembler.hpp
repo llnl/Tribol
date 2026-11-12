@@ -113,12 +113,13 @@ struct MfemMatrixBatchView {
     const MdArray<IndexT, 2> elements{ pair.element_id1_, pair.element_id2_ };
     for ( IndexT block = 0; block < BlockCount; ++block ) {
       const auto layout = layouts[block];
-      const auto output = blocks[block];
-      output.setElements( pair_index, elements[layout.row_geometry], elements[layout.column_geometry] );
+      const auto block_view = blocks[block];
+      block_view.setElements( pair_index, elements[layout.row_geometry], elements[layout.column_geometry] );
       for ( IndexT column = 0; column < ColumnDofs; ++column ) {
         for ( IndexT row = 0; row < RowDofs; ++row ) {
-          output.setValue( pair_index, row, column,
-                           read_matrix( pair_index, indices..., layout.rowDof( row ), layout.columnDof( column ) ) );
+          block_view.setValue(
+              pair_index, row, column,
+              read_matrix( pair_index, indices..., layout.rowDof( row ), layout.columnDof( column ) ) );
         }
       }
     }
@@ -283,10 +284,11 @@ class MfemMatrixAssembler {
   void addPairs( const ArrayT<InterfacePair>& pairs, MatrixReader read_matrix )
   {
     auto batch = makeBatch<RowDofs, ColumnDofs, BlockCount>( pairs.size(), pairs.getAllocatorID() );
-    const auto output = batch.view();
-    const auto input = pairs.view();
-    forAllExec<Exec>( pairs.size(),
-                      [=] TRIBOL_HOST_DEVICE( IndexT pair ) { output.packPair( pair, input[pair], read_matrix ); } );
+    const auto batch_view = batch.view();
+    const auto pairs_view = pairs.view();
+    forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
+      batch_view.packPair( pair, pairs_view[pair], read_matrix );
+    } );
     addBatch( batch );
   }
 

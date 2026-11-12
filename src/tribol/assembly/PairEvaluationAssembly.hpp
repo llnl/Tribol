@@ -77,11 +77,11 @@ void addNodalValuesAndJacobians( const ArrayT<InterfacePair>& pairs, std::vector
     batches.push_back( matrices[field].makeBatch<NodeCount, element_dofs, 2>( pairs.size(), pairs.getAllocatorID() ) );
     matrix_views[field] = batches.back().view();
   }
-  const auto input = pairs.view();
+  const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
     for ( IndexT field = 0; field < FieldCount; ++field ) {
-      value_views[field].addPair( pair, input[pair], read_values, field );
-      matrix_views[field].packPair( pair, input[pair], read_jacobian, field );
+      value_views[field].addPair( pair, pairs_view[pair], read_values, field );
+      matrix_views[field].packPair( pair, pairs_view[pair], read_jacobian, field );
     }
   } );
   for ( IndexT field = 0; field < FieldCount; ++field ) {
@@ -120,9 +120,9 @@ ContactFormulationResult assemblePairForcesAndJacobian( const ArrayT<InterfacePa
   auto batch = jacobian.makeBatch<element_dofs, element_dofs, 4>( pairs.size(), pairs.getAllocatorID() );
   const auto force_view = forces.view<Exec, 2>();
   const auto matrix_view = batch.view();
-  const auto input = pairs.view();
+  const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
-    const auto pair = input[pair_index];
+    const auto pair = pairs_view[pair_index];
     force_view.addPair( pair_index, pair, read_force );
     matrix_view.packPair( pair_index, pair, read_jacobian );
   } );
@@ -154,13 +154,12 @@ ContactFormulationResult evaluateAndAssembleResidualPairs( const ArrayT<Interfac
                                                            ResidualForceEvaluation evaluation )
 {
   static_assert( Function::value_count == Function::dof_count, "Pair residuals must match coordinate DOFs." );
-  PairValueBuffer<Function::value_count> contributions( pairs.size(), pairs.getAllocatorID() );
-  const auto view = contributions.view();
-  evaluatePairValues<Exec>( pairs.view(), mesh1, mesh2, function, view );
+  auto contributions = evaluatePairValues<Exec>( pairs, mesh1, mesh2, function );
+  const auto contributions_view = contributions.view();
   checkPairQuadratureResults<Exec>( contributions.quadratureResults() );
   auto assembler = makeDisplacementVectorAssembler( evaluation.mesh_data, mesh1, mesh2 );
   assembler.addPairs<Exec, Function::dof_count, 2>( pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
-    return view.has_active_points[pair] ? view.value( pair, row ) : 0.0;
+    return contributions_view.has_active_points[pair] ? contributions_view.value( pair, row ) : 0.0;
   } );
   ContactFormulationResult result;
   result.force.reset( assembler.assemble().release() );
@@ -195,19 +194,17 @@ ContactFormulationResult evaluateAndAssembleResidualPairs( const ArrayT<Interfac
                                                            ResidualForceJacobianEvaluation evaluation )
 {
   static_assert( Function::value_count == Function::dof_count, "Pair residuals must match coordinate DOFs." );
-  PairValueJacobianBuffer<Function::value_count, Function::dof_count> contributions( pairs.size(),
-                                                                                     pairs.getAllocatorID() );
-  const auto view = contributions.view();
-  evaluatePairValuesAndJacobians<Exec>( pairs.view(), mesh1, mesh2, function, view );
+  auto contributions = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, function );
+  const auto contributions_view = contributions.view();
   checkPairQuadratureResults<Exec>( contributions.quadratureResults() );
 
   return assemblePairForcesAndJacobian<Exec, Function::dof_count>(
       pairs, mesh1, mesh2, evaluation.mesh_data, evaluation.jacobian_data,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
-        return view.has_active_points[pair] ? view.value( pair, row ) : 0.0;
+        return contributions_view.has_active_points[pair] ? contributions_view.value( pair, row ) : 0.0;
       },
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
-        return view.has_active_points[pair] ? view.jacobian( pair, row, column ) : 0.0;
+        return contributions_view.has_active_points[pair] ? contributions_view.jacobian( pair, row, column ) : 0.0;
       } );
 }
 
@@ -241,19 +238,21 @@ ContactFormulationResult evaluateAndAssembleEnergyPairs( const ArrayT<InterfaceP
                                                          const MfemJacobianData& jacobian_data )
 {
   static_assert( Function::value_count == 1, "Pair energies must have one scalar output." );
-  PairValueJacobianHessianBuffer<Function::dof_count> contributions( pairs.size(), pairs.getAllocatorID() );
-  const auto view = contributions.view();
-  evaluatePairValuesJacobiansAndHessians<Exec>( pairs.view(), mesh1, mesh2, function, view );
+  auto contributions = evaluatePairValuesJacobiansAndHessians<Exec>( pairs, mesh1, mesh2, function );
+  const auto contributions_view = contributions.view();
   checkPairQuadratureResults<Exec>( contributions.quadratureResults() );
 
   auto result = assemblePairForcesAndJacobian<Exec, Function::dof_count>(
       pairs, mesh1, mesh2, mesh_data, jacobian_data,
-      [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) { return view.derivatives.jacobian( pair, row ); },
+      [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
+        return contributions_view.derivatives.jacobian( pair, row );
+      },
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
-        return view.derivatives.hessian( pair, row, column );
+        return contributions_view.derivatives.hessian( pair, row, column );
       } );
   result.energy = GlobalScalarAssembler::sum<Exec>(
-      pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) { return view.values[pair]; }, result.force->GetComm() );
+      pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) { return contributions_view.values[pair]; },
+      result.force->GetComm() );
   return result;
 }
 

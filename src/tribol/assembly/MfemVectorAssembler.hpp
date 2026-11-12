@@ -174,10 +174,11 @@ class MfemVectorAssembler {
     if ( ValueCount != value_count_ ) {
       throw std::invalid_argument( "Vector input count does not match its configured blocks." );
     }
-    const auto output = view<Exec, BlockCount>();
-    const auto input = pairs.view();
-    forAllExec<Exec>( pairs.size(),
-                      [=] TRIBOL_HOST_DEVICE( IndexT pair ) { output.addPair( pair, input[pair], read_value ); } );
+    const auto vector_view = view<Exec, BlockCount>();
+    const auto pairs_view = pairs.view();
+    forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
+      vector_view.addPair( pair, pairs_view[pair], read_value );
+    } );
   }
 
   /**

@@ -3,11 +3,9 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-/** @file @brief Evaluate pair functions f and their coordinate Jacobians and Hessians into preallocated buffers. */
+/** @file @brief Evaluate pair functions f and return buffers of their values, coordinate Jacobians, and Hessians. */
 #ifndef SRC_TRIBOL_ASSEMBLY_PAIRKERNEL_HPP_
 #define SRC_TRIBOL_ASSEMBLY_PAIRKERNEL_HPP_
-
-#include <stdexcept>
 
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
@@ -37,7 +35,7 @@ concept PairKernelFunctionType = PairFunctionType<PairFunction> && requires {
  *
  * Each pair is evaluated once. This kernel requires no derivative provider or Enzyme support. Failed, empty, and
  * inactive values follow the pair function's evaluate() behavior; callers must check quadrature before assembly.
- * For example, Common Plane explicit contact could call evaluatePairValues() into a PairValueBuffer, check its
+ * For example, Common Plane explicit contact could obtain a PairValueBuffer from evaluatePairValues(), check its
  * quadratureResults(), and assemble its active residual values as nodal forces.
  * @tparam PairFunction Function evaluating one pair from packed coordinates.
  * @tparam Exec Concrete execution mode for pair evaluation.
@@ -45,34 +43,37 @@ concept PairKernelFunctionType = PairFunctionType<PairFunction> && requires {
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
  * @param pair_function Fixed pair configuration.
- * @param output Preallocated values, quadrature results, and activation flags, with one slot per pair.
- * @throws std::invalid_argument Buffer size does not match the pair list; no outputs are written.
+ * @return Owned values, quadrature results, and activation flags in pairs.getAllocatorID(), with one slot per pair.
+ * Empty input returns zero slots. Evaluation finishes before returning; the arrays remain valid after pairs and
+ * the input meshes are destroyed. Quadrature failures are recorded for the caller to check.
  */
 template <ExecutionMode Exec, PairKernelFunctionType PairFunction>
-void evaluatePairValues( ArrayViewT<const InterfacePair> pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                         PairFunction pair_function, PairValueView<PairFunction::value_count> output )
+PairValueBuffer<PairFunction::value_count> evaluatePairValues( const ArrayT<InterfacePair>& pairs,
+                                                               MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                                               PairFunction pair_function )
 {
-  if ( output.pair_count != pairs.size() ) {
-    throw std::invalid_argument( "Pair value buffer size must match the pair list." );
-  }
+  PairValueBuffer<PairFunction::value_count> result( pairs.size(), pairs.getAllocatorID() );
+  const auto contributions_view = result.view();
+  const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
-    const auto pair = pairs[pair_index];
+    const auto pair = pairs_view[pair_index];
     MdArray<RealT, PairFunction::dof_count> coordinates{};
     mesh1.getFaceCoords( pair.element_id1_, coordinates.data() );
     mesh2.getFaceCoords( pair.element_id2_, coordinates.data() + PairFunction::first_dofs );
     const auto pair_values = pair_function.evaluate( coordinates.view() );
     const auto values = pair_values.values();
-    output.quadrature[pair_index] = pair_values.quadrature_result;
-    output.has_active_points[pair_index] = pair_values.has_active_points;
+    contributions_view.quadrature[pair_index] = pair_values.quadrature_result;
+    contributions_view.has_active_points[pair_index] = pair_values.has_active_points;
     for ( IndexT value = 0; value < PairFunction::value_count; ++value ) {
-      output.setValue( pair_index, value, values[value] );
+      contributions_view.setValue( pair_index, value, values[value] );
     }
   } );
+  return result;
 }
 
 #ifdef TRIBOL_USE_ENZYME
 /**
- * @brief Evaluate each pair's values and coordinate Jacobian into preallocated buffers.
+ * @brief Evaluate each pair's values and coordinate Jacobian and return their buffers.
  *
  * For the input function f(x), write every value f_i and every Jacobian entry J_ij = df_i/dx_j. This applies equally
  * to scalar and vector functions. The values already include any quadrature weights used by f. The caller must check
@@ -82,9 +83,7 @@ void evaluatePairValues( ArrayViewT<const InterfacePair> pairs, MeshData::Viewer
  * pair list, and mesh1 and mesh2 are current mesh views. A caller could evaluate its local nodal forces and their
  * Jacobians:
  * @code
- * PairValueJacobianBuffer<PairFunction::value_count, PairFunction::dof_count> results(
- *     pairs.size(), pairs.getAllocatorID() );
- * evaluatePairValuesAndJacobians<Exec>( pairs.view(), mesh1, mesh2, pair_function, results.view() );
+ * auto results = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function );
  * checkPairQuadratureResults<Exec>( results.quadratureResults() );
  * @endcode
  * After the check succeeds, the caller could assemble the values into a force vector and the Jacobians into a matrix.
@@ -96,38 +95,40 @@ void evaluatePairValues( ArrayViewT<const InterfacePair> pairs, MeshData::Viewer
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
  * @param pair_function Fixed pair function configuration.
- * @param output Preallocated values, Jacobians, quadrature results, and activation flags, with one slot per pair.
- * @throws std::invalid_argument Buffer size does not match the pair list; no outputs are written.
+ * @return Owned values, Jacobians, quadrature results, and activation flags in pairs.getAllocatorID(). Empty input
+ * returns zero slots. Evaluation finishes before returning; the arrays remain valid after pairs and the input meshes
+ * are destroyed. Quadrature failures are recorded for the caller to check.
  */
 template <ExecutionMode Exec, PairKernelFunctionType PairFunction>
-void evaluatePairValuesAndJacobians( ArrayViewT<const InterfacePair> pairs, MeshData::Viewer mesh1,
-                                     MeshData::Viewer mesh2, PairFunction pair_function,
-                                     PairValueJacobianView<PairFunction::value_count, PairFunction::dof_count> output )
+PairValueJacobianBuffer<PairFunction::value_count, PairFunction::dof_count> evaluatePairValuesAndJacobians(
+    const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function )
 {
+  PairValueJacobianBuffer<PairFunction::value_count, PairFunction::dof_count> result( pairs.size(),
+                                                                                      pairs.getAllocatorID() );
+  const auto contributions_view = result.view();
+  const auto pairs_view = pairs.view();
   constexpr IndexT first_dofs = PairFunction::first_dofs;
   constexpr IndexT dof_count = PairFunction::dof_count;
-  if ( output.pair_count != pairs.size() ) {
-    throw std::invalid_argument( "Pair value buffer size must match the pair list." );
-  }
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
-    const auto pair = pairs[pair_index];
+    const auto pair = pairs_view[pair_index];
     MdArray<RealT, dof_count> coordinates{};
     mesh1.getFaceCoords( pair.element_id1_, coordinates.data() );
     mesh2.getFaceCoords( pair.element_id2_, coordinates.data() + first_dofs );
     const auto pair_values = EnzymePairDerivative<PairFunction>::valuesAndJacobian( coordinates.view(), pair_function );
-    output.quadrature[pair_index] = pair_values.quadrature_result;
-    output.has_active_points[pair_index] = pair_values.has_active_points;
+    contributions_view.quadrature[pair_index] = pair_values.quadrature_result;
+    contributions_view.has_active_points[pair_index] = pair_values.has_active_points;
     for ( IndexT value = 0; value < PairFunction::value_count; ++value ) {
-      output.setValue( pair_index, value, pair_values.values[value] );
+      contributions_view.setValue( pair_index, value, pair_values.values[value] );
       for ( IndexT coordinate = 0; coordinate < dof_count; ++coordinate ) {
-        output.setJacobian( pair_index, value, coordinate, pair_values.jacobian( value, coordinate ) );
+        contributions_view.setJacobian( pair_index, value, coordinate, pair_values.jacobian( value, coordinate ) );
       }
     }
   } );
+  return result;
 }
 
 /**
- * @brief Evaluate weighted Jacobians and Hessians of each pair function f into preallocated buffers.
+ * @brief Evaluate weighted Jacobians and Hessians of each pair function f and return their buffers.
  *
  * Let J_ij = df_i/dx_j and H_ijk = d^2 f_i/(dx_j dx_k). For fixed output weights w_i, write sum_i w_i J_ij and
  * sum_i w_i H_ijk. The weighted Jacobian has one entry per coordinate, and the weighted Hessian is a square coordinate
@@ -139,13 +140,11 @@ void evaluatePairValuesAndJacobians( ArrayViewT<const InterfacePair> pairs, Mesh
  * hypothetical nodal LM calculation could use multipliers 2.0 and 3.0, and zero area weights, to differentiate 2.0*G0
  * + 3.0*G1:
  * @code
- * PairJacobianHessianBuffer<PairFunction::dof_count> derivatives( pairs.size(), pairs.getAllocatorID() );
- * evaluatePairWeightedJacobiansAndHessians<Exec>(
- *     pairs.view(), mesh1, mesh2, pair_function,
+ * auto derivatives = evaluatePairWeightedJacobiansAndHessians<Exec>(
+ *     pairs, mesh1, mesh2, pair_function,
  *     [] TRIBOL_HOST_DEVICE( IndexT ) {
  *       return MdArray<RealT, PairFunction::value_count>{ 2.0, 3.0, 0.0, 0.0 };
- *     },
- *     derivatives.view() );
+ *     } );
  * @endcode
  * Each pair receives 2.0*J_G0 + 3.0*J_G1 and 2.0*H_G0 + 3.0*H_G1. An LM formulation could assemble the latter into
  * its coordinate force Jacobian. This example uses the same multipliers for every pair; a production reader can
@@ -159,23 +158,23 @@ void evaluatePairValuesAndJacobians( ArrayViewT<const InterfacePair> pairs, Mesh
  * @param mesh2 Current second mesh.
  * @param pair_function Fixed pair function configuration.
  * @param read_weights Callable with signature `MdArray<RealT, PairFunction::value_count>(IndexT)`.
- * @param output Preallocated weighted Jacobians and Hessians, with one slot per pair.
+ * @return Owned weighted Jacobians and Hessians in pairs.getAllocatorID(), with one slot per pair. Empty input
+ * returns zero slots. Evaluation finishes before returning; the arrays remain valid after pairs and the input meshes
+ * are destroyed. Quadrature status is not returned or checked.
  * @pre The caller has checked pair quadrature for errors at these coordinates.
- * @throws std::invalid_argument Buffer size does not match the pair list; no outputs are written.
  */
 template <ExecutionMode Exec, PairKernelFunctionType PairFunction, typename WeightReader>
-void evaluatePairWeightedJacobiansAndHessians( ArrayViewT<const InterfacePair> pairs, MeshData::Viewer mesh1,
-                                               MeshData::Viewer mesh2, PairFunction pair_function,
-                                               WeightReader read_weights,
-                                               PairJacobianHessianView<PairFunction::dof_count> output )
+PairJacobianHessianBuffer<PairFunction::dof_count> evaluatePairWeightedJacobiansAndHessians(
+    const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function,
+    WeightReader read_weights )
 {
+  PairJacobianHessianBuffer<PairFunction::dof_count> result( pairs.size(), pairs.getAllocatorID() );
+  const auto contributions_view = result.view();
+  const auto pairs_view = pairs.view();
   constexpr IndexT first_dofs = PairFunction::first_dofs;
   constexpr IndexT dof_count = PairFunction::dof_count;
-  if ( output.pair_count != pairs.size() ) {
-    throw std::invalid_argument( "Pair Hessian buffer size must match the pair list." );
-  }
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
-    const auto pair = pairs[pair_index];
+    const auto pair = pairs_view[pair_index];
     MdArray<RealT, dof_count> coordinates{};
     mesh1.getFaceCoords( pair.element_id1_, coordinates.data() );
     mesh2.getFaceCoords( pair.element_id2_, coordinates.data() + first_dofs );
@@ -183,16 +182,17 @@ void evaluatePairWeightedJacobiansAndHessians( ArrayViewT<const InterfacePair> p
     const auto pair_values = EnzymePairDerivative<PairFunction>::weightedJacobianAndHessian(
         coordinates.view(), pair_function, weights.view() );
     for ( IndexT row = 0; row < dof_count; ++row ) {
-      output.setJacobian( pair_index, row, pair_values.jacobian[row] );
+      contributions_view.setJacobian( pair_index, row, pair_values.jacobian[row] );
       for ( IndexT column = 0; column < dof_count; ++column ) {
-        output.setHessian( pair_index, row, column, pair_values.hessian( row, column ) );
+        contributions_view.setHessian( pair_index, row, column, pair_values.hessian( row, column ) );
       }
     }
   } );
+  return result;
 }
 
 /**
- * @brief Evaluate each scalar pair function's value, Jacobian, and Hessian into preallocated buffers.
+ * @brief Evaluate each scalar pair function's value, Jacobian, and Hessian and return their buffers.
  *
  * For scalar f(x), write f, Jacobian entries J_j = df/dx_j, and Hessian entries H_jk = d^2 f/(dx_j dx_k). The Jacobian
  * has one entry per coordinate. AD supplies the value, derivatives, and quadrature state together. Failed or inactive
@@ -202,8 +202,7 @@ void evaluatePairWeightedJacobiansAndHessians( ArrayViewT<const InterfacePair> p
  * For example, suppose pair_function is a configured EnergyMortarEnergy of type PairFunction. A quadrature-point
  * formulation could request its scalar energy E, Jacobian J_E, and Hessian H_E together:
  * @code
- * PairValueJacobianHessianBuffer<PairFunction::dof_count> results( pairs.size(), pairs.getAllocatorID() );
- * evaluatePairValuesJacobiansAndHessians<Exec>( pairs.view(), mesh1, mesh2, pair_function, results.view() );
+ * auto results = evaluatePairValuesJacobiansAndHessians<Exec>( pairs, mesh1, mesh2, pair_function );
  * checkPairQuadratureResults<Exec>( results.quadratureResults() );
  * @endcode
  * After the check succeeds, the caller could sum E across pairs and MPI ranks, assemble J_E as the force vector,
@@ -217,36 +216,37 @@ void evaluatePairWeightedJacobiansAndHessians( ArrayViewT<const InterfacePair> p
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
  * @param pair_function Fixed scalar pair function configuration.
- * @param output Preallocated scalar values, quadrature results, Jacobians, and Hessians, with one slot per pair.
- * @throws std::invalid_argument Buffer size does not match the pair list; no outputs are written.
+ * @return Owned scalar values, quadrature results, Jacobians, and Hessians in pairs.getAllocatorID(), with one slot
+ * per pair. Empty input returns zero slots. Evaluation finishes before returning; the arrays remain valid after pairs
+ * and the input meshes are destroyed. Quadrature failures are recorded for the caller to check.
  */
 template <ExecutionMode Exec, PairKernelFunctionType PairFunction>
   requires( PairFunction::value_count == 1 )
-void evaluatePairValuesJacobiansAndHessians( ArrayViewT<const InterfacePair> pairs, MeshData::Viewer mesh1,
-                                             MeshData::Viewer mesh2, PairFunction pair_function,
-                                             PairValueJacobianHessianView<PairFunction::dof_count> output )
+PairValueJacobianHessianBuffer<PairFunction::dof_count> evaluatePairValuesJacobiansAndHessians(
+    const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function )
 {
+  PairValueJacobianHessianBuffer<PairFunction::dof_count> result( pairs.size(), pairs.getAllocatorID() );
+  const auto contributions_view = result.view();
+  const auto pairs_view = pairs.view();
   constexpr IndexT first_dofs = PairFunction::first_dofs;
   constexpr IndexT dof_count = PairFunction::dof_count;
-  if ( output.derivatives.pair_count != pairs.size() ) {
-    throw std::invalid_argument( "Pair energy buffer size must match the pair list." );
-  }
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
-    const auto pair = pairs[pair_index];
+    const auto pair = pairs_view[pair_index];
     MdArray<RealT, dof_count> coordinates{};
     mesh1.getFaceCoords( pair.element_id1_, coordinates.data() );
     mesh2.getFaceCoords( pair.element_id2_, coordinates.data() + first_dofs );
     const auto pair_values =
         EnzymePairDerivative<PairFunction>::valueJacobianAndHessian( coordinates.view(), pair_function );
-    output.values[pair_index] = pair_values.value;
-    output.quadrature[pair_index] = pair_values.quadrature_result;
+    contributions_view.values[pair_index] = pair_values.value;
+    contributions_view.quadrature[pair_index] = pair_values.quadrature_result;
     for ( IndexT row = 0; row < dof_count; ++row ) {
-      output.derivatives.setJacobian( pair_index, row, pair_values.jacobian[row] );
+      contributions_view.derivatives.setJacobian( pair_index, row, pair_values.jacobian[row] );
       for ( IndexT column = 0; column < dof_count; ++column ) {
-        output.derivatives.setHessian( pair_index, row, column, pair_values.hessian( row, column ) );
+        contributions_view.derivatives.setHessian( pair_index, row, column, pair_values.hessian( row, column ) );
       }
     }
   } );
+  return result;
 }
 #endif  // TRIBOL_USE_ENZYME
 

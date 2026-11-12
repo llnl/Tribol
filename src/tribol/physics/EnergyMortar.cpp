@@ -55,9 +55,8 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<Int
   constexpr IndexT node_count = Function::node_count;
   constexpr IndexT dof_count = Function::dof_count;
   static_assert( Function::value_count == 2 * node_count );
-  PairValueJacobianBuffer<Function::value_count, dof_count> buffer( pairs.size(), pairs.getAllocatorID() );
-  const auto view = buffer.view();
-  evaluatePairValuesAndJacobians<Exec>( pairs.view(), mesh1, mesh2, function, view );
+  auto buffer = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, function );
+  const auto contributions_view = buffer.view();
   checkPairQuadratureResults<Exec>( buffer.quadratureResults() );
   constexpr IndexT field_count = 2;
   std::vector<MfemVectorAssembler> vectors;
@@ -72,10 +71,13 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<Int
   detail::addNodalValuesAndJacobians<Exec, field_count, node_count, dof_count>(
       pairs, vectors, matrices,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node ) {
-        return view.has_active_points[pair] ? view.value( pair, field * node_count + node ) : 0.0;
+        return contributions_view.has_active_points[pair] ? contributions_view.value( pair, field * node_count + node )
+                                                          : 0.0;
       },
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node, IndexT coordinate ) {
-        return view.has_active_points[pair] ? view.jacobian( pair, field * node_count + node, coordinate ) : 0.0;
+        return contributions_view.has_active_points[pair]
+                   ? contributions_view.jacobian( pair, field * node_count + node, coordinate )
+                   : 0.0;
       } );
   return { { vectors[0].assemble(), matrices[0].assemble() }, { vectors[1].assemble(), matrices[1].assemble() } };
 }
@@ -105,23 +107,19 @@ shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& 
   constexpr IndexT node_count = Function::node_count;
   static_assert( Function::value_count == 2 * node_count );
   const IndexT pair_count = pairs.size();
-  const int allocator_id = pairs.getAllocatorID();
-  const auto pair_view = pairs.view();
+  const auto pairs_view = pairs.view();
   const auto connectivity = mesh1.getConnectivity();
-  PairJacobianHessianBuffer<Function::dof_count> hessians( pair_count, allocator_id );
-  evaluatePairWeightedJacobiansAndHessians<Exec>(
-      pairs.view(), mesh1, mesh2, function,
-      [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
+  auto hessians = evaluatePairWeightedJacobiansAndHessians<Exec>(
+      pairs, mesh1, mesh2, function, [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
         MdArray<RealT, Function::value_count> weights{};
-        const auto nodes = connectivity( pair_view[pair_index].element_id1_ );
+        const auto nodes = connectivity( pairs_view[pair_index].element_id1_ );
         for ( IndexT node = 0; node < node_count; ++node ) {
           const auto nodal_weights = read_weights( nodes[node] );
           weights[node] = nodal_weights[0];
           weights[node_count + node] = nodal_weights[1];
         }
         return weights;
-      },
-      hessians.view() );
+      } );
   const auto hessian_view = hessians.view();
   auto assembler = detail::makeCoordinateMatrixAssembler( mesh_data, jacobian_data, mesh1, mesh2, pair_count );
   assembler.addPairs<Exec, Function::dof_count / 2, Function::dof_count / 2, 4>(

@@ -80,6 +80,11 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Pair evaluation functions in `PairKernel.hpp` now return their value/Jacobian/Hessian buffers instead of writing
+  through caller-supplied output views. Pass the pair array directly; its size and allocator determine the returned
+  storage. Evaluation completes before returning, and results remain valid after the input pair list is destroyed.
+  Quadrature status checking remains separate. Production evaluation/assembly helpers and direct test callers use the
+  returned buffers.
 - Quadrature generators and generated rules now have distinct names. `PairQuadratureRule` was renamed to
   `PairQuadratureRuleGenerator`, `PairQuadratureData` to `PairQuadratureRule`, and `PairQuadratureView` to
   `PairQuadratureRuleView`. The generator is declared in `integ/PairQuadratureRuleGenerator.hpp`; generated rules remain

@@ -10,7 +10,9 @@
  * mode. The energy kernel checks active, open, zero-gap, and invalid pairs on every enabled backend, including the
  * compressive zero-gap Hessian. Forward AD checks values and quadrature state without an extra value evaluation.
  * Compile-time checks accept the supported pair interfaces and reject invalid sizes, results, and coordinate splits.
- * MFEM tests separately check assembly and shared-node normalization.
+ * Returned buffers retain the pair allocator and remain valid after the input pair list is destroyed. Weighted
+ * Jacobian/Hessian kernels check reordered pairs with unequal weights. MFEM tests separately check assembly and
+ * shared-node normalization.
  */
 #include <type_traits>
 
@@ -232,15 +234,15 @@ TEST_P( EnergyMortarDefinitionTest, contribution_buffers_use_backend_accessible_
   constexpr IndexT pair_count = 3;
   PairValueJacobianBuffer<2, 2> values( pair_count, allocatorId() );
   ElementBlockBuffer<2, 2> blocks( pair_count, allocatorId() );
-  const auto value_view = values.view();
+  const auto value_jacobian_view = values.view();
   const auto block_view = blocks.view();
   forAllExec( GetParam(), pair_count, [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
-    value_view.setValue( pair, 0, 10.0 + pair );
-    value_view.setValue( pair, 1, 20.0 + pair );
-    value_view.setJacobian( pair, 0, 0, 30.0 + pair );
-    value_view.setJacobian( pair, 0, 1, 40.0 + pair );
-    value_view.setJacobian( pair, 1, 0, 50.0 + pair );
-    value_view.setJacobian( pair, 1, 1, 60.0 + pair );
+    value_jacobian_view.setValue( pair, 0, 10.0 + pair );
+    value_jacobian_view.setValue( pair, 1, 20.0 + pair );
+    value_jacobian_view.setJacobian( pair, 0, 0, 30.0 + pair );
+    value_jacobian_view.setJacobian( pair, 0, 1, 40.0 + pair );
+    value_jacobian_view.setJacobian( pair, 1, 0, 50.0 + pair );
+    value_jacobian_view.setJacobian( pair, 1, 1, 60.0 + pair );
     block_view.setElements( pair, pair, pair + 4 );
     for ( IndexT column = 0; column < 2; ++column ) {
       for ( IndexT row = 0; row < 2; ++row ) {
@@ -301,31 +303,33 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_h
   MeshData mesh1( 0, 1, x1.size(), conn1.data(), EDGE, LINEAR_LAGRANGE, x1.data(), y1.data(), nullptr, memorySpace() );
   MeshData mesh2( 1, 4, x2.size(), conn2.data(), EDGE, LINEAR_LAGRANGE, x2.data(), y2.data(), nullptr, memorySpace() );
   const auto pairs = copyToExecutionSpace<InterfacePair>( { { 0, 0 }, { 0, 1 }, { 0, 2 }, { 0, 3 } } );
-  PairValueJacobianHessianBuffer<Function::dof_count> buffer( pairs.size(), allocatorId() );
-  const auto output = buffer.view();
-  dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
-    return evaluatePairValuesJacobiansAndHessians<Exec>( pairs.view(), mesh1.getView(), mesh2.getView(), function,
-                                                         output );
+  auto buffer = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    return evaluatePairValuesJacobiansAndHessians<Exec>( pairs, mesh1.getView(), mesh2.getView(), function );
   } );
-  PairValueJacobianBuffer<Function::value_count, Function::dof_count> value_jacobian( pairs.size(), allocatorId() );
-  dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
-    return evaluatePairValuesAndJacobians<Exec>( pairs.view(), mesh1.getView(), mesh2.getView(), function,
-                                                 value_jacobian.view() );
+  const auto contributions_view = buffer.view();
+  auto value_jacobian = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    return evaluatePairValuesAndJacobians<Exec>( pairs, mesh1.getView(), mesh2.getView(), function );
   } );
+  EXPECT_EQ( contributions_view.derivatives.pair_count, pairs.size() );
+  EXPECT_EQ( buffer.quadratureResults().getAllocatorID(), pairs.getAllocatorID() );
+  EXPECT_EQ( value_jacobian.pairCount(), pairs.size() );
+  EXPECT_EQ( value_jacobian.values().getAllocatorID(), pairs.getAllocatorID() );
+  EXPECT_EQ( value_jacobian.jacobians().getAllocatorID(), pairs.getAllocatorID() );
 
   ArrayT<RealT, 2> summaries( axom::StackArray<axom::IndexType, 2>{ pairs.size(), 4 }, allocatorId() );
   const auto summary = summaries.view();
   forAllExec( GetParam(), pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
-    summary( pair, 0 ) = output.values[pair];
-    summary( pair, 1 ) = output.derivatives.jacobian( pair, 1 ) + output.derivatives.jacobian( pair, 3 );
+    summary( pair, 0 ) = contributions_view.values[pair];
+    summary( pair, 1 ) =
+        contributions_view.derivatives.jacobian( pair, 1 ) + contributions_view.derivatives.jacobian( pair, 3 );
     summary( pair, 2 ) = 0.0;
     summary( pair, 3 ) = 0.0;
     for ( IndexT row = 0; row < Function::dof_count; ++row ) {
-      summary( pair, 3 ) += std::abs( output.derivatives.jacobian( pair, row ) );
+      summary( pair, 3 ) += std::abs( contributions_view.derivatives.jacobian( pair, row ) );
       for ( IndexT column = 0; column < Function::dof_count; ++column ) {
-        summary( pair, 3 ) += std::abs( output.derivatives.hessian( pair, row, column ) );
+        summary( pair, 3 ) += std::abs( contributions_view.derivatives.hessian( pair, row, column ) );
         if ( ( row == 1 || row == 3 ) && ( column == 1 || column == 3 ) ) {
-          summary( pair, 2 ) += output.derivatives.hessian( pair, row, column );
+          summary( pair, 2 ) += contributions_view.derivatives.hessian( pair, row, column );
         }
       }
     }
@@ -366,6 +370,35 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_h
                                          return checkPairQuadratureResults<Exec>( buffer.quadratureResults() );
                                        } ),
                 std::invalid_argument );
+
+  // Read derivatives after destroying the input pair list. Reversed element IDs and unequal weights check pair slots.
+  auto weighted = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    const auto weighted_pairs = copyToExecutionSpace<InterfacePair>( { { 0, 2 }, { 0, 0 } } );
+    return evaluatePairWeightedJacobiansAndHessians<Exec>(
+        weighted_pairs, mesh1.getView(), mesh2.getView(), function,
+        [] TRIBOL_HOST_DEVICE( IndexT pair ) { return MdArray<RealT, Function::value_count>{ pair + 2.0 }; } );
+  } );
+  constexpr IndexT weighted_pair_count = 2;
+  EXPECT_EQ( weighted.pairCount(), weighted_pair_count );
+  EXPECT_EQ( weighted.jacobians().getAllocatorID(), pairs.getAllocatorID() );
+  EXPECT_EQ( weighted.hessians().getAllocatorID(), pairs.getAllocatorID() );
+  const Array1D<RealT, MemorySpace::Host> weighted_jacobians( weighted.jacobians() );
+  const Array1D<RealT, MemorySpace::Host> weighted_hessians( weighted.hessians() );
+  for ( IndexT pair = 0; pair < weighted_pair_count; ++pair ) {
+    const IndexT original_pair = pair == 0 ? 2 : 0;
+    const RealT weight = pair + 2.0;
+    for ( IndexT coordinate = 0; coordinate < Function::dof_count; ++coordinate ) {
+      EXPECT_NEAR( weighted_jacobians[coordinate * weighted_pair_count + pair],
+                   weight * jacobians[coordinate * pairs.size() + original_pair], tolerance );
+    }
+    RealT vertical_hessian = 0.0;
+    for ( IndexT row : { 1, 3 } ) {
+      for ( IndexT column : { 1, 3 } ) {
+        vertical_hessian += weighted_hessians[( row * Function::dof_count + column ) * weighted_pair_count + pair];
+      }
+    }
+    EXPECT_NEAR( vertical_hessian, weight * host( original_pair, 2 ), tolerance );
+  }
 }
 
 /** @brief Small fixed-size pair function used to compile and execute both Enzyme operations on every backend. */

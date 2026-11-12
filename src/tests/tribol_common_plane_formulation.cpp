@@ -8,7 +8,8 @@
  * @brief Test common-line quadrature and direct penalty residuals on every enabled backend. Host Enzyme checks compare
  * the full pair Jacobian with finite differences; MFEM assembly and selection have separate integration tests.
  * Crossing edges check clipped interval bounds, point locations, and uniform centroid pressure for every base rule.
- * Value-only pair kernels check activation, quadrature failures, and buffer sizes on every enabled execution backend.
+ * Value-only pair kernels check activation, quadrature failures, allocator selection, and empty input on every enabled
+ * execution backend. Values from an earlier call remain unchanged after another evaluation.
  */
 #include <cmath>
 #include "gtest/gtest.h"
@@ -343,10 +344,13 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
   MeshData mesh1( 0, 1, x1.size(), conn1.data(), EDGE, LINEAR_LAGRANGE, x1.data(), y1.data(), nullptr, memorySpace() );
   MeshData mesh2( 1, 4, x2.size(), conn2.data(), EDGE, LINEAR_LAGRANGE, x2.data(), y2.data(), nullptr, memorySpace() );
   const auto pairs = copyToExecutionSpace<InterfacePair>( { { 0, 0 }, { 0, 1 }, { 0, 2 }, { 0, 3 } } );
-  PairValueBuffer<Function::value_count> buffer( pairs.size(), allocatorId() );
-  dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
-    return evaluatePairValues<Exec>( pairs.view(), mesh1.getView(), mesh2.getView(), function, buffer.view() );
+  auto buffer = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    return evaluatePairValues<Exec>( pairs, mesh1.getView(), mesh2.getView(), function );
   } );
+  EXPECT_EQ( buffer.pairCount(), pairs.size() );
+  EXPECT_EQ( buffer.values().getAllocatorID(), pairs.getAllocatorID() );
+  EXPECT_EQ( buffer.quadratureResults().getAllocatorID(), pairs.getAllocatorID() );
+  EXPECT_EQ( buffer.activePoints().getAllocatorID(), pairs.getAllocatorID() );
   const Array1D<RealT, MemorySpace::Host> values( buffer.values() );
   const Array1D<QuadratureResult, MemorySpace::Host> status( buffer.quadratureResults() );
   const Array1D<IndexT, MemorySpace::Host> active( buffer.activePoints() );
@@ -364,22 +368,26 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
                                          return checkPairQuadratureResults<Exec>( buffer.quadratureResults() );
                                        } ),
                 std::invalid_argument );
-  auto mismatched = buffer.view();
-  --mismatched.pair_count;
-  EXPECT_THROW( dispatchExecutionMode( GetParam(),
-                                       [&]<ExecutionMode Exec>() {
-                                         return evaluatePairValues<Exec>( pairs.view(), mesh1.getView(),
-                                                                          mesh2.getView(), function, mismatched );
-                                       } ),
-                std::invalid_argument );
+  // A second calculation uses different stiffness and must leave the first returned buffer unchanged.
+  auto doubled = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    return evaluatePairValues<Exec>( pairs, mesh1.getView(), mesh2.getView(), Function{ {}, 2.0 } );
+  } );
+  const Array1D<RealT, MemorySpace::Host> doubled_values( doubled.values() );
   const Array1D<RealT, MemorySpace::Host> unchanged( buffer.values() );
   for ( IndexT i = 0; i < values.size(); ++i ) {
     EXPECT_EQ( unchanged[i], values[i] );
+    EXPECT_NEAR( doubled_values[i], 2.0 * values[i], tolerance );
   }
   const ArrayT<InterfacePair> empty_pairs( 0, 0, allocatorId() );
-  PairValueBuffer<Function::value_count> empty( 0, allocatorId() );
+  auto empty = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    return evaluatePairValues<Exec>( empty_pairs, mesh1.getView(), mesh2.getView(), function );
+  } );
+  EXPECT_EQ( empty.pairCount(), 0 );
+  EXPECT_EQ( empty.values().size(), 0 );
+  EXPECT_EQ( empty.quadratureResults().size(), 0 );
+  EXPECT_EQ( empty.activePoints().size(), 0 );
   EXPECT_NO_THROW( dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
-    return evaluatePairValues<Exec>( empty_pairs.view(), mesh1.getView(), mesh2.getView(), function, empty.view() );
+    return checkPairQuadratureResults<Exec>( empty.quadratureResults() );
   } ) );
 }
 INSTANTIATE_TEST_SUITE_P( execution, CommonPlaneTest, tribol::detail::enabledExecutionModes() );
