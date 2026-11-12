@@ -80,6 +80,18 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Common Plane selects force-only or force/Jacobian evaluation through the third `CommonPlaneFormulation` template
+  argument, `ResidualForceEvaluation` or `ResidualForceJacobianEvaluation`. Its constructor takes the selected transfer
+  prerequisites instead of nullable Jacobian data. Nodal Energy Mortar takes `PenaltyEnforcement` or
+  `LagrangeMultiplierEnforcement` as its third template argument; the `NodalContactEnforcement` variant was removed.
+  Public MFEM selection functions are unchanged.
+- Weighted Hessian differentiation reuses the Jacobian produced by its AD calls. Nodal Energy Mortar reads weights
+  directly in that kernel, removing the temporary pair-weight array and its gather kernel.
+- Renamed `PairHessianBuffer`/`PairHessianView` to `PairJacobianHessianBuffer`/`PairJacobianHessianView` and
+  `PairEnergyHessianBuffer`/`PairEnergyHessianView` to `PairValueJacobianHessianBuffer`/`PairValueJacobianHessianView`.
+  Their gradient members and accessors now use Jacobian terminology; scalar energy buffers use `values` for function
+  outputs. Removed unused `PairResidualValue::coordinate_count` and the internal Energy Mortar `PairFunction` and
+  `CoordinateView` aliases. The nodal penalty area tolerance is now local to `EnergyMortar.cpp`.
 - Common Plane and both Energy Mortar formulations now take a concrete `ExecutionMode` template argument after their
   quadrature type. The factory selects the specialization at construction; evaluation, assembly, and scalar reductions
   carry that mode as a template argument. Direct callers must supply the mode in the type and remove the runtime
@@ -110,7 +122,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   the scalar-only requirement of the value/Jacobian/Hessian kernel.
 - Moved pair evaluation, differentiation, contribution buffers, and MFEM vector/matrix assemblers into
   `tribol/assembly/`. Includes for `PairContribution`, `PairEvaluation`, `PairKernel`, `PairEvaluationAssembly`,
-  `MfemVectorAssembler`, `MfemMatrixAssembler`, and `MfemElementAssembly` now use that directory.
+  `MfemVectorAssembler` and `MfemMatrixAssembler` now use that directory. Element-block copying is private to
+  `MfemMatrixAssembler`; `MfemElementAssembly.hpp` was removed.
 - Moved `GlobalScalarAssembler.hpp` from `tribol/physics/` to `tribol/common/`; it provides execution-space and MPI
   scalar reductions independently of contact physics.
 - Added `tribol/common/Reductions.hpp` with `ReduceMax` and `ReduceSum` aliases accepting a Tribol `ExecutionMode`.

@@ -17,6 +17,7 @@
 #include <cmath>
 #include <stdexcept>
 #include "tribol/physics/CommonPlaneFormulation.hpp"
+#include "tribol/assembly/PairEvaluationAssembly.hpp"
 #include "tribol/physics/EnergyMortar.hpp"
 #include "tribol/physics/PenaltyStiffness.hpp"
 
@@ -135,9 +136,18 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
         auto coarse = createCoarseSearch( cs->spatialDimension(), cs->getBinningMethod(), Exec,
                                           cs->getEffectiveBinningProximityScale(), cs->getParameters().residual_gap );
         auto refined = std::make_unique<ProjectedEdgeSearch>( Exec, cs->getContactCase() == AUTO );
-        return std::make_unique<CommonPlaneFormulation<BaseRule, Exec>>(
-            *cs->getMfemMeshData(),
-            cs->getParameters().common_plane_compute_jacobian ? cs->getMfemJacobianData() : nullptr,
+        if ( cs->getParameters().common_plane_compute_jacobian ) {
+#ifdef TRIBOL_USE_ENZYME
+          return std::make_unique<CommonPlaneFormulation<BaseRule, Exec, ResidualForceJacobianEvaluation>>(
+              ResidualForceJacobianEvaluation{ *cs->getMfemMeshData(), *cs->getMfemJacobianData() },
+              PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( quadrature ),
+              OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap }, penalty );
+#else
+          throw std::runtime_error( "Common Plane Jacobian calculation requires Enzyme." );
+#endif
+        }
+        return std::make_unique<CommonPlaneFormulation<BaseRule, Exec, ResidualForceEvaluation>>(
+            ResidualForceEvaluation{ *cs->getMfemMeshData() },
             PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( quadrature ),
             OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap }, penalty );
       } );
@@ -168,11 +178,14 @@ std::unique_ptr<ContactFormulation> createEnergyMortarForRule( CouplingScheme* c
         OffsetGap{ OpposingNormalGap{}, residual_gap }, penalty );
   }
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "Nodal Energy Mortar requires pressure/gap data." );
-  NodalContactEnforcement enforcement = use_penalty ? NodalContactEnforcement{ PenaltyEnforcement{ penalty } }
-                                                    : NodalContactEnforcement{ LagrangeMultiplierEnforcement{} };
-  return std::make_unique<NodalEnergyMortar<QuadratureRule, Exec>>(
+  if ( use_penalty ) {
+    return std::make_unique<NodalEnergyMortar<QuadratureRule, Exec, PenaltyEnforcement>>(
+        *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( pair_builder ),
+        std::move( quadrature_rule ), OffsetGap{ OpposingNormalGap{}, residual_gap }, PenaltyEnforcement{ penalty } );
+  }
+  return std::make_unique<NodalEnergyMortar<QuadratureRule, Exec, LagrangeMultiplierEnforcement>>(
       *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( pair_builder ),
-      std::move( quadrature_rule ), OffsetGap{ OpposingNormalGap{}, residual_gap }, std::move( enforcement ) );
+      std::move( quadrature_rule ), OffsetGap{ OpposingNormalGap{}, residual_gap }, LagrangeMultiplierEnforcement{} );
 }
 
 template <ExecutionMode Exec>

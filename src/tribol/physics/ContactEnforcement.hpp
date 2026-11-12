@@ -9,7 +9,6 @@
 
 #include <cmath>
 #include <stdexcept>
-#include <variant>
 
 #include "tribol/config.hpp"
 #include "tribol/common/BasicTypes.hpp"
@@ -52,9 +51,6 @@ class PenaltyEnforcement {
  private:
   const RealT stiffness_;  ///< Effective stiffness, unchanged by later updates to registered mesh data.
 };
-
-/** @brief Runtime selection between fully configured nodal penalty and Lagrange multiplier equations. */
-using NodalContactEnforcement = std::variant<PenaltyEnforcement, LagrangeMultiplierEnforcement>;
 
 #endif  // BUILD_REDECOMP
 }  // namespace tribol

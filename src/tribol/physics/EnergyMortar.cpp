@@ -22,6 +22,8 @@
 namespace tribol {
 namespace {
 
+constexpr RealT nodal_area_tolerance = 1.0e-14;  ///< Minimum supported tributary-area magnitude for penalty contact.
+
 /** @brief Energy Mortar's assembled weighted gaps and tributary areas, before activation. */
 struct EnergyMortarNodalQuantities {
   AssembledField weighted_gap;  ///< Weighted gaps and their coordinate Jacobian.
@@ -104,26 +106,18 @@ shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& 
   static_assert( Function::value_count == 2 * node_count );
   const IndexT pair_count = pairs.size();
   const int allocator_id = pairs.getAllocatorID();
-  Array1D<RealT> pair_weights( Function::value_count * pair_count, Function::value_count * pair_count, allocator_id );
   const auto pair_view = pairs.view();
   const auto connectivity = mesh1.getConnectivity();
-  auto* weight_data = pair_weights.data();
-  forAllExec<Exec>( pair_count, [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
-    const auto nodes = connectivity( pair_view[pair_index].element_id1_ );
-    for ( IndexT node = 0; node < node_count; ++node ) {
-      const auto weights = read_weights( nodes[node] );
-      weight_data[node * pair_count + pair_index] = weights[0];
-      weight_data[( node_count + node ) * pair_count + pair_index] = weights[1];
-    }
-  } );
-
-  PairHessianBuffer<Function::dof_count> hessians( pair_count, allocator_id );
+  PairJacobianHessianBuffer<Function::dof_count> hessians( pair_count, allocator_id );
   evaluatePairWeightedJacobiansAndHessians<Exec>(
       pairs.view(), mesh1, mesh2, function,
       [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
         MdArray<RealT, Function::value_count> weights{};
-        for ( IndexT value = 0; value < Function::value_count; ++value ) {
-          weights[value] = weight_data[value * pair_count + pair_index];
+        const auto nodes = connectivity( pair_view[pair_index].element_id1_ );
+        for ( IndexT node = 0; node < node_count; ++node ) {
+          const auto nodal_weights = read_weights( nodes[node] );
+          weights[node] = nodal_weights[0];
+          weights[node_count + node] = nodal_weights[1];
         }
         return weights;
       },
@@ -140,12 +134,13 @@ shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& 
 /**
  * @brief Normalize penalty gaps and remove positive-gap derivative rows.
  * @param quantities Assembled unmodified gap and area fields.
- * @param area_tolerance Smallest supported area magnitude for normalization.
+ * @param enforcement Select normalized compressive penalty gaps.
  * @return Normalized, nonpositive gaps and the weighted-gap coordinate Jacobian.
  */
-ContactFormulationResult takePenaltyGapResult( EnergyMortarNodalQuantities& quantities, RealT area_tolerance )
+ContactFormulationResult takeGapResult( EnergyMortarNodalQuantities& quantities,
+                                        [[maybe_unused]] const PenaltyEnforcement& enforcement )
 {
-  auto normalized_gap = quantities.weighted_gap.values.divide( quantities.area.values, area_tolerance );
+  auto normalized_gap = quantities.weighted_gap.values.divide( quantities.area.values, nodal_area_tolerance );
   mfem::Array<int> open_nodes;
   for ( int node = 0; node < quantities.weighted_gap.values.size(); ++node ) {
     if ( quantities.weighted_gap.values[node] > 0.0 ) {
@@ -163,9 +158,11 @@ ContactFormulationResult takePenaltyGapResult( EnergyMortarNodalQuantities& quan
 /**
  * @brief Return the weighted LM constraint without normalization or gap activation.
  * @param quantities Assembled gap and area fields.
+ * @param enforcement Select signed weighted LM constraints.
  * @return Weighted gaps and their coordinate Jacobian.
  */
-ContactFormulationResult takeLagrangeMultiplierGapResult( EnergyMortarNodalQuantities& quantities )
+ContactFormulationResult takeGapResult( EnergyMortarNodalQuantities& quantities,
+                                        [[maybe_unused]] LagrangeMultiplierEnforcement enforcement )
 {
   ContactFormulationResult result;
   result.gap.reset( quantities.weighted_gap.values.release() );
@@ -183,34 +180,28 @@ ContactFormulationResult QuadraturePointEnergyMortar<QuadratureRule, Exec>::comp
   return detail::evaluateAndAssembleEnergyPairs<Exec>( pairs, mesh1, mesh2, function_, mesh_data_, jacobian_data_ );
 }
 
-template <typename QuadratureRule, ExecutionMode Exec>
-ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec>::computeNodalGaps( MeshData::Viewer mesh1,
-                                                                                    MeshData::Viewer mesh2 ) const
+template <typename QuadratureRule, ExecutionMode Exec, typename Enforcement>
+ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec, Enforcement>::computeNodalGaps(
+    MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
 {
   const auto pairs = pair_builder_.build( mesh1, mesh2 );
   auto quantities = evaluateAndAssembleNodalQuantities<Exec>( pairs, mesh1, mesh2, function_, mesh_data_, submesh_data_,
                                                               jacobian_data_ );
-  if ( std::holds_alternative<PenaltyEnforcement>( enforcement_ ) ) {
-    return takePenaltyGapResult( quantities, area_tolerance );
-  }
-  return takeLagrangeMultiplierGapResult( quantities );
+  return takeGapResult( quantities, enforcement_ );
 }
 
-template <typename QuadratureRule, ExecutionMode Exec>
-ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec>::computeNodalForces( MeshData::Viewer mesh1,
-                                                                                      MeshData::Viewer mesh2 ) const
+template <typename QuadratureRule, ExecutionMode Exec, typename Enforcement>
+ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec, Enforcement>::computeNodalForces(
+    MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
 {
-  if ( const auto* penalty = std::get_if<PenaltyEnforcement>( &enforcement_ ) ) {
-    return computePenaltyForces( mesh1, mesh2, penalty->stiffness() );
-  }
-  return computeLagrangeMultiplierForces( mesh1, mesh2 );
+  return computeForces( mesh1, mesh2, enforcement_ );
 }
 
-template <typename QuadratureRule, ExecutionMode Exec>
-ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec>::computePenaltyForces( MeshData::Viewer mesh1,
-                                                                                        MeshData::Viewer mesh2,
-                                                                                        RealT stiffness ) const
+template <typename QuadratureRule, ExecutionMode Exec, typename Enforcement>
+ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec, Enforcement>::computeForces(
+    MeshData::Viewer mesh1, MeshData::Viewer mesh2, const PenaltyEnforcement& penalty ) const
 {
+  const RealT stiffness = penalty.stiffness();
   const auto pairs = pair_builder_.build( mesh1, mesh2 );
   auto quantities = evaluateAndAssembleNodalQuantities<Exec>( pairs, mesh1, mesh2, function_, mesh_data_, submesh_data_,
                                                               jacobian_data_ );
@@ -237,7 +228,7 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec>::computePenalty
   auto* nodal_energy_data = nodal_energy.data();
   forAllExec<Exec>( gap_weights.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) {
     const auto partials =
-        EnergyMortarNodalPartials::evaluate( weighted_gap[node], area[node], stiffness, area_tolerance );
+        EnergyMortarNodalPartials::evaluate( weighted_gap[node], area[node], stiffness, nodal_area_tolerance );
     nodal_energy_data[node] = partials.energy;
     gap_weight[node] = partials.gap;
     area_weight[node] = partials.area;
@@ -272,7 +263,7 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec>::computePenalty
   jacobian += mixed.transpose();
   jacobian += shared::ParSparseMat::rap( aa, quantities.area.dvalues_dx );
 
-  auto result = takePenaltyGapResult( quantities, area_tolerance );
+  auto result = takeGapResult( quantities, penalty );
   result.energy = energy;
   result.force.reset( force.release() );
   result.df_dx.reset( jacobian.release() );
@@ -280,9 +271,9 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec>::computePenalty
   return result;
 }
 
-template <typename QuadratureRule, ExecutionMode Exec>
-ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec>::computeLagrangeMultiplierForces(
-    MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
+template <typename QuadratureRule, ExecutionMode Exec, typename Enforcement>
+ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec, Enforcement>::computeForces(
+    MeshData::Viewer mesh1, MeshData::Viewer mesh2, LagrangeMultiplierEnforcement enforcement ) const
 {
   const auto pairs = pair_builder_.build( mesh1, mesh2 );
   auto quantities = evaluateAndAssembleNodalQuantities<Exec>( pairs, mesh1, mesh2, function_, mesh_data_, submesh_data_,
@@ -301,7 +292,7 @@ ContactFormulationResult NodalEnergyMortar<QuadratureRule, Exec>::computeLagrang
       [=] TRIBOL_HOST_DEVICE( IndexT node ) { return MdArray<RealT, 2>{ pressure_data[node], 0.0 }; } );
   auto df_dp = quantities.weighted_gap.dvalues_dx.transpose();
 
-  auto result = takeLagrangeMultiplierGapResult( quantities );
+  auto result = takeGapResult( quantities, enforcement );
   result.energy = energy;
   result.force.reset( force.release() );
   result.df_dx.reset( jacobian.release() );
@@ -314,9 +305,10 @@ using EnergyRule1 = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadrat
 using EnergyRule2 = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
 using EnergyRule3 = PairQuadratureRule<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>;
 
-#define TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE( Rule, Exec ) \
-  template class QuadraturePointEnergyMortar<Rule, Exec>;   \
-  template class NodalEnergyMortar<Rule, Exec>
+#define TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE( Rule, Exec )         \
+  template class QuadraturePointEnergyMortar<Rule, Exec>;           \
+  template class NodalEnergyMortar<Rule, Exec, PenaltyEnforcement>; \
+  template class NodalEnergyMortar<Rule, Exec, LagrangeMultiplierEnforcement>
 #define TRIBOL_INSTANTIATE_ENERGY_MORTAR( Exec )              \
   TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE( EnergyRule1, Exec ); \
   TRIBOL_INSTANTIATE_ENERGY_MORTAR_RULE( EnergyRule2, Exec ); \

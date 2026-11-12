@@ -30,10 +30,9 @@ struct PairEnergyValue {
 /** @brief Pair residual, quadrature status, and activation. @tparam DofCount Pair coordinate count. */
 template <IndexT DofCount>
 struct PairResidualValue {
-  static constexpr IndexT coordinate_count = DofCount;  ///< Pair coordinate and residual count.
-  MdArray<RealT, DofCount> residual{};                  ///< Residual in element/node/component order.
-  QuadratureResult quadrature_result{};                 ///< Failed quadrature output must not be consumed.
-  bool has_active_points = false;                       ///< Whether a compressive point exists, including zero gap.
+  MdArray<RealT, DofCount> residual{};   ///< Residual in element/node/component order.
+  QuadratureResult quadrature_result{};  ///< Failed quadrature output must not be consumed.
+  bool has_active_points = false;        ///< Whether a compressive point exists, including zero gap.
 
   /** @brief Return the residual as the function value vector. @return Residual in element/node/component order. */
   TRIBOL_HOST_DEVICE MdArray<RealT, DofCount> values() const { return residual; }
@@ -201,13 +200,12 @@ class EnzymePairDerivative {
       MdSpan<const RealT, dof_count> coordinates, const Function& function, MdSpan<const RealT, value_count> weights )
   {
     PairWeightedJacobianHessian<dof_count> result{};
-    weightedJacobianKernel( coordinates.data(), &function, weights.data(), result.jacobian.data() );
     for ( IndexT column = 0; column < dof_count; ++column ) {
-      MdArray<RealT, dof_count> coordinate_seed{}, jacobian{}, hessian_column{};
+      MdArray<RealT, dof_count> coordinate_seed{}, hessian_column{};
       coordinate_seed[column] = 1.0;
       __enzyme_fwddiff<void>( (void*)weightedJacobianKernel, TRIBOL_ENZYME_DUP, coordinates.data(),
                               coordinate_seed.data(), TRIBOL_ENZYME_CONST, (const void*)&function, TRIBOL_ENZYME_CONST,
-                              weights.data(), TRIBOL_ENZYME_DUP, jacobian.data(), hessian_column.data() );
+                              weights.data(), TRIBOL_ENZYME_DUP, result.jacobian.data(), hessian_column.data() );
       for ( IndexT row = 0; row < dof_count; ++row ) {
         result.hessian( row, column ) = hessian_column[row];
       }

@@ -114,7 +114,6 @@ class EnergyMortarNodalEnergy {
   static constexpr IndexT value_count = 2 * node_count;                            ///< Weighted gaps followed by areas.
   static constexpr IndexT first_dofs = Quadrature::FirstGeometry::Coords::size();  ///< First-element coordinates.
   static constexpr IndexT dof_count = first_dofs + Quadrature::SecondGeometry::Coords::size();  ///< Pair coordinates.
-  using CoordinateView = MdSpan<const RealT, dof_count>;  ///< Borrowed active coordinates.
   /** @brief Nodal values with activation and quadrature status. */
   struct PrimalResult {
     MdArray<RealT, value_count> value{};   ///< Weighted gaps, then areas, in local-node order.
@@ -135,7 +134,7 @@ class EnergyMortarNodalEnergy {
    * @param coordinates Current coordinates.
    * @return Nodal values and status; failed or empty rules give zeros. Failure must be reported by the caller.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PrimalResult evaluate( CoordinateView coordinates ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PrimalResult evaluate( MdSpan<const RealT, dof_count> coordinates ) const
   {
     const typename Quadrature::FirstGeometry geometry1( { coordinates.data(), first_dofs } );
     const typename Quadrature::SecondGeometry geometry2( { coordinates.data() + first_dofs, dof_count - first_dofs } );

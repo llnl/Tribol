@@ -11,7 +11,6 @@ endif()
 ## list of headers
 set(tribol_headers
 
-    assembly/MfemElementAssembly.hpp
     assembly/MfemMatrixAssembler.hpp
     assembly/MfemVectorAssembler.hpp
     assembly/PairContribution.hpp

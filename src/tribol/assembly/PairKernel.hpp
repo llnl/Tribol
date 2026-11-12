@@ -139,7 +139,7 @@ void evaluatePairValuesAndJacobians( ArrayViewT<const InterfacePair> pairs, Mesh
  * hypothetical nodal LM calculation could use multipliers 2.0 and 3.0, and zero area weights, to differentiate 2.0*G0
  * + 3.0*G1:
  * @code
- * PairHessianBuffer<PairFunction::dof_count> derivatives( pairs.size(), pairs.getAllocatorID() );
+ * PairJacobianHessianBuffer<PairFunction::dof_count> derivatives( pairs.size(), pairs.getAllocatorID() );
  * evaluatePairWeightedJacobiansAndHessians<Exec>(
  *     pairs.view(), mesh1, mesh2, pair_function,
  *     [] TRIBOL_HOST_DEVICE( IndexT ) {
@@ -167,7 +167,7 @@ template <ExecutionMode Exec, PairKernelFunctionType PairFunction, typename Weig
 void evaluatePairWeightedJacobiansAndHessians( ArrayViewT<const InterfacePair> pairs, MeshData::Viewer mesh1,
                                                MeshData::Viewer mesh2, PairFunction pair_function,
                                                WeightReader read_weights,
-                                               PairHessianView<PairFunction::dof_count> output )
+                                               PairJacobianHessianView<PairFunction::dof_count> output )
 {
   constexpr IndexT first_dofs = PairFunction::first_dofs;
   constexpr IndexT dof_count = PairFunction::dof_count;
@@ -183,7 +183,7 @@ void evaluatePairWeightedJacobiansAndHessians( ArrayViewT<const InterfacePair> p
     const auto pair_values = EnzymePairDerivative<PairFunction>::weightedJacobianAndHessian(
         coordinates.view(), pair_function, weights.view() );
     for ( IndexT row = 0; row < dof_count; ++row ) {
-      output.setGradient( pair_index, row, pair_values.jacobian[row] );
+      output.setJacobian( pair_index, row, pair_values.jacobian[row] );
       for ( IndexT column = 0; column < dof_count; ++column ) {
         output.setHessian( pair_index, row, column, pair_values.hessian( row, column ) );
       }
@@ -202,7 +202,7 @@ void evaluatePairWeightedJacobiansAndHessians( ArrayViewT<const InterfacePair> p
  * For example, suppose pair_function is a configured EnergyMortarEnergy of type PairFunction. A quadrature-point
  * formulation could request its scalar energy E, Jacobian J_E, and Hessian H_E together:
  * @code
- * PairEnergyHessianBuffer<PairFunction::dof_count> results( pairs.size(), pairs.getAllocatorID() );
+ * PairValueJacobianHessianBuffer<PairFunction::dof_count> results( pairs.size(), pairs.getAllocatorID() );
  * evaluatePairValuesJacobiansAndHessians<Exec>( pairs.view(), mesh1, mesh2, pair_function, results.view() );
  * checkPairQuadratureResults<Exec>( results.quadratureResults() );
  * @endcode
@@ -224,7 +224,7 @@ template <ExecutionMode Exec, PairKernelFunctionType PairFunction>
   requires( PairFunction::value_count == 1 )
 void evaluatePairValuesJacobiansAndHessians( ArrayViewT<const InterfacePair> pairs, MeshData::Viewer mesh1,
                                              MeshData::Viewer mesh2, PairFunction pair_function,
-                                             PairEnergyHessianView<PairFunction::dof_count> output )
+                                             PairValueJacobianHessianView<PairFunction::dof_count> output )
 {
   constexpr IndexT first_dofs = PairFunction::first_dofs;
   constexpr IndexT dof_count = PairFunction::dof_count;
@@ -238,10 +238,10 @@ void evaluatePairValuesJacobiansAndHessians( ArrayViewT<const InterfacePair> pai
     mesh2.getFaceCoords( pair.element_id2_, coordinates.data() + first_dofs );
     const auto pair_values =
         EnzymePairDerivative<PairFunction>::valueJacobianAndHessian( coordinates.view(), pair_function );
-    output.energies[pair_index] = pair_values.value;
+    output.values[pair_index] = pair_values.value;
     output.quadrature[pair_index] = pair_values.quadrature_result;
     for ( IndexT row = 0; row < dof_count; ++row ) {
-      output.derivatives.setGradient( pair_index, row, pair_values.jacobian[row] );
+      output.derivatives.setJacobian( pair_index, row, pair_values.jacobian[row] );
       for ( IndexT column = 0; column < dof_count; ++column ) {
         output.derivatives.setHessian( pair_index, row, column, pair_values.hessian( row, column ) );
       }

@@ -24,6 +24,19 @@ struct AssembledField {
   shared::ParVector values;         ///< Values on scalar submesh true DOFs, without normalization or activation.
   shared::ParSparseMat dvalues_dx;  ///< Scalar submesh rows and parent coordinate columns.
 };
+/** @brief Configure residual-force calculation without derivatives or Jacobian transfer data. */
+struct ResidualForceEvaluation {
+  const MfemMeshData& mesh_data;  ///< Borrowed displacement transfer data.
+};
+
+#ifdef TRIBOL_USE_ENZYME
+/** @brief Configure residual-force and coordinate-Jacobian calculation with Enzyme. */
+struct ResidualForceJacobianEvaluation {
+  const MfemMeshData& mesh_data;          ///< Borrowed displacement transfer data.
+  const MfemJacobianData& jacobian_data;  ///< Borrowed coordinate-matrix transfer data.
+};
+#endif
+
 namespace detail {
 
 /**
@@ -128,23 +141,23 @@ ContactFormulationResult assemblePairForcesAndJacobian( const ArrayT<InterfacePa
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
  * @param function Fixed pair residual configuration.
- * @param mesh_data Borrowed MFEM displacement transfer data.
+ * @param evaluation Borrowed displacement transfer prerequisites for force-only calculation.
  * @return Owned force on parent true DOFs; df_dx and other outputs are absent. Empty or inactive pairs contribute zero.
  * Scratch arrays remain alive until evaluation and assembly finish.
  * @throws std::invalid_argument Geometry or assembly dimensions are invalid; no result is returned.
  * @throws std::length_error Quadrature capacity or the supported index range is exceeded; no result is returned.
  */
 template <ExecutionMode Exec, PairKernelFunctionType Function>
-ContactFormulationResult evaluateAndAssembleResidualValues( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
-                                                            MeshData::Viewer mesh2, const Function& function,
-                                                            const MfemMeshData& mesh_data )
+ContactFormulationResult evaluateAndAssembleResidualPairs( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
+                                                           MeshData::Viewer mesh2, const Function& function,
+                                                           ResidualForceEvaluation evaluation )
 {
   static_assert( Function::value_count == Function::dof_count, "Pair residuals must match coordinate DOFs." );
   PairValueBuffer<Function::value_count> contributions( pairs.size(), pairs.getAllocatorID() );
   const auto view = contributions.view();
   evaluatePairValues<Exec>( pairs.view(), mesh1, mesh2, function, view );
   checkPairQuadratureResults<Exec>( contributions.quadratureResults() );
-  auto assembler = makeDisplacementVectorAssembler( mesh_data, mesh1, mesh2 );
+  auto assembler = makeDisplacementVectorAssembler( evaluation.mesh_data, mesh1, mesh2 );
   assembler.addPairs<Exec, Function::dof_count, 2>( pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
     return view.has_active_points[pair] ? view.value( pair, row ) : 0.0;
   } );
@@ -166,8 +179,7 @@ ContactFormulationResult evaluateAndAssembleResidualValues( const ArrayT<Interfa
  * @param mesh1 Current first mesh with execution-accessible coordinates and connectivity.
  * @param mesh2 Current second mesh with execution-accessible coordinates and connectivity.
  * @param function Pair residual configuration; borrowed for this call.
- * @param mesh_data Current MFEM displacement transfer data; borrowed for this call.
- * @param jacobian_data Current MFEM Jacobian transfer data; borrowed for this call.
+ * @param evaluation Borrowed displacement and Jacobian transfer prerequisites.
  * @return Owned parent true-DOF force and df_dx; other outputs are absent. Empty or inactive pairs contribute zero.
  * An empty list returns allocated zero force and df_dx.
  * @throws std::invalid_argument Pair geometry or assembly dimensions are invalid; no result is
@@ -178,8 +190,7 @@ ContactFormulationResult evaluateAndAssembleResidualValues( const ArrayT<Interfa
 template <ExecutionMode Exec, typename Function>
 ContactFormulationResult evaluateAndAssembleResidualPairs( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
                                                            MeshData::Viewer mesh2, const Function& function,
-                                                           const MfemMeshData& mesh_data,
-                                                           const MfemJacobianData& jacobian_data )
+                                                           ResidualForceJacobianEvaluation evaluation )
 {
   static_assert( Function::value_count == Function::dof_count, "Pair residuals must match coordinate DOFs." );
   PairValueJacobianBuffer<Function::value_count, Function::dof_count> contributions( pairs.size(),
@@ -189,7 +200,7 @@ ContactFormulationResult evaluateAndAssembleResidualPairs( const ArrayT<Interfac
   checkPairQuadratureResults<Exec>( contributions.quadratureResults() );
 
   return assemblePairForcesAndJacobian<Exec, Function::dof_count>(
-      pairs, mesh1, mesh2, mesh_data, jacobian_data,
+      pairs, mesh1, mesh2, evaluation.mesh_data, evaluation.jacobian_data,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
         return view.has_active_points[pair] ? view.value( pair, row ) : 0.0;
       },
@@ -228,19 +239,19 @@ ContactFormulationResult evaluateAndAssembleEnergyPairs( const ArrayT<InterfaceP
                                                          const MfemJacobianData& jacobian_data )
 {
   static_assert( Function::value_count == 1, "Pair energies must have one scalar output." );
-  PairEnergyHessianBuffer<Function::dof_count> contributions( pairs.size(), pairs.getAllocatorID() );
+  PairValueJacobianHessianBuffer<Function::dof_count> contributions( pairs.size(), pairs.getAllocatorID() );
   const auto view = contributions.view();
   evaluatePairValuesJacobiansAndHessians<Exec>( pairs.view(), mesh1, mesh2, function, view );
   checkPairQuadratureResults<Exec>( contributions.quadratureResults() );
 
   auto result = assemblePairForcesAndJacobian<Exec, Function::dof_count>(
       pairs, mesh1, mesh2, mesh_data, jacobian_data,
-      [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) { return view.derivatives.gradient( pair, row ); },
+      [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) { return view.derivatives.jacobian( pair, row ); },
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
         return view.derivatives.hessian( pair, row, column );
       } );
   result.energy = GlobalScalarAssembler::sum<Exec>(
-      pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) { return view.energies[pair]; }, result.force->GetComm() );
+      pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) { return view.values[pair]; }, result.force->GetComm() );
   return result;
 }
 

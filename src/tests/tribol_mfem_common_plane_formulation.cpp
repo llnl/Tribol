@@ -26,6 +26,7 @@
 #include "tribol/interface/mfem_tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/physics/CommonPlaneFormulation.hpp"
+#include "tribol/assembly/PairEvaluationAssembly.hpp"
 #include "tribol/physics/PenaltyStiffness.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/integ/QuadratureRuleFactory.hpp"
@@ -257,8 +258,8 @@ TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
             auto coarse = createCoarseSearch( scheme().spatialDimension(), scheme().getBinningMethod(), execution_mode,
                                               scheme().getEffectiveBinningProximityScale(), 0.0 );
             auto refined = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
-            return std::make_unique<CommonPlaneFormulation<BaseRule, Exec>>(
-                *scheme().getMfemMeshData(), *scheme().getMfemJacobianData(),
+            return std::make_unique<CommonPlaneFormulation<BaseRule, Exec, ResidualForceJacobianEvaluation>>(
+                ResidualForceJacobianEvaluation{ *scheme().getMfemMeshData(), *scheme().getMfemJacobianData() },
                 PairListBuilder{ std::move( coarse ), std::move( refined ) }, std::move( quadrature ),
                 OffsetGap{ CommonPlaneGap{}, 0.0 }, AveragePenaltyStiffness{}( 2.0, 6.0 ) );
           } );
@@ -508,18 +509,27 @@ TEST_P( MfemCommonPlaneTest, selects_execution_specialization )
     finalize();
     registerScheme( mode );
     enable( false );
-    const auto check = [&]() {
+    const auto check = [&]( bool compute_jacobian ) {
       return dispatchExecutionMode( mode, [&]<ExecutionMode Exec>() {
         return createWithQuadratureRule( GetParam(), CommonPlaneEdgeMapping{}, [&]( auto rule ) {
           using BaseRule = typename decltype( rule )::Generator;
-          return dynamic_cast<CommonPlaneFormulation<BaseRule, Exec>*>( scheme().getContactFormulation() ) != nullptr;
+#ifdef TRIBOL_USE_ENZYME
+          if ( compute_jacobian ) {
+            return dynamic_cast<CommonPlaneFormulation<BaseRule, Exec, ResidualForceJacobianEvaluation>*>(
+                       scheme().getContactFormulation() ) != nullptr;
+          }
+#else
+          (void)compute_jacobian;
+#endif
+          return dynamic_cast<CommonPlaneFormulation<BaseRule, Exec, ResidualForceEvaluation>*>(
+                     scheme().getContactFormulation() ) != nullptr;
         } );
       } );
     };
-    EXPECT_TRUE( check() );
+    EXPECT_TRUE( check( false ) );
 #ifdef TRIBOL_USE_ENZYME
     enable();
-    EXPECT_TRUE( check() );
+    EXPECT_TRUE( check( true ) );
 #endif
   }
 }
@@ -554,16 +564,16 @@ TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
     setQuadratureOrder( 0, order );
     auto* formulation = scheme().getContactFormulation();
     if ( order <= 1 ) {
-      EXPECT_NE( ( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<1>, ExecutionMode::Sequential>*>(
-                     formulation ) ),
+      EXPECT_NE( ( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<1>, ExecutionMode::Sequential,
+                                                       ResidualForceEvaluation>*>( formulation ) ),
                  nullptr );
     } else if ( order <= 3 ) {
-      EXPECT_NE( ( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<2>, ExecutionMode::Sequential>*>(
-                     formulation ) ),
+      EXPECT_NE( ( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<2>, ExecutionMode::Sequential,
+                                                       ResidualForceEvaluation>*>( formulation ) ),
                  nullptr );
     } else {
-      EXPECT_NE( ( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<3>, ExecutionMode::Sequential>*>(
-                     formulation ) ),
+      EXPECT_NE( ( dynamic_cast<CommonPlaneFormulation<EdgeQuadratureRuleGenerator<3>, ExecutionMode::Sequential,
+                                                       ResidualForceEvaluation>*>( formulation ) ),
                  nullptr );
     }
   }

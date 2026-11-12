@@ -97,7 +97,7 @@ bool usesPointCount( tribol::ContactFormulation* formulation, tribol::Enforcemen
       tribol::PairQuadratureRule<tribol::SmoothedProjectedEdgeMapping, tribol::EdgeQuadratureRuleGenerator<Count>>;
   return tribol::dispatchExecutionMode( execution_mode, [&]<tribol::ExecutionMode Exec>() {
     if ( location == tribol::EnforcementLocation::Nodal ) {
-      return dynamic_cast<tribol::NodalEnergyMortar<Rule, Exec>*>( formulation ) != nullptr;
+      return dynamic_cast<tribol::NodalEnergyMortar<Rule, Exec, tribol::PenaltyEnforcement>*>( formulation ) != nullptr;
     }
     return dynamic_cast<tribol::QuadraturePointEnergyMortar<Rule, Exec>*>( formulation ) != nullptr;
   } );
@@ -225,7 +225,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
             auto refined = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
             PairListBuilder pair_builder{ std::move( coarse ), std::move( refined ) };
             if ( std::get<0>( GetParam() ) == EnforcementLocation::Nodal ) {
-              return std::make_unique<NodalEnergyMortar<decltype( rule ), Exec>>(
+              return std::make_unique<NodalEnergyMortar<decltype( rule ), Exec, PenaltyEnforcement>>(
                   *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), std::move( pair_builder ),
                   std::move( rule ), OffsetGap{ OpposingNormalGap{}, 0.0 },
                   PenaltyEnforcement{ SeriesPenaltyStiffness{}( 2.0, 6.0 ) } );
@@ -474,7 +474,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, nodal_activation_preserves_only_comp
     auto coarse = createCoarseSearch( cs.spatialDimension(), cs.getBinningMethod(), cs.getExecutionMode(),
                                       cs.getEffectiveBinningProximityScale(), 0.0 );
     auto refined = std::make_unique<ProjectedEdgeSearch>( cs.getExecutionMode(), false );
-    NodalEnergyMortar<decltype( rule ), ExecutionMode::Sequential> lm(
+    NodalEnergyMortar<decltype( rule ), ExecutionMode::Sequential, LagrangeMultiplierEnforcement> lm(
         *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(),
         PairListBuilder{ std::move( coarse ), std::move( refined ) }, rule, OffsetGap{ OpposingNormalGap{}, 0.0 },
         LagrangeMultiplierEnforcement{} );

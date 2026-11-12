@@ -27,8 +27,6 @@ namespace tribol {
 template <typename QuadratureRule, ExecutionMode Exec>
 class QuadraturePointEnergyMortar final : public ContactFormulation {
  public:
-  using PairFunction = EnergyMortarEnergy<QuadratureRule, OffsetGap<OpposingNormalGap>>;  ///< Pair energy function.
-
   /**
    * @brief Borrow transfer data and own search and formulation configuration.
    * @param mesh_data Parent displacement transfer data.
@@ -56,20 +54,19 @@ class QuadraturePointEnergyMortar final : public ContactFormulation {
   MfemMeshData& mesh_data_;          ///< Borrowed displacement transfer data.
   MfemJacobianData& jacobian_data_;  ///< Borrowed Jacobian transfer data.
   PairListBuilder pair_builder_;     ///< Owned search composition.
-  const PairFunction function_;      ///< Owned pair quadrature, fixed stiffness, and gap definition.
+  const EnergyMortarEnergy<QuadratureRule, OffsetGap<OpposingNormalGap>>
+      function_;  ///< Owned pair quadrature, fixed stiffness, and gap definition.
 };
 
 /**
  * @brief Energy Mortar assembled from nodal weighted gaps and tributary areas.
  * @tparam QuadratureRule Smoothed projected-edge pair quadrature.
  * @tparam Exec Concrete execution mode for evaluation and numerical assembly.
+ * @tparam Enforcement PenaltyEnforcement or LagrangeMultiplierEnforcement, fixed at construction.
  */
-template <typename QuadratureRule, ExecutionMode Exec>
+template <typename QuadratureRule, ExecutionMode Exec, typename Enforcement>
 class NodalEnergyMortar final : public ContactFormulation {
  public:
-  using PairFunction = EnergyMortarNodalEnergy<QuadratureRule, OffsetGap<OpposingNormalGap>>;  ///< Pair integrals.
-  static constexpr RealT area_tolerance = 1.0e-14;  ///< Minimum supported tributary-area magnitude.
-
   /**
    * @brief Borrow parent/dual transfer data and own search and formulation configuration.
    * @param mesh_data Parent displacement transfer data.
@@ -82,7 +79,7 @@ class NodalEnergyMortar final : public ContactFormulation {
    */
   NodalEnergyMortar( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jacobian_data,
                      PairListBuilder pair_builder, QuadratureRule quadrature, OffsetGap<OpposingNormalGap> gap,
-                     NodalContactEnforcement enforcement )
+                     Enforcement enforcement )
       : mesh_data_( mesh_data ),
         submesh_data_( submesh_data ),
         jacobian_data_( jacobian_data ),
@@ -105,31 +102,34 @@ class NodalEnergyMortar final : public ContactFormulation {
    * @brief Calculate nodal penalty forces and derivatives using the fixed stiffness.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
-   * @param stiffness Positive, finite effective penalty stiffness.
+   * @param penalty Fixed positive, finite penalty stiffness.
    * @return Owned normalized gaps, pressure, energy, force, and derivatives; df_dp is absent.
    * @throws std::invalid_argument Geometry or assembly dimensions are invalid; no result is returned.
    * @throws std::length_error Quadrature capacity or assembly storage is insufficient; no result is returned.
    */
-  ContactFormulationResult computePenaltyForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                                                 RealT stiffness ) const;
+  ContactFormulationResult computeForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                          const PenaltyEnforcement& penalty ) const;
 
   /**
    * @brief Calculate forces and derivatives from the current nodal Lagrange multipliers.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
+   * @param enforcement Lagrange multiplier calculation selector.
    * @return Owned weighted gaps, pressure, energy, force, coordinate derivatives, and df_dp.
    * @throws std::invalid_argument Geometry, assembly dimensions, or multiplier size are invalid;
    * no result is returned.
    * @throws std::length_error Quadrature capacity or assembly storage is insufficient; no result is returned.
    */
-  ContactFormulationResult computeLagrangeMultiplierForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const;
+  ContactFormulationResult computeForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                          LagrangeMultiplierEnforcement enforcement ) const;
 
-  MfemMeshData& mesh_data_;                    ///< Borrowed displacement transfer data.
-  MfemSubmeshData& submesh_data_;              ///< Borrowed dual transfer data.
-  MfemJacobianData& jacobian_data_;            ///< Borrowed Jacobian transfer data.
-  PairListBuilder pair_builder_;               ///< Owned search composition.
-  const PairFunction function_;                ///< Owned pair quadrature and gap definition.
-  const NodalContactEnforcement enforcement_;  ///< Explicit nodal enforcement equation.
+  MfemMeshData& mesh_data_;          ///< Borrowed displacement transfer data.
+  MfemSubmeshData& submesh_data_;    ///< Borrowed dual transfer data.
+  MfemJacobianData& jacobian_data_;  ///< Borrowed Jacobian transfer data.
+  PairListBuilder pair_builder_;     ///< Owned search composition.
+  const EnergyMortarNodalEnergy<QuadratureRule, OffsetGap<OpposingNormalGap>>
+      function_;                   ///< Owned pair quadrature and gap definition.
+  const Enforcement enforcement_;  ///< Explicit nodal enforcement equation.
 };
 #endif
 

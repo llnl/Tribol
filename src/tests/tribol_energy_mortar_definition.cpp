@@ -302,7 +302,7 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_h
   MeshData mesh1( 0, 1, x1.size(), conn1.data(), EDGE, LINEAR_LAGRANGE, x1.data(), y1.data(), nullptr, memorySpace() );
   MeshData mesh2( 1, 4, x2.size(), conn2.data(), EDGE, LINEAR_LAGRANGE, x2.data(), y2.data(), nullptr, memorySpace() );
   const auto pairs = copyToExecutionSpace<InterfacePair>( { { 0, 0 }, { 0, 1 }, { 0, 2 }, { 0, 3 } } );
-  PairEnergyHessianBuffer<Function::dof_count> buffer( pairs.size(), allocatorId() );
+  PairValueJacobianHessianBuffer<Function::dof_count> buffer( pairs.size(), allocatorId() );
   const auto output = buffer.view();
   dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
     return evaluatePairValuesJacobiansAndHessians<Exec>( pairs.view(), mesh1.getView(), mesh2.getView(), function,
@@ -317,12 +317,12 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_h
   ArrayT<RealT, 2> summaries( axom::StackArray<axom::IndexType, 2>{ pairs.size(), 4 }, allocatorId() );
   const auto summary = summaries.view();
   forAllExec( GetParam(), pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
-    summary( pair, 0 ) = output.energies[pair];
-    summary( pair, 1 ) = output.derivatives.gradient( pair, 1 ) + output.derivatives.gradient( pair, 3 );
+    summary( pair, 0 ) = output.values[pair];
+    summary( pair, 1 ) = output.derivatives.jacobian( pair, 1 ) + output.derivatives.jacobian( pair, 3 );
     summary( pair, 2 ) = 0.0;
     summary( pair, 3 ) = 0.0;
     for ( IndexT row = 0; row < Function::dof_count; ++row ) {
-      summary( pair, 3 ) += std::abs( output.derivatives.gradient( pair, row ) );
+      summary( pair, 3 ) += std::abs( output.derivatives.jacobian( pair, row ) );
       for ( IndexT column = 0; column < Function::dof_count; ++column ) {
         summary( pair, 3 ) += std::abs( output.derivatives.hessian( pair, row, column ) );
         if ( ( row == 1 || row == 3 ) && ( column == 1 || column == 3 ) ) {
@@ -394,10 +394,11 @@ struct PolynomialPairFunction {
 struct PolynomialDerivativeResult {
   PairValueJacobian<PolynomialPairFunction::value_count, PolynomialPairFunction::dof_count> value_jacobian;
   PairWeightedJacobianHessian<PolynomialPairFunction::dof_count> weighted_hessian;
-  IndexT evaluation_count = 0;  ///< Complete evaluations used for values and Jacobian.
+  IndexT evaluation_count = 0;           ///< Complete evaluations used for values and Jacobian.
+  IndexT weighted_evaluation_count = 0;  ///< Complete evaluations used for the weighted Jacobian and Hessian.
 };
 
-// Forward AD must return values and quadrature state using only the calls needed for the Jacobian columns.
+// Jacobian and Hessian AD calls must also supply their primal outputs without separate evaluations.
 TEST_P( EnergyMortarDefinitionTest, enzyme_pair_derivatives_execute_on_backend )
 {
   Array1D<PolynomialDerivativeResult> results( 1, 1, allocatorId() );
@@ -409,8 +410,10 @@ TEST_P( EnergyMortarDefinitionTest, enzyme_pair_derivatives_execute_on_backend )
     output[0].value_jacobian = EnzymePairDerivative<PolynomialPairFunction>::valuesAndJacobian(
         coordinates.view(), PolynomialPairFunction{ &evaluation_count } );
     output[0].evaluation_count = evaluation_count;
+    IndexT weighted_evaluation_count = 0;
     output[0].weighted_hessian = EnzymePairDerivative<PolynomialPairFunction>::weightedJacobianAndHessian(
-        coordinates.view(), {}, weights.view() );
+        coordinates.view(), PolynomialPairFunction{ &weighted_evaluation_count }, weights.view() );
+    output[0].weighted_evaluation_count = weighted_evaluation_count;
   } );
   const Array1D<PolynomialDerivativeResult, MemorySpace::Host> host_results( results );
   const auto& value_jacobian = host_results[0].value_jacobian;
@@ -424,6 +427,7 @@ TEST_P( EnergyMortarDefinitionTest, enzyme_pair_derivatives_execute_on_backend )
   EXPECT_DOUBLE_EQ( value_jacobian.jacobian( 0, 1 ), 1.0 );
   EXPECT_DOUBLE_EQ( value_jacobian.jacobian( 1, 0 ), 5.0 );
   EXPECT_DOUBLE_EQ( value_jacobian.jacobian( 1, 1 ), 3.0 );
+  EXPECT_EQ( host_results[0].weighted_evaluation_count, PolynomialPairFunction::dof_count );
   const auto& weighted_hessian = host_results[0].weighted_hessian;
   EXPECT_DOUBLE_EQ( weighted_hessian.jacobian[0], 7.0 );
   EXPECT_DOUBLE_EQ( weighted_hessian.jacobian[1], -1.0 );

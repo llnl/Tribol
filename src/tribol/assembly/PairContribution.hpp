@@ -169,25 +169,25 @@ class PairValueJacobianBuffer {
 };
 
 /**
- * @brief Device-copyable view of weighted pair gradients and Hessians.
+ * @brief Device-copyable coordinate Jacobians and Hessians of scalar functions or fixed weighted sums.
  * @tparam DofCount Number of active pair coordinates.
  */
 template <IndexT DofCount>
-struct PairHessianView {
-  RealT* gradients{ nullptr };  ///< Weighted gradients in `[coordinate][pair]` order.
-  RealT* hessians{ nullptr };   ///< Weighted Hessians in `[row][column][pair]` order.
+struct PairJacobianHessianView {
+  RealT* jacobians{ nullptr };  ///< Coordinate Jacobians in `[coordinate][pair]` order.
+  RealT* hessians{ nullptr };   ///< Coordinate Hessians in `[row][column][pair]` order.
   IndexT pair_count{ 0 };       ///< Number of writable pair slots.
 
-  /** @brief Store a gradient entry. @param pair Pair slot. @param coordinate Coordinate. @param value Entry value. */
-  TRIBOL_HOST_DEVICE void setGradient( IndexT pair, IndexT coordinate, RealT value ) const
+  /** @brief Store a Jacobian entry. @param pair Pair slot. @param coordinate Coordinate. @param value Entry value. */
+  TRIBOL_HOST_DEVICE void setJacobian( IndexT pair, IndexT coordinate, RealT value ) const
   {
-    gradients[coordinate * pair_count + pair] = value;
+    jacobians[coordinate * pair_count + pair] = value;
   }
 
-  /** @brief Read a gradient entry. @param pair Pair slot. @param coordinate Coordinate. @return Entry value. */
-  TRIBOL_HOST_DEVICE RealT gradient( IndexT pair, IndexT coordinate ) const
+  /** @brief Read a Jacobian entry. @param pair Pair slot. @param coordinate Coordinate. @return Entry value. */
+  TRIBOL_HOST_DEVICE RealT jacobian( IndexT pair, IndexT coordinate ) const
   {
-    return gradients[coordinate * pair_count + pair];
+    return jacobians[coordinate * pair_count + pair];
   }
 
   /**
@@ -209,69 +209,69 @@ struct PairHessianView {
   }
 };
 
-/** @brief Own weighted pair gradients and Hessians in execution-space memory. @tparam DofCount Pair coordinate count.
+/** @brief Own pair Jacobians and Hessians in execution-space memory. @tparam DofCount Pair coordinate count.
  */
 template <IndexT DofCount>
-class PairHessianBuffer {
+class PairJacobianHessianBuffer {
  public:
   /** @brief Allocate all derivative slots. @param pair_count Pair count. @param allocator_id Execution allocator. */
-  PairHessianBuffer( IndexT pair_count, int allocator_id )
+  PairJacobianHessianBuffer( IndexT pair_count, int allocator_id )
       : pair_count_( pair_count ),
-        gradients_( DofCount * pair_count, DofCount * pair_count, allocator_id ),
+        jacobians_( DofCount * pair_count, DofCount * pair_count, allocator_id ),
         hessians_( DofCount * DofCount * pair_count, DofCount * DofCount * pair_count, allocator_id )
   {
   }
 
   /** @brief Return a device-copyable writable view. @return View retaining no ownership. */
-  PairHessianView<DofCount> view() { return { gradients_.data(), hessians_.data(), pair_count_ }; }
+  PairJacobianHessianView<DofCount> view() { return { jacobians_.data(), hessians_.data(), pair_count_ }; }
 
   /** @brief Return the number of pair slots. @return Pair count. */
   IndexT pairCount() const { return pair_count_; }
 
-  /** @brief Return the owning gradient array. @return Gradients in structure-of-arrays order. */
-  const Array1D<RealT>& gradients() const { return gradients_; }
+  /** @brief Return the owning Jacobian array. @return Jacobians in structure-of-arrays order. */
+  const Array1D<RealT>& jacobians() const { return jacobians_; }
 
   /** @brief Return the owning Hessian array. @return Hessians in structure-of-arrays order. */
   const Array1D<RealT>& hessians() const { return hessians_; }
 
  private:
   IndexT pair_count_;         ///< Pair slots allocated in both arrays.
-  Array1D<RealT> gradients_;  ///< Weighted gradients in structure-of-arrays order.
-  Array1D<RealT> hessians_;   ///< Weighted Hessians in structure-of-arrays order.
+  Array1D<RealT> jacobians_;  ///< Coordinate Jacobians in structure-of-arrays order.
+  Array1D<RealT> hessians_;   ///< Coordinate Hessians in structure-of-arrays order.
 };
 
-/** @brief Device-copyable pair energies, quadrature results, gradients, and Hessians. @tparam DofCount Coordinates.
+/** @brief Device-copyable pair values, quadrature results, Jacobians, and Hessians. @tparam DofCount Coordinates.
  */
 template <IndexT DofCount>
-struct PairEnergyHessianView {
-  RealT* energies{ nullptr };               ///< One scalar energy per pair.
-  QuadratureResult* quadrature{ nullptr };  ///< One quadrature result per pair.
-  PairHessianView<DofCount> derivatives{};  ///< Coordinate gradients and Hessians.
+struct PairValueJacobianHessianView {
+  RealT* values{ nullptr };                         ///< One scalar value per pair.
+  QuadratureResult* quadrature{ nullptr };          ///< One quadrature result per pair.
+  PairJacobianHessianView<DofCount> derivatives{};  ///< Coordinate Jacobians and Hessians.
 };
 
-/** @brief Own pair energies and their coordinate derivatives in execution-space memory. @tparam DofCount Coordinates.
+/** @brief Own pair values and their coordinate derivatives in execution-space memory. @tparam DofCount Coordinates.
  */
 template <IndexT DofCount>
-class PairEnergyHessianBuffer {
+class PairValueJacobianHessianBuffer {
  public:
   /** @brief Allocate all pair outputs. @param pair_count Pair count. @param allocator_id Execution allocator. */
-  PairEnergyHessianBuffer( IndexT pair_count, int allocator_id )
-      : energies_( pair_count, pair_count, allocator_id ),
+  PairValueJacobianHessianBuffer( IndexT pair_count, int allocator_id )
+      : values_( pair_count, pair_count, allocator_id ),
         quadrature_( pair_count, pair_count, allocator_id ),
         derivatives_( pair_count, allocator_id )
   {
   }
 
   /** @brief Return a device-copyable writable view. @return View retaining no ownership. */
-  PairEnergyHessianView<DofCount> view() { return { energies_.data(), quadrature_.data(), derivatives_.view() }; }
+  PairValueJacobianHessianView<DofCount> view() { return { values_.data(), quadrature_.data(), derivatives_.view() }; }
 
   /** @brief Return quadrature results. @return One result per pair. */
   const Array1D<QuadratureResult>& quadratureResults() const { return quadrature_; }
 
  private:
-  Array1D<RealT> energies_;                  ///< Scalar energies, zero for empty or inactive pairs.
-  Array1D<QuadratureResult> quadrature_;     ///< Quadrature status for each pair.
-  PairHessianBuffer<DofCount> derivatives_;  ///< Coordinate gradients and Hessians.
+  Array1D<RealT> values_;                            ///< Scalar values, zero for empty or inactive pairs.
+  Array1D<QuadratureResult> quadrature_;             ///< Quadrature status for each pair.
+  PairJacobianHessianBuffer<DofCount> derivatives_;  ///< Coordinate Jacobians and Hessians.
 };
 
 /**

@@ -12,9 +12,10 @@
 #include <limits>
 #include <stdexcept>
 #include <vector>
-#include "tribol/assembly/MfemElementAssembly.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/MdArray.hpp"
+#include "tribol/mesh/MfemData.hpp"
+#include "tribol/assembly/PairContribution.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
 
@@ -261,7 +262,7 @@ class MfemMatrixAssembler {
       throw std::invalid_argument( "Matrix batch must be appended to the assembler that created it." );
     }
     for ( IndexT block = 0; block < BlockCount; ++block ) {
-      detail::appendElementBlocks( contributions_[block], batch.blocks_[block] );
+      appendElementBlocks( contributions_[block], batch.blocks_[block] );
     }
   }
 
@@ -292,6 +293,40 @@ class MfemMatrixAssembler {
   shared::ParSparseMat assemble() const;
 
  private:
+  /**
+   * @brief Copy packed element blocks to the host and append them after any earlier contributions.
+   * @tparam RowDofs Dense block row count.
+   * @tparam ColumnDofs Dense block column count.
+   * @param destination Accumulated host blocks; existing entries and value offsets are preserved.
+   * @param blocks Execution-space blocks to copy; not retained.
+   * @throws std::length_error Accumulated entries or values exceed the supported index range; nothing is appended.
+   */
+  template <IndexT RowDofs, IndexT ColumnDofs>
+  static void appendElementBlocks( PackedPairJacobianContribs& destination,
+                                   const ElementBlockBuffer<RowDofs, ColumnDofs>& blocks )
+  {
+    const auto max_size = std::numeric_limits<IndexT>::max();
+    if ( blocks.rowElementIds().size() > max_size - destination.row_elem_ids.size() ||
+         blocks.values().size() > max_size - destination.jacobian_data.size() ) {
+      throw std::length_error( "Accumulated element blocks exceed the supported index range." );
+    }
+    if ( blocks.rowElementIds().size() == 0 ) {
+      return;
+    }
+    const Array1D<IndexT, MemorySpace::Host> rows( blocks.rowElementIds() );
+    const Array1D<IndexT, MemorySpace::Host> columns( blocks.columnElementIds() );
+    Array1D<IndexT, MemorySpace::Host> offsets( blocks.valueOffsets() );
+    const Array1D<RealT, MemorySpace::Host> values( blocks.values() );
+    const IndexT value_offset = destination.jacobian_data.size();
+    for ( IndexT& offset : offsets ) {
+      offset += value_offset;
+    }
+    destination.row_elem_ids.append( rows.view() );
+    destination.col_elem_ids.append( columns.view() );
+    destination.value_offsets.append( offsets.view() );
+    destination.jacobian_data.append( values.view() );
+  }
+
   MfemJacobianTransfer transfer_;                          ///< Borrowed, independent row and column transfer paths.
   std::vector<detail::MfemMatrixBlockLayout> layouts_;     ///< Input block indexing, independent of pair count.
   std::vector<PackedPairJacobianContribs> contributions_;  ///< Accumulated blocks with borrowed FE spaces and maps.
