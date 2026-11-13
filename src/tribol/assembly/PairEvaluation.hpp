@@ -218,8 +218,10 @@ class EnzymePairDerivative {
    * Return f_i and J_ij = df_i/dx_j, with one row per value and one column per coordinate, together with quadrature
    * status and activation. Each forward AD call computes values and one Jacobian column; the returned values and
    * status come from these calls. No separate value evaluation, output weighting, or Hessian calculation is performed.
-   * A failed quadrature result must be reported before consuming the numerical outputs. Empty and inactive pairs
-   * follow Function's evaluate() behavior; a zero value alone does not imply inactivity or a zero Jacobian.
+   * Failed or inactive evaluations return zero values and Jacobian after the first AD call, retaining quadrature
+   * status and activation. A failed quadrature result must be reported before consuming the numerical outputs.
+   * Successful active evaluations retain derivatives even when their values are zero. Nodal gap and area integrals
+   * remain active whenever quadrature is nonempty, before nodal enforcement determines whether contact is compressive.
    *
    * For example, suppose f is a configured CommonPlanePairFunction of type Function, and coords1 and coords2 hold
    * the two edges' coordinates. A pair kernel could use:
@@ -236,8 +238,8 @@ class EnzymePairDerivative {
    * @param coords1 Current geometry1 coordinates.
    * @param coords2 Current geometry2 coordinates.
    * @param function Fixed pair-function configuration.
-   * @return Function values, their value-by-coordinate Jacobian, quadrature status, and activation. Status is not
-   * checked.
+   * @return Function values, their value-by-coordinate Jacobian, quadrature status, and activation. Failed or inactive
+   * numerical outputs are zero; status is not checked.
    */
   TRIBOL_HOST_DEVICE static PairValueJacobian<num_values, num_coords> valuesAndJacobian(
       typename Function::Coords1 coords1, typename Function::Coords2 coords2, const Function& function )
@@ -252,6 +254,11 @@ class EnzymePairDerivative {
           coords2.data(), coordinate_seed.data() + num_geom1_coords, TRIBOL_ENZYME_CONST, (const void*)&function,
           TRIBOL_ENZYME_DUP, pair_values_struct.values.data(), jacobian_col.data(), TRIBOL_ENZYME_CONST,
           &pair_values_struct.quadrature_result, TRIBOL_ENZYME_CONST, &pair_values_struct.has_active_points );
+      if ( pair_values_struct.quadrature_result.status != QuadratureStatus::Success ||
+           !pair_values_struct.has_active_points ) {
+        pair_values_struct.values = {};
+        return pair_values_struct;
+      }
       for ( IndexT value = 0; value < num_values; ++value ) {
         pair_values_struct.jacobian( value, coordinate ) = jacobian_col[value];
       }
@@ -265,6 +272,8 @@ class EnzymePairDerivative {
    * For fixed weights w_i, return sum_i w_i J_ij and sum_i w_i H_ijk. These are the Jacobian and Hessian of the scalar
    * sum_i w_i f_i(x). Function values, the full unweighted Jacobian, and individual output Hessians are not returned.
    * Changing weights with coordinates in the caller does not cause their derivatives to be included in this call.
+   * All-zero weights return zero Jacobian and Hessian without evaluating or differentiating the function. Quadrature
+   * validity must still be checked separately.
    *
    * For example, suppose f is an EnergyMortarNodalEnergy of type Function for two-node edges, with outputs
    * (G0, G1, A0, A1), and its quadrature has been checked. A nodal LM calculation could use fixed multipliers:
@@ -289,6 +298,13 @@ class EnzymePairDerivative {
       MdSpan<const RealT, num_values> weights )
   {
     PairWeightedJacobianHessian<num_coords> pair_derivatives_struct{};
+    bool has_nonzero_weights = false;
+    for ( IndexT value = 0; value < num_values; ++value ) {
+      has_nonzero_weights = has_nonzero_weights || weights[value] != 0.0;
+    }
+    if ( !has_nonzero_weights ) {
+      return pair_derivatives_struct;
+    }
     for ( IndexT column = 0; column < num_coords; ++column ) {
       MdArray<RealT, num_coords> coordinate_seed{}, hessian_col{};
       coordinate_seed[column] = 1.0;

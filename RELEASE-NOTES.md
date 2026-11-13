@@ -145,6 +145,11 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   `evaluatePairValuesAndJacobians()` no longer evaluates the function separately to obtain quadrature state, and
   differentiation no longer performs a separate value calculation. Pair results expose numerical values through
   `values()`.
+- Pair value/Jacobian differentiation stops after its first AD call on failure or inactivity and returns zero
+  numerical outputs while retaining quadrature status and activation. Weighted Jacobian/Hessian calculations return
+  zeros without AD when every output weight is zero. Nodal gap and area integration remains active for open contact.
+- Public Energy Mortar registration accepts the enabled nonsequential execution modes. Formulation-backed updates
+  skip legacy face-geometry calculations and method-data setup while preserving the registered mesh node count.
 - Pair differentiation uses value, Jacobian, and Hessian terminology. Renamed `PairVectorGradients` to
   `PairValueJacobian`, `PairWeightedHessian` to `PairWeightedJacobianHessian`, their first-derivative members to
   `jacobian`, and `EnzymePairDerivative::weightedHessian()` to `weightedJacobianAndHessian()`. Removed the nested

@@ -8,6 +8,7 @@
 #define SRC_TRIBOL_COMMON_GLOBALSCALARASSEMBLER_HPP_
 
 #include <mpi.h>
+#include <type_traits>
 
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/Reductions.hpp"
@@ -29,13 +30,13 @@ class GlobalScalarAssembler {
   template <ExecutionMode Exec, typename Reader>
   static RealT sum( IndexT num_contributions, Reader reader, MPI_Comm communicator )
   {
+    static_assert( std::is_same_v<RealT, double>, "MPI_DOUBLE requires double-precision RealT." );
     const RealT local_sum = localSum<Exec>( num_contributions, reader );
     RealT global_sum = 0.0;
     MPI_Allreduce( &local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM, communicator );
     return global_sum;
   }
 
- public:
   /**
    * @brief Reduce local contributions with a compile-time execution policy.
    * @tparam Exec Concrete execution policy.

@@ -14,6 +14,7 @@
  * Local quadrature and full pair derivatives are checked in tribol_common_plane_formulation.
  * Force-only selection and mode changes run without Enzyme as well, checking that no Jacobian transfers or outputs
  * are created. Nonmatching legacy forces provide an independent reference for force-only assembly.
+ * Formulation updates leave legacy face geometry and method storage unallocated.
  */
 #include <cmath>
 #include <limits>
@@ -104,6 +105,20 @@ class MfemCommonPlaneTest : public testing::TestWithParam<int> {
   std::unique_ptr<mfem::ParFiniteElementSpace> fes_;  ///< Parent vector-coordinate space.
   std::unique_ptr<mfem::ParGridFunction> coords_;     ///< Current parent geometry.
 };
+
+// The composed calculation builds pair geometry directly and must not allocate legacy face or method data.
+TEST_P( MfemCommonPlaneTest, update_does_not_allocate_legacy_geometry )
+{
+  enable( false );
+  evaluate();
+  EXPECT_EQ( scheme().getMethodData(), nullptr );
+  EXPECT_EQ( scheme().getNumTotalNodes(), scheme().getMesh1().numberOfNodes() );
+  for ( auto* mesh : { &scheme().getMesh1(), &scheme().getMesh2() } ) {
+    EXPECT_TRUE( mesh->getView().getElementAreas().empty() );
+    EXPECT_TRUE( mesh->getView().getElementCentroids().empty() );
+    EXPECT_TRUE( mesh->getView().getElementNormals().empty() );
+  }
+}
 
 // Force-only assembly must preserve nonmatching nodal loads and MPI transfers without any Jacobian resources.
 TEST_P( MfemCommonPlaneTest, force_only_matches_legacy_without_matrix_transfers )

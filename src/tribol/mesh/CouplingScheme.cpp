@@ -992,9 +992,11 @@ int CouplingScheme::checkExecutionModeData()
   }
   this->m_allocator_id = this->m_mesh1->getAllocatorId();
 
-  if ( m_contactMethod != COMMON_PLANE ) {
+  if ( m_contactMethod != COMMON_PLANE && m_contactMethod != ENERGY_MORTAR ) {
     if ( m_exec_mode != ExecutionMode::Sequential ) {
-      SLIC_WARNING_ROOT( "Only sequential execution on host supported for contact methods other than COMMON_PLANE." );
+      SLIC_WARNING_ROOT(
+          "Only sequential execution on host supported for contact methods other than COMMON_PLANE and "
+          "ENERGY_MORTAR." );
       this->m_couplingSchemeErrors.cs_execution_mode_error = ExecutionModeError::INCOMPATIBLE_METHOD;
       err = 1;
     }
@@ -1275,6 +1277,12 @@ bool CouplingScheme::init()
   if ( this->m_isValid ) {
     // set individual coupling scheme logging level
     this->setSlicLoggingLevel();
+
+    // Formulations compute pair geometry and assemble their outputs without legacy face or method data.
+    if ( m_formulation ) {
+      m_numTotalNodes = m_mesh1->numberOfNodes();
+      return true;
+    }
 
     // compute the face data
     // different element normals for enzyme + mortar (matching Puso and Laursen)

@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
+// Copyright (c) Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -15,6 +15,8 @@
  * formulation retains its construction stiffness until replaced.
  * Direct force, Jacobian, and energy scaling checks use Sequential and OpenMP when enabled, with host mesh storage.
  * Scalar force-only helpers check active and empty pair batches without computing or returning a force Jacobian.
+ * Public registration checks host execution modes and verifies that updates leave legacy face data unallocated.
+ * Touching nonmatching surfaces retain the penalty tangent at zero gap, including zero nodal Hessian weights.
  */
 #include <gtest/gtest.h>
 #include <cmath>
@@ -48,20 +50,30 @@ class EnergyMortarQuadratureSettingsTest : public testing::TestWithParam<std::tu
    * @return Selected quadrature order.
    */
   int quadratureOrder() const { return std::get<1>( GetParam() ); }
-  /**
-   * @brief Create the parent fields and register the scheme before penalty settings are supplied.
-   */
-  void registerScheme()
+  /** @brief Create parent mesh and coordinate fields after releasing earlier coupling schemes.
+   * @param mesh_builder Parent body geometry and element attributes. */
+  void createParentFields( shared::MeshBuilder mesh_builder )
   {
-    mesh_ = std::make_unique<mfem::ParMesh>( static_cast<const mfem::ParMesh&>(
-        shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::SquareMesh( 2, 1 ) ) ) );
+    coords_.reset();
+    fes_.reset();
+    fec_.reset();
+    mesh_ = std::make_unique<mfem::ParMesh>(
+        static_cast<const mfem::ParMesh&>( shared::ParMeshBuilder( MPI_COMM_WORLD, std::move( mesh_builder ) ) ) );
     fec_ = std::make_unique<mfem::H1_FECollection>( 1, 2 );
     fes_ = std::make_unique<mfem::ParFiniteElementSpace>( mesh_.get(), fec_.get(), 2 );
     coords_ = std::make_unique<mfem::ParGridFunction>( fes_.get() );
     mesh_->GetNodes( *coords_ );
+  }
+  /**
+   * @brief Create the parent fields and register the scheme before penalty settings are supplied.
+   * @param execution_mode Requested host execution mode, including Dynamic selection.
+   */
+  void registerScheme( tribol::ExecutionMode execution_mode = tribol::ExecutionMode::Sequential )
+  {
+    createParentFields( shared::MeshBuilder::SquareMesh( 2, 1 ) );
     tribol::registerMfemCouplingScheme( 0, 0, 1, *mesh_, *coords_, { 1 }, { 3 }, tribol::SURFACE_TO_SURFACE,
                                         tribol::NO_SLIDING, tribol::ENERGY_MORTAR, tribol::FRICTIONLESS,
-                                        tribol::PENALTY, tribol::BINNING_GRID, tribol::ExecutionMode::Sequential );
+                                        tribol::PENALTY, tribol::BINNING_GRID, execution_mode );
     EXPECT_EQ( tribol::CouplingSchemeManager::getInstance().findData( 0 )->getParameters().quadrature_order, 5 );
   }
   /** @brief Register the scheme and configure the requested quadrature and penalty settings. */
@@ -83,6 +95,87 @@ class EnergyMortarQuadratureSettingsTest : public testing::TestWithParam<std::tu
   std::unique_ptr<mfem::ParFiniteElementSpace> fes_;  ///< Owned vector space for parent-mesh coordinates.
   std::unique_ptr<mfem::ParGridFunction> coords_;     ///< Owned registered mesh-coordinate field.
 };
+
+// Public registration and update must accept host backends for both enforcement locations and each Gauss rule.
+TEST_P( EnergyMortarQuadratureSettingsTest, public_registration_supports_host_execution_modes )
+{
+  using namespace tribol;
+  std::optional<RealT> reference_energy;
+  for ( const auto execution_mode : { ExecutionMode::Sequential, ExecutionMode::Dynamic
+#ifdef TRIBOL_USE_OPENMP
+                                      ,
+                                      ExecutionMode::OpenMP
+#endif
+        } ) {
+    SCOPED_TRACE( static_cast<int>( execution_mode ) );
+    finalize();
+    registerScheme( execution_mode );
+    setEnforcementLocation( 0, std::get<0>( GetParam() ) );
+    setQuadratureOrder( 0, quadratureOrder() );
+    setMfemKinematicConstantPenalty( 0, 100.0, 100.0 );
+    updateMfemParallelDecomposition( 1, true );
+    auto& cs = CouplingSchemeManager::getInstance().at( 0 );
+    const auto expected_mode = execution_mode == ExecutionMode::Dynamic
+#ifdef TRIBOL_USE_OPENMP
+                                   ? ExecutionMode::OpenMP
+#else
+                                   ? ExecutionMode::Sequential
+#endif
+                                   : execution_mode;
+    EXPECT_EQ( cs.getExecutionMode(), expected_mode );
+    RealT dt = 1.0;
+    ASSERT_EQ( update( 0, 0.0, dt ), 0 );
+    const auto& result = cs.getContactFormulationResult();
+    ASSERT_NE( result.force, nullptr );
+    ASSERT_NE( result.df_dx, nullptr );
+    ASSERT_TRUE( result.energy.has_value() );
+    EXPECT_GT( *result.energy, 0.0 );
+    if ( reference_energy ) {
+      EXPECT_NEAR( *result.energy, *reference_energy, 1.0e-11 );
+    }
+    reference_energy = result.energy;
+    EXPECT_EQ( cs.getNumTotalNodes(), cs.getMesh1().numberOfNodes() );
+    EXPECT_EQ( cs.getMethodData(), nullptr );
+    for ( auto* mesh : { &cs.getMesh1(), &cs.getMesh2() } ) {
+      EXPECT_TRUE( mesh->getView().getElementAreas().empty() );
+      EXPECT_TRUE( mesh->getView().getElementCentroids().empty() );
+      EXPECT_TRUE( mesh->getView().getElementNormals().empty() );
+    }
+  }
+}
+
+// Coincident nonmatching boundaries have zero force and zero Hessian weights, but a nonzero compressive tangent.
+TEST_P( EnergyMortarQuadratureSettingsTest, zero_gap_keeps_penalty_tangent )
+{
+  using namespace tribol;
+  finalize();
+  createParentFields(
+      shared::MeshBuilder::Unify( { shared::MeshBuilder::SquareMesh( 2, 1 ), shared::MeshBuilder::SquareMesh( 3, 1 )
+                                                                                 .translate( { 0.0, 1.0 } )
+                                                                                 .updateBdrAttrib( 1, 5 )
+                                                                                 .updateBdrAttrib( 3, 6 )
+                                                                                 .updateAttrib( 1, 2 ) } ) );
+  registerMfemCouplingScheme( 0, 0, 1, *mesh_, *coords_, { 3 }, { 5 }, SURFACE_TO_SURFACE, NO_CASE, ENERGY_MORTAR,
+                              FRICTIONLESS, PENALTY, BINNING_GRID, ExecutionMode::Sequential );
+  setEnforcementLocation( 0, std::get<0>( GetParam() ) );
+  setQuadratureOrder( 0, quadratureOrder() );
+  setMfemKinematicConstantPenalty( 0, 4.0, 4.0 );
+  updateMfemParallelDecomposition( 1, true );
+  RealT dt = 1.0;
+  ASSERT_EQ( update( 0, 0.0, dt ), 0 );
+  const auto& result = CouplingSchemeManager::getInstance().at( 0 ).getContactFormulationResult();
+  ASSERT_TRUE( result.energy.has_value() );
+  ASSERT_NE( result.force, nullptr );
+  ASSERT_NE( result.df_dx, nullptr );
+  EXPECT_NEAR( *result.energy, 0.0, 1.0e-12 );
+  EXPECT_NEAR( mfem::InnerProduct( MPI_COMM_WORLD, *result.force, *result.force ), 0.0, 1.0e-12 );
+  mfem::Vector direction( result.df_dx->Width() ), action( result.df_dx->Height() );
+  for ( int dof = 0; dof < direction.Size(); ++dof ) {
+    direction[dof] = dof + 1.0;
+  }
+  result.df_dx->Mult( direction, action );
+  EXPECT_GT( mfem::InnerProduct( MPI_COMM_WORLD, action, action ), 1.0e-12 );
+}
 
 // Supported orders configure either enforcement location; rejected orders must leave the selected object intact.
 TEST_P( EnergyMortarQuadratureSettingsTest, configures_and_rebuilds_formulation )
