@@ -52,17 +52,14 @@ void addNodalValuesAndJacobians( const ArrayT<InterfacePair>& pairs, std::vector
   if ( vectors.size() != static_cast<std::size_t>( NumFields ) || matrices.size() != vectors.size() ) {
     throw std::invalid_argument( "Nodal vector and matrix component counts must agree." );
   }
-  std::vector<MfemMatrixBatch<NumNodes, element_dofs, 2>> batches;
-  batches.reserve( NumFields );
   MdArray<MfemVectorAssemblyView<1>, NumFields> value_views{};
-  MdArray<MfemMatrixBatchView<NumNodes, element_dofs, 2>, NumFields> matrix_views{};
+  MdArray<MfemMatrixAssemblyView<NumNodes, element_dofs, 2>, NumFields> matrix_views{};
   for ( IndexT field = 0; field < NumFields; ++field ) {
     if ( vectors[field].numberOfValues() != NumNodes ) {
       throw std::invalid_argument( "Nodal vector input extent does not match the scalar row count." );
     }
     value_views[field] = vectors[field].view<Exec, 1>();
-    batches.push_back( matrices[field].makeBatch<NumNodes, element_dofs, 2>( pairs.size(), pairs.getAllocatorID() ) );
-    matrix_views[field] = batches.back().view();
+    matrix_views[field] = matrices[field].view<NumNodes, element_dofs, 2>();
   }
   const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
@@ -71,9 +68,6 @@ void addNodalValuesAndJacobians( const ArrayT<InterfacePair>& pairs, std::vector
       matrix_views[field].packPair( pair, pairs_view[pair], read_jacobian, field );
     }
   } );
-  for ( IndexT field = 0; field < NumFields; ++field ) {
-    matrices[field].addBatch( batches[field] );
-  }
 }
 
 /**
@@ -103,17 +97,16 @@ ContactFormulationResult assemblePairForcesAndJacobian( const ArrayT<InterfacePa
   static_assert( NumCoords % 2 == 0 );
   constexpr IndexT element_dofs = NumCoords / 2;
   auto forces = makeDisplacementVectorAssembler( mesh_data, mesh1, mesh2 );
-  auto jacobian = makeCoordinateMatrixAssembler( mesh_data, jacobian_data, mesh1, mesh2, pairs.size() );
-  auto batch = jacobian.makeBatch<element_dofs, element_dofs, 4>( pairs.size(), pairs.getAllocatorID() );
+  auto jacobian =
+      makeCoordinateMatrixAssembler( mesh_data, jacobian_data, mesh1, mesh2, pairs.size(), pairs.getAllocatorID() );
   const auto force_view = forces.view<Exec, 2>();
-  const auto matrix_view = batch.view();
+  const auto matrix_view = jacobian.view<element_dofs, element_dofs, 4>();
   const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = pairs_view[pair_index];
     force_view.scatterAddPair( pair_index, pair, read_force );
     matrix_view.packPair( pair_index, pair, read_jacobian );
   } );
-  jacobian.addBatch( batch );
   ContactFormulationResult result;
   result.force.reset( forces.assemble().release() );
   result.df_dx.reset( jacobian.assemble().release() );

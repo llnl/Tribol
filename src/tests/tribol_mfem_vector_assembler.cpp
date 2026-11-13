@@ -8,11 +8,11 @@
  * @brief Check host MFEM pair and nodal assembly with prescribed residuals, nodal quantities, and nonsymmetric
  * Jacobians, without contact physics. Nonmatching two- and three-edge surfaces exercise shared nodes, scalar submesh
  * transfers, three independent fields with signed values, and all matrix blocks. Tests run on one and two ranks, with
- * contact data on rank zero. Batch tests check accumulation across repeated and empty batches on Sequential and OpenMP
- * backends. Physics and Enzyme derivatives are checked by the formulation tests.
- * Separate force and matrix components check shared-node accumulation and combine their views in one batch kernel.
+ * contact data on rank zero. Assembly tests run on Sequential and OpenMP backends. Physics and Enzyme derivatives are
+ * checked by the formulation tests. Separate force and matrix components check shared-node accumulation and combine
+ * their views in one kernel.
  * Independent scalar/coordinate matrix assemblers check both rectangular orientations, execution-space packing,
- * invalid layouts, and empty batches on the same nonmatching surfaces.
+ * invalid layouts, and empty pair lists on the same nonmatching surfaces.
  */
 #include <cmath>
 #include "gtest/gtest.h"
@@ -118,23 +118,24 @@ class MfemVectorAssemblerTest : public testing::Test {
   std::unique_ptr<mfem::ParGridFunction> coords_;     ///< Parent node coordinates.
 };
 
-/** @brief Share scalar-vector/matrix configuration and batch execution across nodal assembly tests. */
+/** @brief Share scalar-vector/matrix configuration and execution across nodal assembly tests. */
 class TestNodalAssembly {
  public:
   /** @brief Configure independent components for each field. @param data Displacement transfers.
    * @param dual Scalar transfers. @param jacobian Matrix transfers. @param mesh1 Field geometry.
-   * @param mesh2 Second coordinate geometry. @param num_fields Independent fields. @param capacity Expected pairs. */
+   * @param mesh2 Second coordinate geometry. @param num_fields Independent fields. @param num_pairs Pair count. */
   TestNodalAssembly( const MfemMeshData& data, const MfemSubmeshData& dual, const MfemJacobianData& jacobian,
-                     MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT num_fields, IndexT capacity )
+                     MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT num_fields, IndexT num_pairs )
   {
     vectors_.reserve( num_fields );
     matrices_.reserve( num_fields );
     for ( IndexT field = 0; field < num_fields; ++field ) {
       vectors_.push_back( detail::makeNodalVectorAssembler( dual, mesh1 ) );
-      matrices_.push_back( detail::makeNodalCoordinateMatrixAssembler( data, dual, jacobian, mesh1, mesh2, capacity ) );
+      matrices_.push_back( detail::makeNodalCoordinateMatrixAssembler( data, dual, jacobian, mesh1, mesh2, num_pairs,
+                                                                       mesh1.getAllocatorId() ) );
     }
   }
-  /** @brief Compose batch accumulation. @tparam Fields Field count. @tparam Nodes Rows per field.
+  /** @brief Compose pair accumulation. @tparam Fields Field count. @tparam Nodes Rows per field.
    * @tparam Dofs Pair coordinates. @tparam Values Scalar reader. @tparam Jacobians Matrix reader.
    * @tparam Exec Backend. @param pairs Geometry pairs. @param values Scalar reader. @param jacobians Matrix reader. */
   template <ExecutionMode Exec, IndexT Fields, IndexT Nodes, IndexT Dofs, typename Values, typename Jacobians>
@@ -233,7 +234,7 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
   {
     auto assembler = detail::makeDisplacementVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
     auto matrix = detail::makeCoordinateMatrixAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2,
-                                                         pair_list.size() );
+                                                         pair_list.size(), pair_list.getAllocatorID() );
     ArrayT<RealT> residuals( pair_list.size() * pair_dofs, pair_list.size() * pair_dofs, pair_list.getAllocatorID() );
     ArrayT<RealT> jacobians( pair_list.size() * pair_dofs * pair_dofs, pair_list.size() * pair_dofs * pair_dofs,
                              pair_list.getAllocatorID() );
@@ -295,21 +296,20 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
   }
 }
 
-// Empty assembly must return usable zero outputs, and rejected batch layouts must not add partial contributions.
+// Empty assembly must return usable zero outputs, and rejected layouts must not write partial contributions.
 TEST_F( MfemVectorAssemblerTest, returns_zero_outputs_for_empty_or_rejected_input )
 {
   auto& cs = scheme();
   const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
   auto assembler = detail::makeDisplacementVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
-  auto matrix =
-      detail::makeCoordinateMatrixAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2, 0 );
+  auto matrix = detail::makeCoordinateMatrixAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2,
+                                                       0, mesh1.getAllocatorId() );
   const ArrayT<InterfacePair> empty( 0, 0, mesh1.getAllocatorId() );
   const auto zero_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };
   EXPECT_THROW( ( assembler.addPairs<ExecutionMode::Sequential, pair_dofs - 1, 2>( empty, zero_force ) ),
                 std::invalid_argument );
   constexpr IndexT element_dofs = pair_dofs / 2;
-  EXPECT_THROW( ( matrix.makeBatch<element_dofs - 1, element_dofs, 4>( 0, mesh1.getAllocatorId() ) ),
-                std::invalid_argument );
+  EXPECT_THROW( ( matrix.view<element_dofs - 1, element_dofs, 4>() ), std::invalid_argument );
   const auto force = assembler.assemble();
   const auto df_dx = matrix.assemble();
   EXPECT_EQ( force.size(), fes_->GetTrueVSize() );
@@ -401,12 +401,12 @@ TEST_F( MfemVectorAssemblerTest, scalar_values_need_no_jacobian_data )
   EXPECT_NEAR( global_sum, 3.0 * global_pairs, tolerance );
 }
 
-/** @brief Exercise host batch kernels with each enabled host execution mode. */
-class MfemBatchAssemblerTest : public MfemVectorAssemblerTest, public testing::WithParamInterface<ExecutionMode> {};
+/** @brief Exercise matrix assembly with each enabled host execution mode. */
+class MfemMatrixAssemblerTest : public MfemVectorAssemblerTest, public testing::WithParamInterface<ExecutionMode> {};
 
 // Rectangular packing must transfer scalar and coordinate spaces in either orientation, including nonmatching element
-// maps and a rank with no local pairs. Host and execution-space batches must accumulate the same nonsymmetric entries.
-TEST_P( MfemBatchAssemblerTest, assembles_rectangular_matrices_in_both_orientations )
+// maps and a rank with no local pairs. Host and execution-space packing must produce the same nonsymmetric entries.
+TEST_P( MfemMatrixAssemblerTest, assembles_rectangular_matrices_in_both_orientations )
 {
   dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
     prepareDualData();
@@ -426,39 +426,35 @@ TEST_P( MfemBatchAssemblerTest, assembles_rectangular_matrices_in_both_orientati
     const std::vector<MfemMatrixBlock> reverse_blocks{
         { 0, 0, nodes_per_edge, nodes_per_edge, 0, 0, map1, map1 },
         { 1, 0, nodes_per_edge, nodes_per_edge, element_dofs, 0, map2, map1 } };
-    MfemMatrixAssembler forward( scalar, coordinate, forward_blocks, 0 );
-    MfemMatrixAssembler reverse( coordinate, scalar, reverse_blocks, 0 );
-    MfemMatrixAssembler reference( scalar, coordinate, forward_blocks, 0 );
-    const ArrayT<InterfacePair> empty( 0, 0, pair_list.getAllocatorID() );
+    const int allocator_id = pair_list.getAllocatorID();
+    MfemMatrixAssembler forward( scalar, coordinate, forward_blocks, pair_list.size(), allocator_id );
+    MfemMatrixAssembler reverse( coordinate, scalar, reverse_blocks, pair_list.size(), allocator_id );
+    MfemMatrixAssembler reference( scalar, coordinate, forward_blocks, pair_list.size(), allocator_id );
+    MfemMatrixAssembler empty_forward( scalar, coordinate, forward_blocks, 0, allocator_id );
+    const ArrayT<InterfacePair> wrong_pair_count( pair_list.size() + 1, pair_list.size() + 1, allocator_id );
 
-    // Rejected batch layouts and scratch from a different assembler must leave the accumulated matrix empty.
-    EXPECT_THROW( ( forward.makeBatch<3, element_dofs, 2>( 0, pair_list.getAllocatorID() ) ), std::invalid_argument );
-    auto foreign_batch = reverse.makeBatch<element_dofs, nodes_per_edge, 2>( 0, pair_list.getAllocatorID() );
-    EXPECT_THROW( forward.addBatch( foreign_batch ), std::invalid_argument );
+    EXPECT_THROW( ( forward.view<3, element_dofs, 2>() ), std::invalid_argument );
     auto invalid_blocks = forward_blocks;
     invalid_blocks[0].row_geometry = 2;
-    EXPECT_THROW( MfemMatrixAssembler( scalar, coordinate, invalid_blocks, 0 ), std::invalid_argument );
-    EXPECT_THROW( MfemMatrixAssembler( scalar, coordinate, forward_blocks, -1 ), std::invalid_argument );
-    const auto zero = forward.assemble();
+    EXPECT_THROW( MfemMatrixAssembler( scalar, coordinate, invalid_blocks, 0, allocator_id ), std::invalid_argument );
+    EXPECT_THROW( MfemMatrixAssembler( scalar, coordinate, forward_blocks, -1, allocator_id ), std::invalid_argument );
+    const auto zero = empty_forward.assemble();
     mfem::Vector coordinate_direction( fes_->GetTrueVSize() ), scalar_action( zero->Height() );
     coordinate_direction = 1.0;
     zero->Mult( coordinate_direction, scalar_action );
     EXPECT_EQ( norm( scalar_action ), 0.0 );
 
-    for ( IndexT batch = 0; batch < 2; ++batch ) {
-      const RealT scale = batch + 1.0;
-      const auto read_forward = [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT node, IndexT coordinate ) {
-        return scale * ( node + 1.0 + ( coordinate + 2.0 ) * ( pair + 1.0 ) );
-      };
-      const auto read_reverse = [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT coordinate, IndexT node ) {
-        return read_forward( pair, node, coordinate );
-      };
-      reference.addPairs<ExecutionMode::Sequential, nodes_per_edge, element_dofs, 2>( pair_list, read_forward );
-      forward.addPairs<Exec, nodes_per_edge, element_dofs, 2>( empty, read_forward );
-      reverse.addPairs<Exec, element_dofs, nodes_per_edge, 2>( empty, read_reverse );
-      forward.addPairs<Exec, nodes_per_edge, element_dofs, 2>( pair_list, read_forward );
-      reverse.addPairs<Exec, element_dofs, nodes_per_edge, 2>( pair_list, read_reverse );
-    }
+    const auto read_forward = [] TRIBOL_HOST_DEVICE( IndexT pair, IndexT node, IndexT coordinate ) {
+      return node + 1.0 + ( coordinate + 2.0 ) * ( pair + 1.0 );
+    };
+    const auto read_reverse = [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT coordinate, IndexT node ) {
+      return read_forward( pair, node, coordinate );
+    };
+    EXPECT_THROW( ( forward.addPairs<Exec, nodes_per_edge, element_dofs, 2>( wrong_pair_count, read_forward ) ),
+                  std::invalid_argument );
+    reference.addPairs<ExecutionMode::Sequential, nodes_per_edge, element_dofs, 2>( pair_list, read_forward );
+    forward.addPairs<Exec, nodes_per_edge, element_dofs, 2>( pair_list, read_forward );
+    reverse.addPairs<Exec, element_dofs, nodes_per_edge, 2>( pair_list, read_reverse );
     const auto expected_forward = reference.assemble();
     const auto expected_reverse = expected_forward.transpose();
     const auto actual_forward = forward.assemble();
@@ -488,8 +484,8 @@ TEST_P( MfemBatchAssemblerTest, assembles_rectangular_matrices_in_both_orientati
   } );
 }
 
-// Distinct batch entries and an intervening empty batch must preserve all four matrix blocks and accumulated forces.
-TEST_P( MfemBatchAssemblerTest, accumulates_residuals_and_jacobians_across_batches )
+// Separate and composed kernels must preserve all four matrix blocks and shared-node force accumulation.
+TEST_P( MfemMatrixAssemblerTest, composes_residual_and_jacobian_assembly_views )
 {
   dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
     auto& cs = scheme();
@@ -500,40 +496,33 @@ TEST_P( MfemBatchAssemblerTest, accumulates_residuals_and_jacobians_across_batch
     auto reference = detail::makeDisplacementVectorAssembler( data, mesh1, mesh2 );
     auto composed = detail::makeDisplacementVectorAssembler( data, mesh1, mesh2 );
     auto force_only = detail::makeDisplacementVectorAssembler( data, mesh1, mesh2 );
-    auto reference_matrix = detail::makeCoordinateMatrixAssembler( data, transfers, mesh1, mesh2, 0 );
-    auto composed_matrix = detail::makeCoordinateMatrixAssembler( data, transfers, mesh1, mesh2, 0 );
-    auto matrix_only = detail::makeCoordinateMatrixAssembler( data, transfers, mesh1, mesh2, 0 );
+    const int allocator_id = pair_list.getAllocatorID();
+    auto reference_matrix =
+        detail::makeCoordinateMatrixAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
+    auto composed_matrix =
+        detail::makeCoordinateMatrixAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
+    auto matrix_only =
+        detail::makeCoordinateMatrixAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
     const auto initial_force = force_only.assemble();
     EXPECT_EQ( norm( initial_force.get() ), 0.0 );
-    const ArrayT<InterfacePair> empty( 0, 0, pair_list.getAllocatorID() );
     const auto zero_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };
-    EXPECT_THROW( ( force_only.addPairs<Exec, pair_dofs - 1, 2>( empty, zero_force ) ), std::invalid_argument );
+    EXPECT_THROW( ( force_only.addPairs<Exec, pair_dofs - 1, 2>( pair_list, zero_force ) ), std::invalid_argument );
     constexpr IndexT element_dofs = pair_dofs / 2;
-    for ( int batch = 0; batch < 3; ++batch ) {
-      const RealT scale = batch + 1.0;
-      const auto read_force = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT row ) { return scale * ( row + 1.0 ); };
-      const auto read_jacobian = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT row, IndexT column ) {
-        return scale * ( row + 1.0 ) * ( column + 2.0 );
-      };
-      reference.addPairs<ExecutionMode::Sequential, pair_dofs, 2>( pair_list, read_force );
-      reference_matrix.addPairs<ExecutionMode::Sequential, element_dofs, element_dofs, 4>( pair_list, read_jacobian );
-      force_only.addPairs<Exec, pair_dofs, 2>( empty, read_force );
-      force_only.addPairs<Exec, pair_dofs, 2>( pair_list, read_force );
-      matrix_only.addPairs<Exec, element_dofs, element_dofs, 4>( empty, read_jacobian );
-      matrix_only.addPairs<Exec, element_dofs, element_dofs, 4>( pair_list, read_jacobian );
-      composed.addPairs<Exec, pair_dofs, 2>( empty, read_force );
-      composed_matrix.addPairs<Exec, element_dofs, element_dofs, 4>( empty, read_jacobian );
-      auto matrix_batch =
-          composed_matrix.makeBatch<element_dofs, element_dofs, 4>( pair_list.size(), pair_list.getAllocatorID() );
-      const auto matrix_view = matrix_batch.view();
-      const auto force_view = composed.view<Exec, 2>();
-      const auto pairs_view = pair_list.view();
-      forAllExec<Exec>( pair_list.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
-        force_view.scatterAddPair( pair, pairs_view[pair], read_force );
-        matrix_view.packPair( pair, pairs_view[pair], read_jacobian );
-      } );
-      composed_matrix.addBatch( matrix_batch );
-    }
+    const auto read_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT row ) { return row + 1.0; };
+    const auto read_jacobian = [] TRIBOL_HOST_DEVICE( IndexT, IndexT row, IndexT column ) {
+      return ( row + 1.0 ) * ( column + 2.0 );
+    };
+    reference.addPairs<ExecutionMode::Sequential, pair_dofs, 2>( pair_list, read_force );
+    reference_matrix.addPairs<ExecutionMode::Sequential, element_dofs, element_dofs, 4>( pair_list, read_jacobian );
+    force_only.addPairs<Exec, pair_dofs, 2>( pair_list, read_force );
+    matrix_only.addPairs<Exec, element_dofs, element_dofs, 4>( pair_list, read_jacobian );
+    const auto matrix_view = composed_matrix.view<element_dofs, element_dofs, 4>();
+    const auto force_view = composed.view<Exec, 2>();
+    const auto pairs_view = pair_list.view();
+    forAllExec<Exec>( pair_list.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
+      force_view.scatterAddPair( pair, pairs_view[pair], read_force );
+      matrix_view.packPair( pair, pairs_view[pair], read_jacobian );
+    } );
     const auto expected = reference.assemble();
     auto force_result = force_only.assemble();
     force_result.get().Add( -1.0, expected.get() );
@@ -556,8 +545,8 @@ TEST_P( MfemBatchAssemblerTest, accumulates_residuals_and_jacobians_across_batch
   } );
 }
 
-// Three independent fields and their rectangular Jacobians accumulate across repeated execution-space batches.
-TEST_P( MfemBatchAssemblerTest, accumulates_scalar_fields_and_gradients_across_batches )
+// Three independent fields and their rectangular Jacobians must agree across host execution backends.
+TEST_P( MfemMatrixAssemblerTest, assembles_scalar_fields_and_gradients )
 {
   dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
     prepareDualData();
@@ -566,25 +555,20 @@ TEST_P( MfemBatchAssemblerTest, accumulates_scalar_fields_and_gradients_across_b
     const auto pair_list = pairs();
     constexpr IndexT num_fields = 3;
     TestNodalAssembly reference( *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), mesh1,
-                                 mesh2, num_fields, 0 );
-    TestNodalAssembly batched( *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), mesh1, mesh2,
-                               num_fields, 0 );
-    const ArrayT<InterfacePair> empty( 0, 0, pair_list.getAllocatorID() );
-    for ( int batch = 0; batch < 3; ++batch ) {
-      const RealT scale = batch + 1.0;
-      const auto read_value = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node ) {
-        return scale * ( field + 1.0 ) * ( node + 1.0 );
-      };
-      const auto read_gradient = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node, IndexT column ) {
-        return scale * ( field + 1.0 ) * ( node + 1.0 ) * ( column + 2.0 );
-      };
-      reference.addPairs<ExecutionMode::Sequential, num_fields, nodes_per_edge, pair_dofs>( pair_list, read_value,
-                                                                                            read_gradient );
-      batched.addPairs<Exec, num_fields, nodes_per_edge, pair_dofs>( empty, read_value, read_gradient );
-      batched.addPairs<Exec, num_fields, nodes_per_edge, pair_dofs>( pair_list, read_value, read_gradient );
-    }
+                                 mesh2, num_fields, pair_list.size() );
+    TestNodalAssembly actual( *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), mesh1, mesh2,
+                              num_fields, pair_list.size() );
+    const auto read_value = [] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node ) {
+      return ( field + 1.0 ) * ( node + 1.0 );
+    };
+    const auto read_gradient = [] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node, IndexT column ) {
+      return ( field + 1.0 ) * ( node + 1.0 ) * ( column + 2.0 );
+    };
+    reference.addPairs<ExecutionMode::Sequential, num_fields, nodes_per_edge, pair_dofs>( pair_list, read_value,
+                                                                                          read_gradient );
+    actual.addPairs<Exec, num_fields, nodes_per_edge, pair_dofs>( pair_list, read_value, read_gradient );
     const auto expected = reference.assemble();
-    const auto result = batched.assemble();
+    const auto result = actual.assemble();
     ASSERT_EQ( result.size(), num_fields );
     mfem::Vector direction( fes_->GetTrueVSize() );
     direction = 1.0;
@@ -604,7 +588,7 @@ TEST_P( MfemBatchAssemblerTest, accumulates_scalar_fields_and_gradients_across_b
   } );
 }
 
-INSTANTIATE_TEST_SUITE_P( host_backends, MfemBatchAssemblerTest,
+INSTANTIATE_TEST_SUITE_P( host_backends, MfemMatrixAssemblerTest,
                           testing::Values( ExecutionMode::Sequential
 #ifdef TRIBOL_USE_OPENMP
                                            ,

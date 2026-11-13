@@ -86,22 +86,22 @@ inline IndexT checkedMatrixSize( IndexT num_entries, IndexT size )
 }  // namespace detail
 
 /**
- * @brief Write rectangular blocks for one batch from a host or device kernel.
+ * @brief Write rectangular element blocks from a host or device kernel.
  * @tparam RowDofs Rows per block in MFEM element order.
  * @tparam ColumnDofs Columns per block in MFEM element order.
  * @tparam NumBlocks Configured blocks per pair.
  */
 template <IndexT RowDofs, IndexT ColumnDofs, IndexT NumBlocks>
-struct MfemMatrixBatchView {
+struct MfemMatrixAssemblyView {
   MdArray<ElementBlockView<RowDofs, ColumnDofs>, NumBlocks>
-      blocks;                                                 ///< Writable views into the matrix batch's buffers.
+      blocks;                                                 ///< Writable views into the assembler's block storage.
   MdArray<detail::MfemMatrixBlockLayout, NumBlocks> layouts;  ///< Independent row and column indexing.
 
   /**
    * @brief Pack one pair's blocks, converting node/component inputs to MFEM component/node element order.
    * @tparam MatrixReader Callable returning an entry from `(pair, indices..., row, column)`.
    * @tparam Indices Optional field indices preceding the row and column arguments.
-   * @param pair_index Writable batch slot.
+   * @param pair_index Writable pair slot.
    * @param pair Pair supplying the two geometry element IDs.
    * @param read_matrix Input matrix reader.
    * @param indices Optional field indices, allowing multiple fields to share one reader.
@@ -126,184 +126,92 @@ struct MfemMatrixBatchView {
   }
 };
 
-class MfemMatrixAssembler;
-
 /**
- * @brief Own scratch blocks until packing and transfer to an assembler finish.
- * @tparam RowDofs Rows per block.
- * @tparam ColumnDofs Columns per block.
- * @tparam NumBlocks Configured blocks per pair.
- */
-template <IndexT RowDofs, IndexT ColumnDofs, IndexT NumBlocks>
-class MfemMatrixBatch {
- public:
-  /** @brief Return a writable kernel view. @return View into this batch's buffers; the batch must remain alive while
-   * the view is used. */
-  MfemMatrixBatchView<RowDofs, ColumnDofs, NumBlocks> view()
-  {
-    MfemMatrixBatchView<RowDofs, ColumnDofs, NumBlocks> result{ {}, layouts_ };
-    for ( IndexT block = 0; block < NumBlocks; ++block ) {
-      result.blocks[block] = blocks_[block].view();
-    }
-    return result;
-  }
-
- private:
-  friend class MfemMatrixAssembler;
-  /** @brief Allocate a validated batch. @param owner Assembler that accepts these blocks. @param num_pairs Pairs.
-   * @param allocator_id Execution allocator. @param layouts Validated block layouts. */
-  MfemMatrixBatch( const MfemMatrixAssembler* owner, IndexT num_pairs, int allocator_id,
-                   MdArray<detail::MfemMatrixBlockLayout, NumBlocks> layouts )
-      : owner_( owner ), layouts_( layouts )
-  {
-    blocks_.reserve( NumBlocks );
-    for ( IndexT block = 0; block < NumBlocks; ++block ) {
-      blocks_.emplace_back( num_pairs, allocator_id );
-    }
-  }
-  const MfemMatrixAssembler* owner_;  ///< Assembler that created the batch; it must remain in place until addBatch().
-  MdArray<detail::MfemMatrixBlockLayout, NumBlocks> layouts_;    ///< Indexing copied into the kernel view.
-  std::vector<ElementBlockBuffer<RowDofs, ColumnDofs>> blocks_;  ///< Scratch proportional to this batch's pairs.
-};
-
-/**
- * @brief Accumulate rectangular pair matrices with independent row and column nodal spaces and transfers.
+ * @brief Assemble rectangular pair matrices with independent row and column nodal spaces and transfers.
  *
  * Supports the displacement and scalar nodal spaces used by contact assembly in either orientation. Input matrices
  * use node/component DOF order on both axes. Packed MFEM element blocks use component/node DOF order and column-major
  * storage. No symmetry is assumed. Geometry selectors and element maps are independent for each block's two axes.
- * FE spaces, transfer paths, and element maps must remain valid for the assembler's lifetime. Recreate after
- * decomposition or mesh re-registration.
- * This class assembles matrices only. Callers can use a batch view alongside vector accumulation in a shared kernel.
+ * FE spaces, transfer paths, and element maps must remain valid for the assembler's lifetime. Each assembler owns
+ * storage for one supplied pair list and must be recreated after decomposition, mesh re-registration, or a pair-list
+ * change. This class assembles matrices only. Callers can use its view alongside vector accumulation in a shared
+ * kernel.
  */
 class MfemMatrixAssembler {
  public:
   /**
-   * @brief Configure blocks and reserve storage for the expected contributing pairs.
+   * @brief Configure blocks and allocate storage for one pair list.
    * @param rows Row space and initialized transfer path; both must outlive the assembler.
    * @param columns Column space and initialized transfer path; both must outlive the assembler.
    * @param blocks Nonempty list of rectangular blocks; no storage is allocated for unlisted geometry combinations.
-   * @param pair_capacity Expected pair contributions, independent of all possible mesh pairs.
-   * @throws std::invalid_argument Capacity, node counts, geometry selectors, or offsets are invalid.
+   * @param num_pairs Number of pair contributions.
+   * @param allocator_id Execution-accessible allocator for element blocks.
+   * @throws std::invalid_argument Pair count, node counts, geometry selectors, or offsets are invalid.
    * @throws std::length_error Required storage exceeds the supported index range.
    */
   MfemMatrixAssembler( MfemMatrixSpace rows, MfemMatrixSpace columns, std::vector<MfemMatrixBlock> blocks,
-                       IndexT pair_capacity );
+                       IndexT num_pairs, int allocator_id );
 
   /**
-   * @brief Allocate fixed-size block scratch for an execution-space kernel.
+   * @brief Return a writable view of the owned element blocks for an execution-space kernel.
    * @tparam RowDofs Rows per block. @tparam ColumnDofs Columns per block. @tparam NumBlocks Blocks per pair.
-   * @param num_pairs Supplied pair count. @param allocator_id Execution-accessible allocator.
-   * @return Owning batch whose view can pack matrices alongside other per-pair operations.
-   * Keep the assembler alive and in place until addBatch() finishes. Scratch must remain alive while kernels use its
-   * view.
-   * @throws std::invalid_argument Template dimensions or count do not match the configuration, or num_pairs is
-   * negative.
-   * @throws std::length_error Scratch size exceeds the supported index range; no batch is returned.
+   * @return Non-owning view that can pack matrices alongside other per-pair operations.
+   * Keep the assembler alive and in place while kernels use the view.
+   * @throws std::invalid_argument Template dimensions or count do not match the configuration.
    */
   template <IndexT RowDofs, IndexT ColumnDofs, IndexT NumBlocks>
-  MfemMatrixBatch<RowDofs, ColumnDofs, NumBlocks> makeBatch( IndexT num_pairs, int allocator_id ) const
+  MfemMatrixAssemblyView<RowDofs, ColumnDofs, NumBlocks> view()
   {
     static_assert( RowDofs > 0 && ColumnDofs > 0 && NumBlocks > 0 );
     if ( layouts_.size() != static_cast<std::size_t>( NumBlocks ) ) {
-      throw std::invalid_argument( "Matrix batch block count does not match its configuration." );
+      throw std::invalid_argument( "Matrix view block count does not match its configuration." );
     }
-    MdArray<detail::MfemMatrixBlockLayout, NumBlocks> layouts{};
+    MfemMatrixAssemblyView<RowDofs, ColumnDofs, NumBlocks> result{};
     for ( IndexT block = 0; block < NumBlocks; ++block ) {
-      layouts[block] = layouts_[block];
-      if ( layouts[block].row_nodes * layouts[block].row_components != RowDofs ||
-           layouts[block].column_nodes * layouts[block].column_components != ColumnDofs ) {
-        throw std::invalid_argument( "Matrix batch dimensions do not match its configured blocks." );
+      result.layouts[block] = layouts_[block];
+      if ( result.layouts[block].row_nodes * result.layouts[block].row_components != RowDofs ||
+           result.layouts[block].column_nodes * result.layouts[block].column_components != ColumnDofs ) {
+        throw std::invalid_argument( "Matrix view dimensions do not match its configured blocks." );
       }
+      result.blocks[block] = block_storage_[block].view<RowDofs, ColumnDofs>();
     }
-    detail::checkedMatrixSize( num_pairs, detail::checkedMatrixSize( RowDofs, ColumnDofs ) );
-    return { this, num_pairs, allocator_id, layouts };
+    return result;
   }
 
   /**
-   * @brief Copy completed execution-space blocks to host accumulation storage.
-   * @tparam RowDofs Rows per block. @tparam ColumnDofs Columns per block. @tparam NumBlocks Blocks per pair.
-   * @param batch Batch created by this assembler; its buffers must remain valid until the call completes.
-   * @throws std::invalid_argument Batch belongs to another assembler; nothing is appended.
-   * @throws std::length_error Accumulated blocks exceed the supported index range.
-   */
-  template <IndexT RowDofs, IndexT ColumnDofs, IndexT NumBlocks>
-  void addBatch( const MfemMatrixBatch<RowDofs, ColumnDofs, NumBlocks>& batch )
-  {
-    if ( batch.owner_ != this ) {
-      throw std::invalid_argument( "Matrix batch must be appended to the assembler that created it." );
-    }
-    for ( IndexT block = 0; block < NumBlocks; ++block ) {
-      appendElementBlocks( contributions_[block], batch.blocks_[block] );
-    }
-  }
-
-  /**
-   * @brief Pack and append matrices in a dedicated kernel; earlier contributions accumulate.
+   * @brief Pack the configured pair matrices in a dedicated kernel.
    * @tparam RowDofs Rows per block. @tparam ColumnDofs Columns per block. @tparam NumBlocks Blocks per pair.
    * @tparam MatrixReader Device-callable `(pair, row, column) -> RealT` reader.
    * @tparam Exec Concrete execution mode.
    * @param pairs Supplied execution-accessible pairs.
    * @param read_matrix Matrix reader in node/component order.
-   * @throws std::invalid_argument Batch dimensions do not match the configuration; nothing is appended.
-   * @throws std::length_error Required storage exceeds the supported index range.
+   * @throws std::invalid_argument Pair count or matrix dimensions do not match the configuration.
    */
   template <ExecutionMode Exec, IndexT RowDofs, IndexT ColumnDofs, IndexT NumBlocks, typename MatrixReader>
   void addPairs( const ArrayT<InterfacePair>& pairs, MatrixReader read_matrix )
   {
-    auto batch = makeBatch<RowDofs, ColumnDofs, NumBlocks>( pairs.size(), pairs.getAllocatorID() );
-    const auto batch_view = batch.view();
+    if ( pairs.size() != num_pairs_ ) {
+      throw std::invalid_argument( "Matrix pair count does not match its allocated storage." );
+    }
+    const auto matrix_view = view<RowDofs, ColumnDofs, NumBlocks>();
     const auto pairs_view = pairs.view();
     forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
-      batch_view.packPair( pair, pairs_view[pair], read_matrix );
+      matrix_view.packPair( pair, pairs_view[pair], read_matrix );
     } );
-    addBatch( batch );
   }
 
-  /** @brief Transfer accumulated blocks to solver true DOFs.
+  /** @brief Transfer the packed blocks to solver true DOFs.
    * @return Owned rectangular matrix; no contributions produce an allocated zero matrix of the configured spaces.
    * Results remain valid after this assembler is destroyed while the FE spaces and communicator remain alive. */
   shared::ParSparseMat assemble() const;
 
  private:
-  /**
-   * @brief Copy packed element blocks to the host and append them after any earlier contributions.
-   * @tparam RowDofs Dense block row count.
-   * @tparam ColumnDofs Dense block column count.
-   * @param destination Accumulated host blocks; existing entries and value offsets are preserved.
-   * @param blocks Execution-space blocks to copy; not retained.
-   * @throws std::length_error Accumulated entries or values exceed the supported index range; nothing is appended.
-   */
-  template <IndexT RowDofs, IndexT ColumnDofs>
-  static void appendElementBlocks( PackedPairJacobianContribs& destination,
-                                   const ElementBlockBuffer<RowDofs, ColumnDofs>& blocks )
-  {
-    const auto max_size = std::numeric_limits<IndexT>::max();
-    if ( blocks.rowElementIds().size() > max_size - destination.row_elem_ids.size() ||
-         blocks.values().size() > max_size - destination.jacobian_data.size() ) {
-      throw std::length_error( "Accumulated element blocks exceed the supported index range." );
-    }
-    if ( blocks.rowElementIds().size() == 0 ) {
-      return;
-    }
-    const Array1D<IndexT, MemorySpace::Host> rows( blocks.rowElementIds() );
-    const Array1D<IndexT, MemorySpace::Host> columns( blocks.columnElementIds() );
-    Array1D<IndexT, MemorySpace::Host> offsets( blocks.valueOffsets() );
-    const Array1D<RealT, MemorySpace::Host> values( blocks.values() );
-    const IndexT value_offset = destination.jacobian_data.size();
-    for ( IndexT& offset : offsets ) {
-      offset += value_offset;
-    }
-    destination.row_elem_ids.append( rows.view() );
-    destination.col_elem_ids.append( columns.view() );
-    destination.value_offsets.append( offsets.view() );
-    destination.jacobian_data.append( values.view() );
-  }
-
   MfemJacobianTransfer transfer_;                       ///< References to independent row and column transfer paths.
-  std::vector<detail::MfemMatrixBlockLayout> layouts_;  ///< Input block indexing, independent of pair count.
+  IndexT num_pairs_;                                    ///< Pair slots allocated in every block.
+  std::vector<detail::MfemMatrixBlockLayout> layouts_;  ///< Input indexing for each configured block.
+  std::vector<ElementBlockStorage> block_storage_;      ///< Owned execution-space blocks for one pair list.
   std::vector<PackedPairJacobianContribs>
-      contributions_;  ///< Accumulated blocks referencing FE spaces and element maps.
+      contribution_metadata_;  ///< FE spaces and element maps corresponding to each block.
 };
 
 namespace detail {
@@ -313,27 +221,29 @@ namespace detail {
  * @param jacobian_data Initialized parent-coordinate transfer path; must outlive the returned assembler.
  * @param mesh1 First geometry's nodal layout.
  * @param mesh2 Second geometry's nodal layout.
- * @param pair_capacity Expected contributing pairs, independent of all possible mesh pairs.
+ * @param num_pairs Number of contributing pairs.
+ * @param allocator_id Execution-accessible allocator for element blocks.
  * @return Matrix assembler referencing the supplied displacement FE spaces, element maps, and transfer path.
  * @throws std::invalid_argument Geometry dimensions or node counts do not match the displacement layout.
  * @throws std::length_error Required storage exceeds the supported index range.
  */
 MfemMatrixAssembler makeCoordinateMatrixAssembler( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
-                                                   MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                                                   IndexT pair_capacity );
+                                                   MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT num_pairs,
+                                                   int allocator_id );
 /** @brief Configure a scalar nodal field's two coordinate-Jacobian blocks.
  * @param mesh_data Displacement spaces and element maps; must outlive the returned assembler.
  * @param submesh_data Scalar field spaces for the current decomposition; must outlive the returned assembler.
  * @param jacobian_data Initialized scalar and parent-coordinate transfer paths.
  * @param mesh1 Geometry carrying scalar rows. @param mesh2 Second geometry contributing coordinate columns.
- * @param pair_capacity Expected contributing pairs.
+ * @param num_pairs Number of contributing pairs.
+ * @param allocator_id Execution-accessible allocator for element blocks.
  * @return Matrix assembler with scalar submesh rows and parent displacement columns.
  * @throws std::invalid_argument Field spaces are not scalar or geometry dimensions do not match the coordinate space.
  * @throws std::length_error Required storage exceeds the supported index range. */
 MfemMatrixAssembler makeNodalCoordinateMatrixAssembler( const MfemMeshData& mesh_data,
                                                         const MfemSubmeshData& submesh_data,
                                                         const MfemJacobianData& jacobian_data, MeshData::Viewer mesh1,
-                                                        MeshData::Viewer mesh2, IndexT pair_capacity );
+                                                        MeshData::Viewer mesh2, IndexT num_pairs, int allocator_id );
 }  // namespace detail
 
 }  // namespace tribol

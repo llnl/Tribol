@@ -60,7 +60,7 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<Int
   for ( IndexT field = 0; field < num_fields; ++field ) {
     vectors.push_back( detail::makeNodalVectorAssembler( submesh_data, mesh1 ) );
     matrices.push_back( detail::makeNodalCoordinateMatrixAssembler( mesh_data, submesh_data, jacobian_data, mesh1,
-                                                                    mesh2, pairs.size() ) );
+                                                                    mesh2, pairs.size(), pairs.getAllocatorID() ) );
   }
   detail::addNodalValuesAndJacobians<Exec, num_fields, num_nodes, num_coords>(
       pairs, vectors, matrices,
@@ -93,7 +93,7 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<Int
  * @param read_weights Reader indexed by scalar submesh node.
  * @return Coordinate Hessian assembled on parent true DOFs.
  * @throws std::invalid_argument Geometry or assembly dimensions are invalid.
- * @throws std::length_error Pair buffers or matrix batches exceed the supported index range.
+ * @throws std::length_error Pair buffers or matrix storage exceed the supported index range.
  */
 template <ExecutionMode Exec, typename Function, typename WeightReader>
 shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
@@ -119,7 +119,8 @@ shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& 
         return weights;
       } );
   const auto hessian_view = hessians.view();
-  auto assembler = detail::makeCoordinateMatrixAssembler( mesh_data, jacobian_data, mesh1, mesh2, num_pairs );
+  auto assembler = detail::makeCoordinateMatrixAssembler( mesh_data, jacobian_data, mesh1, mesh2, num_pairs,
+                                                          pairs.getAllocatorID() );
   assembler.addPairs<Exec, Function::num_coords / 2, Function::num_coords / 2, 4>(
       pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
         return hessian_view.hessian( pair, row, column );

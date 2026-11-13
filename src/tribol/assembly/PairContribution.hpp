@@ -10,6 +10,9 @@
 #ifndef SRC_TRIBOL_ASSEMBLY_PAIRCONTRIBUTION_HPP_
 #define SRC_TRIBOL_ASSEMBLY_PAIRCONTRIBUTION_HPP_
 
+#include <limits>
+#include <stdexcept>
+
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/integ/QuadratureCommon.hpp"
@@ -304,28 +307,56 @@ struct ElementBlockView {
   }
 };
 
-/**
- * @brief Own one fixed-size dense element block per pair in execution-space memory.
- * @tparam RowDofs Dense block row count.
- * @tparam ColumnDofs Dense block column count.
- */
-template <IndexT RowDofs, IndexT ColumnDofs>
-class ElementBlockBuffer {
+/** @brief Check the number of values required by fixed-size element blocks.
+ * @param num_pairs Number of blocks.
+ * @param values_per_block Scalar values in each block.
+ * @return Total scalar values representable by IndexT.
+ * @throws std::invalid_argument A size is negative.
+ * @throws std::length_error The total exceeds the supported index range. */
+inline IndexT checkedElementBlockValues( IndexT num_pairs, IndexT values_per_block )
+{
+  if ( num_pairs < 0 || values_per_block < 0 ) {
+    throw std::invalid_argument( "Element block storage sizes must be nonnegative." );
+  }
+  if ( values_per_block != 0 && num_pairs > std::numeric_limits<IndexT>::max() / values_per_block ) {
+    throw std::length_error( "Element block storage exceeds the supported index range." );
+  }
+  return num_pairs * values_per_block;
+}
+
+/** @brief Own runtime-sized dense element blocks in execution-space memory. */
+class ElementBlockStorage {
  public:
-  /** @brief Allocate all blocks before packing. @param num_pairs Pair count. @param allocator_id Execution allocator.
-   */
-  ElementBlockBuffer( IndexT num_pairs, int allocator_id )
+  /** @brief Allocate all blocks before packing.
+   * @param num_pairs Pair count.
+   * @param values_per_block Scalar values in each dense block.
+   * @param allocator_id Execution allocator. */
+  ElementBlockStorage( IndexT num_pairs, IndexT values_per_block, int allocator_id )
       : num_pairs_( num_pairs ),
-        row_element_ids_( num_pairs, num_pairs, allocator_id ),
-        column_element_ids_( num_pairs, num_pairs, allocator_id ),
-        value_offsets_( num_pairs, num_pairs, allocator_id ),
-        values_( RowDofs * ColumnDofs * num_pairs, RowDofs * ColumnDofs * num_pairs, allocator_id )
+        values_per_block_( values_per_block ),
+        row_element_ids_( checkedElementBlockValues( num_pairs, 1 ), checkedElementBlockValues( num_pairs, 1 ),
+                          allocator_id ),
+        column_element_ids_( checkedElementBlockValues( num_pairs, 1 ), checkedElementBlockValues( num_pairs, 1 ),
+                             allocator_id ),
+        value_offsets_( checkedElementBlockValues( num_pairs, 1 ), checkedElementBlockValues( num_pairs, 1 ),
+                        allocator_id ),
+        values_( checkedElementBlockValues( num_pairs, values_per_block ),
+                 checkedElementBlockValues( num_pairs, values_per_block ), allocator_id )
   {
   }
 
-  /** @brief Return a device-copyable writable view. @return View retaining no ownership. */
+  /** @brief Return a device-copyable writable view.
+   * @tparam RowDofs Dense block row count.
+   * @tparam ColumnDofs Dense block column count.
+   * @return View retaining no ownership.
+   * @throws std::invalid_argument The requested dimensions do not match the allocated block size. */
+  template <IndexT RowDofs, IndexT ColumnDofs>
   ElementBlockView<RowDofs, ColumnDofs> view()
   {
+    static_assert( RowDofs > 0 && ColumnDofs > 0 );
+    if ( RowDofs * ColumnDofs != values_per_block_ ) {
+      throw std::invalid_argument( "Element block view dimensions do not match its storage." );
+    }
     return { row_element_ids_.data(), column_element_ids_.data(), value_offsets_.data(), values_.data(), num_pairs_ };
   }
 
@@ -340,10 +371,30 @@ class ElementBlockBuffer {
 
  private:
   IndexT num_pairs_;                    ///< Number of blocks in each metadata array.
+  IndexT values_per_block_;             ///< Scalar values in each dense block.
   Array1D<IndexT> row_element_ids_;     ///< Row element IDs.
   Array1D<IndexT> column_element_ids_;  ///< Column element IDs.
   Array1D<IndexT> value_offsets_;       ///< Block value offsets.
   Array1D<RealT> values_;               ///< Column-major dense blocks.
+};
+
+/**
+ * @brief Own one fixed-size dense element block per pair in execution-space memory.
+ * @tparam RowDofs Dense block row count.
+ * @tparam ColumnDofs Dense block column count.
+ */
+template <IndexT RowDofs, IndexT ColumnDofs>
+class ElementBlockBuffer : public ElementBlockStorage {
+ public:
+  /** @brief Allocate all blocks before packing. @param num_pairs Pair count. @param allocator_id Execution allocator.
+   */
+  ElementBlockBuffer( IndexT num_pairs, int allocator_id )
+      : ElementBlockStorage( num_pairs, RowDofs * ColumnDofs, allocator_id )
+  {
+  }
+
+  /** @brief Return a device-copyable writable view. @return View retaining no ownership. */
+  ElementBlockView<RowDofs, ColumnDofs> view() { return ElementBlockStorage::view<RowDofs, ColumnDofs>(); }
 };
 
 }  // namespace tribol

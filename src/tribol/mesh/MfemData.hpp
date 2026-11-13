@@ -1894,7 +1894,7 @@ struct PackedPairJacobianContribs {
   }
 
   /**
-   * @brief Reserve packed storage for a batch of element contributions
+   * @brief Reserve packed storage for a set of element contributions
    *
    * @param n_pairs Number of element-pair contributions that will be appended.
    * @param n_jacobian_scalar_values Total number of scalar Jacobian values that will be appended across all pairs.

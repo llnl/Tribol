@@ -11,17 +11,18 @@
 namespace tribol {
 
 MfemMatrixAssembler::MfemMatrixAssembler( MfemMatrixSpace rows, MfemMatrixSpace columns,
-                                          std::vector<MfemMatrixBlock> blocks, IndexT pair_capacity )
-    : transfer_( rows.path, columns.path )
+                                          std::vector<MfemMatrixBlock> blocks, IndexT num_pairs, int allocator_id )
+    : transfer_( rows.path, columns.path ), num_pairs_( num_pairs )
 {
   const int row_components = rows.redecomp_fes.GetVDim();
   const int column_components = columns.redecomp_fes.GetVDim();
-  if ( pair_capacity < 0 || blocks.empty() || row_components <= 0 || column_components <= 0 ) {
+  if ( num_pairs < 0 || blocks.empty() || row_components <= 0 || column_components <= 0 ) {
     throw std::invalid_argument(
-        "Matrix assembly requires blocks, positive component counts, and nonnegative capacity." );
+        "Matrix assembly requires blocks, positive component counts, and a nonnegative pair count." );
   }
   layouts_.reserve( blocks.size() );
-  contributions_.reserve( blocks.size() );
+  block_storage_.reserve( blocks.size() );
+  contribution_metadata_.reserve( blocks.size() );
   for ( const auto& block : blocks ) {
     if ( block.row_geometry < 0 || block.row_geometry > 1 || block.column_geometry < 0 || block.column_geometry > 1 ||
          block.row_nodes <= 0 || block.column_nodes <= 0 || block.row_offset < 0 || block.column_offset < 0 ) {
@@ -34,20 +35,31 @@ MfemMatrixAssembler::MfemMatrixAssembler( MfemMatrixSpace rows, MfemMatrixSpace 
       throw std::length_error( "Matrix input extents exceed the supported index range." );
     }
     const IndexT block_size = detail::checkedMatrixSize( row_dofs, column_dofs );
+    detail::checkedMatrixSize( num_pairs, block_size );
     layouts_.push_back( { block.row_geometry, block.column_geometry, block.row_nodes, block.column_nodes,
                           block.row_offset, block.column_offset, row_components, column_components } );
-    contributions_.emplace_back( *rows.path.surface_fes, *columns.path.surface_fes, rows.redecomp_fes,
-                                 columns.redecomp_fes, block.row_element_map, block.column_element_map );
-    contributions_.back().reserve( pair_capacity, detail::checkedMatrixSize( pair_capacity, block_size ) );
+    block_storage_.emplace_back( num_pairs, block_size, allocator_id );
+    contribution_metadata_.emplace_back( *rows.path.surface_fes, *columns.path.surface_fes, rows.redecomp_fes,
+                                         columns.redecomp_fes, block.row_element_map, block.column_element_map );
   }
 }
 
-shared::ParSparseMat MfemMatrixAssembler::assemble() const { return transfer_.Assemble( contributions_ ); }
+shared::ParSparseMat MfemMatrixAssembler::assemble() const
+{
+  auto contributions = contribution_metadata_;
+  for ( std::size_t block = 0; block < block_storage_.size(); ++block ) {
+    contributions[block].row_elem_ids = Array1D<IndexT, MemorySpace::Host>( block_storage_[block].rowElementIds() );
+    contributions[block].col_elem_ids = Array1D<IndexT, MemorySpace::Host>( block_storage_[block].columnElementIds() );
+    contributions[block].value_offsets = Array1D<IndexT, MemorySpace::Host>( block_storage_[block].valueOffsets() );
+    contributions[block].jacobian_data = Array1D<RealT, MemorySpace::Host>( block_storage_[block].values() );
+  }
+  return transfer_.Assemble( contributions );
+}
 
 namespace detail {
 MfemMatrixAssembler makeCoordinateMatrixAssembler( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
-                                                   MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                                                   IndexT pair_capacity )
+                                                   MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT num_pairs,
+                                                   int allocator_id )
 {
   const int dimension = mesh1.spatialDimension();
   const MdArray<IndexT, 2> nodes{ mesh1.numberOfNodesPerElement(), mesh2.numberOfNodesPerElement() };
@@ -68,12 +80,12 @@ MfemMatrixAssembler makeCoordinateMatrixAssembler( const MfemMeshData& mesh_data
     }
   }
   const MfemMatrixSpace space{ jacobian_data.ParentPath(), coordinate_space };
-  return { space, space, std::move( blocks ), pair_capacity };
+  return { space, space, std::move( blocks ), num_pairs, allocator_id };
 }
 MfemMatrixAssembler makeNodalCoordinateMatrixAssembler( const MfemMeshData& mesh_data,
                                                         const MfemSubmeshData& submesh_data,
                                                         const MfemJacobianData& jacobian_data, MeshData::Viewer mesh1,
-                                                        MeshData::Viewer mesh2, IndexT pair_capacity )
+                                                        MeshData::Viewer mesh2, IndexT num_pairs, int allocator_id )
 {
   const auto& coordinates = *mesh_data.GetRedecompResponse().FESpace();
   const auto& field = submesh_data.GetRedecompFESpace();
@@ -89,7 +101,8 @@ MfemMatrixAssembler makeNodalCoordinateMatrixAssembler( const MfemMeshData& mesh
            { { 0, 0, nodes1, nodes1, 0, 0, map1, map1 },
              { 0, 1, nodes1, mesh2.numberOfNodesPerElement(), 0, checkedMatrixSize( nodes1, coordinates.GetVDim() ),
                map1, map2 } },
-           pair_capacity };
+           num_pairs,
+           allocator_id };
 }
 }  // namespace detail
 

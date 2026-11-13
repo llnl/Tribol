@@ -13,7 +13,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   overload remains available.
 - Added `MfemMatrixAssembler` for rectangular element-pair matrices with independent row and column spaces, maps,
   and local DOF ordering. Pair-force and scalar-field assemblers share its host and execution-space block packing
-  and true-DOF transfers. Matrix batch views can pack blocks alongside vector accumulation in the same kernel.
+  and true-DOF transfers. Matrix views can pack blocks alongside vector accumulation in the same kernel.
 - Common Plane supports force-only MFEM evaluation without Enzyme through
   `setMfemUseCommonPlaneFormulation(cs_id, true, false)`. This evaluates pair residuals directly and allocates no
   Jacobian buffers or matrix transfer data; `df_dx` is absent. Existing two-argument calls still calculate forces and
@@ -113,7 +113,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   outputs. Removed unused `PairResidualValue::coordinate_count` and the internal Energy Mortar `PairFunction` and
   `CoordinateView` aliases. The nodal penalty area tolerance is defined with the nodal assembly functions in
   `EnergyMortarEvaluation.hpp`.
-- Formulations, pair kernels, and MFEM batch assembly methods take a concrete `ExecutionMode` template argument.
+- Formulations, pair kernels, and MFEM assembly methods take a concrete `ExecutionMode` template argument.
   Factories select formulation specializations at construction; evaluation, assembly, and scalar reductions retain
   that mode as a template argument. `ContactFormulation` calls and runtime search configuration are unchanged.
 - Replaced `MfemPairAssembler` and `MfemFieldAssembler` with `MfemVectorAssembler` for scalar or vector nodal values.
@@ -191,7 +191,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   stiffness-combination template parameter and `RegisteredPenaltyInputs`/`RegisteredPenaltyEnforcement` readers were
   removed. Fixed penalties must be positive and finite, and no default stiffness is substituted for missing constants.
 - Replaced `MfemNodalAssembler` and `MfemNodalQuantityData` with separate vector and matrix assemblers and per-field
-  `AssembledField` results. Scalar nodal fields sharing one submesh space can accumulate in one batch kernel.
+  `AssembledField` results. Scalar nodal fields sharing one submesh space can accumulate in one kernel.
   Energy Mortar applies gap normalization and activation in the formulation and uses matrix assembly for weighted
   coordinate Hessians. Scalar true-DOF transfer is provided by `MfemSubmeshData`.
 - Nodal penalty Energy Mortar uses `0.5*k*min(weighted_gap,0)^2/area` with consistent coordinate derivatives,
@@ -295,7 +295,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Added check for face convexity. If non-convex, a full overlap calculation is triggered for common-plane.
 
 ### Fixed
-- Pair and nodal batch assembly preserve earlier vector and matrix contributions, including across empty batches.
+- Pair and nodal assembly return allocated zero vectors and matrices for empty pair lists.
   Common Plane reads updated MFEM penalty constants without another decomposition refresh. The installed pair-kernel
   header can be included without Enzyme. Quadrature-point Energy Mortar reuses its weighted energy gradient as the
   residual instead of differentiating the scalar energy twice.
