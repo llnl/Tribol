@@ -84,7 +84,7 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
       const ArrayT<CommonPlaneResidualValue, 1, MemorySpace::Host> host( results );
       ASSERT_EQ( host[0].quadrature_result.status, QuadratureStatus::Success );
       EXPECT_EQ( host[0].quadrature_result.num_required_points, NumPoints );
-      EXPECT_EQ( host[0].has_contributing_points, test.active );
+      EXPECT_EQ( host[0].has_active_points, test.active );
       for ( int node = 0; node < BasisFunction<EDGE, LINEAR_LAGRANGE>::num_nodes; ++node ) {
         EXPECT_NEAR( host[0].geometry1( node, 0 ), 0.0, tolerance );
         EXPECT_NEAR( host[0].geometry1( node, 1 ), test.expected_first_y, tolerance );
@@ -201,7 +201,7 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
       EXPECT_NEAR( sample.interval.bounds[1], test.upper, tolerance );
       ASSERT_EQ( sample.residual.quadrature_result.status, QuadratureStatus::Success );
       EXPECT_EQ( sample.residual.quadrature_result.num_required_points, NumPoints );
-      EXPECT_TRUE( sample.residual.has_contributing_points );
+      EXPECT_TRUE( sample.residual.has_active_points );
       RealT measure = 0.0;
       RealT first_moment = 0.0;
       for ( int point = 0; point < NumPoints; ++point ) {
@@ -408,10 +408,10 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
   EXPECT_EQ( buffer.numberOfPairs(), pairs.size() );
   EXPECT_EQ( buffer.values().getAllocatorID(), pairs.getAllocatorID() );
   EXPECT_EQ( buffer.quadratureResults().getAllocatorID(), pairs.getAllocatorID() );
-  EXPECT_EQ( buffer.contributingPairs().getAllocatorID(), pairs.getAllocatorID() );
+  EXPECT_EQ( buffer.activePairs().getAllocatorID(), pairs.getAllocatorID() );
   const Array1D<RealT, MemorySpace::Host> values( buffer.values() );
   const Array1D<QuadratureResult, MemorySpace::Host> status( buffer.quadratureResults() );
-  const Array1D<IndexT, MemorySpace::Host> active( buffer.contributingPairs() );
+  const Array1D<IndexT, MemorySpace::Host> active( buffer.activePairs() );
   for ( IndexT pair = 0; pair < pairs.size(); ++pair ) {
     EXPECT_EQ( status[pair].status, pair == 3 ? QuadratureStatus::InvalidGeometry : QuadratureStatus::Success );
     EXPECT_EQ( status[pair].num_required_points, pair == 3 ? 0 : 2 );
@@ -443,7 +443,7 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
   EXPECT_EQ( empty.numberOfPairs(), 0 );
   EXPECT_EQ( empty.values().size(), 0 );
   EXPECT_EQ( empty.quadratureResults().size(), 0 );
-  EXPECT_EQ( empty.contributingPairs().size(), 0 );
+  EXPECT_EQ( empty.activePairs().size(), 0 );
   EXPECT_NO_THROW( dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
     return checkPairQuadratureResults<Exec>( empty.quadratureResults() );
   } ) );
@@ -472,7 +472,7 @@ void checkJacobian()
     const auto expected_values = expected.values();
     ASSERT_EQ( result.quadrature_result.status, QuadratureStatus::Success );
     EXPECT_EQ( result.quadrature_result.num_required_points, NumPoints );
-    EXPECT_TRUE( result.has_contributing_points );
+    EXPECT_TRUE( result.has_active_points );
     for ( IndexT row = 0; row < Function::size_values; ++row ) {
       EXPECT_DOUBLE_EQ( result.values[row], expected_values[row] );
     }
@@ -502,10 +502,10 @@ void checkJacobian()
   using UnshiftedFunction = CommonPlaneResidualPairFunction<EdgeQuadratureRuleGenerator<NumPoints>>;
   const UnshiftedFunction unshifted{ rule_generator, 1.0 };
   const auto zero = unshifted.evaluate( edge1.view(), edge2.view() );
-  EXPECT_TRUE( zero.has_contributing_points );
+  EXPECT_TRUE( zero.has_active_points );
   const auto derivatives =
       EnzymePairDerivative<UnshiftedFunction>::valuesAndJacobian( edge1.view(), edge2.view(), unshifted );
-  EXPECT_TRUE( derivatives.has_contributing_points );
+  EXPECT_TRUE( derivatives.has_active_points );
   for ( IndexT row = 0; row < UnshiftedFunction::size_values; ++row ) {
     EXPECT_EQ( derivatives.values[row], 0.0 );
   }
@@ -515,7 +515,7 @@ void checkJacobian()
       EnzymePairDerivative<UnshiftedFunction>::valuesAndJacobian( invalid.view(), edge2.view(), unshifted );
   EXPECT_EQ( failure.quadrature_result.status, QuadratureStatus::InvalidGeometry );
   EXPECT_EQ( failure.quadrature_result.num_required_points, 0 );
-  EXPECT_FALSE( failure.has_contributing_points );
+  EXPECT_FALSE( failure.has_active_points );
   for ( int row = 0; row < failure.values.size(); ++row ) {
     EXPECT_EQ( failure.values[row], 0.0 );
     for ( IndexT column = 0; column < UnshiftedFunction::size_coords; ++column ) {

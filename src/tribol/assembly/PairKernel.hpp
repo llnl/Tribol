@@ -58,7 +58,7 @@ PairValueBuffer<PairFunction::size_values> evaluatePairValues( const ArrayT<Inte
     const auto pair_values_struct = pair_function.evaluate( coords1.view(), coords2.view() );
     // Fill the buffer with quantities evaluated at the pair
     all_pair_values_view.quadrature[pair_index] = pair_values_struct.quadrature_result;
-    all_pair_values_view.has_contributing_points[pair_index] = pair_values_struct.has_contributing_points;
+    all_pair_values_view.has_active_points[pair_index] = pair_values_struct.has_active_points;
     const auto pair_values = pair_values_struct.values();
     for ( IndexT i{ 0 }; i < PairFunction::size_values; ++i ) {
       all_pair_values_view.setValue( pair_index, i, pair_values[i] );
@@ -113,7 +113,7 @@ PairValueJacobianBuffer<PairFunction::size_values, PairFunction::size_coords> ev
         EnzymePairDerivative<PairFunction>::valuesAndJacobian( coords1.view(), coords2.view(), pair_function );
     // Fill the buffer with quantities evaluated at the pair
     all_pair_values_view.quadrature[pair_index] = pair_values_struct.quadrature_result;
-    all_pair_values_view.has_contributing_points[pair_index] = pair_values_struct.has_contributing_points;
+    all_pair_values_view.has_active_points[pair_index] = pair_values_struct.has_active_points;
     const auto& pair_values = pair_values_struct.values;
     for ( IndexT i{ 0 }; i < PairFunction::size_values; ++i ) {
       all_pair_values_view.setValue( pair_index, i, pair_values[i] );

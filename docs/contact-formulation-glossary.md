@@ -83,7 +83,7 @@ column-major matrix storage. Row and column spaces, multiplicities, and element 
 | Coarse candidate | An element pair returned by spatial search. Spatial proximity alone does not establish contact. |
 | Refined candidate | A coarse candidate that passes topology and geometry checks, such as opposing normals. It can still have empty quadrature or no compressive contact. |
 | Quadrature overlap | The integration interval or surface determined from the current pair geometry. |
-| Contributing pair | A successfully evaluated pair with points whose values or derivatives must be retained. Contribution does not require a nonzero current energy or residual. |
+| Active pair | A successfully evaluated pair with points whose values or derivatives must be retained by the pair function. This includes integration before contact activation and does not require a nonzero current energy or residual. |
 | Rule generator | A configured operation producing quadrature points and weights for current geometry. A base rule generator supplies the reference integration rule. |
 | Generated rule | The resulting points, weights, and generation status. A rule is data, not its generator. |
 | Integration-surface coordinates | Coordinates on the surface used to generate a rule. The mapping defines their domain and conversion to physical weights. |
@@ -93,7 +93,7 @@ column-major matrix storage. Row and column spaces, multiplicities, and element 
 `QuadratureStatus::Success` means every reported point is initialized. Success with zero points is a valid empty rule,
 not an error or proof of compression. `InsufficientCapacity` reports the complete required point count; partial data
 must be discarded. `InvalidGeometry` reports zero points and unusable numerical output. Check generation status before
-consuming pair values or interpreting contribution flags. Acceptance by refined search and successful quadrature are
+consuming pair values or interpreting activation flags. Acceptance by refined search and successful quadrature are
 separate conditions.
 
 ## Gaps and enforcement
@@ -110,6 +110,7 @@ separate conditions.
 | Lagrange multiplier (LM) | An additional unknown used to enforce a constraint. In normal contact, a multiplier can represent contact pressure. |
 | Enforcement location | Where the contact condition is imposed, such as at quadrature points or on assembled nodal quantities. |
 | Contact activation | The condition determining whether a contact constraint contributes to the calculation. |
+| Contact active set | The contact constraints treated as active by the enforcement method. Pair integration can be active before this set is determined. |
 
 ## Values, derivatives, assembly, and results
 
@@ -135,11 +136,11 @@ discrete equations. Its sign convention is defined by the formulation.
 | `df_dx` | Coordinate derivative of the contact residual. For an energy formulation it is the coordinate Hessian of the energy. |
 | `df_dp` | Derivative of the contact residual with respect to LM pressure values. |
 | `weighted_gap_jacobian` | Coordinate Jacobian of the weighted-gap constraint, including any contact activation. It is distinct from a normalized-gap Jacobian. |
-| `has_contributing_points` | Whether a successfully evaluated pair has points whose values or derivatives contribute to the calculation. |
-| `contributingPairs()` | One contribution flag per pair in a buffer, not a collection of individual quadrature points. |
+| `has_active_points` | Whether a successfully evaluated pair has active points whose values or derivatives must be retained. For nodal integrals, nonempty integration is active even for opening gaps, before contact activation. |
+| `activePairs()` | One pair-function activation flag per pair in a buffer. These flags do not by themselves identify the contact active set. |
 
-A function value can be zero while its derivatives are nonzero. Contribution flags therefore account for derivative
-outputs as well as function values.
+A function value can be zero while its derivatives are nonzero. Activation flags therefore account for derivative
+outputs as well as function values, including tangents at zero gap.
 
 An empty optional or null output pointer means that quantity was not calculated or has been taken from the result.
 A calculated zero is an available result. Returned outputs remain valid after another calculation or destruction of the

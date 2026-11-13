@@ -140,7 +140,7 @@ ContactFormulationResult evaluateAndAssemblePairResidual( const ArrayT<Interface
   auto assembler = detail::makeDisplacementVectorAssembler( mesh_data, mesh1, mesh2 );
   const auto all_pair_values_view = all_pair_values.view();
   assembler.addPairs<Exec, PairFunction::size_coords, 2>( pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
-    return all_pair_values_view.has_contributing_points[pair] ? all_pair_values_view.value( pair, row ) : 0.0;
+    return all_pair_values_view.has_active_points[pair] ? all_pair_values_view.value( pair, row ) : 0.0;
   } );
   ContactFormulationResult result;
   result.force.reset( assembler.assemble().release() );
@@ -177,11 +177,10 @@ ContactFormulationResult evaluateAndAssemblePairResidualJacobian( const ArrayT<I
   return detail::assemblePairForcesAndJacobian<Exec, PairFunction::size_coords>(
       pairs, mesh1, mesh2, mesh_data, jacobian_data,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
-        return all_pair_values_view.has_contributing_points[pair] ? all_pair_values_view.value( pair, row ) : 0.0;
+        return all_pair_values_view.has_active_points[pair] ? all_pair_values_view.value( pair, row ) : 0.0;
       },
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
-        return all_pair_values_view.has_contributing_points[pair] ? all_pair_values_view.jacobian( pair, row, column )
-                                                                  : 0.0;
+        return all_pair_values_view.has_active_points[pair] ? all_pair_values_view.jacobian( pair, row, column ) : 0.0;
       } );
 }
 #endif  // TRIBOL_USE_ENZYME
@@ -213,14 +212,14 @@ ContactFormulationResult evaluateAndAssemblePairEnergy( const ArrayT<InterfacePa
   auto assembler = detail::makeDisplacementVectorAssembler( mesh_data, mesh1, mesh2 );
   const auto all_pair_values_view = all_pair_values.view();
   assembler.addPairs<Exec, PairFunction::size_coords, 2>( pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
-    return all_pair_values_view.has_contributing_points[pair] ? all_pair_values_view.jacobian( pair, 0, row ) : 0.0;
+    return all_pair_values_view.has_active_points[pair] ? all_pair_values_view.jacobian( pair, 0, row ) : 0.0;
   } );
   ContactFormulationResult result;
   result.force.reset( assembler.assemble().release() );
   result.energy = GlobalScalarAssembler::sum<Exec>(
       pairs.size(),
       [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
-        return all_pair_values_view.has_contributing_points[pair] ? all_pair_values_view.value( pair, 0 ) : 0.0;
+        return all_pair_values_view.has_active_points[pair] ? all_pair_values_view.value( pair, 0 ) : 0.0;
       },
       result.force->GetComm() );
   return result;

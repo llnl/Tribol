@@ -6,6 +6,9 @@
 /**
  * @file
  * @brief Preallocated pair-local values and coordinate derivatives for bulk contact assembly.
+ *
+ * Activation flags retain pair-function values or derivatives after successful quadrature. Nodal integration may
+ * remain active for opening gaps, before enforcement selects the contact active set.
  */
 #ifndef SRC_TRIBOL_ASSEMBLY_PAIRCONTRIBUTION_HPP_
 #define SRC_TRIBOL_ASSEMBLY_PAIRCONTRIBUTION_HPP_
@@ -22,10 +25,10 @@ namespace tribol {
 /** @brief Device-copyable pair values and quadrature state without derivatives. @tparam SizeValues Values per pair. */
 template <IndexT SizeValues>
 struct PairValueView {
-  RealT* values{ nullptr };                    ///< Values in `[value][pair]` order.
-  QuadratureResult* quadrature{ nullptr };     ///< Pair quadrature status and point count.
-  IndexT* has_contributing_points{ nullptr };  ///< Nonzero when a successfully evaluated pair has contributing points.
-  IndexT num_pairs{ 0 };                       ///< Number of writable pair slots.
+  RealT* values{ nullptr };                 ///< Values in `[value][pair]` order.
+  QuadratureResult* quadrature{ nullptr };  ///< Pair quadrature status and point count.
+  IndexT* has_active_points{ nullptr };     ///< Nonzero when a successfully evaluated pair has active points.
+  IndexT num_pairs{ 0 };                    ///< Number of writable pair slots.
 
   /** @brief Store one value. @param pair Pair slot. @param value Function output index. @param result Numerical value.
    */
@@ -46,14 +49,14 @@ class PairValueBuffer {
       : num_pairs_( num_pairs ),
         values_( SizeValues * num_pairs, SizeValues * num_pairs, allocator_id ),
         quadrature_( num_pairs, num_pairs, allocator_id ),
-        has_contributing_points_( num_pairs, num_pairs, allocator_id )
+        has_active_points_( num_pairs, num_pairs, allocator_id )
   {
   }
   /** @brief Return a writable view. @return View into this buffer's arrays; the buffer must remain alive while the view
    * is used. */
   PairValueView<SizeValues> view()
   {
-    return { values_.data(), quadrature_.data(), has_contributing_points_.data(), num_pairs_ };
+    return { values_.data(), quadrature_.data(), has_active_points_.data(), num_pairs_ };
   }
   /** @brief Return pair slots. @return Number of pairs allocated. */
   IndexT numberOfPairs() const { return num_pairs_; }
@@ -61,14 +64,14 @@ class PairValueBuffer {
   const Array1D<RealT>& values() const { return values_; }
   /** @brief Return quadrature results. @return One result per pair. */
   const Array1D<QuadratureResult>& quadratureResults() const { return quadrature_; }
-  /** @brief Return activation flags. @return One contribution flag per pair. */
-  const Array1D<IndexT>& contributingPairs() const { return has_contributing_points_; }
+  /** @brief Return pair-function activation flags. @return One activation flag per pair after successful quadrature. */
+  const Array1D<IndexT>& activePairs() const { return has_active_points_; }
 
  private:
-  IndexT num_pairs_;                         ///< Allocated pair slots.
-  Array1D<RealT> values_;                    ///< Numerical values in structure-of-arrays order.
-  Array1D<QuadratureResult> quadrature_;     ///< Quadrature status for each pair.
-  Array1D<IndexT> has_contributing_points_;  ///< Contribution flag for each pair after successful quadrature.
+  IndexT num_pairs_;                      ///< Allocated pair slots.
+  Array1D<RealT> values_;                 ///< Numerical values in structure-of-arrays order.
+  Array1D<QuadratureResult> quadrature_;  ///< Quadrature status for each pair.
+  Array1D<IndexT> has_active_points_;     ///< Activation flag for each pair after successful quadrature.
 };
 
 /**
@@ -82,11 +85,11 @@ class PairValueBuffer {
  */
 template <IndexT SizeValues, IndexT SizeCoords>
 struct PairValueJacobianView {
-  RealT* values{ nullptr };                    ///< Values in `[value][pair]` order.
-  RealT* jacobians{ nullptr };                 ///< Derivatives in `[value][coordinate][pair]` order.
-  QuadratureResult* quadrature{ nullptr };     ///< Pair quadrature status and point count.
-  IndexT* has_contributing_points{ nullptr };  ///< Nonzero when a successfully evaluated pair has contributing points.
-  IndexT num_pairs{ 0 };                       ///< Number of writable pair slots.
+  RealT* values{ nullptr };                 ///< Values in `[value][pair]` order.
+  RealT* jacobians{ nullptr };              ///< Derivatives in `[value][coordinate][pair]` order.
+  QuadratureResult* quadrature{ nullptr };  ///< Pair quadrature status and point count.
+  IndexT* has_active_points{ nullptr };     ///< Nonzero when a successfully evaluated pair has active points.
+  IndexT num_pairs{ 0 };                    ///< Number of writable pair slots.
 
   /** @brief Store one pair value. @param pair Pair slot. @param value Function output index. @param result Scalar
    * value. */
@@ -141,14 +144,14 @@ class PairValueJacobianBuffer {
         values_( SizeValues * num_pairs, SizeValues * num_pairs, allocator_id ),
         jacobians_( SizeValues * SizeCoords * num_pairs, SizeValues * SizeCoords * num_pairs, allocator_id ),
         quadrature_( num_pairs, num_pairs, allocator_id ),
-        has_contributing_points_( num_pairs, num_pairs, allocator_id )
+        has_active_points_( num_pairs, num_pairs, allocator_id )
   {
   }
 
   /** @brief Return a device-copyable writable view. @return View retaining no ownership. */
   PairValueJacobianView<SizeValues, SizeCoords> view()
   {
-    return { values_.data(), jacobians_.data(), quadrature_.data(), has_contributing_points_.data(), num_pairs_ };
+    return { values_.data(), jacobians_.data(), quadrature_.data(), has_active_points_.data(), num_pairs_ };
   }
 
   /** @brief Return the number of pair slots. @return Pair count. */
@@ -163,15 +166,15 @@ class PairValueJacobianBuffer {
   /** @brief Return quadrature results. @return One result per pair. */
   const Array1D<QuadratureResult>& quadratureResults() const { return quadrature_; }
 
-  /** @brief Return activation flags. @return One contribution flag per pair. */
-  const Array1D<IndexT>& contributingPairs() const { return has_contributing_points_; }
+  /** @brief Return pair-function activation flags. @return One activation flag per pair after successful quadrature. */
+  const Array1D<IndexT>& activePairs() const { return has_active_points_; }
 
  private:
-  IndexT num_pairs_;                         ///< Pair slots allocated in every array.
-  Array1D<RealT> values_;                    ///< Values in `[value][pair]` order.
-  Array1D<RealT> jacobians_;                 ///< Derivatives in `[value][coordinate][pair]` order.
-  Array1D<QuadratureResult> quadrature_;     ///< Quadrature status for each pair.
-  Array1D<IndexT> has_contributing_points_;  ///< Contribution flag for each pair after successful quadrature.
+  IndexT num_pairs_;                      ///< Pair slots allocated in every array.
+  Array1D<RealT> values_;                 ///< Values in `[value][pair]` order.
+  Array1D<RealT> jacobians_;              ///< Derivatives in `[value][coordinate][pair]` order.
+  Array1D<QuadratureResult> quadrature_;  ///< Quadrature status for each pair.
+  Array1D<IndexT> has_active_points_;     ///< Activation flag for each pair after successful quadrature.
 };
 
 /**

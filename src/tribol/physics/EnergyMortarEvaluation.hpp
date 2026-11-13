@@ -67,13 +67,13 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<Int
       pairs, vectors, matrices,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node ) {
         const auto integral_field = static_cast<typename PairResult::Field>( field );
-        return contributions_view.has_contributing_points[pair]
+        return contributions_view.has_active_points[pair]
                    ? contributions_view.value( pair, PairResult::valueIndex( integral_field, node ) )
                    : 0.0;
       },
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node, IndexT coordinate ) {
         const auto integral_field = static_cast<typename PairResult::Field>( field );
-        return contributions_view.has_contributing_points[pair]
+        return contributions_view.has_active_points[pair]
                    ? contributions_view.jacobian( pair, PairResult::valueIndex( integral_field, node ), coordinate )
                    : 0.0;
       } );

@@ -74,6 +74,7 @@ class EnergyMortarEnergyPairFunction {
   }
   /**
    * @brief Integrate energy, retaining zero-gap activation for differentiation.
+   * A nonpositive quadrature-point gap sets has_active_points; zero gap retains the compressive tangent.
    * @param coords1 First current element coordinates.
    * @param coords2 Second current element coordinates.
    * @return Energy and status. Failed, empty, or open rules give zero energy; failure must be reported by the caller.
@@ -94,7 +95,7 @@ class EnergyMortarEnergyPairFunction {
       if ( gap > 0.0 ) {
         continue;
       }
-      pair_energy_data.has_contributing_points = true;
+      pair_energy_data.has_active_points = true;
       pair_energy_data.energy += 0.5 * penalty_ * gap * gap * points.weights[point];
     }
     return pair_energy_data;
@@ -136,7 +137,7 @@ class EnergyMortarNodalIntegralPairFunction {
 
     static constexpr IndexT num_fields = 2;  ///< Number of nodal integral fields.
 
-    /** @brief Construct zero nodal integrals with default quadrature state and no contributing points. */
+    /** @brief Construct zero nodal integrals with default quadrature state and no active points. */
     TRIBOL_HOST_DEVICE NodalIntegralValue() = default;
 
     /**
@@ -177,7 +178,8 @@ class EnergyMortarNodalIntegralPairFunction {
     /** @brief Return the function value vector. @return Weighted gaps followed by tributary areas in node order. */
     TRIBOL_HOST_DEVICE MdArray<RealT, size_values> values() const { return values_; }
 
-    bool has_contributing_points = false;  ///< Whether quadrature contains any integration points.
+    /// Whether successful quadrature is nonempty, including opening gaps; this does not indicate contact activation.
+    bool has_active_points = false;
     QuadratureResult quadrature_result{};  ///< Failed output must not be consumed.
 
    private:
@@ -191,6 +193,8 @@ class EnergyMortarNodalIntegralPairFunction {
   }
   /**
    * @brief Integrate both nodal quantities in the same quadrature loop, before nodal contact activation.
+   * Nonempty successful quadrature sets has_active_points even for opening gaps. Nodal enforcement selects the
+   * contact active set after assembly.
    * @param coords1 First current element coordinates.
    * @param coords2 Second current element coordinates.
    * @return Nodal values and status; failed or empty rules give zeros. Failure must be reported by the caller.
@@ -206,7 +210,7 @@ class EnergyMortarNodalIntegralPairFunction {
       return nodal_integral_data;
     }
     const auto normal1 = geometry1.normal(), normal2 = geometry2.normal();
-    nodal_integral_data.has_contributing_points = true;
+    nodal_integral_data.has_active_points = true;
     for ( IndexT point = 0; point < points.result.num_required_points; ++point ) {
       MdArray<RealT, num_nodes> basis{};
       NonmortarBasis::eval( { &points.geom1_parametric_coords( point, 0 ), NonmortarBasis::parametric_dim },

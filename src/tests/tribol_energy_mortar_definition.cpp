@@ -44,7 +44,7 @@ template <IndexT SizeValues>
 struct TestPairValue {
   MdArray<RealT, SizeValues> function_values{};  ///< Values without residual-layout semantics.
   QuadratureResult quadrature_result{};          ///< Quadrature state supplied by the test function.
-  bool has_contributing_points = false;          ///< Whether the test function reports active integration points.
+  bool has_active_points = false;                ///< Whether the test function reports active integration points.
 
   /** @brief Return the function value vector. @return Fixed-size test values. */
   TRIBOL_HOST_DEVICE MdArray<RealT, SizeValues> values() const { return function_values; }
@@ -115,7 +115,7 @@ struct MutableValuesPairFunction : PairFunctionCandidate {
 struct WrongActivationPairFunction : PairFunctionCandidate {
   /** @brief Result with an integer flag that hides the required bool member. */
   struct Result : TestPairValue<size_values> {
-    IndexT has_contributing_points = 0;  ///< Incompatible activation type.
+    IndexT has_active_points = 0;  ///< Incompatible activation type.
   };
   /** @brief Declare an incompatible result. @param coords1 Geometry1 inputs. @param coords2 Geometry2 inputs. @return
    * Values with an integer flag. */
@@ -248,7 +248,7 @@ void checkParallelIntegrals( ExecutionMode mode, int allocator )
   EXPECT_EQ( host[0].energy.quadrature_result.num_required_points, NumPoints );
   // A length-two edge with gap -0.1 has energy 0.5*4*0.1^2*2, and equal nodal areas of one.
   EXPECT_NEAR( host[0].energy.energy, 0.04, tolerance );
-  EXPECT_TRUE( host[0].energy.has_contributing_points );
+  EXPECT_TRUE( host[0].energy.has_active_points );
   ASSERT_EQ( host[0].nodal.quadrature_result.status, QuadratureStatus::Success );
   for ( IndexT node = 0; node < Nodal::num_nodes; ++node ) {
     EXPECT_NEAR( host[0].nodal.weightedGap( node ), -0.1, tolerance );
@@ -360,7 +360,7 @@ TEST_P( EnergyMortarDefinitionTest, differentiates_geometry_construction_with_un
   const auto& result = host[0];
   ASSERT_EQ( result.quadrature_result.status, QuadratureStatus::Success );
   EXPECT_EQ( result.quadrature_result.num_required_points, 1 );
-  EXPECT_TRUE( result.has_contributing_points );
+  EXPECT_TRUE( result.has_active_points );
   EXPECT_DOUBLE_EQ( result.value, 48.0 );
   // For f(x,y,z)=x^2*y*z, both cached expressions contribute to the mixed second derivatives.
   const MdArray<RealT, Function::size_coords> jacobian{ 48.0, 16.0, 12.0 };
@@ -439,7 +439,7 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_h
   const Array1D<RealT, MemorySpace::Host> values( value_jacobian.values() );
   const Array1D<RealT, MemorySpace::Host> jacobians( value_jacobian.jacobians() );
   const Array1D<QuadratureResult, MemorySpace::Host> jacobian_status( value_jacobian.quadratureResults() );
-  const Array1D<IndexT, MemorySpace::Host> active( value_jacobian.contributingPairs() );
+  const Array1D<IndexT, MemorySpace::Host> active( value_jacobian.activePairs() );
   for ( IndexT pair = 0; pair < pairs.size(); ++pair ) {
     EXPECT_NEAR( values[pair], host( pair, 0 ), tolerance );
     EXPECT_NEAR( jacobians[pairs.size() + pair] + jacobians[3 * pairs.size() + pair], host( pair, 1 ), tolerance );
@@ -555,7 +555,7 @@ TEST_P( EnergyMortarDefinitionTest, enzyme_pair_derivatives_execute_on_backend )
   EXPECT_EQ( host_results[0].num_evaluations, PolynomialPairFunction::size_coords );
   EXPECT_EQ( value_jacobian.quadrature_result.status, QuadratureStatus::Success );
   EXPECT_EQ( value_jacobian.quadrature_result.num_required_points, 2 );
-  EXPECT_TRUE( value_jacobian.has_contributing_points );
+  EXPECT_TRUE( value_jacobian.has_active_points );
   EXPECT_DOUBLE_EQ( value_jacobian.values[0], 14.0 );
   EXPECT_DOUBLE_EQ( value_jacobian.values[1], 15.0 );
   EXPECT_DOUBLE_EQ( value_jacobian.jacobian( 0, 0 ), 6.0 );
@@ -646,8 +646,8 @@ TEST_P( EnergyMortarDefinitionTest, derivatives_reuse_ad_values_and_state )
     EXPECT_EQ( result.second.quadrature_result.status, host_input[i].status );
     EXPECT_EQ( result.first.quadrature_result.num_required_points, i == 3 ? 0 : 2 );
     EXPECT_EQ( result.second.quadrature_result.num_required_points, i == 3 ? 0 : 2 );
-    EXPECT_EQ( result.first.has_contributing_points, host_input[i].active );
-    EXPECT_EQ( result.second.has_contributing_points, host_input[i].active );
+    EXPECT_EQ( result.first.has_active_points, host_input[i].active );
+    EXPECT_EQ( result.second.has_active_points, host_input[i].active );
     EXPECT_EQ( result.num_first_evaluations, valid_active ? Function::size_coords : 1 );
     EXPECT_EQ( result.num_second_evaluations, valid_active ? Function::size_coords : 1 );
     EXPECT_DOUBLE_EQ( result.first.values[0], x * x * y );
@@ -675,7 +675,7 @@ struct VectorPolynomialPairFunction : ScalarPolynomialPairFunction {
     PairResidualValue<1, 1, 1> result;
     result.geometry1( 0, 0 ) = scalar.energy;
     result.geometry2( 0, 0 ) = coords1[0] * coords2[0];
-    result.has_contributing_points = scalar.has_contributing_points;
+    result.has_active_points = scalar.has_active_points;
     result.quadrature_result = scalar.quadrature_result;
     return result;
   }
@@ -698,7 +698,7 @@ TEST_P( EnergyMortarDefinitionTest, open_nodal_integrals_keep_values_and_jacobia
   const ArrayT<PairValueJacobian<Function::size_values, Function::size_coords>, 1, MemorySpace::Host> host( results );
   const auto& result = host[0];
   ASSERT_EQ( result.quadrature_result.status, QuadratureStatus::Success );
-  EXPECT_TRUE( result.has_contributing_points );
+  EXPECT_TRUE( result.has_active_points );
   for ( IndexT node = 0; node < Function::num_nodes; ++node ) {
     const IndexT gap_row = PairResult::weightedGapIndex( node );
     const IndexT area_row = PairResult::tributaryAreaIndex( node );

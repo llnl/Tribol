@@ -55,6 +55,7 @@ class CommonPlaneResidualPairFunction {
 
   /** @brief Evaluate one pair residual. @param coords1 First current edge coordinates. @param coords2 Second current
    * edge coordinates.
+   * A nonpositive overlap-centroid gap sets has_active_points; zero gap retains the compressive tangent.
    * @return Residual and status; failed, empty, and open pairs return zero residual and inactive state. */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Result evaluate( Coords1 coords1, Coords2 coords2 ) const
   {
@@ -80,7 +81,7 @@ class CommonPlaneResidualPairFunction {
     if ( gap > 0.0 ) {
       return pair_residual_data;
     }
-    pair_residual_data.has_contributing_points = true;
+    pair_residual_data.has_active_points = true;
     const RealT pressure = penalty_ * gap;
     for ( IndexT point = 0; point < points.result.num_required_points; ++point ) {
       MdArray<RealT, ResidualBasis::size_basis> basis1{}, basis2{};
