@@ -69,12 +69,13 @@ corresponding
 abbreviations in size and coordinate-array names. `coords`, `dim`, `FE`, `DOF`, and `LM` mean coordinates, dimension,
 finite element, degree of freedom, and Lagrange multiplier. External library identifiers retain their spelling.
 
-Production pair kernels take separate coordinate arrays `coords1` and `coords2`, each indexed `[node][spatial_dim]`.
-Their combined
-Jacobian-column order is geometry1 coordinates followed by geometry2 coordinates. A basis-sized residual uses
-`[basis_index][value_index]` within each geometry, with geometry1 entries first. Generic nodal assembly uses
-`[node][value_index]`. MFEM element matrix packing converts this order to the selected FE-space ordering and
-column-major matrix storage. Row and column spaces, multiplicities, and element maps are independent.
+Pair kernels take separate coordinate arrays `coords1` and `coords2`, each indexed `[node][spatial_dim]`.
+The Jacobian columns contain derivatives with respect to all geometry1 coordinates (`coords1`) first, followed by
+derivatives with respect to all geometry2 coordinates (`coords2`). Within each geometry, coordinates are ordered by
+node, with the spatial coordinates together at each node: for example, `x0, y0, x1, y1` for a two-node edge in 2D.
+A basis-sized residual uses `[basis_index][value_index]` within each geometry, with geometry1 entries first.
+Generic nodal assembly uses `[node][value_index]`. MFEM element matrix packing converts this order to the selected
+FE-space ordering and column-major matrix storage. Row and column spaces, multiplicities, and element maps are independent.
 
 ## Search and quadrature
 
@@ -83,10 +84,12 @@ column-major matrix storage. Row and column spaces, multiplicities, and element 
 | Coarse candidate | An element pair returned by spatial search. Spatial proximity alone does not establish contact. |
 | Refined candidate | A coarse candidate that passes topology and geometry checks, such as opposing normals. It can still have empty quadrature or no compressive contact. |
 | Quadrature overlap | The integration interval or surface determined from the current pair geometry. |
+| Pair function | A function that takes the current coordinate arrays of two surface elements and calculates their pair-local values, quadrature status, and activation. Values may be energy, residual entries, weighted gaps, or tributary areas. Its configured settings remain fixed during evaluation and differentiation. |
 | Active pair | A successfully evaluated pair with points whose values or derivatives must be retained by the pair function. This includes integration before contact activation and does not require a nonzero current energy or residual. |
 | Rule generator | A configured operation producing quadrature points and weights for current geometry. A base rule generator supplies the reference integration rule. |
 | Generated rule | The resulting points, weights, and generation status. A rule is data, not its generator. |
-| Integration-surface coordinates | Coordinates on the surface used to generate a rule. The mapping defines their domain and conversion to physical weights. |
+| Integration surface | The geometric interval or surface over which pair quantities are integrated, constructed from the current pair geometry. |
+| Integration-surface coordinates | Coordinates locating quadrature points on the integration surface. They specify evaluation locations on that geometry; the mapping defines their coordinate domain and conversion to physical weights. |
 | Element-parametric coordinates | Generated point locations in each element's reference domain, stored in `geom1_parametric_coords` and `geom2_parametric_coords`. |
 | Physical integration weights | Quadrature weights including the geometric scaling needed to integrate over the chosen physical domain, such as its length or area. For a line segment of length L mapped from [-1, 1], each reference weight is multiplied by L/2. |
 
