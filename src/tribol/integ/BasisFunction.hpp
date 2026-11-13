@@ -16,7 +16,7 @@
 namespace tribol {
 
 /**
- * @brief Describes the dimensions and local-node ordering for a supported contact face element
+ * @brief Describes the dimensions and local-node ordering for a supported surface element
  *
  * The local-node ordering is shared by MeshData connectivity and BasisFunction output arrays. Parametric-node
  * coordinates
@@ -27,7 +27,7 @@ namespace tribol {
  * getParametricNodeCoords() returns its small coordinate array for the common case. Its output-view overload allows a
  * caller to reuse existing storage when a return value is undesirable in a device or differentiated kernel.
  *
- * @tparam Element Contact face shape
+ * @tparam Element Surface element shape
  * @tparam Order Lagrange order represented by the element connectivity
  */
 template <InterfaceElementType Element, FaceOrderType Order>
@@ -261,7 +261,7 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline void evalQuadraticLagrange1DDeriv
 }  // namespace detail
 
 /**
- * @brief Evaluates the complete Lagrange basis for one supported contact face element
+ * @brief Evaluates the complete Lagrange basis for one supported surface element
  *
  * Basis values and derivatives use the local-node ordering defined by FaceElementTraits. Parametric derivatives are
  * stored

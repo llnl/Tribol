@@ -6,7 +6,7 @@
 /**
  * @file
  * @brief Check explicit MFEM Common Plane selection, nonmatching constant-traction patches, and parent Jacobians.
- * The same tests run on one and two ranks; decomposition onto rank zero exercises a rank without contact elements.
+ * The same tests run on one and two ranks; decomposition onto rank zero exercises a rank without surface elements.
  * Direct calls check output availability and validity after destroying the formulation.
  * Fixed penalties and MFEM setters that rebuild formulations are checked without refreshing the decomposition.
  * Direct force and Jacobian scaling checks use Sequential and OpenMP when enabled, with host mesh storage.
@@ -182,7 +182,7 @@ TEST_P( MfemCommonPlaneTest, changes_jacobian_mode_without_changing_forces )
   EXPECT_FALSE( scheme().hasMfemJacobianData() );
 }
 
-// Open contact must return an allocated zero force with no matrix, including ranks without any contact elements.
+// Open contact must return an allocated zero force with no matrix, including ranks without any surface elements.
 TEST_P( MfemCommonPlaneTest, force_only_returns_zero_for_open_contact )
 {
   enable( false );

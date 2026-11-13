@@ -487,7 +487,7 @@ class MeshData {
    * @param num_elements number of elements on the contact surface
    * @param num_nodes length of the nodal field arrays
    * @param connectivity caller-owned finite element node connectivity
-   * @param element_type edge or face shape of the contact elements
+   * @param element_type edge or face shape of the surface elements
    * @param face_order finite element order represented by each connectivity row
    * @param x caller-owned x-components of the mesh coordinates
    * @param y caller-owned y-components of the mesh coordinates

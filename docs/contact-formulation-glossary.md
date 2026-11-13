@@ -10,7 +10,7 @@ algorithms, sign conventions, and support limits belong in the documentation for
 | --- | --- |
 | Vertex | A geometric corner or endpoint. A quadratic edge has two vertices and three finite-element nodes. |
 | Finite-element (FE) node | A location associated with a nodal interpolation coefficient. Nodes need not be vertices. |
-| Contact element | An edge in two spatial dimensions or a surface face in three spatial dimensions. Existing mesh APIs may call either a face. |
+| Surface element | An element of a surface mesh: an edge in two spatial dimensions or a surface face in three spatial dimensions. Existing mesh APIs may call either a face. |
 | mesh1 / mesh2 | The registered `MeshData` objects, or their `MeshData::Viewer` views, in coupling-scheme order. |
 | geometry1 / geometry2 | The current element geometries for one pair, in the same order as the meshes. |
 | Parametric coordinates | Coordinates within an element's reference domain. Edges use xi in [-1, 1]; quadrilaterals use [-1, 1]^2; linear triangles use the simplex with vertices (0, 0), (1, 0), (0, 1). |

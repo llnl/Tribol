@@ -717,7 +717,7 @@ class MfemMeshData {
   int GetNumNodes() const { return GetUpdateData().num_nodes_; }
 
   /**
-   * @brief Get the number of finite-element nodes in each contact element
+   * @brief Get the number of finite-element nodes in each surface element
    *
    * @return int
    */
@@ -1164,8 +1164,8 @@ class MfemMeshData {
     /**
      * @brief Construct a new UpdateData object
      *
-     * @param submesh Parent-linked boundary submesh of contact elements
-     * @param lor_mesh LOR mesh of contact elements (if using LOR; nullptr otherwise)
+     * @param submesh Parent-linked boundary submesh of surface elements
+     * @param lor_mesh LOR mesh of surface elements (if using LOR; nullptr otherwise)
      * @param parent_fes Vector finite element space on the original parent mesh
      * @param submesh_gridfn Grid function on the parent-linked boundary submesh used to temporarily store variables
      *        being transferred
