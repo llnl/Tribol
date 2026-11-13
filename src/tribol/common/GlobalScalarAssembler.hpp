@@ -31,7 +31,8 @@ class GlobalScalarAssembler {
   static RealT sum( IndexT num_contributions, Reader reader, MPI_Comm communicator )
   {
     static_assert( std::is_same_v<RealT, double>, "MPI_DOUBLE requires double-precision RealT." );
-    const RealT local_sum = localSum<Exec>( num_contributions, reader );
+    // Some MPI implementations' Clang datatype checks require a mutable send buffer.
+    RealT local_sum = localSum<Exec>( num_contributions, reader );
     RealT global_sum = 0.0;
     MPI_Allreduce( &local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM, communicator );
     return global_sum;
