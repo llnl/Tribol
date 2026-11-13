@@ -272,6 +272,7 @@ class EnzymePairDerivative {
       if ( pair_values_struct.quadrature_result.status != QuadratureStatus::Success ||
            !pair_values_struct.has_active_points ) {
         pair_values_struct.values = {};
+        pair_values_struct.jacobian = {};
         return pair_values_struct;
       }
       for ( IndexT value = 0; value < size_values; ++value ) {

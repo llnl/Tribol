@@ -208,14 +208,10 @@ struct CachedGeometryPairFunction {
 };
 static_assert( PairFunctionType<CachedGeometryPairFunction> );
 
-/** @brief Pair energy and nodal integrals written by one backend thread. @tparam NumPoints Gauss point count. */
-template <int NumPoints>
+/** @brief Pair energy and nodal integrals written by one backend thread. */
 struct ParallelIntegralResult {
-  using RuleGenerator =
-      PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>;
-  PairEnergyValue energy;  ///< Quadrature-point energy and status.
-  typename EnergyMortarNodalIntegralPairFunction<RuleGenerator>::NodalIntegralValue
-      nodal;  ///< Nodal integrals and status.
+  PairEnergyValue energy;                   ///< Quadrature-point energy and status.
+  EnergyMortarNodalIntegralValue<2> nodal;  ///< Nodal integrals and status.
 };
 
 /** @brief Nodal field inputs and exact penalty partials for one backend test case. */
@@ -234,7 +230,7 @@ void checkParallelIntegrals( ExecutionMode mode, int allocator )
       PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>;
   using Energy = EnergyMortarEnergyPairFunction<RuleGenerator>;
   using Nodal = EnergyMortarNodalIntegralPairFunction<RuleGenerator>;
-  ArrayT<ParallelIntegralResult<NumPoints>> results( 1, 1, allocator );
+  ArrayT<ParallelIntegralResult> results( 1, 1, allocator );
   const auto output = results.view();
   forAllExec( mode, 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
     const MdArray<RealT, 2, 2> coordinates1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
@@ -243,7 +239,7 @@ void checkParallelIntegrals( ExecutionMode mode, int allocator )
     output[0] = { Energy{ rule_generator, 4.0 }.evaluate( coordinates1.view(), coordinates2.view() ),
                   Nodal{ rule_generator }.evaluate( coordinates1.view(), coordinates2.view() ) };
   } );
-  const ArrayT<ParallelIntegralResult<NumPoints>, 1, MemorySpace::Host> host( results );
+  const ArrayT<ParallelIntegralResult, 1, MemorySpace::Host> host( results );
   ASSERT_EQ( host[0].energy.quadrature_result.status, QuadratureStatus::Success );
   EXPECT_EQ( host[0].energy.quadrature_result.num_required_points, NumPoints );
   // A length-two edge with gap -0.1 has energy 0.5*4*0.1^2*2, and equal nodal areas of one.
@@ -302,9 +298,9 @@ TEST_P( EnergyMortarDefinitionTest, contribution_buffers_use_backend_accessible_
 {
   constexpr IndexT num_pairs = 3;
   PairValueJacobianBuffer<2, 2> values( num_pairs, allocatorId() );
-  ElementBlockBuffer<2, 2> blocks( num_pairs, allocatorId() );
+  ElementBlockStorage blocks( num_pairs, 2 * 2, allocatorId() );
   const auto value_jacobian_view = values.view();
-  const auto block_view = blocks.view();
+  const auto block_view = blocks.view<2, 2>();
   forAllExec( GetParam(), num_pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
     value_jacobian_view.setValue( pair, 0, 10.0 + pair );
     value_jacobian_view.setValue( pair, 1, 20.0 + pair );
@@ -419,17 +415,16 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_h
   ArrayT<RealT, 2> summaries( axom::StackArray<axom::IndexType, 2>{ pairs.size(), 4 }, allocatorId() );
   const auto summary = summaries.view();
   forAllExec( GetParam(), pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
-    summary( pair, 0 ) = contributions_view.values[pair];
-    summary( pair, 1 ) =
-        contributions_view.derivatives.jacobian( pair, 1 ) + contributions_view.derivatives.jacobian( pair, 3 );
+    summary( pair, 0 ) = contributions_view.value( pair );
+    summary( pair, 1 ) = contributions_view.jacobian( pair, 1 ) + contributions_view.jacobian( pair, 3 );
     summary( pair, 2 ) = 0.0;
     summary( pair, 3 ) = 0.0;
     for ( IndexT row = 0; row < Function::size_coords; ++row ) {
-      summary( pair, 3 ) += std::abs( contributions_view.derivatives.jacobian( pair, row ) );
+      summary( pair, 3 ) += std::abs( contributions_view.jacobian( pair, row ) );
       for ( IndexT column = 0; column < Function::size_coords; ++column ) {
-        summary( pair, 3 ) += std::abs( contributions_view.derivatives.hessian( pair, row, column ) );
+        summary( pair, 3 ) += std::abs( contributions_view.hessian( pair, row, column ) );
         if ( ( row == 1 || row == 3 ) && ( column == 1 || column == 3 ) ) {
-          summary( pair, 2 ) += contributions_view.derivatives.hessian( pair, row, column );
+          summary( pair, 2 ) += contributions_view.hessian( pair, row, column );
         }
       }
     }
@@ -439,13 +434,11 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_h
   const Array1D<RealT, MemorySpace::Host> values( value_jacobian.values() );
   const Array1D<RealT, MemorySpace::Host> jacobians( value_jacobian.jacobians() );
   const Array1D<QuadratureResult, MemorySpace::Host> jacobian_status( value_jacobian.quadratureResults() );
-  const Array1D<IndexT, MemorySpace::Host> active( value_jacobian.activePairs() );
   for ( IndexT pair = 0; pair < pairs.size(); ++pair ) {
     EXPECT_NEAR( values[pair], host( pair, 0 ), tolerance );
     EXPECT_NEAR( jacobians[pairs.size() + pair] + jacobians[3 * pairs.size() + pair], host( pair, 1 ), tolerance );
     EXPECT_EQ( jacobian_status[pair].status, status[pair].status );
     EXPECT_EQ( jacobian_status[pair].num_required_points, pair == 3 ? 0 : 2 );
-    EXPECT_EQ( active[pair], pair == 0 || pair == 2 );
   }
   // Length two and stiffness four give E=0.04, dE/dy=-0.8, and d2E/dy2=8 for the penetrating pair.
   EXPECT_NEAR( host( 0, 0 ), 0.04, tolerance );

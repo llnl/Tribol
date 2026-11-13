@@ -9,7 +9,6 @@
 #include "tribol/config.hpp"
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
 #include "tribol/assembly/PairEvaluationAssembly.hpp"
-#include "tribol/physics/ContactEnforcement.hpp"
 #include "tribol/physics/EnergyMortarPairFunctions.hpp"
 
 namespace tribol {
@@ -54,30 +53,17 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<Int
   const auto contributions_view = buffer.view();
   checkPairQuadratureResults<Exec>( buffer.quadratureResults() );
   constexpr IndexT num_fields = PairResult::num_fields;
-  std::vector<MfemVectorAssembler> vectors;
-  std::vector<MfemMatrixAssembler> matrices;
-  vectors.reserve( num_fields );
-  matrices.reserve( num_fields );
-  for ( IndexT field = 0; field < num_fields; ++field ) {
-    vectors.push_back( detail::makeNodalVectorAssembler( submesh_data, mesh1 ) );
-    matrices.push_back( detail::makeNodalCoordinateMatrixAssembler( mesh_data, submesh_data, jacobian_data, mesh1,
-                                                                    mesh2, pairs.size(), pairs.getAllocatorID() ) );
-  }
-  detail::addNodalValuesAndJacobians<Exec, num_fields, num_nodes, size_coords>(
-      pairs, vectors, matrices,
+  auto fields = detail::assembleNodalValuesAndJacobians<Exec, num_fields, num_nodes, size_coords>(
+      pairs, mesh1, mesh2, mesh_data, submesh_data, jacobian_data,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node ) {
         const auto integral_field = static_cast<typename PairResult::Field>( field );
-        return contributions_view.has_active_points[pair]
-                   ? contributions_view.value( pair, PairResult::valueIndex( integral_field, node ) )
-                   : 0.0;
+        return contributions_view.value( pair, PairResult::valueIndex( integral_field, node ) );
       },
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node, IndexT coordinate ) {
         const auto integral_field = static_cast<typename PairResult::Field>( field );
-        return contributions_view.has_active_points[pair]
-                   ? contributions_view.jacobian( pair, PairResult::valueIndex( integral_field, node ), coordinate )
-                   : 0.0;
+        return contributions_view.jacobian( pair, PairResult::valueIndex( integral_field, node ), coordinate );
       } );
-  return { { vectors[0].assemble(), matrices[0].assemble() }, { vectors[1].assemble(), matrices[1].assemble() } };
+  return { std::move( fields[0] ), std::move( fields[1] ) };
 }
 
 /**
@@ -181,7 +167,7 @@ ContactFormulationResult evaluateAndAssembleNodalPenaltyGaps(
  * @param submesh_data Pressure and gap transfer data used for assembly.
  * @param jacobian_data Parent and scalar-field Jacobian transfer data used for assembly.
  * @param pair_function Configured nodal-integral pair_function.
- * @param penalty Fixed positive, finite penalty enforcement.
+ * @param penalty Fixed positive, finite penalty stiffness, validated when constructing the formulation.
  * @return Owned gaps, pressure, energy, force, weighted_gap_jacobian, and df_dx; df_dp is absent. Empty pairs
  * contribute zero force and energy; unsupported nodal areas give zero penalty pressure.
  * @throws std::invalid_argument Geometry, assembly dimensions, or nodal field dimensions are invalid.
@@ -192,10 +178,8 @@ ContactFormulationResult evaluateAndAssembleNodalPenalty( const ArrayT<Interface
                                                           MeshData::Viewer mesh2, const MfemMeshData& mesh_data,
                                                           const MfemSubmeshData& submesh_data,
                                                           const MfemJacobianData& jacobian_data,
-                                                          const PairFunction& pair_function,
-                                                          const PenaltyEnforcement& penalty )
+                                                          const PairFunction& pair_function, RealT penalty )
 {
-  const RealT stiffness = penalty.stiffness();
   auto quantities = detail::evaluateAndAssembleNodalQuantities<Exec>( pairs, mesh1, mesh2, pair_function, mesh_data,
                                                                       submesh_data, jacobian_data );
   const auto make_vector = [&] {
@@ -220,7 +204,7 @@ ContactFormulationResult evaluateAndAssembleNodalPenalty( const ArrayT<Interface
   auto* area_area_data = d2energy_dtributary_area2.get().Write( use_device );
   auto* nodal_energy_data = nodal_energy.data();
   forAllExec<Exec>( gap_weights.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) {
-    const auto partials = EnergyMortarNodalPenaltyPartials::evaluate( weighted_gap[node], area[node], stiffness,
+    const auto partials = EnergyMortarNodalPenaltyPartials::evaluate( weighted_gap[node], area[node], penalty,
                                                                       detail::nodal_area_tolerance );
     nodal_energy_data[node] = partials.energy;
     gap_weight[node] = partials.denergy_dweighted_gap;

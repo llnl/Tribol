@@ -110,17 +110,6 @@ class LinearEdgeGeometry {
     return result;
   }
 
-  /**
-   * @brief Map a parametric edge coordinate using the supplied physical vertex coordinates.
-   * @param coords Current edge vertex coordinates.
-   * @param xi Parametric coordinate; vertices are at -1 and 1. Values outside [-1,1] allow extrapolation.
-   * @return Physical point; no input views are retained.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static Point position( Coords coords, RealT xi )
-  {
-    return LinearEdgeGeometry( coords ).position( xi );
-  }
-
  private:
   Point origin_;          ///< Owned first endpoint of the current edge.
   Point end_;             ///< Owned second endpoint, preserving interpolation at the input coordinates.

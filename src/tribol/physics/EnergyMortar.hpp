@@ -11,6 +11,7 @@
 #include "tribol/assembly/PairEvaluationAssembly.hpp"
 #include "tribol/physics/ContactFormulation.hpp"
 #include "tribol/physics/EnergyMortarEvaluation.hpp"
+#include "tribol/physics/PenaltyStiffness.hpp"
 #include "tribol/search/PairListBuilder.hpp"
 #include <utility>
 
@@ -70,22 +71,23 @@ template <ExecutionMode Exec, PairFunctionType PairFunction>
 class NodalPenaltyEnergyMortar final : public ContactFormulation {
  public:
   /**
-   * @brief Own the nodal pair function, penalty enforcement, and search and reference required transfer data.
+   * @brief Own the nodal pair function, penalty stiffness, and search and reference required transfer data.
    * @param mesh_data Displacement transfer data; must outlive this formulation.
    * @param submesh_data Pressure and gap transfer data; must outlive this formulation.
    * @param jacobian_data Parent and scalar-field Jacobian transfer data; must outlive this formulation.
    * @param pair_function Configured nodal-integral function, retained by value.
-   * @param penalty Fixed positive, finite penalty enforcement.
+   * @param penalty Fixed positive, finite penalty stiffness.
    * @param pair_builder Owned pair search.
+   * @throws std::invalid_argument Penalty stiffness is nonpositive or nonfinite.
    */
   NodalPenaltyEnergyMortar( const MfemMeshData& mesh_data, const MfemSubmeshData& submesh_data,
-                            const MfemJacobianData& jacobian_data, PairFunction pair_function,
-                            PenaltyEnforcement penalty, PairListBuilder pair_builder )
+                            const MfemJacobianData& jacobian_data, PairFunction pair_function, RealT penalty,
+                            PairListBuilder pair_builder )
       : mesh_data_( mesh_data ),
         submesh_data_( submesh_data ),
         jacobian_data_( jacobian_data ),
         pair_function_( std::move( pair_function ) ),
-        penalty_( std::move( penalty ) ),
+        penalty_( detail::checkedPenaltyStiffness( penalty ) ),
         pair_builder_( std::move( pair_builder ) )
   {
   }
@@ -121,7 +123,7 @@ class NodalPenaltyEnergyMortar final : public ContactFormulation {
   const MfemSubmeshData& submesh_data_;    ///< Scalar transfer data referenced for this formulation's lifetime.
   const MfemJacobianData& jacobian_data_;  ///< Matrix transfer data referenced for this formulation's lifetime.
   const PairFunction pair_function_;       ///< Owned, fixed nodal-integral function.
-  const PenaltyEnforcement penalty_;       ///< Fixed nodal penalty enforcement.
+  const RealT penalty_;                    ///< Fixed positive, finite penalty stiffness.
   PairListBuilder pair_builder_;           ///< Owned pair search.
 };
 

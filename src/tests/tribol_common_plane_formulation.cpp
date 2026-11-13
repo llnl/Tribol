@@ -352,17 +352,24 @@ TEST_P( CommonPlaneTest, reports_geometry_and_capacity_without_writing )
     const Coordinates cooriented{ MdArray<RealT, 2>{ 0.0, 0.1 }, MdArray<RealT, 2>{ 2.0, 0.1 } };
     const Coordinates perpendicular{ MdArray<RealT, 2>{ 1.0, -1.0 }, MdArray<RealT, 2>{ 1.0, 1.0 } };
     const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>> rule_generator;
-    output[InvalidFirst] = rule_generator.generate( invalid.view(), edge2.view() ).result;
-    output[InvalidSecond] = rule_generator.generate( edge1.view(), invalid.view() ).result;
-    output[Disjoint] = rule_generator.generate( edge1.view(), disjoint.view() ).result;
-    output[Cooriented] = rule_generator.generate( edge1.view(), cooriented.view() ).result;
-    output[Perpendicular] = rule_generator.generate( edge1.view(), perpendicular.view() ).result;
+    output[InvalidFirst] =
+        rule_generator.generate( LinearEdgeGeometry( invalid.view() ), LinearEdgeGeometry( edge2.view() ) ).result;
+    output[InvalidSecond] =
+        rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( invalid.view() ) ).result;
+    output[Disjoint] =
+        rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( disjoint.view() ) ).result;
+    output[Cooriented] =
+        rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( cooriented.view() ) ).result;
+    output[Perpendicular] =
+        rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( perpendicular.view() ) )
+            .result;
     for ( int i = 0; i < values.size(); ++i ) {
       values[i] = unwritten;
     }
     const PairQuadratureRuleView<1, 1> bounded{
         { values.data() + 1, { 2, 1 } }, { values.data() + 1, { 2, 1 } }, { values.data() + 1, 2 } };
-    output[Overflow] = rule_generator.generate( edge1.view(), edge2.view(), bounded );
+    output[Overflow] =
+        rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( edge2.view() ), bounded );
   } );
   const ArrayT<QuadratureResult, 1, MemorySpace::Host> results( records );
   const ArrayT<RealT, 1, MemorySpace::Host> host( storage );
@@ -388,6 +395,21 @@ TEST_P( CommonPlaneTest, integrates_interpenetrating_overlap_with_configured_rul
   checkInterpenetratingOverlap<2>();
   checkInterpenetratingOverlap<3>();
 }
+/** @brief Supply a nonzero entry even for inactive or invalid pairs to check kernel output masking. */
+struct UnmaskedResidualPairFunction : CommonPlaneResidualPairFunction<EdgeQuadratureRuleGenerator<2>> {
+  using CommonPlaneResidualPairFunction<EdgeQuadratureRuleGenerator<2>>::CommonPlaneResidualPairFunction;
+
+  /** @brief Evaluate the pair and overwrite one residual entry regardless of state.
+   * @param coords1 First edge coordinates. @param coords2 Second edge coordinates.
+   * @return Residual with its original quadrature status and activation, and a nonzero first entry. */
+  TRIBOL_HOST_DEVICE Result evaluate( Coords1 coords1, Coords2 coords2 ) const
+  {
+    auto result = CommonPlaneResidualPairFunction<EdgeQuadratureRuleGenerator<2>>::evaluate( coords1, coords2 );
+    result.geometry1( 0, 0 ) = 1.0;
+    return result;
+  }
+};
+
 // A force-only kernel must keep pair slots distinct and preserve active zero-gap and invalid-geometry state.
 TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_derivatives )
 {
@@ -408,14 +430,11 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
   EXPECT_EQ( buffer.numberOfPairs(), pairs.size() );
   EXPECT_EQ( buffer.values().getAllocatorID(), pairs.getAllocatorID() );
   EXPECT_EQ( buffer.quadratureResults().getAllocatorID(), pairs.getAllocatorID() );
-  EXPECT_EQ( buffer.activePairs().getAllocatorID(), pairs.getAllocatorID() );
   const Array1D<RealT, MemorySpace::Host> values( buffer.values() );
   const Array1D<QuadratureResult, MemorySpace::Host> status( buffer.quadratureResults() );
-  const Array1D<IndexT, MemorySpace::Host> active( buffer.activePairs() );
   for ( IndexT pair = 0; pair < pairs.size(); ++pair ) {
     EXPECT_EQ( status[pair].status, pair == 3 ? QuadratureStatus::InvalidGeometry : QuadratureStatus::Success );
     EXPECT_EQ( status[pair].num_required_points, pair == 3 ? 0 : 2 );
-    EXPECT_EQ( active[pair], pair == 0 || pair == 2 );
     for ( IndexT row = 0; row < Function::size_values; ++row ) {
       const RealT expected = pair == 0 && row % 2 == 1 ? ( row < Function::size_geom1_coords ? -0.1 : 0.1 ) : 0.0;
       EXPECT_NEAR( values[row * pairs.size() + pair], expected, tolerance );
@@ -436,6 +455,14 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
     EXPECT_EQ( unchanged[i], values[i] );
     EXPECT_NEAR( doubled_values[i], 2.0 * values[i], tolerance );
   }
+  // The kernel must zero inactive or failed outputs even when evaluate() supplies nonzero numerical entries.
+  auto unmasked = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    return evaluatePairValues<Exec>( pairs, mesh1.getView(), mesh2.getView(), UnmaskedResidualPairFunction{ {}, 1.0 } );
+  } );
+  const Array1D<RealT, MemorySpace::Host> masked_values( unmasked.values() );
+  for ( IndexT pair = 0; pair < pairs.size(); ++pair ) {
+    EXPECT_EQ( masked_values[pair], pair == 0 || pair == 2 ? 1.0 : 0.0 );
+  }
   const ArrayT<InterfacePair> empty_pairs( 0, 0, allocatorId() );
   auto empty = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
     return evaluatePairValues<Exec>( empty_pairs, mesh1.getView(), mesh2.getView(), function );
@@ -443,7 +470,6 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
   EXPECT_EQ( empty.numberOfPairs(), 0 );
   EXPECT_EQ( empty.values().size(), 0 );
   EXPECT_EQ( empty.quadratureResults().size(), 0 );
-  EXPECT_EQ( empty.activePairs().size(), 0 );
   EXPECT_NO_THROW( dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
     return checkPairQuadratureResults<Exec>( empty.quadratureResults() );
   } ) );

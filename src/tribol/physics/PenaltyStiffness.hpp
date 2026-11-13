@@ -10,10 +10,28 @@
 #ifndef SRC_TRIBOL_PHYSICS_PENALTYSTIFFNESS_HPP_
 #define SRC_TRIBOL_PHYSICS_PENALTYSTIFFNESS_HPP_
 
+#include <cmath>
+#include <stdexcept>
+
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Enzyme.hpp"
 
 namespace tribol {
+namespace detail {
+/**
+ * @brief Check a mesh or effective penalty before constructing a formulation.
+ * @param stiffness Mesh or effective stiffness.
+ * @return The supplied positive, finite stiffness.
+ * @throws std::invalid_argument Stiffness is nonpositive or nonfinite; no value is returned.
+ */
+inline RealT checkedPenaltyStiffness( RealT stiffness )
+{
+  if ( !std::isfinite( stiffness ) || stiffness <= 0.0 ) {
+    throw std::invalid_argument( "Contact penalty stiffness must be positive and finite." );
+  }
+  return stiffness;
+}
+}  // namespace detail
 
 /** @brief Combine the two mesh stiffnesses using their arithmetic mean. */
 struct AveragePenaltyStiffness {

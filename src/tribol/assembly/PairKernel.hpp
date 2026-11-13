@@ -27,8 +27,8 @@ namespace tribol {
 /**
  * @brief Evaluate each pair's values and quadrature state without calculating derivatives.
  *
- * Each pair is evaluated once. This kernel requires no derivative provider or Enzyme support. Failed, empty, and
- * inactive values follow the pair function's evaluate() behavior; callers must check quadrature before assembly.
+ * Each pair is evaluated once. This kernel requires no derivative provider or Enzyme support. Failed or inactive
+ * evaluations store zero values; callers must check quadrature before assembly.
  * For example, Common Plane explicit contact could obtain a PairValueBuffer from evaluatePairValues(), check its
  * quadratureResults(), and assemble its active residual values as nodal forces.
  * @tparam PairFunction Function evaluating two rank-two node-by-spatial-dimension coordinate views.
@@ -37,7 +37,7 @@ namespace tribol {
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
  * @param pair_function Fixed pair configuration.
- * @return Owned values, quadrature results, and activation flags in pairs.getAllocatorID(), with one slot per pair.
+ * @return Owned values and quadrature results in pairs.getAllocatorID(), with one slot per pair.
  * Empty input returns zero slots. Evaluation finishes before returning; the arrays remain valid after pairs and
  * the input meshes are destroyed. Quadrature failures are recorded for the caller to check.
  */
@@ -58,10 +58,11 @@ PairValueBuffer<PairFunction::size_values> evaluatePairValues( const ArrayT<Inte
     const auto pair_values_struct = pair_function.evaluate( coords1.view(), coords2.view() );
     // Fill the buffer with quantities evaluated at the pair
     all_pair_values_view.quadrature[pair_index] = pair_values_struct.quadrature_result;
-    all_pair_values_view.has_active_points[pair_index] = pair_values_struct.has_active_points;
+    const bool active = pair_values_struct.quadrature_result.status == QuadratureStatus::Success &&
+                        pair_values_struct.has_active_points;
     const auto pair_values = pair_values_struct.values();
     for ( IndexT i{ 0 }; i < PairFunction::size_values; ++i ) {
-      all_pair_values_view.setValue( pair_index, i, pair_values[i] );
+      all_pair_values_view.setValue( pair_index, i, active ? pair_values[i] : 0.0 );
     }
   } );
   return all_pair_values;
@@ -73,7 +74,8 @@ PairValueBuffer<PairFunction::size_values> evaluatePairValues( const ArrayT<Inte
  *
  * For the input function f(x), write every value f_i and every Jacobian entry J_ij = df_i/dx_j. This applies equally
  * to scalar and vector functions. The values already include any quadrature weights used by f. The caller must check
- * the recorded quadrature results before using these outputs.
+ * the recorded quadrature results before using these outputs. Failed or inactive evaluations store zero values
+ * and Jacobians.
  *
  * For example, suppose function is a configured CommonPlaneResidualPairFunction of type PairFunction, pairs is an
  * accepted pair list, and mesh1 and mesh2 are current mesh views. A caller could evaluate its local nodal forces and
@@ -91,7 +93,7 @@ PairValueBuffer<PairFunction::size_values> evaluatePairValues( const ArrayT<Inte
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
  * @param pair_function Fixed pair-function configuration.
- * @return Owned values, Jacobians, quadrature results, and activation flags in pairs.getAllocatorID(). Empty input
+ * @return Owned values, Jacobians, and quadrature results in pairs.getAllocatorID(). Empty input
  * returns zero slots. Evaluation finishes before returning; the arrays remain valid after pairs and the input meshes
  * are destroyed. Quadrature failures are recorded for the caller to check.
  */
@@ -113,7 +115,6 @@ PairValueJacobianBuffer<PairFunction::size_values, PairFunction::size_coords> ev
         EnzymePairDerivative<PairFunction>::valuesAndJacobian( coords1.view(), coords2.view(), pair_function );
     // Fill the buffer with quantities evaluated at the pair
     all_pair_values_view.quadrature[pair_index] = pair_values_struct.quadrature_result;
-    all_pair_values_view.has_active_points[pair_index] = pair_values_struct.has_active_points;
     const auto& pair_values = pair_values_struct.values;
     for ( IndexT i{ 0 }; i < PairFunction::size_values; ++i ) {
       all_pair_values_view.setValue( pair_index, i, pair_values[i] );

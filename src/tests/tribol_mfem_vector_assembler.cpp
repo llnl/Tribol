@@ -117,46 +117,6 @@ class MfemVectorAssemblerTest : public testing::Test {
   std::unique_ptr<mfem::ParGridFunction> coords_;     ///< Parent node coordinates.
 };
 
-/** @brief Share scalar-vector/matrix configuration and execution across nodal assembly tests. */
-class TestNodalAssembly {
- public:
-  /** @brief Configure independent vector and matrix assemblers for each field. @param data Displacement transfers.
-   * @param dual Scalar transfers. @param jacobian Matrix transfers. @param mesh1 Field geometry.
-   * @param mesh2 Second coordinate geometry. @param num_fields Independent fields. @param num_pairs Pair count. */
-  TestNodalAssembly( const MfemMeshData& data, const MfemSubmeshData& dual, const MfemJacobianData& jacobian,
-                     MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT num_fields, IndexT num_pairs )
-  {
-    vectors_.reserve( num_fields );
-    matrices_.reserve( num_fields );
-    for ( IndexT field = 0; field < num_fields; ++field ) {
-      vectors_.push_back( detail::makeNodalVectorAssembler( dual, mesh1 ) );
-      matrices_.push_back( detail::makeNodalCoordinateMatrixAssembler( data, dual, jacobian, mesh1, mesh2, num_pairs,
-                                                                       mesh1.getAllocatorId() ) );
-    }
-  }
-  /** @brief Compose pair accumulation. @tparam Fields Field count. @tparam Nodes Rows per field.
-   * @tparam Dofs Pair coordinates. @tparam Values Scalar reader. @tparam Jacobians Matrix reader.
-   * @tparam Exec Backend. @param pairs Geometry pairs. @param values Scalar reader. @param jacobians Matrix reader. */
-  template <ExecutionMode Exec, IndexT Fields, IndexT Nodes, IndexT Dofs, typename Values, typename Jacobians>
-  void addPairs( const ArrayT<InterfacePair>& pairs, Values values, Jacobians jacobians )
-  {
-    detail::addNodalValuesAndJacobians<Exec, Fields, Nodes, Dofs>( pairs, vectors_, matrices_, values, jacobians );
-  }
-  /** @brief Return independent field results. @return Owned vectors and matrices. */
-  std::vector<AssembledField> assemble() const
-  {
-    std::vector<AssembledField> result;
-    for ( IndexT field = 0; field < static_cast<IndexT>( vectors_.size() ); ++field ) {
-      result.push_back( { vectors_[field].assemble(), matrices_[field].assemble() } );
-    }
-    return result;
-  }
-
- private:
-  std::vector<MfemVectorAssembler> vectors_;   ///< Vector assemblers, one per scalar field.
-  std::vector<MfemMatrixAssembler> matrices_;  ///< Coordinate Jacobian assemblers, one per field.
-};
-
 // A nonsymmetric outer product has a known action that checks row/column ordering and every pair block independently.
 TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_jacobian )
 {
@@ -343,18 +303,13 @@ TEST_F( MfemVectorAssemblerTest, assembles_scalar_fields_and_dual_transfers )
   const int local_pairs = pair_list.size();
   int global_pairs = 0;
   MPI_Allreduce( &local_pairs, &global_pairs, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
-  std::vector<AssembledField> result;
-  {
-    TestNodalAssembly assembler( *cs.getMfemMeshData(), dual_data, *cs.getMfemJacobianData(), mesh1, mesh2, num_fields,
-                                 pair_list.size() );
-    assembler.addPairs<ExecutionMode::Sequential, num_fields, nodes_per_edge, pair_dofs>(
-        pair_list,
-        [=] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node ) { return factors[field] * ( node + 1.0 ); },
-        [=] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node, IndexT column ) {
-          return factors[field] * ( node + 1.0 ) * ( column + 1.0 );
-        } );
-    result = assembler.assemble();
-  }
+  const auto result =
+      detail::assembleNodalValuesAndJacobians<ExecutionMode::Sequential, num_fields, nodes_per_edge, pair_dofs>(
+          pair_list, mesh1, mesh2, *cs.getMfemMeshData(), dual_data, *cs.getMfemJacobianData(),
+          [=] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node ) { return factors[field] * ( node + 1.0 ); },
+          [=] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node, IndexT column ) {
+            return factors[field] * ( node + 1.0 ) * ( column + 1.0 );
+          } );
   ASSERT_EQ( result.size(), num_fields );
   mfem::Vector direction( fes_->GetTrueVSize() ), action( dual_fes.GetTrueVSize() );
   direction = 1.0;
@@ -555,21 +510,19 @@ TEST_P( MfemMatrixAssemblerTest, assembles_scalar_fields_and_gradients )
     const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
     const auto pair_list = pairs();
     constexpr IndexT num_fields = 3;
-    TestNodalAssembly reference( *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), mesh1,
-                                 mesh2, num_fields, pair_list.size() );
-    TestNodalAssembly actual( *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), mesh1, mesh2,
-                              num_fields, pair_list.size() );
     const auto read_value = [] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node ) {
       return ( field + 1.0 ) * ( node + 1.0 );
     };
     const auto read_gradient = [] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node, IndexT column ) {
       return ( field + 1.0 ) * ( node + 1.0 ) * ( column + 2.0 );
     };
-    reference.addPairs<ExecutionMode::Sequential, num_fields, nodes_per_edge, pair_dofs>( pair_list, read_value,
-                                                                                          read_gradient );
-    actual.addPairs<Exec, num_fields, nodes_per_edge, pair_dofs>( pair_list, read_value, read_gradient );
-    const auto expected = reference.assemble();
-    const auto result = actual.assemble();
+    const auto expected =
+        detail::assembleNodalValuesAndJacobians<ExecutionMode::Sequential, num_fields, nodes_per_edge, pair_dofs>(
+            pair_list, mesh1, mesh2, *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(),
+            read_value, read_gradient );
+    const auto result = detail::assembleNodalValuesAndJacobians<Exec, num_fields, nodes_per_edge, pair_dofs>(
+        pair_list, mesh1, mesh2, *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), read_value,
+        read_gradient );
     ASSERT_EQ( result.size(), num_fields );
     mfem::Vector direction( fes_->GetTrueVSize() );
     direction = 1.0;

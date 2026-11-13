@@ -137,10 +137,11 @@ discrete equations. Its sign convention is defined by the formulation.
 | `df_dp` | Derivative of the contact residual with respect to LM pressure values. |
 | `weighted_gap_jacobian` | Coordinate Jacobian of the weighted-gap constraint, including any contact activation. It is distinct from a normalized-gap Jacobian. |
 | `has_active_points` | Whether a successfully evaluated pair has active points whose values or derivatives must be retained. For nodal integrals, nonempty integration is active even for opening gaps, before contact activation. |
-| `activePairs()` | One pair-function activation flag per pair in a buffer. These flags do not by themselves identify the contact active set. |
 
 A function value can be zero while its derivatives are nonzero. Activation flags therefore account for derivative
-outputs as well as function values, including tangents at zero gap.
+outputs as well as function values, including tangents at zero gap. Kernels returning quadrature status use these flags
+to zero inactive outputs before storing numerical values and derivatives; the buffers retain quadrature status
+separately.
 
 An empty optional or null output pointer means that quantity was not calculated or has been taken from the result.
 A calculated zero is an available result. Returned outputs remain valid after another calculation or destruction of the

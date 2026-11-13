@@ -117,72 +117,6 @@ class PairQuadratureRuleGenerator {
   using Rule = PairQuadratureRule<Geometry1::parametric_dim, Geometry2::parametric_dim, max_num_points>;
 
   /**
-   * @brief Construct the integration surface and generate quadrature points and weights in its coordinates.
-   *
-   * The mapping defines these coordinates. It also determines how the generated weights become physical integration
-   * weights when the points are mapped to both elements.
-   *
-   * @param coords1 Current first-element coordinates, with geometry defined by Geometry1.
-   * @param coords2 Current second-element coordinates, with geometry defined by Geometry2.
-   * @return Integration-surface rule with generation status; invalid geometry has zero points.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceRule
-  generateIntegrationSurfaceRule( typename Geometry1::Coords coords1, typename Geometry2::Coords coords2 ) const
-  {
-    return integration_surface_rule_generator_.generate(
-        mapping_.makeIntegrationSurface( Geometry1( coords1 ), Geometry2( coords2 ) ) );
-  }
-
-  /**
-   * @brief Map integration-surface quadrature points to both elements using their current geometry.
-   *
-   * The integration surface and its rule are not recalculated.
-   * @param coords1 Current first-element coordinates.
-   * @param coords2 Current second-element coordinates.
-   * @param integration_surface_rule Quadrature points and weights expressed in the integration surface's
-   * coordinates.
-   * @return Local paired quadrature with generation status; invalid geometry has zero points.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Rule mapIntegrationSurfaceRuleToElements(
-      typename Geometry1::Coords coords1, typename Geometry2::Coords coords2,
-      IntegrationSurfaceRuleView<IntegrationSurfaceRuleGenerator::coordinate_dim> integration_surface_rule ) const
-  {
-    return mapIntegrationSurfaceRuleToElements( Geometry1( coords1 ), Geometry2( coords2 ), integration_surface_rule );
-  }
-
-  /**
-   * @brief Map integration-surface quadrature points to both elements using already prepared element geometry.
-   *
-   * The integration surface and its rule are not recalculated.
-   * @param geometry1 First current element geometry.
-   * @param geometry2 Second current element geometry.
-   * @param integration_surface_rule Quadrature points and weights expressed in the integration surface's coordinates.
-   * @return Local paired quadrature with generation status; invalid geometry has zero points.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Rule mapIntegrationSurfaceRuleToElements(
-      const Geometry1& geometry1, const Geometry2& geometry2,
-      IntegrationSurfaceRuleView<IntegrationSurfaceRuleGenerator::coordinate_dim> integration_surface_rule ) const
-  {
-    Rule output{};
-    output.result = mapping_.mapToElements( geometry1, geometry2, integration_surface_rule, output.getOutputView() );
-    return output;
-  }
-
-  /**
-   * @brief Generate a complete rule into caller-provided storage.
-   * @param coords1 Current first-element coordinates.
-   * @param coords2 Current second-element coordinates.
-   * @param [out] output Parametric coordinates on both elements and physical weights.
-   * @return Generation status and full point count; failures must not be consumed. No allocation or retry is performed.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult
-  generate( typename Geometry1::Coords coords1, typename Geometry2::Coords coords2,
-            PairQuadratureRuleView<Geometry1::parametric_dim, Geometry2::parametric_dim> output ) const
-  {
-    return generate( Geometry1( coords1 ), Geometry2( coords2 ), output );
-  }
-
-  /**
    * @brief Generate into caller storage using geometry prepared by the pair calculation.
    * @param geometry1 First current element geometry.
    * @param geometry2 Second current element geometry.
@@ -200,20 +134,6 @@ class PairQuadratureRuleGenerator {
       return { integration_surface_rule.result.status, integration_surface_rule.result.num_required_points };
     }
     return mapping_.mapToElements( geometry1, geometry2, integration_surface_rule.getView(), output );
-  }
-
-  /**
-   * @brief Generate quadrature for an element pair and map its points into each element's parametric coordinates.
-   * @param coords1 Current first-element coordinates.
-   * @param coords2 Current second-element coordinates.
-   * @return Local paired quadrature with generation status; valid zero measure has zero points.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Rule generate( typename Geometry1::Coords coords1,
-                                                         typename Geometry2::Coords coords2 ) const
-  {
-    Rule output{};
-    output.result = generate( coords1, coords2, output.getOutputView() );
-    return output;
   }
 
   /**

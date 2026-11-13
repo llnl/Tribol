@@ -64,7 +64,6 @@ set(tribol_headers
     physics/AlignedMortar.hpp
     physics/CommonPlane.hpp
     physics/CommonPlaneFormulation.hpp
-    physics/ContactEnforcement.hpp
     physics/ContactFormulation.hpp
     physics/ContactFormulationFactory.hpp
     physics/Mortar.hpp

@@ -45,7 +45,7 @@ struct SmoothedProjectedEdgeMapping {
    *
    * @param edge1 Current non-mortar integration edge.
    * @param edge2 Current mortar edge projected along its normal.
-   * @return Smoothed edge1 bounds; degenerate edges return zero bounds and valid=false.
+   * @return Smoothed edge1 bounds; degenerate or nonfinite edge lengths return zero bounds and valid=false.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurface makeIntegrationSurface( const Geometry1& edge1,
                                                                                      const Geometry2& edge2 ) const
@@ -82,8 +82,7 @@ struct SmoothedProjectedEdgeMapping {
   mapToElements( const Geometry1& edge1, const Geometry2& edge2, IntegrationSurfaceRuleView<1> integration_surface_rule,
                  PairQuadratureRuleView<1, 1> output ) const
   {
-    if ( edge1.squaredLength() < minimum_edge_length_squared_ ||
-         edge2.squaredLength() < minimum_edge_length_squared_ ) {
+    if ( !validEdges( edge1, edge2 ) ) {
       return { QuadratureStatus::InvalidGeometry, 0 };
     }
     if ( normalsAreCooriented( edge1, edge2 ) ) return { QuadratureStatus::Success, 0 };
@@ -106,6 +105,17 @@ struct SmoothedProjectedEdgeMapping {
   inline static constexpr RealT minimum_edge_length_squared_ =
       minimum_edge_length_ * minimum_edge_length_;  ///< Squared threshold; equality is accepted on either element.
   inline static constexpr RealT minimum_projection_determinant_ = 1.0e-12;  ///< Line-intersection fallback threshold.
+
+  /** @brief Check edge lengths before projection or normal calculation.
+   * @param edge1 Current integration edge.
+   * @param edge2 Current projection edge.
+   * @return Whether both squared lengths are finite and at least the squared minimum length. */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static bool validEdges( const Geometry1& edge1, const Geometry2& edge2 )
+  {
+    return std::isfinite( edge1.squaredLength() ) && std::isfinite( edge2.squaredLength() ) &&
+           edge1.squaredLength() >= minimum_edge_length_squared_ &&
+           edge2.squaredLength() >= minimum_edge_length_squared_;
+  }
 
   /**
    * @brief Check whether the two edge normals have a positive dot product without normalizing them.
@@ -135,8 +145,7 @@ struct SmoothedProjectedEdgeMapping {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static IntegrationSurface projectedBounds( const Geometry1& edge1,
                                                                                      const Geometry2& edge2 )
   {
-    if ( edge1.squaredLength() < minimum_edge_length_squared_ ||
-         edge2.squaredLength() < minimum_edge_length_squared_ ) {
+    if ( !validEdges( edge1, edge2 ) ) {
       return { MdArray<RealT, 2>{ 0.0, 0.0 }, false };
     }
     if ( normalsAreCooriented( edge1, edge2 ) ) return { MdArray<RealT, 2>{ 0.0, 0.0 }, true };

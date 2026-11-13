@@ -9,7 +9,6 @@
 
 #include "tribol/config.hpp"
 #ifdef BUILD_REDECOMP
-#include <limits>
 #include <stdexcept>
 #include <vector>
 #include "tribol/common/LoopExec.hpp"
@@ -72,19 +71,6 @@ struct MfemMatrixBlockLayout {
   }
 };
 
-/** @brief Check a storage-size product before allocating. @param num_entries Nonnegative entries.
- * @param size Nonnegative values per entry. @return Product representable by IndexT.
- * @throws std::invalid_argument A size is negative. @throws std::length_error The product exceeds IndexT. */
-inline IndexT checkedMatrixSize( IndexT num_entries, IndexT size )
-{
-  if ( num_entries < 0 || size < 0 ) {
-    throw std::invalid_argument( "Matrix storage sizes must be nonnegative." );
-  }
-  if ( size != 0 && num_entries > std::numeric_limits<IndexT>::max() / size ) {
-    throw std::length_error( "Matrix storage exceeds the supported index range." );
-  }
-  return num_entries * size;
-}
 }  // namespace detail
 
 /**

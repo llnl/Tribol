@@ -300,8 +300,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
                   pair_function{ std::move( rule_generator ), OffsetGap{ OpposingNormalGap{}, 0.0 } };
               return std::make_unique<NodalPenaltyEnergyMortar<Exec, decltype( pair_function )>>(
                   *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(),
-                  std::move( pair_function ), PenaltyEnforcement{ SeriesPenaltyStiffness{}( 2.0, 6.0 ) },
-                  std::move( pair_builder ) );
+                  std::move( pair_function ), SeriesPenaltyStiffness{}( 2.0, 6.0 ), std::move( pair_builder ) );
             }
             EnergyMortarEnergyPairFunction<decltype( rule_generator ), OffsetGap<OpposingNormalGap>> pair_function{
                 std::move( rule_generator ), SeriesPenaltyStiffness{}( 2.0, 6.0 ),
@@ -497,13 +496,16 @@ TEST_P( EnergyMortarRegistrationTest, constructs_formulation_on_existing_decompo
   EXPECT_GT( result.force->Norml2(), 0.0 );
 }
 
-// Invalid fixed stiffness is rejected before a penalty enforcement value can be constructed.
-TEST( EnergyMortarPenalty, rejects_invalid_fixed_stiffness )
+// Each mesh stiffness must be positive and finite, even when the arithmetic mean would be positive.
+TEST_P( EnergyMortarQuadratureSettingsTest, rejects_invalid_mesh_penalties_before_combining )
 {
-  EXPECT_THROW( tribol::PenaltyEnforcement{ 0.0 }, std::invalid_argument );
-  EXPECT_THROW( tribol::PenaltyEnforcement{ -1.0 }, std::invalid_argument );
-  EXPECT_THROW( tribol::PenaltyEnforcement{ std::numeric_limits<tribol::RealT>::infinity() }, std::invalid_argument );
-  EXPECT_EQ( tribol::PenaltyEnforcement{ 2.0 }.stiffness(), 2.0 );
+  for ( const tribol::RealT invalid : { -10.0, 0.0, std::numeric_limits<tribol::RealT>::quiet_NaN(),
+                                        std::numeric_limits<tribol::RealT>::infinity() } ) {
+    SCOPED_TRACE( invalid );
+    EXPECT_THROW( tribol::setMfemKinematicConstantPenalty( 0, invalid, 20.0 ), std::invalid_argument );
+    EXPECT_THROW( tribol::setMfemKinematicConstantPenalty( 0, 20.0, invalid ), std::invalid_argument );
+  }
+  EXPECT_NO_THROW( tribol::setMfemKinematicConstantPenalty( 0, 2.0, 6.0 ) );
 }
 
 INSTANTIATE_TEST_SUITE_P( enforcement, EnergyMortarRegistrationTest,
