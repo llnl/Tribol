@@ -254,20 +254,20 @@ ContactFormulationResult evaluateAndAssemblePairEnergyJacobian( const ArrayT<Int
                                                                 const PairFunction& pair_function )
 {
   static_assert( PairFunction::num_values == 1, "Pair energies must have one scalar output." );
-  auto contributions = evaluatePairValuesJacobiansAndHessians<Exec>( pairs, mesh1, mesh2, pair_function );
-  const auto contributions_view = contributions.view();
-  checkPairQuadratureResults<Exec>( contributions.quadratureResults() );
+  auto all_pair_values = evaluatePairValuesJacobiansAndHessians<Exec>( pairs, mesh1, mesh2, pair_function );
+  checkPairQuadratureResults<Exec>( all_pair_values.quadratureResults() );
 
+  const auto all_pair_values_view = all_pair_values.view();
   auto result = detail::assemblePairForcesAndJacobian<Exec, PairFunction::num_coords>(
       pairs, mesh1, mesh2, mesh_data, jacobian_data,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
-        return contributions_view.derivatives.jacobian( pair, row );
+        return all_pair_values_view.derivatives.jacobian( pair, row );
       },
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
-        return contributions_view.derivatives.hessian( pair, row, column );
+        return all_pair_values_view.derivatives.hessian( pair, row, column );
       } );
   result.energy = GlobalScalarAssembler::sum<Exec>(
-      pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) { return contributions_view.values[pair]; },
+      pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) { return all_pair_values_view.values[pair]; },
       result.force->GetComm() );
   return result;
 }
