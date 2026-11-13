@@ -50,9 +50,10 @@ if (ENZYME_DIR)
   elseif(TRIBOL_USE_HIP)
     # Enzyme also needs loose type analysis for floating-point PHI nodes in AMD GPU contact derivatives.
     # BLT marks device sources as HIP, including files with a .cpp extension.
+    # Send this option only to Clang's frontend; HIP forwards driver-level -mllvm options to the device linker,
+    # which does not load the Enzyme plugin. SHELL preserves both -Xclang arguments during option deduplication.
     set_property(TARGET ClangEnzymeFlags APPEND PROPERTY INTERFACE_COMPILE_OPTIONS
-      "$<$<COMPILE_LANG_AND_ID:HIP,Clang>:-mllvm>"
-      "$<$<COMPILE_LANG_AND_ID:HIP,Clang>:-enzyme-loose-types>")
+      "$<$<COMPILE_LANG_AND_ID:HIP,Clang>:SHELL:-Xclang -mllvm -Xclang -enzyme-loose-types>")
   endif()
 
   set(TRIBOL_USE_ENZYME TRUE)
