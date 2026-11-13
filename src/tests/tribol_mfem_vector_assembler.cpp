@@ -8,10 +8,10 @@
  * @brief Check host MFEM pair and nodal assembly with prescribed residuals, nodal quantities, and nonsymmetric
  * Jacobians, without contact physics. Nonmatching two- and three-edge surfaces exercise shared nodes, scalar submesh
  * transfers, three independent fields with signed values, and all matrix blocks. Tests run on one and two ranks, with
- * contact data on rank zero. Batch tests check accumulation after host calls, repeated batches, and an empty batch on
- * Sequential and OpenMP backends. Physics and Enzyme derivatives are checked by the formulation tests.
+ * contact data on rank zero. Batch tests check accumulation across repeated and empty batches on Sequential and OpenMP
+ * backends. Physics and Enzyme derivatives are checked by the formulation tests.
  * Separate force and matrix components check shared-node accumulation and combine their views in one batch kernel.
- * Independent scalar/coordinate matrix assemblers check both rectangular orientations, host and batch packing,
+ * Independent scalar/coordinate matrix assemblers check both rectangular orientations, execution-space packing,
  * invalid layouts, and empty batches on the same nonmatching surfaces.
  */
 #include <cmath>
@@ -134,16 +134,6 @@ class TestNodalAssembly {
       matrices_.push_back( detail::makeNodalCoordinateMatrixAssembler( data, dual, jacobian, mesh1, mesh2, capacity ) );
     }
   }
-  /** @brief Add host field values and derivatives. @param pair Geometry IDs. @param values Scalar values.
-   * @param gradients Coordinate derivatives. */
-  void addPair( InterfacePair pair, ArrayViewT<const RealT, 2> values, ArrayViewT<const RealT, 3> gradients )
-  {
-    for ( IndexT field = 0; field < static_cast<IndexT>( vectors_.size() ); ++field ) {
-      vectors_[field].addPairFromReader( pair, [&]( IndexT row ) { return values( field, row ); } );
-      matrices_[field].addPairFromReader(
-          pair, [&]( IndexT row, IndexT column ) { return gradients( field, row, column ); } );
-    }
-  }
   /** @brief Compose batch accumulation. @tparam Fields Field count. @tparam Nodes Rows per field.
    * @tparam Dofs Pair coordinates. @tparam Values Scalar reader. @tparam Jacobians Matrix reader.
    * @tparam Exec Backend. @param pairs Geometry pairs. @param values Scalar reader. @param jacobians Matrix reader. */
@@ -238,41 +228,49 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
 
   auto& cs = scheme();
   const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
+  const auto pair_list = pairs();
   ContactFormulationResult result;
   {
-    const IndexT num_pairs = mesh1.numberOfElements() * mesh2.numberOfElements();
     auto assembler = detail::makeDisplacementVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
     auto matrix = detail::makeCoordinateMatrixAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2,
-                                                         num_pairs );
-    MdArray<RealT, pair_dofs> residual{}, columns{};
-    MdArray<RealT, pair_dofs, pair_dofs> jacobian{};
-    for ( IndexT element1 = 0; element1 < mesh1.numberOfElements(); ++element1 ) {
-      for ( IndexT element2 = 0; element2 < mesh2.numberOfElements(); ++element2 ) {
-        std::array<MdArray<RealT, nodes_per_edge, dimension>, pair_size> coords;
-        mesh1.getFaceCoords( element1, coords[0].data() );
-        mesh2.getFaceCoords( element2, coords[1].data() );
-        for ( int side = 0; side < pair_size; ++side ) {
-          for ( int node = 0; node < nodes_per_edge; ++node ) {
-            for ( int component = 0; component < dimension; ++component ) {
-              const int dof = ( side * nodes_per_edge + node ) * dimension + component;
-              residual[dof] = rowValue( coords[side]( node, 0 ), coords[side]( node, 1 ), component );
-              columns[dof] = columnValue( coords[side]( node, 0 ), coords[side]( node, 1 ), component );
-            }
+                                                         pair_list.size() );
+    ArrayT<RealT> residuals( pair_list.size() * pair_dofs, pair_list.size() * pair_dofs, pair_list.getAllocatorID() );
+    ArrayT<RealT> jacobians( pair_list.size() * pair_dofs * pair_dofs, pair_list.size() * pair_dofs * pair_dofs,
+                             pair_list.getAllocatorID() );
+    for ( IndexT pair = 0; pair < pair_list.size(); ++pair ) {
+      const auto element_pair = pair_list[pair];
+      std::array<MdArray<RealT, nodes_per_edge, dimension>, pair_size> coords;
+      mesh1.getFaceCoords( element_pair.element_id1_, coords[0].data() );
+      mesh2.getFaceCoords( element_pair.element_id2_, coords[1].data() );
+      MdArray<RealT, pair_dofs> columns{};
+      for ( int side = 0; side < pair_size; ++side ) {
+        for ( int node = 0; node < nodes_per_edge; ++node ) {
+          for ( int component = 0; component < dimension; ++component ) {
+            const int dof = ( side * nodes_per_edge + node ) * dimension + component;
+            residuals[pair * pair_dofs + dof] = rowValue( coords[side]( node, 0 ), coords[side]( node, 1 ), component );
+            columns[dof] = columnValue( coords[side]( node, 0 ), coords[side]( node, 1 ), component );
           }
         }
-        for ( int row = 0; row < pair_dofs; ++row ) {
-          for ( int column = 0; column < pair_dofs; ++column ) {
-            jacobian( row, column ) = residual[row] * columns[column];
-          }
+      }
+      for ( int row = 0; row < pair_dofs; ++row ) {
+        for ( int column = 0; column < pair_dofs; ++column ) {
+          jacobians[( pair * pair_dofs + row ) * pair_dofs + column] =
+              residuals[pair * pair_dofs + row] * columns[column];
         }
-        assembler.addPair( { element1, element2 }, { residual.data(), residual.size() } );
-        matrix.addPair( { element1, element2 }, { jacobian.data(), { pair_dofs, pair_dofs } } );
       }
     }
+    const auto residuals_view = residuals.view();
+    const auto jacobians_view = jacobians.view();
+    assembler.addPairs<ExecutionMode::Sequential, pair_dofs, 2>(
+        pair_list,
+        [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) { return residuals_view[pair * pair_dofs + row]; } );
+    constexpr IndexT element_dofs = pair_dofs / 2;
+    matrix.addPairs<ExecutionMode::Sequential, element_dofs, element_dofs, 4>(
+        pair_list, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
+          return jacobians_view[( pair * pair_dofs + row ) * pair_dofs + column];
+        } );
     result.force.reset( assembler.assemble().release() );
     result.df_dx.reset( matrix.assemble().release() );
-    residual[0] = 0.0;
-    jacobian[0] = 0.0;
   }
   ASSERT_NE( result.force, nullptr );
   ASSERT_NE( result.df_dx, nullptr );
@@ -297,7 +295,7 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
   }
 }
 
-// Empty assembly must return usable zero outputs, and rejected input shapes must not add any partial contribution.
+// Empty assembly must return usable zero outputs, and rejected batch layouts must not add partial contributions.
 TEST_F( MfemVectorAssemblerTest, returns_zero_outputs_for_empty_or_rejected_input )
 {
   auto& cs = scheme();
@@ -305,11 +303,13 @@ TEST_F( MfemVectorAssemblerTest, returns_zero_outputs_for_empty_or_rejected_inpu
   auto assembler = detail::makeDisplacementVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
   auto matrix =
       detail::makeCoordinateMatrixAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2, 0 );
-  MdArray<RealT, pair_dofs> residual{};
-  MdArray<RealT, pair_dofs, pair_dofs> jacobian{};
-  residual[0] = 1.0;
-  EXPECT_THROW( assembler.addPair( { 0, 0 }, { residual.data(), pair_dofs - 1 } ), std::invalid_argument );
-  EXPECT_THROW( matrix.addPair( { 0, 0 }, { jacobian.data(), { pair_dofs - 1, pair_dofs } } ), std::invalid_argument );
+  const ArrayT<InterfacePair> empty( 0, 0, mesh1.getAllocatorId() );
+  const auto zero_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };
+  EXPECT_THROW( ( assembler.addPairs<ExecutionMode::Sequential, pair_dofs - 1, 2>( empty, zero_force ) ),
+                std::invalid_argument );
+  constexpr IndexT element_dofs = pair_dofs / 2;
+  EXPECT_THROW( ( matrix.makeBatch<element_dofs - 1, element_dofs, 4>( 0, mesh1.getAllocatorId() ) ),
+                std::invalid_argument );
   const auto force = assembler.assemble();
   const auto df_dx = matrix.assemble();
   EXPECT_EQ( force.size(), fes_->GetTrueVSize() );
@@ -347,22 +347,12 @@ TEST_F( MfemVectorAssemblerTest, assembles_scalar_fields_and_dual_transfers )
   {
     TestNodalAssembly assembler( *cs.getMfemMeshData(), dual_data, *cs.getMfemJacobianData(), mesh1, mesh2, num_fields,
                                  pair_list.size() );
-    MdArray<RealT, num_fields, nodes_per_edge> values{};
-    MdArray<RealT, num_fields, nodes_per_edge, pair_dofs> gradients{};
-    for ( IndexT field_index = 0; field_index < num_fields; ++field_index ) {
-      for ( IndexT node = 0; node < nodes_per_edge; ++node ) {
-        values( field_index, node ) = factors[field_index] * ( node + 1.0 );
-        for ( IndexT column = 0; column < pair_dofs; ++column ) {
-          gradients( field_index, node, column ) = values( field_index, node ) * ( column + 1.0 );
-        }
-      }
-    }
-    for ( const auto pair : pair_list ) {
-      assembler.addPair( pair, { values.data(), { num_fields, nodes_per_edge } },
-                         { gradients.data(), { num_fields, nodes_per_edge, pair_dofs } } );
-    }
-    values[0] = 0.0;
-    gradients[0] = 0.0;
+    assembler.addPairs<ExecutionMode::Sequential, num_fields, nodes_per_edge, pair_dofs>(
+        pair_list,
+        [=] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node ) { return factors[field] * ( node + 1.0 ); },
+        [=] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node, IndexT column ) {
+          return factors[field] * ( node + 1.0 ) * ( column + 1.0 );
+        } );
     result = assembler.assemble();
   }
   ASSERT_EQ( result.size(), num_fields );
@@ -386,7 +376,7 @@ TEST_F( MfemVectorAssemblerTest, assembles_scalar_fields_and_dual_transfers )
   }
 }
 
-// Scalar vector accumulation needs no Jacobian data. Invalid input sizes and view block counts add nothing.
+// Scalar vector accumulation needs no Jacobian data. Invalid view block counts add nothing.
 TEST_F( MfemVectorAssemblerTest, scalar_values_need_no_jacobian_data )
 {
   prepareDualData();
@@ -395,8 +385,6 @@ TEST_F( MfemVectorAssemblerTest, scalar_values_need_no_jacobian_data )
   const auto& dual = *cs.getMfemSubmeshData();
   const auto mesh1 = cs.getMesh1().getView();
   auto assembler = detail::makeNodalVectorAssembler( dual, mesh1 );
-  MdArray<RealT, nodes_per_edge> values{};
-  EXPECT_THROW( assembler.addPair( { 0, 0 }, { values.data(), nodes_per_edge - 1 } ), std::invalid_argument );
   EXPECT_THROW( ( assembler.view<ExecutionMode::Sequential, 2>() ), std::invalid_argument );
   const auto zero = assembler.assemble();
   EXPECT_EQ( norm( zero.get() ), 0.0 );
@@ -443,9 +431,7 @@ TEST_P( MfemBatchAssemblerTest, assembles_rectangular_matrices_in_both_orientati
     MfemMatrixAssembler reference( scalar, coordinate, forward_blocks, 0 );
     const ArrayT<InterfacePair> empty( 0, 0, pair_list.getAllocatorID() );
 
-    // Rejected shapes and scratch from a different assembler must leave the accumulated matrix empty.
-    MdArray<RealT, 1, 1> wrong_shape{};
-    EXPECT_THROW( forward.addPair( { 0, 0 }, { wrong_shape.data(), { 1, 1 } } ), std::invalid_argument );
+    // Rejected batch layouts and scratch from a different assembler must leave the accumulated matrix empty.
     EXPECT_THROW( ( forward.makeBatch<3, element_dofs, 2>( 0, pair_list.getAllocatorID() ) ), std::invalid_argument );
     auto foreign_batch = reverse.makeBatch<element_dofs, nodes_per_edge, 2>( 0, pair_list.getAllocatorID() );
     EXPECT_THROW( forward.addBatch( foreign_batch ), std::invalid_argument );
@@ -467,28 +453,11 @@ TEST_P( MfemBatchAssemblerTest, assembles_rectangular_matrices_in_both_orientati
       const auto read_reverse = [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT coordinate, IndexT node ) {
         return read_forward( pair, node, coordinate );
       };
-      for ( IndexT pair = 0; pair < pair_list.size(); ++pair ) {
-        MdArray<RealT, nodes_per_edge, pair_dofs> matrix{};
-        MdArray<RealT, pair_dofs, nodes_per_edge> transposed{};
-        for ( IndexT node = 0; node < nodes_per_edge; ++node ) {
-          for ( IndexT column = 0; column < pair_dofs; ++column ) {
-            const RealT entry = read_forward( pair, node, column );
-            matrix( node, column ) = entry;
-            transposed( column, node ) = entry;
-          }
-        }
-        reference.addPair( pair_list[pair], { matrix.data(), { nodes_per_edge, pair_dofs } } );
-        if ( batch == 0 ) {
-          forward.addPair( pair_list[pair], { matrix.data(), { nodes_per_edge, pair_dofs } } );
-          reverse.addPair( pair_list[pair], { transposed.data(), { pair_dofs, nodes_per_edge } } );
-        }
-      }
+      reference.addPairs<ExecutionMode::Sequential, nodes_per_edge, element_dofs, 2>( pair_list, read_forward );
       forward.addPairs<Exec, nodes_per_edge, element_dofs, 2>( empty, read_forward );
       reverse.addPairs<Exec, element_dofs, nodes_per_edge, 2>( empty, read_reverse );
-      if ( batch != 0 ) {
-        forward.addPairs<Exec, nodes_per_edge, element_dofs, 2>( pair_list, read_forward );
-        reverse.addPairs<Exec, element_dofs, nodes_per_edge, 2>( pair_list, read_reverse );
-      }
+      forward.addPairs<Exec, nodes_per_edge, element_dofs, 2>( pair_list, read_forward );
+      reverse.addPairs<Exec, element_dofs, nodes_per_edge, 2>( pair_list, read_reverse );
     }
     const auto expected_forward = reference.assemble();
     const auto expected_reverse = expected_forward.transpose();
@@ -542,45 +511,28 @@ TEST_P( MfemBatchAssemblerTest, accumulates_residuals_and_jacobians_across_batch
     constexpr IndexT element_dofs = pair_dofs / 2;
     for ( int batch = 0; batch < 3; ++batch ) {
       const RealT scale = batch + 1.0;
-      MdArray<RealT, pair_dofs> residual{};
-      MdArray<RealT, pair_dofs, pair_dofs> jacobian{};
-      for ( IndexT pair = 0; pair < pair_list.size(); ++pair ) {
-        for ( int row = 0; row < pair_dofs; ++row ) {
-          residual[row] = scale * ( row + 1.0 );
-          for ( int column = 0; column < pair_dofs; ++column ) {
-            jacobian( row, column ) = scale * ( row + 1.0 ) * ( column + 2.0 );
-          }
-        }
-        reference.addPair( pair_list[pair], { residual.data(), pair_dofs } );
-        reference_matrix.addPair( pair_list[pair], { jacobian.data(), { pair_dofs, pair_dofs } } );
-        if ( batch == 0 ) {
-          composed.addPair( pair_list[pair], { residual.data(), pair_dofs } );
-          composed_matrix.addPair( pair_list[pair], { jacobian.data(), { pair_dofs, pair_dofs } } );
-          matrix_only.addPair( pair_list[pair], { jacobian.data(), { pair_dofs, pair_dofs } } );
-        }
-      }
       const auto read_force = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT row ) { return scale * ( row + 1.0 ); };
       const auto read_jacobian = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT row, IndexT column ) {
         return scale * ( row + 1.0 ) * ( column + 2.0 );
       };
+      reference.addPairs<ExecutionMode::Sequential, pair_dofs, 2>( pair_list, read_force );
+      reference_matrix.addPairs<ExecutionMode::Sequential, element_dofs, element_dofs, 4>( pair_list, read_jacobian );
       force_only.addPairs<Exec, pair_dofs, 2>( empty, read_force );
       force_only.addPairs<Exec, pair_dofs, 2>( pair_list, read_force );
-      if ( batch != 0 ) {
-        matrix_only.addPairs<Exec, element_dofs, element_dofs, 4>( empty, read_jacobian );
-        matrix_only.addPairs<Exec, element_dofs, element_dofs, 4>( pair_list, read_jacobian );
-        composed.addPairs<Exec, pair_dofs, 2>( empty, read_force );
-        composed_matrix.addPairs<Exec, element_dofs, element_dofs, 4>( empty, read_jacobian );
-        auto matrix_batch =
-            composed_matrix.makeBatch<element_dofs, element_dofs, 4>( pair_list.size(), pair_list.getAllocatorID() );
-        const auto matrix_view = matrix_batch.view();
-        const auto force_view = composed.view<Exec, 2>();
-        const auto pairs_view = pair_list.view();
-        forAllExec( GetParam(), pair_list.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
-          force_view.addPair( pair, pairs_view[pair], read_force );
-          matrix_view.packPair( pair, pairs_view[pair], read_jacobian );
-        } );
-        composed_matrix.addBatch( matrix_batch );
-      }
+      matrix_only.addPairs<Exec, element_dofs, element_dofs, 4>( empty, read_jacobian );
+      matrix_only.addPairs<Exec, element_dofs, element_dofs, 4>( pair_list, read_jacobian );
+      composed.addPairs<Exec, pair_dofs, 2>( empty, read_force );
+      composed_matrix.addPairs<Exec, element_dofs, element_dofs, 4>( empty, read_jacobian );
+      auto matrix_batch =
+          composed_matrix.makeBatch<element_dofs, element_dofs, 4>( pair_list.size(), pair_list.getAllocatorID() );
+      const auto matrix_view = matrix_batch.view();
+      const auto force_view = composed.view<Exec, 2>();
+      const auto pairs_view = pair_list.view();
+      forAllExec<Exec>( pair_list.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
+        force_view.scatterAddPair( pair, pairs_view[pair], read_force );
+        matrix_view.packPair( pair, pairs_view[pair], read_jacobian );
+      } );
+      composed_matrix.addBatch( matrix_batch );
     }
     const auto expected = reference.assemble();
     auto force_result = force_only.assemble();
@@ -604,7 +556,7 @@ TEST_P( MfemBatchAssemblerTest, accumulates_residuals_and_jacobians_across_batch
   } );
 }
 
-// Three independent fields and their rectangular Jacobians retain host contributions and every subsequent batch.
+// Three independent fields and their rectangular Jacobians accumulate across repeated execution-space batches.
 TEST_P( MfemBatchAssemblerTest, accumulates_scalar_fields_and_gradients_across_batches )
 {
   dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
@@ -620,34 +572,16 @@ TEST_P( MfemBatchAssemblerTest, accumulates_scalar_fields_and_gradients_across_b
     const ArrayT<InterfacePair> empty( 0, 0, pair_list.getAllocatorID() );
     for ( int batch = 0; batch < 3; ++batch ) {
       const RealT scale = batch + 1.0;
-      MdArray<RealT, num_fields, nodes_per_edge> values{};
-      MdArray<RealT, num_fields, nodes_per_edge, pair_dofs> gradients{};
-      for ( IndexT field = 0; field < num_fields; ++field ) {
-        for ( IndexT node = 0; node < nodes_per_edge; ++node ) {
-          values( field, node ) = scale * ( field + 1.0 ) * ( node + 1.0 );
-          for ( IndexT column = 0; column < pair_dofs; ++column ) {
-            gradients( field, node, column ) = values( field, node ) * ( column + 2.0 );
-          }
-        }
-      }
-      for ( const auto pair : pair_list ) {
-        reference.addPair( pair, { values.data(), { num_fields, nodes_per_edge } },
-                           { gradients.data(), { num_fields, nodes_per_edge, pair_dofs } } );
-        if ( batch == 0 ) {
-          batched.addPair( pair, { values.data(), { num_fields, nodes_per_edge } },
-                           { gradients.data(), { num_fields, nodes_per_edge, pair_dofs } } );
-        }
-      }
-      if ( batch != 0 ) {
-        const auto read_value = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node ) {
-          return scale * ( field + 1.0 ) * ( node + 1.0 );
-        };
-        const auto read_gradient = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node, IndexT column ) {
-          return scale * ( field + 1.0 ) * ( node + 1.0 ) * ( column + 2.0 );
-        };
-        batched.addPairs<Exec, num_fields, nodes_per_edge, pair_dofs>( empty, read_value, read_gradient );
-        batched.addPairs<Exec, num_fields, nodes_per_edge, pair_dofs>( pair_list, read_value, read_gradient );
-      }
+      const auto read_value = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node ) {
+        return scale * ( field + 1.0 ) * ( node + 1.0 );
+      };
+      const auto read_gradient = [=] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node, IndexT column ) {
+        return scale * ( field + 1.0 ) * ( node + 1.0 ) * ( column + 2.0 );
+      };
+      reference.addPairs<ExecutionMode::Sequential, num_fields, nodes_per_edge, pair_dofs>( pair_list, read_value,
+                                                                                            read_gradient );
+      batched.addPairs<Exec, num_fields, nodes_per_edge, pair_dofs>( empty, read_value, read_gradient );
+      batched.addPairs<Exec, num_fields, nodes_per_edge, pair_dofs>( pair_list, read_value, read_gradient );
     }
     const auto expected = reference.assemble();
     const auto result = batched.assemble();

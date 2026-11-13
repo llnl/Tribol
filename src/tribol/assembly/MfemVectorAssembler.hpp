@@ -48,7 +48,7 @@ struct MfemVectorAssemblyView {
   IndexT component_stride;                     ///< Redecomp-vector stride between components of one node.
 
   /**
-   * @brief Add one pair's entries using atomic additions at shared nodal DOFs.
+   * @brief Scatter-add one pair's entries at shared nodal DOFs.
    * @tparam ValueReader Device-callable `(pair, indices..., row) -> RealT` reader.
    * @tparam Indices Optional field indices preceding the input row.
    * @param pair_index Pair slot passed to the reader.
@@ -57,8 +57,8 @@ struct MfemVectorAssemblyView {
    * @param indices Optional field indices for composing multiple vector assemblers in one kernel.
    */
   template <typename ValueReader, typename... Indices>
-  TRIBOL_HOST_DEVICE void addPair( IndexT pair_index, InterfacePair pair, ValueReader read_value,
-                                   Indices... indices ) const
+  TRIBOL_HOST_DEVICE void scatterAddPair( IndexT pair_index, InterfacePair pair, ValueReader read_value,
+                                          Indices... indices ) const
   {
     const MdArray<IndexT, 2> elements{ pair.element_id1_, pair.element_id2_ };
     for ( IndexT block = 0; block < NumBlocks; ++block ) {
@@ -98,38 +98,6 @@ class MfemVectorAssembler {
   IndexT numberOfValues() const { return num_values_; }
 
   /**
-   * @brief Add one host pair's entries without retaining its input storage.
-   * @param pair Valid element IDs in the configured geometries.
-   * @param values Input entries in element/node/component order.
-   * @throws std::invalid_argument Input size does not match the configured extent; nothing is added.
-   */
-  void addPair( InterfacePair pair, ArrayViewT<const RealT> values );
-
-  /**
-   * @brief Read and add one host pair's entries from a caller-supplied reader.
-   * @tparam ValueReader Callable `(row) -> RealT` over the configured input extent.
-   * @param pair Valid geometry element IDs.
-   * @param read_value Input reader; not retained.
-   */
-  template <typename ValueReader>
-  void addPairFromReader( InterfacePair pair, ValueReader read_value )
-  {
-    redecomp_values_.UseDevice( false );
-    auto* output = redecomp_values_.HostReadWrite();
-    const MdArray<IndexT, 2> elements{ pair.element_id1_, pair.element_id2_ };
-    const int components = space_.redecomp_fes.GetVDim();
-    for ( const auto& block : blocks_ ) {
-      for ( IndexT node = 0; node < block.connectivity.shape()[1]; ++node ) {
-        const IndexT dof = block.connectivity( elements[block.geometry], node );
-        for ( int component = 0; component < components; ++component ) {
-          output[space_.redecomp_fes.DofToVDof( dof, component )] +=
-              read_value( block.offset + node * components + component );
-        }
-      }
-    }
-  }
-
-  /**
    * @brief Return a writable view for composing pair kernels with other vector or matrix views.
    * @tparam NumBlocks Configured geometry blocks per pair.
    * @tparam Exec Concrete execution mode using the view.
@@ -145,11 +113,11 @@ class MfemVectorAssembler {
       throw std::invalid_argument( "Vector view block count does not match its configuration." );
     }
     const bool use_device = isOnDevice( Exec );
-    redecomp_values_.UseDevice( use_device );
+    redecomp_dual_values_.UseDevice( use_device );
     const int components = space_.redecomp_fes.GetVDim();
     const bool by_nodes = space_.redecomp_fes.GetOrdering() == mfem::Ordering::byNODES;
     MfemVectorAssemblyView<NumBlocks> result{ {},
-                                              redecomp_values_.ReadWrite( use_device ),
+                                              redecomp_dual_values_.ReadWrite( use_device ),
                                               components,
                                               by_nodes ? 1 : components,
                                               by_nodes ? space_.redecomp_fes.GetNDofs() : 1 };
@@ -177,7 +145,7 @@ class MfemVectorAssembler {
     const auto vector_view = view<Exec, NumBlocks>();
     const auto pairs_view = pairs.view();
     forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
-      vector_view.addPair( pair, pairs_view[pair], read_value );
+      vector_view.scatterAddPair( pair, pairs_view[pair], read_value );
     } );
   }
 
@@ -189,10 +157,10 @@ class MfemVectorAssembler {
   shared::ParVector assemble() const;
 
  private:
-  MfemVectorSpace space_;                ///< FE-space references and the host transfer operation.
-  std::vector<MfemVectorBlock> blocks_;  ///< Geometry layout with nodal connectivity views.
-  IndexT num_values_ = 0;                ///< Input extent including block offsets.
-  mfem::GridFunction redecomp_values_;   ///< Owned accumulated entries.
+  MfemVectorSpace space_;                    ///< FE-space references and the host transfer operation.
+  std::vector<MfemVectorBlock> blocks_;      ///< Geometry layout with nodal connectivity views.
+  IndexT num_values_ = 0;                    ///< Input extent including block offsets.
+  mfem::GridFunction redecomp_dual_values_;  ///< Owned accumulated dual entries.
 };
 
 namespace detail {

@@ -67,7 +67,7 @@ void addNodalValuesAndJacobians( const ArrayT<InterfacePair>& pairs, std::vector
   const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
     for ( IndexT field = 0; field < NumFields; ++field ) {
-      value_views[field].addPair( pair, pairs_view[pair], read_values, field );
+      value_views[field].scatterAddPair( pair, pairs_view[pair], read_values, field );
       matrix_views[field].packPair( pair, pairs_view[pair], read_jacobian, field );
     }
   } );
@@ -110,7 +110,7 @@ ContactFormulationResult assemblePairForcesAndJacobian( const ArrayT<InterfacePa
   const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = pairs_view[pair_index];
-    force_view.addPair( pair_index, pair, read_force );
+    force_view.scatterAddPair( pair_index, pair, read_force );
     matrix_view.packPair( pair_index, pair, read_jacobian );
   } );
   jacobian.addBatch( batch );

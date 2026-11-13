@@ -5,7 +5,6 @@
 
 #include "tribol/assembly/MfemMatrixAssembler.hpp"
 #ifdef BUILD_REDECOMP
-#include <algorithm>
 #include <array>
 #include <utility>
 
@@ -21,7 +20,6 @@ MfemMatrixAssembler::MfemMatrixAssembler( MfemMatrixSpace rows, MfemMatrixSpace 
     throw std::invalid_argument(
         "Matrix assembly requires blocks, positive component counts, and nonnegative capacity." );
   }
-  IndexT largest_block = 0;
   layouts_.reserve( blocks.size() );
   contributions_.reserve( blocks.size() );
   for ( const auto& block : blocks ) {
@@ -35,25 +33,13 @@ MfemMatrixAssembler::MfemMatrixAssembler( MfemMatrixSpace rows, MfemMatrixSpace 
          block.column_offset > std::numeric_limits<IndexT>::max() - column_dofs ) {
       throw std::length_error( "Matrix input extents exceed the supported index range." );
     }
-    num_rows_ = std::max( num_rows_, block.row_offset + row_dofs );
-    num_columns_ = std::max( num_columns_, block.column_offset + column_dofs );
     const IndexT block_size = detail::checkedMatrixSize( row_dofs, column_dofs );
-    largest_block = std::max( largest_block, block_size );
     layouts_.push_back( { block.row_geometry, block.column_geometry, block.row_nodes, block.column_nodes,
                           block.row_offset, block.column_offset, row_components, column_components } );
     contributions_.emplace_back( *rows.path.surface_fes, *columns.path.surface_fes, rows.redecomp_fes,
                                  columns.redecomp_fes, block.row_element_map, block.column_element_map );
     contributions_.back().reserve( pair_capacity, detail::checkedMatrixSize( pair_capacity, block_size ) );
   }
-  block_.resize( largest_block );
-}
-
-void MfemMatrixAssembler::addPair( InterfacePair pair, ArrayViewT<const RealT, 2> matrix )
-{
-  if ( matrix.shape()[0] != num_rows_ || matrix.shape()[1] != num_columns_ ) {
-    throw std::invalid_argument( "Matrix input dimensions do not match the configured block extents." );
-  }
-  addPairFromReader( pair, [=]( IndexT row, IndexT column ) { return matrix( row, column ); } );
 }
 
 shared::ParSparseMat MfemMatrixAssembler::assemble() const { return transfer_.Assemble( contributions_ ); }

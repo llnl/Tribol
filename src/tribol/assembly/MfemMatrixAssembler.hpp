@@ -191,38 +191,6 @@ class MfemMatrixAssembler {
                        IndexT pair_capacity );
 
   /**
-   * @brief Append one host matrix, without retaining its input storage.
-   * @param pair Valid element IDs in the configured geometry domains.
-   * @param matrix Matrix in node/component row and column order, including all configured offsets.
-   * @throws std::invalid_argument Dimensions do not match the configured input extents; nothing is appended.
-   */
-  void addPair( InterfacePair pair, ArrayViewT<const RealT, 2> matrix );
-
-  /**
-   * @brief Read and append one host matrix through a caller-supplied entry reader.
-   * @tparam MatrixReader Callable `(row, column) -> RealT` using the configured input extents and ordering.
-   * @param pair Valid geometry element IDs.
-   * @param read_matrix Host matrix reader; not retained.
-   */
-  template <typename MatrixReader>
-  void addPairFromReader( InterfacePair pair, MatrixReader read_matrix )
-  {
-    const MdArray<IndexT, 2> elements{ pair.element_id1_, pair.element_id2_ };
-    for ( IndexT block = 0; block < static_cast<IndexT>( layouts_.size() ); ++block ) {
-      const auto layout = layouts_[block];
-      const IndexT rows = layout.row_nodes * layout.row_components;
-      const IndexT columns = layout.column_nodes * layout.column_components;
-      for ( IndexT column = 0; column < columns; ++column ) {
-        for ( IndexT row = 0; row < rows; ++row ) {
-          block_[row + column * rows] = read_matrix( layout.rowDof( row ), layout.columnDof( column ) );
-        }
-      }
-      contributions_[block].append( elements[layout.row_geometry], elements[layout.column_geometry], block_.data(),
-                                    rows * columns );
-    }
-  }
-
-  /**
    * @brief Allocate fixed-size block scratch for an execution-space kernel.
    * @tparam RowDofs Rows per block. @tparam ColumnDofs Columns per block. @tparam NumBlocks Blocks per pair.
    * @param num_pairs Supplied pair count. @param allocator_id Execution-accessible allocator.
@@ -335,10 +303,7 @@ class MfemMatrixAssembler {
   MfemJacobianTransfer transfer_;                       ///< References to independent row and column transfer paths.
   std::vector<detail::MfemMatrixBlockLayout> layouts_;  ///< Input block indexing, independent of pair count.
   std::vector<PackedPairJacobianContribs>
-      contributions_;                        ///< Accumulated blocks referencing FE spaces and element maps.
-  IndexT num_rows_ = 0;                      ///< Input rows including configured offsets.
-  IndexT num_columns_ = 0;                   ///< Input columns including configured offsets.
-  Array1D<RealT, MemorySpace::Host> block_;  ///< Reused host scratch for the largest configured block.
+      contributions_;  ///< Accumulated blocks referencing FE spaces and element maps.
 };
 
 namespace detail {

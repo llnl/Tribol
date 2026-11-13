@@ -29,16 +29,8 @@ MfemVectorAssembler::MfemVectorAssembler( MfemVectorSpace space, std::vector<Mfe
     }
     num_values_ = std::max( num_values_, block.offset + nodes * components );
   }
-  redecomp_values_.SetSpace( const_cast<mfem::FiniteElementSpace*>( &space_.redecomp_fes ) );
-  redecomp_values_ = 0.0;
-}
-
-void MfemVectorAssembler::addPair( InterfacePair pair, ArrayViewT<const RealT> values )
-{
-  if ( values.size() != num_values_ ) {
-    throw std::invalid_argument( "Vector input size does not match the configured extent." );
-  }
-  addPairFromReader( pair, [=]( IndexT row ) { return values[row]; } );
+  redecomp_dual_values_.SetSpace( const_cast<mfem::FiniteElementSpace*>( &space_.redecomp_fes ) );
+  redecomp_dual_values_ = 0.0;
 }
 
 shared::ParVector MfemVectorAssembler::assemble() const
@@ -48,7 +40,7 @@ shared::ParVector MfemVectorAssembler::assemble() const
   result.fill( 0.0 );
   mfem::Vector local( final_fes->GetVSize() );
   local = 0.0;
-  space_.transfer( redecomp_values_, local );
+  space_.transfer( redecomp_dual_values_, local );
   final_fes->GetProlongationMatrix()->MultTranspose( local, result.get() );
   return result;
 }
