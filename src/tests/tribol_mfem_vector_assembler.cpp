@@ -191,9 +191,9 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
   const auto pair_list = pairs();
   ContactFormulationResult result;
   {
-    auto assembler = detail::makeForceVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
-    auto matrix = detail::makeForceJacobianAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2,
-                                                      pair_list.size(), pair_list.getAllocatorID() );
+    auto assembler = tribol::detail::makeForceVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
+    auto matrix = tribol::detail::makeForceJacobianAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1,
+                                                              mesh2, pair_list.size(), pair_list.getAllocatorID() );
     ArrayT<RealT> residuals( pair_list.size() * pair_dofs, pair_list.size() * pair_dofs, pair_list.getAllocatorID() );
     ArrayT<RealT> jacobians( pair_list.size() * pair_dofs * pair_dofs, pair_list.size() * pair_dofs * pair_dofs,
                              pair_list.getAllocatorID() );
@@ -261,9 +261,9 @@ TEST_F( MfemVectorAssemblerTest, returns_zero_outputs_for_empty_or_rejected_inpu
 {
   auto& cs = scheme();
   const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
-  auto assembler = detail::makeForceVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
-  auto matrix = detail::makeForceJacobianAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2, 0,
-                                                    mesh1.getAllocatorId() );
+  auto assembler = tribol::detail::makeForceVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
+  auto matrix = tribol::detail::makeForceJacobianAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1,
+                                                            mesh2, 0, mesh1.getAllocatorId() );
   const ArrayT<InterfacePair> empty( 0, 0, mesh1.getAllocatorId() );
   const auto zero_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };
   EXPECT_THROW( ( assembler.addPairs<ExecutionMode::Sequential, pair_dofs - 1, 2>( empty, zero_force ) ),
@@ -304,7 +304,7 @@ TEST_F( MfemVectorAssemblerTest, assembles_scalar_fields_and_dual_transfers )
   int global_pairs = 0;
   MPI_Allreduce( &local_pairs, &global_pairs, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
   const auto result =
-      detail::assembleNodalValuesAndJacobians<ExecutionMode::Sequential, num_fields, nodes_per_edge, pair_dofs>(
+      tribol::detail::assembleNodalValuesAndJacobians<ExecutionMode::Sequential, num_fields, nodes_per_edge, pair_dofs>(
           pair_list, mesh1, mesh2, *cs.getMfemMeshData(), dual_data, *cs.getMfemJacobianData(),
           [=] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node ) { return factors[field] * ( node + 1.0 ); },
           [=] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node, IndexT column ) {
@@ -339,7 +339,7 @@ TEST_F( MfemVectorAssemblerTest, scalar_values_need_no_jacobian_data )
   cs.setMfemJacobianData( nullptr );
   const auto& dual = *cs.getMfemSubmeshData();
   const auto mesh1 = cs.getMesh1().getView();
-  auto assembler = detail::makeScalarFieldVectorAssembler( dual, mesh1 );
+  auto assembler = tribol::detail::makeScalarFieldVectorAssembler( dual, mesh1 );
   EXPECT_THROW( ( assembler.view<ExecutionMode::Sequential, 2>() ), std::invalid_argument );
   const auto zero = assembler.assemble();
   EXPECT_EQ( norm( zero.get() ), 0.0 );
@@ -448,16 +448,16 @@ TEST_P( MfemMatrixAssemblerTest, composes_residual_and_jacobian_assembly_views )
     const auto& transfers = *cs.getMfemJacobianData();
     const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
     const auto pair_list = pairs();
-    auto reference = detail::makeForceVectorAssembler( data, mesh1, mesh2 );
-    auto composed = detail::makeForceVectorAssembler( data, mesh1, mesh2 );
-    auto force_only = detail::makeForceVectorAssembler( data, mesh1, mesh2 );
+    auto reference = tribol::detail::makeForceVectorAssembler( data, mesh1, mesh2 );
+    auto composed = tribol::detail::makeForceVectorAssembler( data, mesh1, mesh2 );
+    auto force_only = tribol::detail::makeForceVectorAssembler( data, mesh1, mesh2 );
     const int allocator_id = pair_list.getAllocatorID();
     auto reference_matrix =
-        detail::makeForceJacobianAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
+        tribol::detail::makeForceJacobianAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
     auto composed_matrix =
-        detail::makeForceJacobianAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
+        tribol::detail::makeForceJacobianAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
     auto matrix_only =
-        detail::makeForceJacobianAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
+        tribol::detail::makeForceJacobianAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
     const auto initial_force = force_only.assemble();
     EXPECT_EQ( norm( initial_force.get() ), 0.0 );
     const auto zero_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };
@@ -516,11 +516,11 @@ TEST_P( MfemMatrixAssemblerTest, assembles_scalar_fields_and_gradients )
     const auto read_gradient = [] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node, IndexT column ) {
       return ( field + 1.0 ) * ( node + 1.0 ) * ( column + 2.0 );
     };
-    const auto expected =
-        detail::assembleNodalValuesAndJacobians<ExecutionMode::Sequential, num_fields, nodes_per_edge, pair_dofs>(
-            pair_list, mesh1, mesh2, *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(),
-            read_value, read_gradient );
-    const auto result = detail::assembleNodalValuesAndJacobians<Exec, num_fields, nodes_per_edge, pair_dofs>(
+    const auto expected = tribol::detail::assembleNodalValuesAndJacobians<ExecutionMode::Sequential, num_fields,
+                                                                          nodes_per_edge, pair_dofs>(
+        pair_list, mesh1, mesh2, *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), read_value,
+        read_gradient );
+    const auto result = tribol::detail::assembleNodalValuesAndJacobians<Exec, num_fields, nodes_per_edge, pair_dofs>(
         pair_list, mesh1, mesh2, *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), read_value,
         read_gradient );
     ASSERT_EQ( result.size(), num_fields );

@@ -36,7 +36,7 @@
 namespace {
 using namespace tribol;
 constexpr RealT tolerance = 1.0e-12;  ///< Roundoff allowance for primal integrals and exact partials.
-using EnergyMortarDefinitionTest = detail::ExecutionTest;
+using EnergyMortarDefinitionTest = tribol::detail::ExecutionTest;
 
 /** @brief Generic fixed-size values and pair state for checking the pair-function interface. @tparam SizeValues Size.
  */
@@ -292,7 +292,7 @@ TEST_P( EnergyMortarDefinitionTest, guards_area_before_dividing_and_keeps_zero_g
     EXPECT_NEAR( actual.d2energy_dtributary_area2, expected.d2energy_dtributary_area2, tolerance );
   }
 }
-INSTANTIATE_TEST_SUITE_P( backends, EnergyMortarDefinitionTest, detail::enabledExecutionModes() );
+INSTANTIATE_TEST_SUITE_P( backends, EnergyMortarDefinitionTest, tribol::detail::enabledExecutionModes() );
 
 TEST_P( EnergyMortarDefinitionTest, contribution_buffers_use_backend_accessible_structure_of_arrays )
 {
