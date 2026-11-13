@@ -49,10 +49,10 @@ if (ENZYME_DIR)
       "$<$<COMPILE_LANG_AND_ID:CUDA,Clang>:-enzyme-loose-types>")
   elseif(TRIBOL_USE_HIP)
     # Enzyme also needs loose type analysis for floating-point PHI nodes in AMD GPU contact derivatives.
-    # BLT compiles HIP sources as CXX with -x hip.
+    # BLT marks device sources as HIP, including files with a .cpp extension.
     set_property(TARGET ClangEnzymeFlags APPEND PROPERTY INTERFACE_COMPILE_OPTIONS
-      "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-mllvm>"
-      "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-enzyme-loose-types>")
+      "$<$<COMPILE_LANG_AND_ID:HIP,Clang>:-mllvm>"
+      "$<$<COMPILE_LANG_AND_ID:HIP,Clang>:-enzyme-loose-types>")
   endif()
 
   set(TRIBOL_USE_ENZYME TRUE)

@@ -300,7 +300,7 @@ TEST_F( MfemVectorAssemblerTest, assembles_scalar_fields_and_dual_transfers )
   constexpr IndexT num_fields = 3;
   const MdArray<RealT, num_fields> factors{ 1.0, -2.0, 3.0 };
   const auto pair_list = pairs();
-  const int local_pairs = pair_list.size();
+  int local_pairs = pair_list.size();
   int global_pairs = 0;
   MPI_Allreduce( &local_pairs, &global_pairs, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
   const auto result =
@@ -318,13 +318,13 @@ TEST_F( MfemVectorAssemblerTest, assembles_scalar_fields_and_dual_transfers )
   constexpr RealT column_weight_sum = pair_dofs * ( pair_dofs + 1 ) / 2.0;
   for ( IndexT field_index = 0; field_index < num_fields; ++field_index ) {
     SCOPED_TRACE( field_index );
-    const RealT local_sum = result[field_index].values.get().Sum();
+    RealT local_sum = result[field_index].values.get().Sum();
     RealT global_sum = 0.0;
     MPI_Allreduce( &local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
     const RealT expected = global_pairs * node_weight_sum * factors[field_index];
     EXPECT_NEAR( global_sum, expected, tolerance );
     result[field_index].jacobian->Mult( direction, action );
-    const RealT local_action = action.Sum();
+    RealT local_action = action.Sum();
     RealT global_action = 0.0;
     MPI_Allreduce( &local_action, &global_action, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
     EXPECT_NEAR( global_action, expected * column_weight_sum, tolerance );
@@ -347,9 +347,9 @@ TEST_F( MfemVectorAssemblerTest, scalar_values_need_no_jacobian_data )
   assembler.addPairs<ExecutionMode::Sequential, nodes_per_edge, 1>(
       pair_list, [] TRIBOL_HOST_DEVICE( IndexT, IndexT row ) { return row + 1.0; } );
   const auto result = assembler.assemble();
-  const RealT local_sum = result.get().Sum();
+  RealT local_sum = result.get().Sum();
   RealT global_sum = 0.0;
-  const int local_pairs = pair_list.size();
+  int local_pairs = pair_list.size();
   int global_pairs = 0;
   MPI_Allreduce( &local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
   MPI_Allreduce( &local_pairs, &global_pairs, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
