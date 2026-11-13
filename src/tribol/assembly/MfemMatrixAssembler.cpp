@@ -14,30 +14,31 @@ MfemMatrixAssembler::MfemMatrixAssembler( MfemMatrixSpace rows, MfemMatrixSpace 
                                           std::vector<MfemMatrixBlock> blocks, IndexT num_pairs, int allocator_id )
     : transfer_( rows.path, columns.path ), num_pairs_( num_pairs )
 {
-  const int row_components = rows.redecomp_fes.GetVDim();
-  const int column_components = columns.redecomp_fes.GetVDim();
-  if ( num_pairs < 0 || blocks.empty() || row_components <= 0 || column_components <= 0 ) {
+  const int num_row_values_per_node = rows.redecomp_fes.GetVDim();
+  const int num_column_values_per_node = columns.redecomp_fes.GetVDim();
+  if ( num_pairs < 0 || blocks.empty() || num_row_values_per_node <= 0 || num_column_values_per_node <= 0 ) {
     throw std::invalid_argument(
-        "Matrix assembly requires blocks, positive component counts, and a nonnegative pair count." );
+        "Matrix assembly requires blocks, positive numbers of values per node, and a nonnegative pair count." );
   }
   layouts_.reserve( blocks.size() );
   block_storage_.reserve( blocks.size() );
   contribution_metadata_.reserve( blocks.size() );
   for ( const auto& block : blocks ) {
     if ( block.row_geometry < 0 || block.row_geometry > 1 || block.column_geometry < 0 || block.column_geometry > 1 ||
-         block.row_nodes <= 0 || block.column_nodes <= 0 || block.row_offset < 0 || block.column_offset < 0 ) {
+         block.num_row_nodes <= 0 || block.num_column_nodes <= 0 || block.row_offset < 0 || block.column_offset < 0 ) {
       throw std::invalid_argument( "Matrix block geometry selectors, node counts, and offsets are invalid." );
     }
-    const IndexT row_dofs = detail::checkedMatrixSize( block.row_nodes, row_components );
-    const IndexT column_dofs = detail::checkedMatrixSize( block.column_nodes, column_components );
-    if ( block.row_offset > std::numeric_limits<IndexT>::max() - row_dofs ||
-         block.column_offset > std::numeric_limits<IndexT>::max() - column_dofs ) {
+    const IndexT size_rows = detail::checkedMatrixSize( block.num_row_nodes, num_row_values_per_node );
+    const IndexT size_columns = detail::checkedMatrixSize( block.num_column_nodes, num_column_values_per_node );
+    if ( block.row_offset > std::numeric_limits<IndexT>::max() - size_rows ||
+         block.column_offset > std::numeric_limits<IndexT>::max() - size_columns ) {
       throw std::length_error( "Matrix input extents exceed the supported index range." );
     }
-    const IndexT block_size = detail::checkedMatrixSize( row_dofs, column_dofs );
+    const IndexT block_size = detail::checkedMatrixSize( size_rows, size_columns );
     detail::checkedMatrixSize( num_pairs, block_size );
-    layouts_.push_back( { block.row_geometry, block.column_geometry, block.row_nodes, block.column_nodes,
-                          block.row_offset, block.column_offset, row_components, column_components } );
+    layouts_.push_back( { block.row_geometry, block.column_geometry, block.num_row_nodes, block.num_column_nodes,
+                          block.row_offset, block.column_offset, num_row_values_per_node,
+                          num_column_values_per_node } );
     block_storage_.emplace_back( num_pairs, block_size, allocator_id );
     contribution_metadata_.emplace_back( *rows.path.surface_fes, *columns.path.surface_fes, rows.redecomp_fes,
                                          columns.redecomp_fes, block.row_element_map, block.column_element_map );
@@ -61,14 +62,13 @@ MfemMatrixAssembler makeCoordinateMatrixAssembler( const MfemMeshData& mesh_data
                                                    MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT num_pairs,
                                                    int allocator_id )
 {
-  const int dimension = mesh1.spatialDimension();
+  const int dim = mesh1.spatialDim();
   const MdArray<IndexT, 2> nodes{ mesh1.numberOfNodesPerElement(), mesh2.numberOfNodesPerElement() };
   const auto& coordinate_space = *mesh_data.GetRedecompResponse().FESpace();
-  if ( dimension <= 0 || mesh2.spatialDimension() != dimension || coordinate_space.GetVDim() != dimension ||
-       nodes[0] <= 0 || nodes[1] <= 0 ) {
+  if ( dim <= 0 || mesh2.spatialDim() != dim || coordinate_space.GetVDim() != dim || nodes[0] <= 0 || nodes[1] <= 0 ) {
     throw std::invalid_argument( "Coordinate matrix assembly requires matching dimensions and positive node counts." );
   }
-  const MdArray<IndexT, 2> offsets{ 0, checkedMatrixSize( nodes[0], dimension ) };
+  const MdArray<IndexT, 2> offsets{ 0, checkedMatrixSize( nodes[0], dim ) };
   const std::array<const Array1D<int>*, 2> maps{ &mesh_data.GetElemMap1(), &mesh_data.GetElemMap2() };
   std::vector<MfemMatrixBlock> blocks;
   blocks.reserve( 4 );
@@ -89,8 +89,8 @@ MfemMatrixAssembler makeNodalCoordinateMatrixAssembler( const MfemMeshData& mesh
 {
   const auto& coordinates = *mesh_data.GetRedecompResponse().FESpace();
   const auto& field = submesh_data.GetRedecompFESpace();
-  if ( field.GetVDim() != 1 || submesh_data.GetSubmeshFESpace().GetVDim() != 1 || mesh1.spatialDimension() <= 0 ||
-       mesh1.spatialDimension() != coordinates.GetVDim() || mesh2.spatialDimension() != coordinates.GetVDim() ) {
+  if ( field.GetVDim() != 1 || submesh_data.GetSubmeshFESpace().GetVDim() != 1 || mesh1.spatialDim() <= 0 ||
+       mesh1.spatialDim() != coordinates.GetVDim() || mesh2.spatialDim() != coordinates.GetVDim() ) {
     throw std::invalid_argument( "Nodal coordinate matrices require scalar rows and matching coordinate dimensions." );
   }
   const IndexT nodes1 = mesh1.numberOfNodesPerElement();

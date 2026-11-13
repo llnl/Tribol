@@ -64,7 +64,7 @@ void ElementAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
       // piece of memory and there may be a memory issue when numFaceNrmlsToNodes is deleted
       // at the end of this routine.
       int nodeId = mesh_view.getGlobalNodeId( i, j );
-      for ( int d = 0; d < mesh_view.spatialDimension(); ++d ) {
+      for ( int d = 0; d < mesh_view.spatialDim(); ++d ) {
         mesh_view.getNodalNormals()( d, nodeId ) += mesh_view.getElementNormals()( d, i );
       }
 
@@ -73,7 +73,7 @@ void ElementAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
   }  // end loop over elements
 
   // normalize the nodal normals
-  if ( mesh_view.spatialDimension() == 3 ) {
+  if ( mesh_view.spatialDim() == 3 ) {
     for ( int i = 0; i < mesh_view.numberOfNodes(); ++i ) {
       RealT mag = magnitude( mesh_view.getNodalNormals()( 0, i ), mesh_view.getNodalNormals()( 1, i ),
                              mesh_view.getNodalNormals()( 2, i ) );
@@ -96,7 +96,7 @@ void ElementAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
 
 void EdgeAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
 {
-  SLIC_ERROR_ROOT_IF( mesh.spatialDimension() != 3, "3D mesh required for vertex averaged normal." );
+  SLIC_ERROR_ROOT_IF( mesh.spatialDim() != 3, "3D mesh required for vertex averaged normal." );
 
   mesh.allocateNodalNormals();
 

@@ -11,9 +11,9 @@
 
 ## Naming
 
-- Use `num_...` for size variables, `Num...` for size template parameters, and `numberOf...()` for functions returning
-  sizes, for example `num_pairs`, `NumValues`, and `numberOfPairs()`. Retain `size()` and `capacity()` where they
-  distinguish stored entries from allocated storage. Preserve external API names.
+- For ContactFormulation code, tests, and documentation, read
+  [the glossary](docs/contact-formulation-glossary.md). Prefer existing terminology; add a term only when necessary.
+- Preserve external API names and surrounding legacy conventions.
 
 ## Numeric literals
 

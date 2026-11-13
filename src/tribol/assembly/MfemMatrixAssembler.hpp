@@ -31,14 +31,14 @@ struct MfemMatrixSpace {
  * @brief Configure one rectangular block within each pair's input matrix.
  *
  * Geometry indices are 0 for geometry1 and 1 for geometry2. Offsets count input rows and columns, whose DOFs use
- * node/component order. Element maps translate the selected geometry's Tribol element IDs to
+ * node, then value-index order. Element maps translate the selected geometry's Tribol element IDs to
  * Redecomp element IDs independently for rows and columns. Maps are referenced directly and must outlive assembly.
  */
 struct MfemMatrixBlock {
   IndexT row_geometry;                     ///< Geometry supplying the row element ID.
   IndexT column_geometry;                  ///< Geometry supplying the column element ID.
-  IndexT row_nodes;                        ///< Row FE nodes per element.
-  IndexT column_nodes;                     ///< Column FE nodes per element.
+  IndexT num_row_nodes;                    ///< Row FE nodes per element.
+  IndexT num_column_nodes;                 ///< Column FE nodes per element.
   IndexT row_offset;                       ///< First input row of this block.
   IndexT column_offset;                    ///< First input column of this block.
   const Array1D<int>& row_element_map;     ///< Row element map referenced during assembly.
@@ -48,25 +48,27 @@ struct MfemMatrixBlock {
 namespace detail {
 /** @brief Device-copyable block indexing, without MFEM objects or element-map storage. */
 struct MfemMatrixBlockLayout {
-  IndexT row_geometry;     ///< Pair geometry supplying rows.
-  IndexT column_geometry;  ///< Pair geometry supplying columns.
-  IndexT row_nodes;        ///< Row FE nodes per element.
-  IndexT column_nodes;     ///< Column FE nodes per element.
-  IndexT row_offset;       ///< Input row offset.
-  IndexT column_offset;    ///< Input column offset.
-  int row_components;      ///< Row-space components per node.
-  int column_components;   ///< Column-space components per node.
+  IndexT row_geometry;             ///< Pair geometry supplying rows.
+  IndexT column_geometry;          ///< Pair geometry supplying columns.
+  IndexT num_row_nodes;            ///< Row FE nodes per element.
+  IndexT num_column_nodes;         ///< Column FE nodes per element.
+  IndexT row_offset;               ///< Input row offset.
+  IndexT column_offset;            ///< Input column offset.
+  int num_row_values_per_node;     ///< Number of row-space values per node.
+  int num_column_values_per_node;  ///< Number of column-space values per node.
 
-  /** @brief Convert an MFEM element row to the input row. @param row Component/node row. @return Node/component row. */
+  /** @brief Convert an MFEM element row to the input row. @param row Value-index, then node row. @return Node, then
+   * value-index row.
+   */
   TRIBOL_HOST_DEVICE IndexT rowDof( IndexT row ) const
   {
-    return row_offset + ( row % row_nodes ) * row_components + row / row_nodes;
+    return row_offset + ( row % num_row_nodes ) * num_row_values_per_node + row / num_row_nodes;
   }
   /** @brief Convert an MFEM element column to the input column.
-   * @param column Component/node column. @return Node/component column. */
+   * @param column Value-index, then node column. @return Node, then value-index column. */
   TRIBOL_HOST_DEVICE IndexT columnDof( IndexT column ) const
   {
-    return column_offset + ( column % column_nodes ) * column_components + column / column_nodes;
+    return column_offset + ( column % num_column_nodes ) * num_column_values_per_node + column / num_column_nodes;
   }
 };
 
@@ -87,18 +89,19 @@ inline IndexT checkedMatrixSize( IndexT num_entries, IndexT size )
 
 /**
  * @brief Write rectangular element blocks from a host or device kernel.
- * @tparam RowDofs Rows per block in MFEM element order.
- * @tparam ColumnDofs Columns per block in MFEM element order.
+ * @tparam SizeRows Rows per block in MFEM element order.
+ * @tparam SizeColumns Columns per block in MFEM element order.
  * @tparam NumBlocks Configured blocks per pair.
  */
-template <IndexT RowDofs, IndexT ColumnDofs, IndexT NumBlocks>
+template <IndexT SizeRows, IndexT SizeColumns, IndexT NumBlocks>
 struct MfemMatrixAssemblyView {
-  MdArray<ElementBlockView<RowDofs, ColumnDofs>, NumBlocks>
+  MdArray<ElementBlockView<SizeRows, SizeColumns>, NumBlocks>
       blocks;                                                 ///< Writable views into the assembler's block storage.
   MdArray<detail::MfemMatrixBlockLayout, NumBlocks> layouts;  ///< Independent row and column indexing.
 
   /**
-   * @brief Pack one pair's blocks, converting node/component inputs to MFEM component/node element order.
+   * @brief Pack one pair's blocks, converting node, then value-index inputs to MFEM value-index, then node element
+   * order.
    * @tparam MatrixReader Callable returning an entry from `(pair, indices..., row, column)`.
    * @tparam Indices Optional field indices preceding the row and column arguments.
    * @param pair_index Writable pair slot.
@@ -115,8 +118,8 @@ struct MfemMatrixAssemblyView {
       const auto layout = layouts[block];
       const auto block_view = blocks[block];
       block_view.setElements( pair_index, elements[layout.row_geometry], elements[layout.column_geometry] );
-      for ( IndexT column = 0; column < ColumnDofs; ++column ) {
-        for ( IndexT row = 0; row < RowDofs; ++row ) {
+      for ( IndexT column = 0; column < SizeColumns; ++column ) {
+        for ( IndexT row = 0; row < SizeRows; ++row ) {
           block_view.setValue(
               pair_index, row, column,
               read_matrix( pair_index, indices..., layout.rowDof( row ), layout.columnDof( column ) ) );
@@ -130,12 +133,13 @@ struct MfemMatrixAssemblyView {
  * @brief Assemble rectangular pair matrices with independent row and column nodal spaces and transfers.
  *
  * Supports the displacement and scalar nodal spaces used by contact assembly in either orientation. Input matrices
- * use node/component DOF order on both axes. Packed MFEM element blocks use component/node DOF order and column-major
- * storage. No symmetry is assumed. Geometry selectors and element maps are independent for each block's two axes.
- * FE spaces, transfer paths, and element maps must remain valid for the assembler's lifetime. Each assembler owns
- * storage for one supplied pair list and must be recreated after decomposition, mesh re-registration, or a pair-list
- * change. This class assembles matrices only. Callers can use its view alongside vector accumulation in a shared
- * kernel.
+ * use node, then value-index DOF order on both axes. Packed MFEM element blocks use value-index, then node DOF order
+ * and
+ * column-major storage. No symmetry is assumed. Geometry selectors and element maps are independent for each block's
+ * two axes. FE spaces, transfer paths, and element maps must remain valid for the assembler's lifetime. Each assembler
+ * owns storage for one supplied pair list and must be recreated after decomposition, mesh re-registration, or a
+ * pair-list change. This class assembles matrices only. Callers can use its view alongside vector accumulation in a
+ * shared kernel.
  */
 class MfemMatrixAssembler {
  public:
@@ -154,46 +158,46 @@ class MfemMatrixAssembler {
 
   /**
    * @brief Return a writable view of the owned element blocks for an execution-space kernel.
-   * @tparam RowDofs Rows per block. @tparam ColumnDofs Columns per block. @tparam NumBlocks Blocks per pair.
+   * @tparam SizeRows Rows per block. @tparam SizeColumns Columns per block. @tparam NumBlocks Blocks per pair.
    * @return Non-owning view that can pack matrices alongside other per-pair operations.
    * Keep the assembler alive and in place while kernels use the view.
    * @throws std::invalid_argument Template dimensions or count do not match the configuration.
    */
-  template <IndexT RowDofs, IndexT ColumnDofs, IndexT NumBlocks>
-  MfemMatrixAssemblyView<RowDofs, ColumnDofs, NumBlocks> view()
+  template <IndexT SizeRows, IndexT SizeColumns, IndexT NumBlocks>
+  MfemMatrixAssemblyView<SizeRows, SizeColumns, NumBlocks> view()
   {
-    static_assert( RowDofs > 0 && ColumnDofs > 0 && NumBlocks > 0 );
+    static_assert( SizeRows > 0 && SizeColumns > 0 && NumBlocks > 0 );
     if ( layouts_.size() != static_cast<std::size_t>( NumBlocks ) ) {
       throw std::invalid_argument( "Matrix view block count does not match its configuration." );
     }
-    MfemMatrixAssemblyView<RowDofs, ColumnDofs, NumBlocks> result{};
+    MfemMatrixAssemblyView<SizeRows, SizeColumns, NumBlocks> result{};
     for ( IndexT block = 0; block < NumBlocks; ++block ) {
       result.layouts[block] = layouts_[block];
-      if ( result.layouts[block].row_nodes * result.layouts[block].row_components != RowDofs ||
-           result.layouts[block].column_nodes * result.layouts[block].column_components != ColumnDofs ) {
+      if ( result.layouts[block].num_row_nodes * result.layouts[block].num_row_values_per_node != SizeRows ||
+           result.layouts[block].num_column_nodes * result.layouts[block].num_column_values_per_node != SizeColumns ) {
         throw std::invalid_argument( "Matrix view dimensions do not match its configured blocks." );
       }
-      result.blocks[block] = block_storage_[block].view<RowDofs, ColumnDofs>();
+      result.blocks[block] = block_storage_[block].view<SizeRows, SizeColumns>();
     }
     return result;
   }
 
   /**
    * @brief Pack the configured pair matrices in a dedicated kernel.
-   * @tparam RowDofs Rows per block. @tparam ColumnDofs Columns per block. @tparam NumBlocks Blocks per pair.
+   * @tparam SizeRows Rows per block. @tparam SizeColumns Columns per block. @tparam NumBlocks Blocks per pair.
    * @tparam MatrixReader Device-callable `(pair, row, column) -> RealT` reader.
    * @tparam Exec Concrete execution mode.
    * @param pairs Supplied execution-accessible pairs.
-   * @param read_matrix Matrix reader in node/component order.
+   * @param read_matrix Matrix reader in node, then value-index order.
    * @throws std::invalid_argument Pair count or matrix dimensions do not match the configuration.
    */
-  template <ExecutionMode Exec, IndexT RowDofs, IndexT ColumnDofs, IndexT NumBlocks, typename MatrixReader>
+  template <ExecutionMode Exec, IndexT SizeRows, IndexT SizeColumns, IndexT NumBlocks, typename MatrixReader>
   void addPairs( const ArrayT<InterfacePair>& pairs, MatrixReader read_matrix )
   {
     if ( pairs.size() != num_pairs_ ) {
       throw std::invalid_argument( "Matrix pair count does not match its allocated storage." );
     }
-    const auto matrix_view = view<RowDofs, ColumnDofs, NumBlocks>();
+    const auto matrix_view = view<SizeRows, SizeColumns, NumBlocks>();
     const auto pairs_view = pairs.view();
     forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
       matrix_view.packPair( pair, pairs_view[pair], read_matrix );

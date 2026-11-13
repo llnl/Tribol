@@ -270,10 +270,10 @@ TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
       return createWithQuadratureRuleGenerator(
           GetParam(), CommonPlaneEdgeMapping{}, [&]( auto rule_generator ) -> std::unique_ptr<ContactFormulation> {
             using BaseRuleGenerator = typename decltype( rule_generator )::BaseRuleGenerator;
-            auto coarse = createCoarseSearch( scheme().spatialDimension(), scheme().getBinningMethod(), execution_mode,
+            auto coarse = createCoarseSearch( scheme().spatialDim(), scheme().getBinningMethod(), execution_mode,
                                               scheme().getEffectiveBinningProximityScale(), 0.0 );
             auto refined = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
-            CommonPlanePairFunction<BaseRuleGenerator, OffsetGap<CommonPlaneGap>> pair_function{
+            CommonPlaneResidualPairFunction<BaseRuleGenerator, OffsetGap<CommonPlaneGap>> pair_function{
                 std::move( rule_generator ), AveragePenaltyStiffness{}( 2.0, 6.0 ),
                 OffsetGap{ CommonPlaneGap{}, 0.0 } };
             return std::make_unique<CommonPlaneResidualJacobianFormulation<Exec, decltype( pair_function )>>(
@@ -309,7 +309,7 @@ TEST_P( MfemCommonPlaneTest, returns_owned_outputs_without_retaining_results )
   EXPECT_FALSE( first.time_step.has_value() );
   EXPECT_EQ( first.gap, nullptr );
   EXPECT_EQ( first.pressure, nullptr );
-  EXPECT_EQ( first.dg_dx, nullptr );
+  EXPECT_EQ( first.weighted_gap_jacobian, nullptr );
   EXPECT_EQ( first.df_dp, nullptr );
   EXPECT_EQ( scheme().getContactFormulationResult().force, nullptr );
   const mfem::HypreParVector original( *first.force );
@@ -618,13 +618,12 @@ TEST( CommonPlaneSelection, rejects_unsupported_methods_models_and_cases )
 // Curved coordinate spaces, actual LOR subdivision, and three-dimensional parents are rejected before any selection.
 TEST( CommonPlaneSelection, rejects_higher_order_and_three_dimensional_geometry )
 {
-  for ( const int dimension : { 2, 3 } ) {
-    const int order = dimension == 2 ? 2 : 1;
-    mfem::ParMesh mesh =
-        shared::ParMeshBuilder( MPI_COMM_WORLD, dimension == 2 ? shared::MeshBuilder::SquareMesh( 1, 1 )
-                                                               : shared::MeshBuilder::CubeMesh( 1, 1, 1 ) );
-    mfem::H1_FECollection fec( order, dimension );
-    mfem::ParFiniteElementSpace fes( &mesh, &fec, dimension );
+  for ( const int dim : { 2, 3 } ) {
+    const int order = dim == 2 ? 2 : 1;
+    mfem::ParMesh mesh = shared::ParMeshBuilder(
+        MPI_COMM_WORLD, dim == 2 ? shared::MeshBuilder::SquareMesh( 1, 1 ) : shared::MeshBuilder::CubeMesh( 1, 1, 1 ) );
+    mfem::H1_FECollection fec( order, dim );
+    mfem::ParFiniteElementSpace fes( &mesh, &fec, dim );
     mfem::ParGridFunction coordinates( &fes );
     mesh.GetNodes( coordinates );
     registerMfemCouplingScheme( 0, 0, 1, mesh, coordinates, { 1 }, { 3 }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE,
@@ -634,7 +633,7 @@ TEST( CommonPlaneSelection, rejects_higher_order_and_three_dimensional_geometry 
     auto& cs = CouplingSchemeManager::getInstance().at( 0 );
     EXPECT_FALSE( cs.hasContactFormulation() );
     EXPECT_FALSE( cs.hasMfemJacobianData() );
-    if ( dimension == 2 ) {
+    if ( dim == 2 ) {
       setMfemLORFactor( 0, 2 );
       EXPECT_THROW( setMfemUseCommonPlaneFormulation( 0, true, false ), std::invalid_argument );
     }

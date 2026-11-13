@@ -69,7 +69,7 @@ set(tribol_headers
     physics/ContactFormulationFactory.hpp
     physics/Mortar.hpp
     physics/EnergyMortarEvaluation.hpp
-    physics/EnergyMortarEnergy.hpp
+    physics/EnergyMortarPairFunctions.hpp
     physics/PenaltyStiffness.hpp
     physics/EnergyMortar.hpp
     physics/Physics.hpp

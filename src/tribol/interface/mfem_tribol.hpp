@@ -335,15 +335,15 @@ std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx( IndexT cs_id );
 std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp( IndexT cs_id );
 
 /**
- * @brief Get the derivative of the gap with respect to displacement
+ * @brief Get the weighted-gap coordinate Jacobian
  *
- * This is the derivative of weighted nodal gaps. Transfers the latest result out of the coupling scheme and returns
- * null if it was not calculated or already taken.
+ * Penalty enforcement zeros opening rows; this is not the derivative of the normalized gap output. Transfers the latest
+ * result out of the coupling scheme and returns null if it was not calculated or already taken.
  *
  * @param cs_id Coupling scheme id with a registered MFEM mesh
  * @return Unique pointer to MFEM HypreParMatrix
  */
-std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx( IndexT cs_id );
+std::unique_ptr<mfem::HypreParMatrix> getMfemWeightedGapJacobian( IndexT cs_id );
 
 /**
  * @brief Returns a legacy-method gap vector to a given mfem::Vector

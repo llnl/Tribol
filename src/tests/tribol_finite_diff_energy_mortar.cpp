@@ -11,7 +11,7 @@
 #include "tribol/geom/OffsetGap.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
-#include "tribol/physics/EnergyMortarEnergy.hpp"
+#include "tribol/physics/EnergyMortarPairFunctions.hpp"
 #include "tribol/assembly/PairEvaluation.hpp"
 
 namespace {
@@ -29,36 +29,36 @@ constexpr RealT hessian_tolerance = 2.0e-5;       ///< Second-derivative compari
  * @param weights Output weights used for the Hessian contraction.
  */
 template <typename Function>
-void checkFiniteDifferences( const Function& function, const MdArray<RealT, Function::num_coords>& coordinates,
-                             const MdArray<RealT, Function::num_values>& weights )
+void checkFiniteDifferences( const Function& function, const MdArray<RealT, Function::size_coords>& coordinates,
+                             const MdArray<RealT, Function::size_values>& weights )
 {
   const auto base = EnzymePairDerivative<Function>::valuesAndJacobian(
-      { coordinates.data(), Function::num_geom1_coords },
-      { coordinates.data() + Function::num_geom1_coords, Function::num_geom2_coords }, function );
+      { coordinates.data(), Function::size_geom1_coords },
+      { coordinates.data() + Function::size_geom1_coords, Function::size_geom2_coords }, function );
   const auto weighted = EnzymePairDerivative<Function>::weightedJacobianAndHessian(
-      { coordinates.data(), Function::num_geom1_coords },
-      { coordinates.data() + Function::num_geom1_coords, Function::num_geom2_coords }, function, weights.view() );
-  for ( IndexT column = 0; column < Function::num_coords; ++column ) {
+      { coordinates.data(), Function::size_geom1_coords },
+      { coordinates.data() + Function::size_geom1_coords, Function::size_geom2_coords }, function, weights.view() );
+  for ( IndexT column = 0; column < Function::size_coords; ++column ) {
     auto positive_coordinates = coordinates;
     auto negative_coordinates = coordinates;
     positive_coordinates[column] += finite_difference_step;
     negative_coordinates[column] -= finite_difference_step;
     const auto positive = EnzymePairDerivative<Function>::valuesAndJacobian(
-        { positive_coordinates.data(), Function::num_geom1_coords },
-        { positive_coordinates.data() + Function::num_geom1_coords, Function::num_geom2_coords }, function );
+        { positive_coordinates.data(), Function::size_geom1_coords },
+        { positive_coordinates.data() + Function::size_geom1_coords, Function::size_geom2_coords }, function );
     const auto negative = EnzymePairDerivative<Function>::valuesAndJacobian(
-        { negative_coordinates.data(), Function::num_geom1_coords },
-        { negative_coordinates.data() + Function::num_geom1_coords, Function::num_geom2_coords }, function );
+        { negative_coordinates.data(), Function::size_geom1_coords },
+        { negative_coordinates.data() + Function::size_geom1_coords, Function::size_geom2_coords }, function );
 
-    for ( IndexT value = 0; value < Function::num_values; ++value ) {
+    for ( IndexT value = 0; value < Function::size_values; ++value ) {
       EXPECT_NEAR( base.jacobian( value, column ),
                    ( positive.values[value] - negative.values[value] ) / ( 2.0 * finite_difference_step ),
                    jacobian_tolerance );
     }
-    for ( IndexT row = 0; row < Function::num_coords; ++row ) {
+    for ( IndexT row = 0; row < Function::size_coords; ++row ) {
       RealT positive_gradient = 0.0;
       RealT negative_gradient = 0.0;
-      for ( IndexT value = 0; value < Function::num_values; ++value ) {
+      for ( IndexT value = 0; value < Function::size_values; ++value ) {
         positive_gradient += weights[value] * positive.jacobian( value, row );
         negative_gradient += weights[value] * negative.jacobian( value, row );
       }
@@ -77,12 +77,12 @@ void checkRuleGenerator()
   using Gap = OffsetGap<OpposingNormalGap>;
   const RuleGenerator rule_generator;
   const Gap gap{ {}, 0.05 };
-  const EnergyMortarEnergy<RuleGenerator, Gap> energy{ rule_generator, 7.0, gap };
-  const EnergyMortarNodalEnergy<RuleGenerator, Gap> nodal{ rule_generator, gap };
-  const MdArray<RealT, decltype( energy )::num_coords> coordinates{ 0.0, 0.0, 2.0, 0.15, 1.7, 0.35, 0.3, 0.15 };
+  const EnergyMortarEnergyPairFunction<RuleGenerator, Gap> energy{ rule_generator, 7.0, gap };
+  const EnergyMortarNodalIntegralPairFunction<RuleGenerator, Gap> nodal{ rule_generator, gap };
+  const MdArray<RealT, decltype( energy )::size_coords> coordinates{ 0.0, 0.0, 2.0, 0.15, 1.7, 0.35, 0.3, 0.15 };
   SCOPED_TRACE( testing::Message() << "Gauss points: " << NumPoints );
-  checkFiniteDifferences( energy, coordinates, MdArray<RealT, decltype( energy )::num_values>{ 1.0 } );
-  checkFiniteDifferences( nodal, coordinates, MdArray<RealT, decltype( nodal )::num_values>{ 0.3, -0.2, 0.4, 0.1 } );
+  checkFiniteDifferences( energy, coordinates, MdArray<RealT, decltype( energy )::size_values>{ 1.0 } );
+  checkFiniteDifferences( nodal, coordinates, MdArray<RealT, decltype( nodal )::size_values>{ 0.3, -0.2, 0.4, 0.1 } );
 }
 
 TEST( EnergyMortarFiniteDifference, production_quadrature )
@@ -95,12 +95,12 @@ TEST( EnergyMortarFiniteDifference, production_quadrature )
 TEST( EnergyMortarFiniteDifference, invalid_geometry_reports_status_before_derivatives )
 {
   using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
-  const EnergyMortarEnergy<RuleGenerator> energy{ RuleGenerator{}, 1.0 };
-  const MdArray<RealT, decltype( energy )::num_coords> coordinates{ 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0 };
+  const EnergyMortarEnergyPairFunction<RuleGenerator> energy{ RuleGenerator{}, 1.0 };
+  const MdArray<RealT, decltype( energy )::size_coords> coordinates{ 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0 };
   EXPECT_NE( energy
-                 .evaluate( { coordinates.data(), decltype( energy )::num_geom1_coords },
-                            { coordinates.data() + decltype( energy )::num_geom1_coords,
-                              decltype( energy )::num_geom2_coords } )
+                 .evaluate( { coordinates.data(), decltype( energy )::size_geom1_coords },
+                            { coordinates.data() + decltype( energy )::size_geom1_coords,
+                              decltype( energy )::size_geom2_coords } )
                  .quadrature_result.status,
              QuadratureStatus::Success );
 }

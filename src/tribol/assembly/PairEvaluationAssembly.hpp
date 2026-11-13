@@ -21,45 +21,45 @@
 namespace tribol {
 /** @brief Own scalar nodal values and their coordinate Jacobian after composing vector and matrix assembly. */
 struct AssembledField {
-  shared::ParVector values;         ///< Values on scalar submesh true DOFs, without normalization or activation.
-  shared::ParSparseMat dvalues_dx;  ///< Scalar submesh rows and parent coordinate columns.
+  shared::ParVector values;       ///< Values on scalar submesh true DOFs, without normalization or activation.
+  shared::ParSparseMat jacobian;  ///< Scalar submesh rows and parent coordinate columns.
 };
 namespace detail {
 
 /**
  * @brief Compose scalar nodal vectors and coordinate Jacobians in one pair kernel.
  * @tparam NumFields Independent scalar fields. @tparam NumNodes Scalar rows per pair.
- * @tparam NumCoords Pair coordinates; both geometries contribute half.
+ * @tparam SizeCoords Pair coordinates; both geometries contribute half.
  * @tparam ValueReader Device-callable `(pair, field, node) -> RealT` reader.
  * @tparam JacobianReader Device-callable `(pair, field, node, coordinate) -> RealT` reader.
  * @tparam Exec Concrete execution mode for numerical assembly.
  * @param pairs Supplied execution-accessible pairs.
- * @param vectors Scalar-vector components, each configured for geometry1.
- * @param matrices Matrix components with scalar rows and both geometries' coordinate columns.
+ * @param vectors Vector assemblers, one per scalar field on geometry1.
+ * @param matrices Matrix assemblers, one per field, with scalar rows and both geometries' coordinate columns.
  * @param read_values Scalar values. @param read_jacobian Coordinate Jacobian entries.
- * @throws std::invalid_argument Component counts or layouts disagree; no contributions are added.
+ * @throws std::invalid_argument Numbers of field assemblers or their layouts disagree; no contributions are added.
  * @throws std::length_error Required storage exceeds the supported index range.
  * Scratch remains alive until all kernel operations finish and their matrix blocks have been copied.
  */
-template <ExecutionMode Exec, IndexT NumFields, IndexT NumNodes, IndexT NumCoords, typename ValueReader,
+template <ExecutionMode Exec, IndexT NumFields, IndexT NumNodes, IndexT SizeCoords, typename ValueReader,
           typename JacobianReader>
 void addNodalValuesAndJacobians( const ArrayT<InterfacePair>& pairs, std::vector<MfemVectorAssembler>& vectors,
                                  std::vector<MfemMatrixAssembler>& matrices, ValueReader read_values,
                                  JacobianReader read_jacobian )
 {
-  static_assert( NumFields > 0 && NumCoords % 2 == 0 );
-  constexpr IndexT element_dofs = NumCoords / 2;
+  static_assert( NumFields > 0 && SizeCoords % 2 == 0 );
+  constexpr IndexT size_geom_coords = SizeCoords / 2;
   if ( vectors.size() != static_cast<std::size_t>( NumFields ) || matrices.size() != vectors.size() ) {
-    throw std::invalid_argument( "Nodal vector and matrix component counts must agree." );
+    throw std::invalid_argument( "Numbers of nodal vector and matrix assemblers must agree." );
   }
   MdArray<MfemVectorAssemblyView<1>, NumFields> value_views{};
-  MdArray<MfemMatrixAssemblyView<NumNodes, element_dofs, 2>, NumFields> matrix_views{};
+  MdArray<MfemMatrixAssemblyView<NumNodes, size_geom_coords, 2>, NumFields> matrix_views{};
   for ( IndexT field = 0; field < NumFields; ++field ) {
     if ( vectors[field].numberOfValues() != NumNodes ) {
       throw std::invalid_argument( "Nodal vector input extent does not match the scalar row count." );
     }
     value_views[field] = vectors[field].view<Exec, 1>();
-    matrix_views[field] = matrices[field].view<NumNodes, element_dofs, 2>();
+    matrix_views[field] = matrices[field].view<NumNodes, size_geom_coords, 2>();
   }
   const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
@@ -72,7 +72,7 @@ void addNodalValuesAndJacobians( const ArrayT<InterfacePair>& pairs, std::vector
 
 /**
  * @brief Compose independent force and matrix assemblers in one pair kernel.
- * @tparam NumCoords Pair DOF count; both elements must contribute half.
+ * @tparam SizeCoords Pair DOF count; both elements must contribute half.
  * @tparam ForceReader Device-callable `(pair, row) -> RealT` force reader.
  * @tparam JacobianReader Device-callable `(pair, row, column) -> RealT` matrix reader.
  * @tparam Exec Concrete execution mode for numerical assembly.
@@ -81,26 +81,26 @@ void addNodalValuesAndJacobians( const ArrayT<InterfacePair>& pairs, std::vector
  * @param mesh2 Current second mesh.
  * @param mesh_data Displacement transfer data; must remain valid until the call completes.
  * @param jacobian_data Initialized coordinate-matrix transfer data; must remain valid until the call completes.
- * @param read_force Pair forces in element/node/component order.
+ * @param read_force Pair forces in element/node, then value-index order.
  * @param read_jacobian Pair Jacobians in that same row and column order.
  * @return Owned force and df_dx; empty pairs produce allocated zero outputs. Other outputs are absent.
  * Scratch remains alive until the combined kernel and matrix packing finish.
  * @throws std::invalid_argument Layouts are invalid; no result is returned.
  * @throws std::length_error Required storage exceeds the supported index range; no result is returned.
  */
-template <ExecutionMode Exec, IndexT NumCoords, typename ForceReader, typename JacobianReader>
+template <ExecutionMode Exec, IndexT SizeCoords, typename ForceReader, typename JacobianReader>
 ContactFormulationResult assemblePairForcesAndJacobian( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
                                                         MeshData::Viewer mesh2, const MfemMeshData& mesh_data,
                                                         const MfemJacobianData& jacobian_data, ForceReader read_force,
                                                         JacobianReader read_jacobian )
 {
-  static_assert( NumCoords % 2 == 0 );
-  constexpr IndexT element_dofs = NumCoords / 2;
+  static_assert( SizeCoords % 2 == 0 );
+  constexpr IndexT size_geom_coords = SizeCoords / 2;
   auto forces = makeDisplacementVectorAssembler( mesh_data, mesh1, mesh2 );
   auto jacobian =
       makeCoordinateMatrixAssembler( mesh_data, jacobian_data, mesh1, mesh2, pairs.size(), pairs.getAllocatorID() );
   const auto force_view = forces.view<Exec, 2>();
-  const auto matrix_view = jacobian.view<element_dofs, element_dofs, 4>();
+  const auto matrix_view = jacobian.view<size_geom_coords, size_geom_coords, 4>();
   const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = pairs_view[pair_index];
@@ -133,14 +133,14 @@ ContactFormulationResult evaluateAndAssemblePairResidual( const ArrayT<Interface
                                                           MeshData::Viewer mesh2, const MfemMeshData& mesh_data,
                                                           const PairFunction& pair_function )
 {
-  static_assert( PairFunction::num_values == PairFunction::num_coords, "Pair residuals must match coordinate DOFs." );
+  static_assert( PairFunction::size_values == PairFunction::size_coords, "Pair residuals must match coordinate DOFs." );
   auto all_pair_values = evaluatePairValues<Exec>( pairs, mesh1, mesh2, pair_function );
   checkPairQuadratureResults<Exec>( all_pair_values.quadratureResults() );
 
   auto assembler = detail::makeDisplacementVectorAssembler( mesh_data, mesh1, mesh2 );
   const auto all_pair_values_view = all_pair_values.view();
-  assembler.addPairs<Exec, PairFunction::num_coords, 2>( pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
-    return all_pair_values_view.has_active_points[pair] ? all_pair_values_view.value( pair, row ) : 0.0;
+  assembler.addPairs<Exec, PairFunction::size_coords, 2>( pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
+    return all_pair_values_view.has_contributing_points[pair] ? all_pair_values_view.value( pair, row ) : 0.0;
   } );
   ContactFormulationResult result;
   result.force.reset( assembler.assemble().release() );
@@ -169,18 +169,19 @@ ContactFormulationResult evaluateAndAssemblePairResidualJacobian( const ArrayT<I
                                                                   const MfemJacobianData& jacobian_data,
                                                                   const PairFunction& pair_function )
 {
-  static_assert( PairFunction::num_values == PairFunction::num_coords, "Pair residuals must match coordinate DOFs." );
+  static_assert( PairFunction::size_values == PairFunction::size_coords, "Pair residuals must match coordinate DOFs." );
   auto all_pair_values = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function );
   checkPairQuadratureResults<Exec>( all_pair_values.quadratureResults() );
 
   const auto all_pair_values_view = all_pair_values.view();
-  return detail::assemblePairForcesAndJacobian<Exec, PairFunction::num_coords>(
+  return detail::assemblePairForcesAndJacobian<Exec, PairFunction::size_coords>(
       pairs, mesh1, mesh2, mesh_data, jacobian_data,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
-        return all_pair_values_view.has_active_points[pair] ? all_pair_values_view.value( pair, row ) : 0.0;
+        return all_pair_values_view.has_contributing_points[pair] ? all_pair_values_view.value( pair, row ) : 0.0;
       },
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
-        return all_pair_values_view.has_active_points[pair] ? all_pair_values_view.jacobian( pair, row, column ) : 0.0;
+        return all_pair_values_view.has_contributing_points[pair] ? all_pair_values_view.jacobian( pair, row, column )
+                                                                  : 0.0;
       } );
 }
 #endif  // TRIBOL_USE_ENZYME
@@ -205,21 +206,21 @@ ContactFormulationResult evaluateAndAssemblePairEnergy( const ArrayT<InterfacePa
                                                         MeshData::Viewer mesh2, const MfemMeshData& mesh_data,
                                                         const PairFunction& pair_function )
 {
-  static_assert( PairFunction::num_values == 1, "Pair energies must have one scalar output." );
+  static_assert( PairFunction::size_values == 1, "Pair energies must have one scalar output." );
   auto all_pair_values = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function );
   checkPairQuadratureResults<Exec>( all_pair_values.quadratureResults() );
 
   auto assembler = detail::makeDisplacementVectorAssembler( mesh_data, mesh1, mesh2 );
   const auto all_pair_values_view = all_pair_values.view();
-  assembler.addPairs<Exec, PairFunction::num_coords, 2>( pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
-    return all_pair_values_view.has_active_points[pair] ? all_pair_values_view.jacobian( pair, 0, row ) : 0.0;
+  assembler.addPairs<Exec, PairFunction::size_coords, 2>( pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
+    return all_pair_values_view.has_contributing_points[pair] ? all_pair_values_view.jacobian( pair, 0, row ) : 0.0;
   } );
   ContactFormulationResult result;
   result.force.reset( assembler.assemble().release() );
   result.energy = GlobalScalarAssembler::sum<Exec>(
       pairs.size(),
       [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
-        return all_pair_values_view.has_active_points[pair] ? all_pair_values_view.value( pair, 0 ) : 0.0;
+        return all_pair_values_view.has_contributing_points[pair] ? all_pair_values_view.value( pair, 0 ) : 0.0;
       },
       result.force->GetComm() );
   return result;
@@ -246,12 +247,12 @@ ContactFormulationResult evaluateAndAssemblePairEnergyJacobian( const ArrayT<Int
                                                                 const MfemJacobianData& jacobian_data,
                                                                 const PairFunction& pair_function )
 {
-  static_assert( PairFunction::num_values == 1, "Pair energies must have one scalar output." );
+  static_assert( PairFunction::size_values == 1, "Pair energies must have one scalar output." );
   auto all_pair_values = evaluatePairValuesJacobiansAndHessians<Exec>( pairs, mesh1, mesh2, pair_function );
   checkPairQuadratureResults<Exec>( all_pair_values.quadratureResults() );
 
   const auto all_pair_values_view = all_pair_values.view();
-  auto result = detail::assemblePairForcesAndJacobian<Exec, PairFunction::num_coords>(
+  auto result = detail::assemblePairForcesAndJacobian<Exec, PairFunction::size_coords>(
       pairs, mesh1, mesh2, mesh_data, jacobian_data,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
         return all_pair_values_view.derivatives.jacobian( pair, row );

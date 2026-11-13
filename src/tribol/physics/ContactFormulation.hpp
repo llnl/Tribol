@@ -5,7 +5,7 @@
 
 /**
  * @file
- * @brief Stateless contact calculations and their caller-owned outputs.
+ * @brief Contact calculations and their caller-owned outputs.
  */
 #ifndef SRC_TRIBOL_PHYSICS_CONTACTFORMULATION_HPP_
 #define SRC_TRIBOL_PHYSICS_CONTACTFORMULATION_HPP_
@@ -36,8 +36,9 @@ struct ContactFormulationResult {
   std::unique_ptr<mfem::HypreParVector> gap;       ///< Normalized penalty gaps or weighted LM gaps on dual true DOFs.
   std::unique_ptr<mfem::HypreParVector> pressure;  ///< Calculated penalty pressure or the LM values used in assembly.
   std::unique_ptr<mfem::HypreParMatrix> df_dx;     ///< Derivative of the contact residual with respect to coordinates.
-  std::unique_ptr<mfem::HypreParMatrix> dg_dx;     ///< Derivative of weighted nodal gaps with respect to coordinates.
-  std::unique_ptr<mfem::HypreParMatrix> df_dp;     ///< Derivative of the contact residual with respect to LM values.
+  std::unique_ptr<mfem::HypreParMatrix> weighted_gap_jacobian;  ///< Weighted-gap coordinate Jacobian; penalty opening
+                                                                ///< rows are zeroed, without normalization.
+  std::unique_ptr<mfem::HypreParMatrix> df_dp;  ///< Derivative of the contact residual with respect to LM values.
 #endif
 };
 

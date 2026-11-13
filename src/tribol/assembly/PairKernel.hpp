@@ -9,7 +9,7 @@
  *
  * Pair functions accept two coordinate views and construct any needed geometry inside evaluate(). Both coordinate
  * arrays are active inputs for differentiation. Jacobian columns and Hessian rows/columns follow geometry1
- * node/component order, followed by geometry2 order.
+ * node, then value-index order, followed by geometry2 order.
  */
 #ifndef SRC_TRIBOL_ASSEMBLY_PAIRKERNEL_HPP_
 #define SRC_TRIBOL_ASSEMBLY_PAIRKERNEL_HPP_
@@ -31,7 +31,7 @@ namespace tribol {
  * inactive values follow the pair function's evaluate() behavior; callers must check quadrature before assembly.
  * For example, Common Plane explicit contact could obtain a PairValueBuffer from evaluatePairValues(), check its
  * quadratureResults(), and assemble its active residual values as nodal forces.
- * @tparam PairFunction Function evaluating two rank-two node/component coordinate views.
+ * @tparam PairFunction Function evaluating two rank-two node-by-spatial-dimension coordinate views.
  * @tparam Exec Concrete execution mode for pair evaluation.
  * @param pairs Supplied element pairs in execution-accessible memory.
  * @param mesh1 Current first mesh.
@@ -43,24 +43,24 @@ namespace tribol {
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
   requires( PairFunction::Coords1::rank() == 2 && PairFunction::Coords2::rank() == 2 )
-PairValueBuffer<PairFunction::num_values> evaluatePairValues( const ArrayT<InterfacePair>& pairs,
-                                                              MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                                                              PairFunction pair_function )
+PairValueBuffer<PairFunction::size_values> evaluatePairValues( const ArrayT<InterfacePair>& pairs,
+                                                               MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                                               PairFunction pair_function )
 {
-  PairValueBuffer<PairFunction::num_values> all_pair_values( pairs.size(), pairs.getAllocatorID() );
+  PairValueBuffer<PairFunction::size_values> all_pair_values( pairs.size(), pairs.getAllocatorID() );
   const auto all_pair_values_view = all_pair_values.view();
   const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = pairs_view[pair_index];
-    // Call pair_function to evaluate pair quantity
+    // Call function to evaluate pair quantity
     const auto coords1 = mesh1.getFaceCoords<typename PairFunction::Coords1>( pair.element_id1_ );
     const auto coords2 = mesh2.getFaceCoords<typename PairFunction::Coords2>( pair.element_id2_ );
     const auto pair_values_struct = pair_function.evaluate( coords1.view(), coords2.view() );
     // Fill the buffer with quantities evaluated at the pair
     all_pair_values_view.quadrature[pair_index] = pair_values_struct.quadrature_result;
-    all_pair_values_view.has_active_points[pair_index] = pair_values_struct.has_active_points;
+    all_pair_values_view.has_contributing_points[pair_index] = pair_values_struct.has_contributing_points;
     const auto pair_values = pair_values_struct.values();
-    for ( IndexT i{ 0 }; i < PairFunction::num_values; ++i ) {
+    for ( IndexT i{ 0 }; i < PairFunction::size_values; ++i ) {
       all_pair_values_view.setValue( pair_index, i, pair_values[i] );
     }
   } );
@@ -75,9 +75,9 @@ PairValueBuffer<PairFunction::num_values> evaluatePairValues( const ArrayT<Inter
  * to scalar and vector functions. The values already include any quadrature weights used by f. The caller must check
  * the recorded quadrature results before using these outputs.
  *
- * For example, suppose pair_function is a configured CommonPlanePairFunction of type PairFunction, pairs is an accepted
- * pair list, and mesh1 and mesh2 are current mesh views. A caller could evaluate its local nodal forces and their
- * Jacobians:
+ * For example, suppose function is a configured CommonPlaneResidualPairFunction of type PairFunction, pairs is an
+ * accepted pair list, and mesh1 and mesh2 are current mesh views. A caller could evaluate its local nodal forces and
+ * their Jacobians:
  * @code
  * auto results = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function );
  * checkPairQuadratureResults<Exec>( results.quadratureResults() );
@@ -97,11 +97,11 @@ PairValueBuffer<PairFunction::num_values> evaluatePairValues( const ArrayT<Inter
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
   requires( PairFunction::Coords1::rank() == 2 && PairFunction::Coords2::rank() == 2 )
-PairValueJacobianBuffer<PairFunction::num_values, PairFunction::num_coords> evaluatePairValuesAndJacobians(
+PairValueJacobianBuffer<PairFunction::size_values, PairFunction::size_coords> evaluatePairValuesAndJacobians(
     const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function )
 {
-  PairValueJacobianBuffer<PairFunction::num_values, PairFunction::num_coords> all_pair_values( pairs.size(),
-                                                                                               pairs.getAllocatorID() );
+  PairValueJacobianBuffer<PairFunction::size_values, PairFunction::size_coords> all_pair_values(
+      pairs.size(), pairs.getAllocatorID() );
   const auto all_pair_values_view = all_pair_values.view();
   const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
@@ -113,11 +113,11 @@ PairValueJacobianBuffer<PairFunction::num_values, PairFunction::num_coords> eval
         EnzymePairDerivative<PairFunction>::valuesAndJacobian( coords1.view(), coords2.view(), pair_function );
     // Fill the buffer with quantities evaluated at the pair
     all_pair_values_view.quadrature[pair_index] = pair_values_struct.quadrature_result;
-    all_pair_values_view.has_active_points[pair_index] = pair_values_struct.has_active_points;
+    all_pair_values_view.has_contributing_points[pair_index] = pair_values_struct.has_contributing_points;
     const auto& pair_values = pair_values_struct.values;
-    for ( IndexT i{ 0 }; i < PairFunction::num_values; ++i ) {
+    for ( IndexT i{ 0 }; i < PairFunction::size_values; ++i ) {
       all_pair_values_view.setValue( pair_index, i, pair_values[i] );
-      for ( IndexT j{ 0 }; j < PairFunction::num_coords; ++j ) {
+      for ( IndexT j{ 0 }; j < PairFunction::size_coords; ++j ) {
         all_pair_values_view.setJacobian( pair_index, i, j, pair_values_struct.jacobian( i, j ) );
       }
     }
@@ -130,18 +130,19 @@ PairValueJacobianBuffer<PairFunction::num_values, PairFunction::num_coords> eval
  *
  * Let J_ij = df_i/dx_j and H_ijk = d^2 f_i/(dx_j dx_k). For fixed output weights w_i, write sum_i w_i J_ij and
  * sum_i w_i H_ijk. The weighted Jacobian has one entry per coordinate, and the weighted Hessian is a square coordinate
- * matrix. Function values and the full unweighted Jacobian are not returned. The weights multiply components of f;
+ * matrix. Function values and the full unweighted Jacobian are not returned. The weights multiply outputs of f;
  * they are distinct from quadrature weights, which are already included in f.
  *
- * For example, suppose pair_function is an EnergyMortarNodalEnergy of type PairFunction for two-node edges and its
- * quadrature has already been checked. Its four outputs are weighted gaps G0, G1 followed by areas A0, A1. A
- * hypothetical nodal LM calculation could use multipliers 2.0 and 3.0, and zero area weights, to differentiate 2.0*G0
+ * For example, suppose function is an EnergyMortarNodalIntegralPairFunction of type PairFunction for two-node
+ * edges and its quadrature has already been checked. Its four outputs are weighted gaps G0, G1 followed by areas A0,
+ * A1. A hypothetical nodal LM calculation could use multipliers 2.0 and 3.0, and zero area weights, to
+ * differentiate 2.0*G0
  * + 3.0*G1:
  * @code
  * auto derivatives = evaluatePairWeightedJacobiansAndHessians<Exec>(
  *     pairs, mesh1, mesh2, pair_function,
  *     [] TRIBOL_HOST_DEVICE( IndexT ) {
- *       return MdArray<RealT, PairFunction::num_values>{ 2.0, 3.0, 0.0, 0.0 };
+ *       return MdArray<RealT, PairFunction::size_values>{ 2.0, 3.0, 0.0, 0.0 };
  *     } );
  * @endcode
  * Each pair receives 2.0*J_G0 + 3.0*J_G1 and 2.0*H_G0 + 3.0*H_G1. An LM formulation could assemble the latter into
@@ -155,7 +156,7 @@ PairValueJacobianBuffer<PairFunction::num_values, PairFunction::num_coords> eval
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
  * @param pair_function Fixed pair-function configuration.
- * @param read_weights Callable with signature `MdArray<RealT, PairFunction::num_values>(IndexT)`.
+ * @param read_weights Callable with signature `MdArray<RealT, PairFunction::size_values>(IndexT)`.
  * @return Owned weighted Jacobians and Hessians in pairs.getAllocatorID(), with one slot per pair. Empty input
  * returns zero slots. Evaluation finishes before returning; the arrays remain valid after pairs and the input meshes
  * are destroyed. Quadrature status is not returned or checked.
@@ -163,11 +164,11 @@ PairValueJacobianBuffer<PairFunction::num_values, PairFunction::num_coords> eval
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction, typename WeightReader>
   requires( PairFunction::Coords1::rank() == 2 && PairFunction::Coords2::rank() == 2 )
-PairJacobianHessianBuffer<PairFunction::num_coords> evaluatePairWeightedJacobiansAndHessians(
+PairJacobianHessianBuffer<PairFunction::size_coords> evaluatePairWeightedJacobiansAndHessians(
     const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function,
     WeightReader read_weights )
 {
-  PairJacobianHessianBuffer<PairFunction::num_coords> all_pair_values( pairs.size(), pairs.getAllocatorID() );
+  PairJacobianHessianBuffer<PairFunction::size_coords> all_pair_values( pairs.size(), pairs.getAllocatorID() );
   const auto all_pair_values_view = all_pair_values.view();
   const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
@@ -179,9 +180,9 @@ PairJacobianHessianBuffer<PairFunction::num_coords> evaluatePairWeightedJacobian
     const auto pair_values_struct = EnzymePairDerivative<PairFunction>::weightedJacobianAndHessian(
         coords1.view(), coords2.view(), pair_function, weights.view() );
     // Fill the buffer with quantities evaluated at the pair
-    for ( IndexT i{ 0 }; i < PairFunction::num_coords; ++i ) {
+    for ( IndexT i{ 0 }; i < PairFunction::size_coords; ++i ) {
       all_pair_values_view.setJacobian( pair_index, i, pair_values_struct.jacobian[i] );
-      for ( IndexT j{ 0 }; j < PairFunction::num_coords; ++j ) {
+      for ( IndexT j{ 0 }; j < PairFunction::size_coords; ++j ) {
         all_pair_values_view.setHessian( pair_index, i, j, pair_values_struct.hessian( i, j ) );
       }
     }
@@ -197,8 +198,8 @@ PairJacobianHessianBuffer<PairFunction::num_coords> evaluatePairWeightedJacobian
  * pairs receive zero values and derivatives; the caller must check quadrature results before using the outputs.
  * Active inputs retain their derivatives even when f(x) is zero.
  *
- * For example, suppose pair_function is a configured EnergyMortarEnergy of type PairFunction. A quadrature-point
- * formulation could request its scalar energy E, Jacobian J_E, and Hessian H_E together:
+ * For example, suppose function is a configured EnergyMortarEnergyPairFunction of type PairFunction. A
+ * quadrature-point formulation could request its scalar energy E, Jacobian J_E, and Hessian H_E together:
  * @code
  * auto results = evaluatePairValuesJacobiansAndHessians<Exec>( pairs, mesh1, mesh2, pair_function );
  * checkPairQuadratureResults<Exec>( results.quadratureResults() );
@@ -219,11 +220,11 @@ PairJacobianHessianBuffer<PairFunction::num_coords> evaluatePairWeightedJacobian
  * and the input meshes are destroyed. Quadrature failures are recorded for the caller to check.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
-  requires( PairFunction::num_values == 1 && PairFunction::Coords1::rank() == 2 && PairFunction::Coords2::rank() == 2 )
-PairValueJacobianHessianBuffer<PairFunction::num_coords> evaluatePairValuesJacobiansAndHessians(
+  requires( PairFunction::size_values == 1 && PairFunction::Coords1::rank() == 2 && PairFunction::Coords2::rank() == 2 )
+PairValueJacobianHessianBuffer<PairFunction::size_coords> evaluatePairValuesJacobiansAndHessians(
     const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function )
 {
-  PairValueJacobianHessianBuffer<PairFunction::num_coords> all_pair_values( pairs.size(), pairs.getAllocatorID() );
+  PairValueJacobianHessianBuffer<PairFunction::size_coords> all_pair_values( pairs.size(), pairs.getAllocatorID() );
   const auto all_pair_values_view = all_pair_values.view();
   const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
@@ -236,9 +237,9 @@ PairValueJacobianHessianBuffer<PairFunction::num_coords> evaluatePairValuesJacob
     // Fill the buffer with quantities evaluated at the pair
     all_pair_values_view.values[pair_index] = pair_values_struct.value;
     all_pair_values_view.quadrature[pair_index] = pair_values_struct.quadrature_result;
-    for ( IndexT i{ 0 }; i < PairFunction::num_coords; ++i ) {
+    for ( IndexT i{ 0 }; i < PairFunction::size_coords; ++i ) {
       all_pair_values_view.derivatives.setJacobian( pair_index, i, pair_values_struct.jacobian[i] );
-      for ( IndexT j{ 0 }; j < PairFunction::num_coords; ++j ) {
+      for ( IndexT j{ 0 }; j < PairFunction::size_coords; ++j ) {
         all_pair_values_view.derivatives.setHessian( pair_index, i, j, pair_values_struct.hessian( i, j ) );
       }
     }

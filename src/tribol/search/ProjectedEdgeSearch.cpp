@@ -20,7 +20,7 @@ namespace tribol {
 ArrayT<InterfacePair> ProjectedEdgeSearch::filterCandidatePairs( const ArrayT<InterfacePair>& candidate_pairs,
                                                                  MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
 {
-  SLIC_ERROR_ROOT_IF( mesh1.spatialDimension() != 2 || mesh2.spatialDimension() != 2,
+  SLIC_ERROR_ROOT_IF( mesh1.spatialDim() != 2 || mesh2.spatialDim() != 2,
                       "Projected-edge search requires two-dimensional meshes." );
   SLIC_ASSERT_MSG(
       mesh1.getAllocatorId() == mesh2.getAllocatorId() && candidate_pairs.getAllocatorID() == mesh1.getAllocatorId(),

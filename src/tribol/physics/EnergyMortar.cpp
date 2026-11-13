@@ -11,7 +11,7 @@ namespace detail {
 
 ContactFormulationResult makeNodalPenaltyGapResult( EnergyMortarNodalQuantities& quantities )
 {
-  auto normalized_gap = quantities.weighted_gap.values.divide( quantities.area.values, nodal_area_tolerance );
+  auto normalized_gap = quantities.weighted_gap.values.divide( quantities.tributary_area.values, nodal_area_tolerance );
   mfem::Array<int> open_nodes;
   for ( int node = 0; node < quantities.weighted_gap.values.size(); ++node ) {
     if ( quantities.weighted_gap.values[node] > 0.0 ) {
@@ -19,10 +19,10 @@ ContactFormulationResult makeNodalPenaltyGapResult( EnergyMortarNodalQuantities&
       open_nodes.Append( node );
     }
   }
-  quantities.weighted_gap.dvalues_dx.eliminateRows( open_nodes );
+  quantities.weighted_gap.jacobian.eliminateRows( open_nodes );
   ContactFormulationResult result;
   result.gap.reset( normalized_gap.release() );
-  result.dg_dx.reset( quantities.weighted_gap.dvalues_dx.release() );
+  result.weighted_gap_jacobian.reset( quantities.weighted_gap.jacobian.release() );
   return result;
 }
 
@@ -30,7 +30,7 @@ ContactFormulationResult makeNodalLagrangeMultiplierGapResult( EnergyMortarNodal
 {
   ContactFormulationResult result;
   result.gap.reset( quantities.weighted_gap.values.release() );
-  result.dg_dx.reset( quantities.weighted_gap.dvalues_dx.release() );
+  result.weighted_gap_jacobian.reset( quantities.weighted_gap.jacobian.release() );
   return result;
 }
 

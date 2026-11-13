@@ -10,7 +10,7 @@
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
 #include "tribol/assembly/PairEvaluationAssembly.hpp"
 #include "tribol/physics/ContactEnforcement.hpp"
-#include "tribol/physics/EnergyMortarEnergy.hpp"
+#include "tribol/physics/EnergyMortarPairFunctions.hpp"
 
 namespace tribol {
 namespace detail {
@@ -19,18 +19,18 @@ inline constexpr RealT nodal_area_tolerance =
 
 /** @brief Energy Mortar's assembled weighted gaps and tributary areas, before activation. */
 struct EnergyMortarNodalQuantities {
-  AssembledField weighted_gap;  ///< Weighted gaps and their coordinate Jacobian.
-  AssembledField area;          ///< Tributary areas and their coordinate Jacobian.
+  AssembledField weighted_gap;    ///< Weighted gaps and their coordinate Jacobian.
+  AssembledField tributary_area;  ///< Tributary areas and their coordinate Jacobian.
 };
 
 /**
  * @brief Evaluate and assemble weighted gaps, tributary areas, and their coordinate Jacobians.
- * @tparam Function Pair function returning weighted gaps followed by areas.
+ * @tparam PairFunction Pair function returning weighted gaps followed by areas.
  * @tparam Exec Concrete execution mode for evaluation and numerical assembly.
  * @param pairs Current accepted pair list.
  * @param mesh1 Current first mesh.
  * @param mesh2 Current second mesh.
- * @param function Fixed pair-function configuration.
+ * @param pair_function Fixed pair-function configuration.
  * @param mesh_data Current displacement transfer data.
  * @param submesh_data Scalar field transfer data.
  * @param jacobian_data Parent and scalar-field Jacobian transfer data.
@@ -38,18 +38,19 @@ struct EnergyMortarNodalQuantities {
  * @throws std::invalid_argument Geometry or assembly dimensions are invalid; no result is returned.
  * @throws std::length_error Quadrature capacity or the assembly index range is exceeded; no result is returned.
  */
-template <ExecutionMode Exec, typename Function>
+template <ExecutionMode Exec, typename PairFunction>
 EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<InterfacePair>& pairs,
                                                                 MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                                                                const Function& function, const MfemMeshData& mesh_data,
+                                                                const PairFunction& pair_function,
+                                                                const MfemMeshData& mesh_data,
                                                                 const MfemSubmeshData& submesh_data,
                                                                 const MfemJacobianData& jacobian_data )
 {
-  using PairResult = typename Function::Result;
-  constexpr IndexT num_nodes = Function::num_nodes;
-  constexpr IndexT num_coords = Function::num_coords;
-  static_assert( Function::num_values == 2 * num_nodes );
-  auto buffer = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, function );
+  using PairResult = typename PairFunction::Result;
+  constexpr IndexT num_nodes = PairFunction::num_nodes;
+  constexpr IndexT size_coords = PairFunction::size_coords;
+  static_assert( PairFunction::size_values == 2 * num_nodes );
+  auto buffer = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function );
   const auto contributions_view = buffer.view();
   checkPairQuadratureResults<Exec>( buffer.quadratureResults() );
   constexpr IndexT num_fields = PairResult::num_fields;
@@ -62,17 +63,17 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<Int
     matrices.push_back( detail::makeNodalCoordinateMatrixAssembler( mesh_data, submesh_data, jacobian_data, mesh1,
                                                                     mesh2, pairs.size(), pairs.getAllocatorID() ) );
   }
-  detail::addNodalValuesAndJacobians<Exec, num_fields, num_nodes, num_coords>(
+  detail::addNodalValuesAndJacobians<Exec, num_fields, num_nodes, size_coords>(
       pairs, vectors, matrices,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node ) {
         const auto integral_field = static_cast<typename PairResult::Field>( field );
-        return contributions_view.has_active_points[pair]
+        return contributions_view.has_contributing_points[pair]
                    ? contributions_view.value( pair, PairResult::valueIndex( integral_field, node ) )
                    : 0.0;
       },
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node, IndexT coordinate ) {
         const auto integral_field = static_cast<typename PairResult::Field>( field );
-        return contributions_view.has_active_points[pair]
+        return contributions_view.has_contributing_points[pair]
                    ? contributions_view.jacobian( pair, PairResult::valueIndex( integral_field, node ), coordinate )
                    : 0.0;
       } );
@@ -81,13 +82,13 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<Int
 
 /**
  * @brief Assemble the coordinate Hessian of fixed nodal weights contracted with pair gap and area integrals.
- * @tparam Function Pair function returning weighted gaps followed by areas.
+ * @tparam PairFunction Pair function returning weighted gaps followed by areas.
  * @tparam WeightReader Device-callable node reader returning gap and area weights in that order.
  * @tparam Exec Concrete execution mode for evaluation and numerical assembly.
  * @param pairs Current accepted pair list.
  * @param mesh1 Current first mesh, whose scalar finite-element nodes carry the weights.
  * @param mesh2 Current second mesh.
- * @param function Fixed pair-function configuration.
+ * @param pair_function Fixed pair-function configuration.
  * @param mesh_data Current displacement transfer data.
  * @param jacobian_data Current Jacobian transfer data.
  * @param read_weights Reader indexed by scalar submesh node.
@@ -95,21 +96,21 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<Int
  * @throws std::invalid_argument Geometry or assembly dimensions are invalid.
  * @throws std::length_error Pair buffers or matrix storage exceed the supported index range.
  */
-template <ExecutionMode Exec, typename Function, typename WeightReader>
+template <ExecutionMode Exec, typename PairFunction, typename WeightReader>
 shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
-                                                   MeshData::Viewer mesh2, const Function& function,
+                                                   MeshData::Viewer mesh2, const PairFunction& pair_function,
                                                    const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
                                                    WeightReader read_weights )
 {
-  using PairResult = typename Function::Result;
-  constexpr IndexT num_nodes = Function::num_nodes;
-  static_assert( Function::num_values == 2 * num_nodes );
+  using PairResult = typename PairFunction::Result;
+  constexpr IndexT num_nodes = PairFunction::num_nodes;
+  static_assert( PairFunction::size_values == 2 * num_nodes );
   const IndexT num_pairs = pairs.size();
   const auto pairs_view = pairs.view();
   const auto connectivity = mesh1.getConnectivity();
   auto hessians = evaluatePairWeightedJacobiansAndHessians<Exec>(
-      pairs, mesh1, mesh2, function, [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
-        MdArray<RealT, Function::num_values> weights{};
+      pairs, mesh1, mesh2, pair_function, [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
+        MdArray<RealT, PairFunction::size_values> weights{};
         const auto nodes = connectivity( pairs_view[pair_index].element_id1_ );
         for ( IndexT node = 0; node < num_nodes; ++node ) {
           const auto nodal_weights = read_weights( nodes[node] );
@@ -121,7 +122,7 @@ shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& 
   const auto hessian_view = hessians.view();
   auto assembler = detail::makeCoordinateMatrixAssembler( mesh_data, jacobian_data, mesh1, mesh2, num_pairs,
                                                           pairs.getAllocatorID() );
-  assembler.addPairs<Exec, Function::num_coords / 2, Function::num_coords / 2, 4>(
+  assembler.addPairs<Exec, PairFunction::size_coords / 2, PairFunction::size_coords / 2, 4>(
       pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
         return hessian_view.hessian( pair, row, column );
       } );
@@ -154,7 +155,7 @@ ContactFormulationResult makeNodalLagrangeMultiplierGapResult( EnergyMortarNodal
  * @param mesh_data Displacement transfer data used for assembly.
  * @param submesh_data Pressure and gap transfer data used for assembly.
  * @param jacobian_data Parent and scalar-field Jacobian transfer data used for assembly.
- * @param pair_function Configured nodal-integral function.
+ * @param pair_function Configured nodal-integral pair_function.
  * @return Owned gaps and their coordinate Jacobian; other outputs are absent. Empty pairs give zero gaps.
  * @throws std::invalid_argument Pair geometry or assembly dimensions are invalid.
  * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded.
@@ -179,10 +180,10 @@ ContactFormulationResult evaluateAndAssembleNodalPenaltyGaps(
  * @param mesh_data Displacement transfer data used for assembly.
  * @param submesh_data Pressure and gap transfer data used for assembly.
  * @param jacobian_data Parent and scalar-field Jacobian transfer data used for assembly.
- * @param pair_function Configured nodal-integral function.
+ * @param pair_function Configured nodal-integral pair_function.
  * @param penalty Fixed positive, finite penalty enforcement.
- * @return Owned gaps, pressure, energy, force, dg_dx, and df_dx; df_dp is absent. Empty pairs contribute zero force
- * and energy; unsupported nodal areas give zero penalty pressure.
+ * @return Owned gaps, pressure, energy, force, weighted_gap_jacobian, and df_dx; df_dp is absent. Empty pairs
+ * contribute zero force and energy; unsupported nodal areas give zero penalty pressure.
  * @throws std::invalid_argument Geometry, assembly dimensions, or nodal field dimensions are invalid.
  * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded.
  */
@@ -204,35 +205,35 @@ ContactFormulationResult evaluateAndAssembleNodalPenalty( const ArrayT<Interface
   };
   auto gap_weights = make_vector();
   auto area_weights = make_vector();
-  auto gap_gap = make_vector();
-  auto gap_area = make_vector();
-  auto area_area = make_vector();
+  auto d2energy_dweighted_gap2 = make_vector();
+  auto d2energy_dweighted_gap_dtributary_area = make_vector();
+  auto d2energy_dtributary_area2 = make_vector();
   const int allocator_id = pairs.getAllocatorID();
   Array1D<RealT> nodal_energy( gap_weights.size(), gap_weights.size(), allocator_id );
   const bool use_device = isOnDevice( Exec );
   const auto* weighted_gap = quantities.weighted_gap.values.get().Read( use_device );
-  const auto* area = quantities.area.values.get().Read( use_device );
+  const auto* area = quantities.tributary_area.values.get().Read( use_device );
   auto* gap_weight = gap_weights.get().Write( use_device );
   auto* area_weight = area_weights.get().Write( use_device );
-  auto* gap_gap_data = gap_gap.get().Write( use_device );
-  auto* gap_area_data = gap_area.get().Write( use_device );
-  auto* area_area_data = area_area.get().Write( use_device );
+  auto* gap_gap_data = d2energy_dweighted_gap2.get().Write( use_device );
+  auto* gap_area_data = d2energy_dweighted_gap_dtributary_area.get().Write( use_device );
+  auto* area_area_data = d2energy_dtributary_area2.get().Write( use_device );
   auto* nodal_energy_data = nodal_energy.data();
   forAllExec<Exec>( gap_weights.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) {
-    const auto partials =
-        EnergyMortarNodalPartials::evaluate( weighted_gap[node], area[node], stiffness, detail::nodal_area_tolerance );
+    const auto partials = EnergyMortarNodalPenaltyPartials::evaluate( weighted_gap[node], area[node], stiffness,
+                                                                      detail::nodal_area_tolerance );
     nodal_energy_data[node] = partials.energy;
-    gap_weight[node] = partials.gap;
-    area_weight[node] = partials.area;
-    gap_gap_data[node] = partials.gap_gap;
-    gap_area_data[node] = partials.gap_area;
-    area_area_data[node] = partials.area_area;
+    gap_weight[node] = partials.denergy_dweighted_gap;
+    area_weight[node] = partials.denergy_dtributary_area;
+    gap_gap_data[node] = partials.d2energy_dweighted_gap2;
+    gap_area_data[node] = partials.d2energy_dweighted_gap_dtributary_area;
+    area_area_data[node] = partials.d2energy_dtributary_area2;
   } );
   const RealT energy = GlobalScalarAssembler::sum<Exec>(
       gap_weights.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) { return nodal_energy_data[node]; },
       gap_weights.get().GetComm() );
-  auto force = gap_weights * quantities.weighted_gap.dvalues_dx;
-  force += area_weights * quantities.area.dvalues_dx;
+  auto force = gap_weights * quantities.weighted_gap.jacobian;
+  force += area_weights * quantities.tributary_area.jacobian;
 
   const auto redecomp_gap_weights = submesh_data.TransferTrueDofsToRedecomp( gap_weights.get() );
   const auto redecomp_area_weights = submesh_data.TransferTrueDofsToRedecomp( area_weights.get() );
@@ -246,14 +247,15 @@ ContactFormulationResult evaluateAndAssembleNodalPenalty( const ArrayT<Interface
     return shared::ParSparseMat::diagonalMatrix( fes.GetComm(), fes.GlobalTrueVSize(), fes.GetTrueDofOffsets(),
                                                  values.get() );
   };
-  const auto gg = make_diagonal( gap_gap );
-  const auto ga = make_diagonal( gap_area );
-  const auto aa = make_diagonal( area_area );
-  jacobian += shared::ParSparseMat::rap( gg, quantities.weighted_gap.dvalues_dx );
-  const auto mixed = shared::ParSparseMat::rap( quantities.weighted_gap.dvalues_dx, ga, quantities.area.dvalues_dx );
+  const auto gg = make_diagonal( d2energy_dweighted_gap2 );
+  const auto ga = make_diagonal( d2energy_dweighted_gap_dtributary_area );
+  const auto aa = make_diagonal( d2energy_dtributary_area2 );
+  jacobian += shared::ParSparseMat::rap( gg, quantities.weighted_gap.jacobian );
+  const auto mixed =
+      shared::ParSparseMat::rap( quantities.weighted_gap.jacobian, ga, quantities.tributary_area.jacobian );
   jacobian += mixed;
   jacobian += mixed.transpose();
-  jacobian += shared::ParSparseMat::rap( aa, quantities.area.dvalues_dx );
+  jacobian += shared::ParSparseMat::rap( aa, quantities.tributary_area.jacobian );
 
   auto result = detail::makeNodalPenaltyGapResult( quantities );
   result.energy = energy;
@@ -273,7 +275,7 @@ ContactFormulationResult evaluateAndAssembleNodalPenalty( const ArrayT<Interface
  * @param mesh_data Displacement transfer data used for assembly.
  * @param submesh_data Pressure and gap transfer data used for assembly.
  * @param jacobian_data Parent and scalar-field Jacobian transfer data used for assembly.
- * @param pair_function Configured nodal-integral function.
+ * @param pair_function Configured nodal-integral pair_function.
  * @return Owned gaps and their coordinate Jacobian; other outputs are absent. Empty pairs give zero gaps.
  * @throws std::invalid_argument Pair geometry or assembly dimensions are invalid.
  * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded.
@@ -298,9 +300,9 @@ ContactFormulationResult evaluateAndAssembleNodalLagrangeMultiplierGaps(
  * @param mesh_data Displacement transfer data used for assembly.
  * @param submesh_data Pressure and gap transfer data used for assembly.
  * @param jacobian_data Parent and scalar-field Jacobian transfer data used for assembly.
- * @param pair_function Configured nodal-integral function.
- * @return Owned gaps, pressure, energy, force, dg_dx, df_dx, and df_dp. Empty pairs contribute zero force and
- * energy; pressure contains the supplied LM values.
+ * @param pair_function Configured nodal-integral pair_function.
+ * @return Owned gaps, pressure, energy, force, weighted_gap_jacobian, df_dx, and df_dp. Empty pairs contribute zero
+ * force and energy; pressure contains the supplied LM values.
  * @throws std::invalid_argument Geometry, assembly dimensions, or nodal field dimensions are invalid.
  * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded.
  */
@@ -317,13 +319,13 @@ ContactFormulationResult evaluateAndAssembleNodalLagrangeMultiplier(
     throw std::invalid_argument( "LM values must match dual true DOFs." );
   }
   const RealT energy = pressure.dot( quantities.weighted_gap.values );
-  auto force = pressure * quantities.weighted_gap.dvalues_dx;
+  auto force = pressure * quantities.weighted_gap.jacobian;
   const auto redecomp_pressure = submesh_data.TransferTrueDofsToRedecomp( pressure.get() );
   const auto* pressure_data = redecomp_pressure.Read( isOnDevice( Exec ) );
   auto jacobian = detail::assembleWeightedNodalHessian<Exec>(
       pairs, mesh1, mesh2, pair_function, mesh_data, jacobian_data,
       [=] TRIBOL_HOST_DEVICE( IndexT node ) { return MdArray<RealT, 2>{ pressure_data[node], 0.0 }; } );
-  auto df_dp = quantities.weighted_gap.dvalues_dx.transpose();
+  auto df_dp = quantities.weighted_gap.jacobian.transpose();
 
   auto result = detail::makeNodalLagrangeMultiplierGapResult( quantities );
   result.energy = energy;

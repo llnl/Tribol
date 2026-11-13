@@ -45,13 +45,13 @@ class MdSpan {
   /**
    * @brief Return the number of values along one dimension
    *
-   * @tparam Dimension Zero-based dimension
+   * @tparam Dim Zero-based dimension
    */
-  template <IndexT Dimension>
+  template <IndexT Dim>
   TRIBOL_HOST_DEVICE static constexpr IndexT extent()
   {
-    static_assert( Dimension >= 0 && Dimension < rank(), "MdSpan dimension is out of range." );
-    return extents_[Dimension];
+    static_assert( Dim >= 0 && Dim < rank(), "MdSpan dimension is out of range." );
+    return extents_[Dim];
   }
 
   /**
@@ -59,10 +59,10 @@ class MdSpan {
    *
    * Array extent mismatches prevent construction, so local arrays cannot silently provide too little storage.
    */
-  template <typename U, std::size_t ElementCount,
-            typename = std::enable_if_t<ElementCount == static_cast<std::size_t>( size() ) &&
+  template <typename U, std::size_t SizeValues,
+            typename = std::enable_if_t<SizeValues == static_cast<std::size_t>( size() ) &&
                                         std::is_convertible<U*, T*>::value>>
-  TRIBOL_HOST_DEVICE constexpr MdSpan( U ( &values )[ElementCount] ) noexcept : data_( values )
+  TRIBOL_HOST_DEVICE constexpr MdSpan( U ( &values )[SizeValues] ) noexcept : data_( values )
   {
   }
 
@@ -73,9 +73,9 @@ class MdSpan {
    * dangling view. This constructor remains host-only because std::array methods are not consistently available in
    * device code across supported compilers.
    */
-  template <typename U, std::size_t ElementCount>
-    requires( ElementCount == static_cast<std::size_t>( size() ) && std::convertible_to<U*, T*> )
-  constexpr MdSpan( std::array<U, ElementCount>& values ) noexcept : data_( values.data() )
+  template <typename U, std::size_t SizeValues>
+    requires( SizeValues == static_cast<std::size_t>( size() ) && std::convertible_to<U*, T*> )
+  constexpr MdSpan( std::array<U, SizeValues>& values ) noexcept : data_( values.data() )
   {
   }
 
@@ -86,17 +86,17 @@ class MdSpan {
    * creating a dangling view. This constructor remains host-only because std::array methods are not consistently
    * available in device code across supported compilers.
    */
-  template <typename U, std::size_t ElementCount>
-    requires( ElementCount == static_cast<std::size_t>( size() ) && std::convertible_to<const U*, T*> )
-  constexpr MdSpan( const std::array<U, ElementCount>& values ) noexcept : data_( values.data() )
+  template <typename U, std::size_t SizeValues>
+    requires( SizeValues == static_cast<std::size_t>( size() ) && std::convertible_to<const U*, T*> )
+  constexpr MdSpan( const std::array<U, SizeValues>& values ) noexcept : data_( values.data() )
   {
   }
 
-  template <typename U, std::size_t ElementCount>
-  MdSpan( std::array<U, ElementCount>&& ) = delete;
+  template <typename U, std::size_t SizeValues>
+  MdSpan( std::array<U, SizeValues>&& ) = delete;
 
-  template <typename U, std::size_t ElementCount>
-  MdSpan( const std::array<U, ElementCount>&& ) = delete;
+  template <typename U, std::size_t SizeValues>
+  MdSpan( const std::array<U, SizeValues>&& ) = delete;
 
   /**
    * @brief View one scalar lvalue when this span contains exactly one value
@@ -147,30 +147,30 @@ class MdSpan {
   template <typename... Indices>
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE T& operator()( Indices... indices ) const noexcept
   {
-    static_assert( sizeof...( Indices ) == sizeof...( Extents ), "MdSpan requires one index per dimension." );
+    static_assert( sizeof...( Indices ) == sizeof...( Extents ), "MdSpan requires one index per dim." );
     static_assert( ( std::is_integral<Indices>::value && ... ), "MdSpan indices must be integral." );
     return data_[ComputeOffset<0>( static_cast<IndexT>( indices )... )];
   }
 
  private:
-  template <IndexT Dimension, typename FirstIndex, typename... RemainingIndices>
+  template <IndexT Dim, typename FirstIndex, typename... RemainingIndices>
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static IndexT ComputeOffset( FirstIndex first_index,
                                                                        RemainingIndices... remaining_indices ) noexcept
   {
-    assert( first_index >= 0 && first_index < extent<Dimension>() );
+    assert( first_index >= 0 && first_index < extent<Dim>() );
     if constexpr ( sizeof...( RemainingIndices ) == 0 ) {
       return first_index;
     } else {
-      return first_index * RowMajorStride<Dimension>() + ComputeOffset<Dimension + 1>( remaining_indices... );
+      return first_index * RowMajorStride<Dim>() + ComputeOffset<Dim + 1>( remaining_indices... );
     }
   }
 
-  template <IndexT Dimension>
+  template <IndexT Dim>
   TRIBOL_HOST_DEVICE static constexpr IndexT RowMajorStride() noexcept
   {
     IndexT stride = 1;
-    for ( IndexT trailing_dimension = Dimension + 1; trailing_dimension < rank(); ++trailing_dimension ) {
-      stride *= extents_[trailing_dimension];
+    for ( IndexT trailing_dim = Dim + 1; trailing_dim < rank(); ++trailing_dim ) {
+      stride *= extents_[trailing_dim];
     }
     return stride;
   }

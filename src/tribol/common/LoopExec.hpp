@@ -94,8 +94,8 @@ namespace detail {
 template <ExecutionMode T>
 struct forAllType {};
 
-template <ExecutionMode EXEC, typename BODY, bool ASYNC, int BLOCK_SIZE>
-void forAllImpl( forAllType<EXEC>, IndexT, BODY&& )
+template <ExecutionMode Exec, typename BODY, bool ASYNC, int BLOCK_SIZE>
+void forAllImpl( forAllType<Exec>, IndexT, BODY&& )
 {
   SLIC_ERROR_ROOT( "forAllExec not defined for the given ExecutionMode." );
 }
@@ -176,10 +176,10 @@ void forAllImpl( forAllType<ExecutionMode::OpenMP>, IndexT N, BODY&& body )
  * callers to select an Axom execution policy. Dynamic has no specialization because an Axom execution-space type must
  * be selected at compile time.
  *
- * @tparam EXEC Tribol execution mode
+ * @tparam Exec Tribol execution mode
  * @tparam BLOCK_SIZE Number of threads in each CUDA or HIP block
  */
-template <ExecutionMode EXEC, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE>
+template <ExecutionMode Exec, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE>
 struct toAxomExecSpace;
 
 template <int BLOCK_SIZE>
@@ -216,17 +216,17 @@ struct toAxomExecSpace<ExecutionMode::Hip, BLOCK_SIZE> {
  * synchronizes before reading results on the host or releasing that storage. Sequential and OpenMP loops always
  * complete before returning.
  *
- * @tparam EXEC Execution mode for loop
+ * @tparam Exec Execution mode for loop
  * @tparam ASYNC Whether CUDA and HIP loops may return before their kernels complete
  * @tparam BLOCK_SIZE Block size for kernel (if applicable)
  * @tparam BODY Functor type defining what to do inside the loop
  * @param N Number of items to iterate over
  * @param body Functor body defining what to do inside the loop
  */
-template <ExecutionMode EXEC, bool ASYNC = false, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE, typename BODY>
+template <ExecutionMode Exec, bool ASYNC = false, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE, typename BODY>
 void forAllExec( IndexT N, BODY&& body )
 {
-  detail::forAllImpl<BODY, ASYNC, BLOCK_SIZE>( detail::forAllType<EXEC>(), N, std::move( body ) );
+  detail::forAllImpl<BODY, ASYNC, BLOCK_SIZE>( detail::forAllType<Exec>(), N, std::move( body ) );
 }
 
 /**

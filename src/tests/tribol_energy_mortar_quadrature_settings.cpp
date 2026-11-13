@@ -223,7 +223,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, returns_owned_outputs_for_each_calcu
   if ( std::get<0>( GetParam() ) == tribol::EnforcementLocation::Nodal ) {
     auto gaps = formulation.computeNodalGaps( mesh1, mesh2 );
     ASSERT_NE( gaps.gap, nullptr );
-    ASSERT_NE( gaps.dg_dx, nullptr );
+    ASSERT_NE( gaps.weighted_gap_jacobian, nullptr );
     EXPECT_EQ( gaps.force, nullptr );
     EXPECT_EQ( gaps.pressure, nullptr );
     EXPECT_EQ( gaps.df_dx, nullptr );
@@ -248,7 +248,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, returns_owned_outputs_for_each_calcu
   const bool nodal = std::get<0>( GetParam() ) == tribol::EnforcementLocation::Nodal;
   EXPECT_EQ( first.gap != nullptr, nodal );
   EXPECT_EQ( first.pressure != nullptr, nodal );
-  EXPECT_EQ( first.dg_dx != nullptr, nodal );
+  EXPECT_EQ( first.weighted_gap_jacobian != nullptr, nodal );
   const mfem::HypreParVector original( *first.force );
   ASSERT_GT( original.Norml2(), 0.0 );
   auto second = formulation.computeNodalForces( mesh1, mesh2 );
@@ -291,19 +291,19 @@ TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
       return createWithQuadratureRuleGenerator(
           quadratureOrder(), SmoothedProjectedEdgeMapping{},
           [&]( auto rule_generator ) -> std::unique_ptr<ContactFormulation> {
-            auto coarse = createCoarseSearch( cs.spatialDimension(), cs.getBinningMethod(), execution_mode,
+            auto coarse = createCoarseSearch( cs.spatialDim(), cs.getBinningMethod(), execution_mode,
                                               cs.getEffectiveBinningProximityScale(), 0.0 );
             auto refined = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
             PairListBuilder pair_builder{ std::move( coarse ), std::move( refined ) };
             if ( std::get<0>( GetParam() ) == EnforcementLocation::Nodal ) {
-              EnergyMortarNodalEnergy<decltype( rule_generator ), OffsetGap<OpposingNormalGap>> pair_function{
-                  std::move( rule_generator ), OffsetGap{ OpposingNormalGap{}, 0.0 } };
+              EnergyMortarNodalIntegralPairFunction<decltype( rule_generator ), OffsetGap<OpposingNormalGap>>
+                  pair_function{ std::move( rule_generator ), OffsetGap{ OpposingNormalGap{}, 0.0 } };
               return std::make_unique<NodalPenaltyEnergyMortar<Exec, decltype( pair_function )>>(
                   *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(),
                   std::move( pair_function ), PenaltyEnforcement{ SeriesPenaltyStiffness{}( 2.0, 6.0 ) },
                   std::move( pair_builder ) );
             }
-            EnergyMortarEnergy<decltype( rule_generator ), OffsetGap<OpposingNormalGap>> pair_function{
+            EnergyMortarEnergyPairFunction<decltype( rule_generator ), OffsetGap<OpposingNormalGap>> pair_function{
                 std::move( rule_generator ), SeriesPenaltyStiffness{}( 2.0, 6.0 ),
                 OffsetGap{ OpposingNormalGap{}, 0.0 } };
             return std::make_unique<QuadraturePointEnergyMortar<Exec, decltype( pair_function )>>(
@@ -355,12 +355,12 @@ TEST_P( EnergyMortarQuadratureSettingsTest, quadrature_force_only_matches_energy
     auto results = dispatchExecutionMode( mode, [&]<ExecutionMode Exec>() {
       return createWithQuadratureRuleGenerator(
           quadratureOrder(), SmoothedProjectedEdgeMapping{}, [&]( auto rule_generator ) -> ForceOnlyResults {
-            EnergyMortarEnergy<decltype( rule_generator ), OffsetGap<OpposingNormalGap>> pair_function{
+            EnergyMortarEnergyPairFunction<decltype( rule_generator ), OffsetGap<OpposingNormalGap>> pair_function{
                 std::move( rule_generator ), 100.0, OffsetGap{ OpposingNormalGap{}, 0.0 } };
             const ArrayT<InterfacePair> empty_pairs( 0, 0, cs.getMesh1().getAllocatorId() );
             auto empty =
                 evaluateAndAssemblePairEnergy<Exec>( empty_pairs, mesh1, mesh2, *cs.getMfemMeshData(), pair_function );
-            auto coarse = createCoarseSearch( cs.spatialDimension(), cs.getBinningMethod(), mode,
+            auto coarse = createCoarseSearch( cs.spatialDim(), cs.getBinningMethod(), mode,
                                               cs.getEffectiveBinningProximityScale(), 0.0 );
             auto refined = std::make_unique<ProjectedEdgeSearch>( mode, false );
             const auto pairs = PairListBuilder{ std::move( coarse ), std::move( refined ) }.build( mesh1, mesh2 );
@@ -548,7 +548,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, switches_locations_without_rebuildin
     ASSERT_TRUE( result.energy.has_value() );
     EXPECT_EQ( result.gap != nullptr, nodal );
     EXPECT_EQ( result.pressure != nullptr, nodal );
-    EXPECT_EQ( result.dg_dx != nullptr, nodal );
+    EXPECT_EQ( result.weighted_gap_jacobian != nullptr, nodal );
     const int index = nodal ? 0 : 1;
     if ( previous_forces[index] ) {
       auto difference = *result.force;
@@ -602,11 +602,11 @@ TEST_P( EnergyMortarQuadratureSettingsTest, nodal_activation_preserves_only_comp
   const auto penalty = cs.getContactFormulation()->computeNodalGaps( cs.getMesh1().getView(), cs.getMesh2().getView() );
   const auto weighted =
       createWithQuadratureRuleGenerator( quadratureOrder(), SmoothedProjectedEdgeMapping{}, [&]( auto rule_generator ) {
-        auto coarse = createCoarseSearch( cs.spatialDimension(), cs.getBinningMethod(), cs.getExecutionMode(),
+        auto coarse = createCoarseSearch( cs.spatialDim(), cs.getBinningMethod(), cs.getExecutionMode(),
                                           cs.getEffectiveBinningProximityScale(), 0.0 );
         auto refined = std::make_unique<ProjectedEdgeSearch>( cs.getExecutionMode(), false );
         PairListBuilder pair_builder{ std::move( coarse ), std::move( refined ) };
-        EnergyMortarNodalEnergy<decltype( rule_generator ), OffsetGap<OpposingNormalGap>> pair_function{
+        EnergyMortarNodalIntegralPairFunction<decltype( rule_generator ), OffsetGap<OpposingNormalGap>> pair_function{
             std::move( rule_generator ), OffsetGap{ OpposingNormalGap{}, 0.0 } };
         NodalLagrangeMultiplierEnergyMortar<ExecutionMode::Sequential, decltype( pair_function )> lm(
             *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), std::move( pair_function ),
@@ -619,8 +619,8 @@ TEST_P( EnergyMortarQuadratureSettingsTest, nodal_activation_preserves_only_comp
   for ( int dof = 0; dof < direction.Size(); ++dof ) {
     direction[dof] = dof + 1.0;
   }
-  penalty.dg_dx->Mult( direction, penalty_action );
-  weighted.dg_dx->Mult( direction, weighted_action );
+  penalty.weighted_gap_jacobian->Mult( direction, penalty_action );
+  weighted.weighted_gap_jacobian->Mult( direction, weighted_action );
   int local_open = 0, local_closed = 0;
   for ( int node = 0; node < weighted.gap->Size(); ++node ) {
     if ( ( *weighted.gap )[node] > 1.0e-12 ) {

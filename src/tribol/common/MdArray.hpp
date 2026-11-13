@@ -44,12 +44,12 @@ class MdArray {
   /**
    * @brief Return the number of values along one dimension
    *
-   * @tparam Dimension Zero-based dimension
+   * @tparam Dim Zero-based dimension
    */
-  template <IndexT Dimension>
+  template <IndexT Dim>
   TRIBOL_HOST_DEVICE static constexpr IndexT extent()
   {
-    return span_type::template extent<Dimension>();
+    return span_type::template extent<Dim>();
   }
 
  private:
@@ -131,14 +131,14 @@ class MdArray {
   /** @brief Access the contiguous storage with one read-only flat index */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE const T& operator[]( IndexT index ) const noexcept { return view()[index]; }
 
-  /** @brief Access one value using a row-major index for every dimension */
+  /** @brief Access one value using a row-major index for every dim */
   template <typename... Indices>
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE T& operator()( Indices... indices ) noexcept
   {
     return view()( indices... );
   }
 
-  /** @brief Access one read-only value using a row-major index for every dimension */
+  /** @brief Access one read-only value using a row-major index for every dim */
   template <typename... Indices>
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE const T& operator()( Indices... indices ) const noexcept
   {

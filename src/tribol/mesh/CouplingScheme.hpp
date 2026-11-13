@@ -128,7 +128,7 @@ class CouplingScheme {
      *
      * @return spatial dimension
      */
-    TRIBOL_HOST_DEVICE int spatialDimension() const { return m_mesh1.spatialDimension(); }
+    TRIBOL_HOST_DEVICE int spatialDim() const { return m_mesh1.spatialDim(); }
 
     /**
      * @brief Return a view of the first mesh in the coupling scheme
@@ -442,11 +442,11 @@ class CouplingScheme {
    *
    * @return spatial dimension
    */
-  int spatialDimension() const
+  int spatialDim() const
   {
     // same for both meshes since meshes are required to have the same element
     // types
-    return m_mesh1->spatialDimension();
+    return m_mesh1->spatialDim();
   }
 
   /**
@@ -1103,7 +1103,7 @@ TRIBOL_HOST_DEVICE inline bool CouplingScheme::Viewer::pruneMethodFacePair( cons
 
   auto& mesh1 = this->getMesh1View();
   auto& mesh2 = this->getMesh2View();
-  int dim = mesh1.spatialDimension();
+  int dim = mesh1.spatialDim();
   int num_nodes_face_1 = static_cast<int>( mesh1.numberOfNodesPerElement() );
   int num_nodes_face_2 = static_cast<int>( mesh2.numberOfNodesPerElement() );
 

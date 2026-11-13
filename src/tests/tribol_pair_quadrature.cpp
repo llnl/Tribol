@@ -118,13 +118,13 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
         results_view[0] = rule.result;
         const auto points = rule.getView();
         for ( IndexT q = 0; q < rule.result.num_required_points; ++q ) {
-          const auto physical1 = LinearEdgeGeometry::position( edge1.view(), points.geometry1_coords( q, 0 ) );
-          const auto physical2 = LinearEdgeGeometry::position( edge2.view(), points.geometry2_coords( q, 0 ) );
-          quadrature_point_data_view( q, 0 ) = points.geometry1_coords( q, 0 );
+          const auto physical1 = LinearEdgeGeometry::position( edge1.view(), points.geom1_parametric_coords( q, 0 ) );
+          const auto physical2 = LinearEdgeGeometry::position( edge2.view(), points.geom2_parametric_coords( q, 0 ) );
+          quadrature_point_data_view( q, 0 ) = points.geom1_parametric_coords( q, 0 );
           quadrature_point_data_view( q, 1 ) = physical1[0];
           quadrature_point_data_view( q, 2 ) = physical1[1];
           quadrature_point_data_view( q, 3 ) = points.weights[q];
-          quadrature_point_data_view( q, 4 ) = points.geometry2_coords( q, 0 );
+          quadrature_point_data_view( q, 4 ) = points.geom2_parametric_coords( q, 0 );
           quadrature_point_data_view( q, 5 ) = physical2[0];
           quadrature_point_data_view( q, 6 ) = physical2[1];
         }
@@ -193,8 +193,8 @@ TEST_P( EdgeQuadratureTest, owns_coordinate_snapshot )
     output[MidpointX] = midpoint[0];
     output[MidpointY] = midpoint[1];
     // Offset the original midpoint by one unit normal; its orthogonal projection still has parent coordinate zero.
-    output[ProjectedParent] = edge.parentCoordinate( LinearEdgeGeometry::Point{ 3.3, 3.4 } );
-    output[ExtrapolatedParent] = edge.parentCoordinate( edge.position( 1.5 ) );
+    output[ProjectedParent] = edge.parametricCoordinate( LinearEdgeGeometry::Point{ 3.3, 3.4 } );
+    output[ExtrapolatedParent] = edge.parametricCoordinate( edge.position( 1.5 ) );
     output[NormalX] = normal[0];
     output[NormalY] = normal[1];
     output[Length] = edge.length();
@@ -546,7 +546,8 @@ TEST_P( EdgeQuadratureTest, remaps_integration_surface_rule_after_first_edge_dou
         original_edge1.view(), edge2.view(), integration_surface_rule.getView() );
     const auto stretched_quadrature = generator.mapIntegrationSurfaceRuleToElements(
         lengthened_edge1.view(), edge2.view(), integration_surface_rule.getView() );
-    records_view[0] = stretched_quadrature.geometry1_coords( 0, 0 ) - original_quadrature.geometry1_coords( 0, 0 );
+    records_view[0] =
+        stretched_quadrature.geom1_parametric_coords( 0, 0 ) - original_quadrature.geom1_parametric_coords( 0, 0 );
     records_view[1] = stretched_quadrature.weights[0] / original_quadrature.weights[0];
   } );
   // Read the measurements on the host, including when the mapping ran on a GPU.
@@ -583,12 +584,12 @@ TEST_P( EdgeQuadratureTest, maps_integration_surface_rule_to_both_tilted_edges )
     results_view[0] = mapped_quadrature.result;
     const auto points = mapped_quadrature.getView();
     for ( int q = 0; q < mapped_quadrature.result.num_required_points; ++q ) {
-      const auto physical1 = LinearEdgeGeometry::position( edge1.view(), points.geometry1_coords( q, 0 ) );
-      const auto physical2 = LinearEdgeGeometry::position( edge2.view(), points.geometry2_coords( q, 0 ) );
+      const auto physical1 = LinearEdgeGeometry::position( edge1.view(), points.geom1_parametric_coords( q, 0 ) );
+      const auto physical2 = LinearEdgeGeometry::position( edge2.view(), points.geom2_parametric_coords( q, 0 ) );
       records_view( q, 0 ) = physical1[0];
       records_view( q, 1 ) = physical2[0];
       records_view( q, 2 ) = physical2[1];
-      records_view( q, 3 ) = points.geometry2_coords( q, 0 );
+      records_view( q, 3 ) = points.geom2_parametric_coords( q, 0 );
     }
   } );
   // Copy coordinates and operation results to the host for assertions on every execution backend.
@@ -635,8 +636,8 @@ TEST_P( EdgeQuadratureTest, uses_first_edge_length_for_physical_weights )
     results_view[0] = mapped_quadrature.result;
     const auto points = mapped_quadrature.getView();
     for ( int q = 0; q < mapped_quadrature.result.num_required_points; ++q ) {
-      const auto physical1 = LinearEdgeGeometry::position( edge1.view(), points.geometry1_coords( q, 0 ) );
-      const auto physical2 = LinearEdgeGeometry::position( edge2.view(), points.geometry2_coords( q, 0 ) );
+      const auto physical1 = LinearEdgeGeometry::position( edge1.view(), points.geom1_parametric_coords( q, 0 ) );
+      const auto physical2 = LinearEdgeGeometry::position( edge2.view(), points.geom2_parametric_coords( q, 0 ) );
       records_view( q, 0 ) = physical1[0];
       records_view( q, 1 ) = physical2[0];
       records_view( q, 2 ) = points.weights[q];
@@ -690,8 +691,10 @@ TEST_P( EdgeQuadratureTest, remaps_integration_surface_rule_after_second_edge_mo
         edge1.view(), original_edge2.view(), integration_surface_rule.getView() );
     const auto translated_quadrature = generator.mapIntegrationSurfaceRuleToElements(
         edge1.view(), translated_edge2.view(), integration_surface_rule.getView() );
-    records_view[0] = translated_quadrature.geometry1_coords( 0, 0 ) - original_quadrature.geometry1_coords( 0, 0 );
-    records_view[1] = translated_quadrature.geometry2_coords( 0, 0 ) - original_quadrature.geometry2_coords( 0, 0 );
+    records_view[0] =
+        translated_quadrature.geom1_parametric_coords( 0, 0 ) - original_quadrature.geom1_parametric_coords( 0, 0 );
+    records_view[1] =
+        translated_quadrature.geom2_parametric_coords( 0, 0 ) - original_quadrature.geom2_parametric_coords( 0, 0 );
     records_view[2] = translated_quadrature.weights[0] - original_quadrature.weights[0];
   } );
   // Read the before/after differences on the host for assertions on every execution backend.
@@ -714,8 +717,8 @@ TEST_P( EdgeQuadratureTest, remaps_integration_surface_rule_after_second_edge_mo
  * [-1,1] parent coordinate.
  */
 struct ParallelEdgeMapping {
-  using FirstGeometry = LinearEdgeGeometry;   ///< First straight-edge geometry.
-  using SecondGeometry = LinearEdgeGeometry;  ///< Second straight-edge geometry.
+  using Geometry1 = LinearEdgeGeometry;  ///< First straight-edge geometry.
+  using Geometry2 = LinearEdgeGeometry;  ///< Second straight-edge geometry.
 
   /**
    * @brief Find the common physical-x interval of the two horizontal edges.
@@ -749,11 +752,11 @@ struct ParallelEdgeMapping {
     if ( paired_points.capacity() < num_points ) return { QuadratureStatus::InsufficientCapacity, num_points };
     for ( IndexT q = 0; q < num_points; ++q ) {
       // The integration-surface coordinate is physical x. Setting y=0 locates the same x on each horizontal edge
-      // because parentCoordinate() projects the point orthogonally onto the edge's line.
+      // because parametricCoordinate() projects the point orthogonally onto the edge's line.
       const RealT x = integration_surface_rule.coords( q, 0 );
       const LinearEdgeGeometry::Point point{ x, 0.0 };
-      paired_points.geometry1_coords( q, 0 ) = edge1.parentCoordinate( point );
-      paired_points.geometry2_coords( q, 0 ) = edge2.parentCoordinate( point );
+      paired_points.geom1_parametric_coords( q, 0 ) = edge1.parametricCoordinate( point );
+      paired_points.geom2_parametric_coords( q, 0 ) = edge2.parametricCoordinate( point );
       // The supplied rule's weights already integrate over physical x; no edge-length factor is needed.
       paired_points.weights[q] = integration_surface_rule.weights[q];
     }
@@ -802,13 +805,13 @@ struct IncompatibleResultRuleGenerator : EdgeQuadratureRuleGenerator<1> {
 struct IncompatibleRuleMapping : SmoothedProjectedEdgeMapping {
   /**
    * @brief Declare element mapping for an incompatible integration-surface rule view.
-   * @param geometry1 First element geometry.
-   * @param geometry2 Second element geometry.
-   * @param rule Integration-surface view requiring two coordinate components per point.
+   * @param geometry1 Geometry1 type.
+   * @param geometry2 Geometry2 type.
+   * @param rule Integration-surface view requiring two coordinates per point.
    * @param output Paired element coordinates and weights.
    * @return Declared generation result type.
    */
-  QuadratureResult mapToElements( const FirstGeometry& geometry1, const SecondGeometry& geometry2,
+  QuadratureResult mapToElements( const Geometry1& geometry1, const Geometry2& geometry2,
                                   IntegrationSurfaceRuleView<2> rule, PairQuadratureRuleView<1, 1> output ) const;
 };
 
@@ -906,8 +909,8 @@ TEST_P( EdgeQuadratureTest, composes_with_a_different_integration_mapping )
     const auto points = generated_quadrature.getView();
     if ( generated_quadrature.result.status == QuadratureStatus::Success &&
          generated_quadrature.result.num_required_points == num_points ) {
-      records_view[0] = points.geometry1_coords( 0, 0 );
-      records_view[1] = points.geometry2_coords( 0, 0 );
+      records_view[0] = points.geom1_parametric_coords( 0, 0 );
+      records_view[1] = points.geom2_parametric_coords( 0, 0 );
       records_view[2] = points.weights[0];
     }
   } );

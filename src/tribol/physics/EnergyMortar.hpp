@@ -94,7 +94,7 @@ class NodalPenaltyEnergyMortar final : public ContactFormulation {
    * @brief Calculate normalized compressive nodal gaps and their coordinate Jacobian.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
-   * @return Owned gap and dg_dx; other outputs are absent.
+   * @return Owned gap and weighted_gap_jacobian; other outputs are absent.
    */
   ContactFormulationResult computeNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
   {
@@ -107,7 +107,7 @@ class NodalPenaltyEnergyMortar final : public ContactFormulation {
    * @brief Calculate nodal penalty energy, gaps, pressure, forces, and coordinate derivatives.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
-   * @return Owned energy, gap, pressure, force, dg_dx, and df_dx; df_dp is absent.
+   * @return Owned energy, gap, pressure, force, weighted_gap_jacobian, and df_dx; df_dp is absent.
    */
   ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
   {
@@ -156,7 +156,7 @@ class NodalLagrangeMultiplierEnergyMortar final : public ContactFormulation {
    * @brief Calculate signed weighted nodal gaps and their coordinate Jacobian.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
-   * @return Owned gap and dg_dx; other outputs are absent.
+   * @return Owned gap and weighted_gap_jacobian; other outputs are absent.
    */
   ContactFormulationResult computeNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
   {
@@ -169,7 +169,7 @@ class NodalLagrangeMultiplierEnergyMortar final : public ContactFormulation {
    * @brief Calculate nodal LM energy, gaps, pressure, forces, and mixed derivatives.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
-   * @return Owned energy, gap, pressure, force, dg_dx, df_dx, and df_dp.
+   * @return Owned energy, gap, pressure, force, weighted_gap_jacobian, df_dx, and df_dp.
    */
   ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
   {

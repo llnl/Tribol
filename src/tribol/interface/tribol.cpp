@@ -454,7 +454,7 @@ void registerNodalDisplacements( IndexT mesh_id, const RealT* dx, const RealT* d
     mesh->getNodalFields().m_is_nodal_displacement_set = false;
   }
 
-  if ( mesh->spatialDimension() == 3 ) {
+  if ( mesh->spatialDim() == 3 ) {
     if ( dz == nullptr ) {
       mesh->getNodalFields().m_is_nodal_displacement_set = false;
     }
@@ -477,7 +477,7 @@ void registerNodalVelocities( IndexT mesh_id, const RealT* vx, const RealT* vy, 
     mesh->getNodalFields().m_is_velocity_set = false;
   }
 
-  if ( mesh->spatialDimension() == 3 ) {
+  if ( mesh->spatialDim() == 3 ) {
     if ( vz == nullptr ) {
       mesh->getNodalFields().m_is_velocity_set = false;
     }
@@ -510,7 +510,7 @@ void registerNodalResponse( IndexT mesh_id, RealT* rx, RealT* ry, RealT* rz )
     mesh->getNodalFields().m_is_nodal_response_set = false;
   }
 
-  if ( mesh->spatialDimension() == 3 ) {
+  if ( mesh->spatialDim() == 3 ) {
     if ( rz == nullptr ) {
       mesh->getNodalFields().m_is_nodal_response_set = false;
     }

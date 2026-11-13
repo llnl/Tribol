@@ -567,7 +567,7 @@ bool CouplingScheme::isValidMethod()
     return false;
   }
 
-  int dim = this->spatialDimension();
+  int dim = this->spatialDim();
 
   // check all methods for basic validity issues for non-null meshes
   if ( !this->m_nullMeshes ) {
@@ -1442,7 +1442,7 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 
   RealT proj_ratio = m_parameters.timestep_pen_frac;
   // int num_sides = 2; // always 2 sides in a single coupling scheme
-  int dim = spatialDimension();
+  int dim = spatialDim();
 
   // Loop over each contact plane. Even if pair is not in contact, we still do a
   // velocity projection for that proximate face-pair to see if interpenetration
@@ -1809,7 +1809,7 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 void CouplingScheme::writeInterfaceOutput( const std::string& dir, const VisType v_type, const int cycle,
                                            const RealT t )
 {
-  int dim = this->spatialDimension();
+  int dim = this->spatialDim();
   if ( m_parameters.vis_cycle_incr > 0 && !( cycle % m_parameters.vis_cycle_incr ) ) {
     switch ( m_contactMethod ) {
       case SINGLE_MORTAR:

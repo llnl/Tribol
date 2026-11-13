@@ -28,25 +28,25 @@ namespace tribol {
  * @tparam GapDefinition Geometric or offset common-plane gap.
  */
 template <typename BaseRuleGenerator, typename GapDefinition = CommonPlaneGap>
-class CommonPlanePairFunction {
+class CommonPlaneResidualPairFunction {
  public:
-  using FirstGeometry = LinearEdgeGeometry;                                  ///< Geometry of the first directed edge.
-  using SecondGeometry = LinearEdgeGeometry;                                 ///< Geometry of the second directed edge.
-  using ResidualBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;                ///< Basis defining element residual DOFs.
-  using Coords1 = typename FirstGeometry::Coords;                            ///< Geometry1 coordinate view.
-  using Coords2 = typename SecondGeometry::Coords;                           ///< Geometry2 coordinate view.
-  static constexpr IndexT num_geom1_coords = Coords1::size();                ///< Geometry1 coordinate count.
-  static constexpr IndexT num_geom2_coords = Coords2::size();                ///< Geometry2 coordinate count.
-  static constexpr IndexT num_coords = num_geom1_coords + num_geom2_coords;  ///< Combined coordinate count.
-  using Result = PairResidualValue<ResidualBasis::num_nodes, ResidualBasis::num_nodes,
-                                   FirstGeometry::spatial_dimension>;  ///< Pair-local residual and state.
-  static_assert( FirstGeometry::spatial_dimension == SecondGeometry::spatial_dimension );
-  static constexpr IndexT num_values = Result::num_values;  ///< Residual entry count.
+  using Geometry1 = LinearEdgeGeometry;                         ///< Geometry of the first directed edge.
+  using Geometry2 = LinearEdgeGeometry;                         ///< Geometry of the second directed edge.
+  using ResidualBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>;   ///< Basis defining element residual DOFs.
+  using Coords1 = typename Geometry1::Coords;                   ///< Geometry1 coordinate view.
+  using Coords2 = typename Geometry2::Coords;                   ///< Geometry2 coordinate view.
+  static constexpr IndexT size_geom1_coords = Coords1::size();  ///< Geometry1 coordinate count.
+  static constexpr IndexT size_geom2_coords = Coords2::size();  ///< Geometry2 coordinate count.
+  static constexpr IndexT size_coords = size_geom1_coords + size_geom2_coords;  ///< Combined coordinate count.
+  using Result = PairResidualValue<ResidualBasis::size_basis, ResidualBasis::size_basis,
+                                   Geometry1::spatial_dim>;  ///< Pair-local residual and state.
+  static_assert( Geometry1::spatial_dim == Geometry2::spatial_dim );
+  static constexpr IndexT size_values = Result::size_values;  ///< Residual entry count.
 
   /** @brief Store fixed configuration. @param rule_generator Pair quadrature rule generator. @param penalty Stiffness.
    * @param gap Gap callable.
    */
-  TRIBOL_HOST_DEVICE CommonPlanePairFunction(
+  TRIBOL_HOST_DEVICE CommonPlaneResidualPairFunction(
       PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, BaseRuleGenerator> rule_generator, RealT penalty,
       GapDefinition gap = {} )
       : rule_generator_( rule_generator ), penalty_( penalty ), gap_( gap )
@@ -58,8 +58,8 @@ class CommonPlanePairFunction {
    * @return Residual and status; failed, empty, and open pairs return zero residual and inactive state. */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Result evaluate( Coords1 coords1, Coords2 coords2 ) const
   {
-    const FirstGeometry geometry1( coords1 );
-    const SecondGeometry geometry2( coords2 );
+    const Geometry1 geometry1( coords1 );
+    const Geometry2 geometry2( coords2 );
     const auto points = rule_generator_.generate( geometry1, geometry2 );
     Result pair_residual_data;
     pair_residual_data.quadrature_result = points.result;
@@ -73,26 +73,26 @@ class CommonPlanePairFunction {
     RealT center2 = 0.0;
     for ( IndexT point = 0; point < points.result.num_required_points; ++point ) {
       measure += points.weights[point];
-      center1 += points.weights[point] * points.geometry1_coords( point, 0 );
-      center2 += points.weights[point] * points.geometry2_coords( point, 0 );
+      center1 += points.weights[point] * points.geom1_parametric_coords( point, 0 );
+      center2 += points.weights[point] * points.geom2_parametric_coords( point, 0 );
     }
     const RealT gap = gap_( geometry1.position( center1 / measure ), geometry2.position( center2 / measure ), line );
     if ( gap > 0.0 ) {
       return pair_residual_data;
     }
-    pair_residual_data.has_active_points = true;
+    pair_residual_data.has_contributing_points = true;
     const RealT pressure = penalty_ * gap;
     for ( IndexT point = 0; point < points.result.num_required_points; ++point ) {
-      MdArray<RealT, ResidualBasis::num_nodes> basis1{}, basis2{};
-      ResidualBasis::eval( { &points.geometry1_coords( point, 0 ), ResidualBasis::parametric_dimension },
+      MdArray<RealT, ResidualBasis::size_basis> basis1{}, basis2{};
+      ResidualBasis::eval( { &points.geom1_parametric_coords( point, 0 ), ResidualBasis::parametric_dim },
                            basis1.view() );
-      ResidualBasis::eval( { &points.geometry2_coords( point, 0 ), ResidualBasis::parametric_dimension },
+      ResidualBasis::eval( { &points.geom2_parametric_coords( point, 0 ), ResidualBasis::parametric_dim },
                            basis2.view() );
-      for ( IndexT node = 0; node < ResidualBasis::num_nodes; ++node ) {
-        for ( IndexT component = 0; component < LinearEdgeGeometry::spatial_dimension; ++component ) {
-          const RealT traction = points.weights[point] * pressure * line.normal[component];
-          pair_residual_data.geometry1( node, component ) += basis1[node] * traction;
-          pair_residual_data.geometry2( node, component ) -= basis2[node] * traction;
+      for ( IndexT node = 0; node < ResidualBasis::size_basis; ++node ) {
+        for ( IndexT spatial_dim = 0; spatial_dim < LinearEdgeGeometry::spatial_dim; ++spatial_dim ) {
+          const RealT traction = points.weights[point] * pressure * line.normal[spatial_dim];
+          pair_residual_data.geometry1( node, spatial_dim ) += basis1[node] * traction;
+          pair_residual_data.geometry2( node, spatial_dim ) -= basis2[node] * traction;
         }
       }
     }

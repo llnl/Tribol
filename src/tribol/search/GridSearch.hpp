@@ -33,14 +33,14 @@ namespace tribol {
  * not retain views that may become stale when a caller replaces mesh arrays. GridSearch is sequential because Axom's
  * implicit grid uses axom::SEQ_EXEC.
  *
- * @tparam SpatialDimension Spatial dimension of the mesh coordinates
+ * @tparam SpatialDim Spatial dimension of the mesh coordinates
  */
-template <int SpatialDimension>
+template <int SpatialDim>
 class GridSearch : public CoarseSearch {
  public:
-  using BoundingBox = axom::primal::BoundingBox<RealT, SpatialDimension>;
-  using Point = axom::primal::Point<RealT, SpatialDimension>;
-  using ImplicitGrid = axom::spin::ImplicitGrid<SpatialDimension, axom::SEQ_EXEC, int>;
+  using BoundingBox = axom::primal::BoundingBox<RealT, SpatialDim>;
+  using Point = axom::primal::Point<RealT, SpatialDim>;
+  using ImplicitGrid = axom::spin::ImplicitGrid<SpatialDim, axom::SEQ_EXEC, int>;
   using SpaceVector = typename ImplicitGrid::SpaceVec;
   using SpatialBoundingBox = typename ImplicitGrid::SpatialBoundingBox;
 
@@ -101,12 +101,12 @@ class GridSearch : public CoarseSearch {
 
     typename ImplicitGrid::GridCell resolution;
     const SpaceVector grid_range = grid_bounding_box.range();
-    for ( int dimension = 0; dimension < SpatialDimension; ++dimension ) {
-      if ( average_ranges[dimension] > 0.0 && grid_range[dimension] > 0.0 ) {
-        resolution[dimension] = static_cast<IndexT>(
-            std::ceil( grid_resolution_scale * grid_range[dimension] / average_ranges[dimension] ) );
+    for ( int dim = 0; dim < SpatialDim; ++dim ) {
+      if ( average_ranges[dim] > 0.0 && grid_range[dim] > 0.0 ) {
+        resolution[dim] =
+            static_cast<IndexT>( std::ceil( grid_resolution_scale * grid_range[dim] / average_ranges[dim] ) );
       } else {
-        resolution[dimension] = 1;
+        resolution[dim] = 1;
       }
     }
 
@@ -146,19 +146,19 @@ class GridSearch : public CoarseSearch {
     for ( IndexT local_node = 0; local_node < mesh.numberOfNodesPerElement(); ++local_node ) {
       Point position;
       const IndexT node = mesh.getGlobalNodeId( element, local_node );
-      for ( int dimension = 0; dimension < SpatialDimension; ++dimension ) {
-        position[dimension] = mesh.getPosition()[dimension][node];
+      for ( int dim = 0; dim < SpatialDim; ++dim ) {
+        position[dim] = mesh.getPosition()[dim][node];
       }
       bounding_box.addPoint( position );
     }
     return bounding_box;
   }
 
-  /** @brief Expand a box by the configured fraction of its longest dimension and the residual gap */
+  /** @brief Expand a box by the configured fraction of its longest dim and the residual gap */
   void inflateBoundingBox( SpatialBoundingBox& bounding_box ) const
   {
-    const int longest_dimension = bounding_box.getLongestDimension();
-    const RealT expansion = binning_proximity_scale_ * bounding_box.range()[longest_dimension] + residual_gap_;
+    const int longest_dim = bounding_box.getLongestDimension();
+    const RealT expansion = binning_proximity_scale_ * bounding_box.range()[longest_dim] + residual_gap_;
     bounding_box.expand( expansion );
   }
 

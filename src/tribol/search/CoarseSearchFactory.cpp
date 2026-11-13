@@ -13,11 +13,10 @@ namespace tribol {
 
 namespace {
 
-/** @brief Select a coarse-search specialization for a compile-time spatial dimension */
-template <int SpatialDimension>
-std::unique_ptr<CoarseSearch> createCoarseSearchForDimension( BinningMethod binning_method,
-                                                              ExecutionMode execution_mode,
-                                                              RealT binning_proximity_scale, RealT residual_gap )
+/** @brief Select a coarse-search specialization for a compile-time spatial dim */
+template <int SpatialDim>
+std::unique_ptr<CoarseSearch> createCoarseSearchForDim( BinningMethod binning_method, ExecutionMode execution_mode,
+                                                        RealT binning_proximity_scale, RealT residual_gap )
 {
   if ( binning_method == BINNING_GRID && isOnDevice( execution_mode ) ) {
     SLIC_WARNING_ROOT( "BINNING_GRID is not supported on GPU. Switching coarse search to BINNING_BVH." );
@@ -26,26 +25,24 @@ std::unique_ptr<CoarseSearch> createCoarseSearchForDimension( BinningMethod binn
 
   switch ( binning_method ) {
     case BINNING_GRID:
-      return std::make_unique<GridSearch<SpatialDimension>>( binning_proximity_scale, residual_gap );
+      return std::make_unique<GridSearch<SpatialDim>>( binning_proximity_scale, residual_gap );
     case BINNING_BVH:
       switch ( execution_mode ) {
         case ExecutionMode::Sequential:
-          return std::make_unique<BvhSearch<SpatialDimension, ExecutionMode::Sequential>>( binning_proximity_scale,
-                                                                                           residual_gap );
+          return std::make_unique<BvhSearch<SpatialDim, ExecutionMode::Sequential>>( binning_proximity_scale,
+                                                                                     residual_gap );
 #ifdef TRIBOL_USE_OPENMP
         case ExecutionMode::OpenMP:
-          return std::make_unique<BvhSearch<SpatialDimension, ExecutionMode::OpenMP>>( binning_proximity_scale,
-                                                                                       residual_gap );
+          return std::make_unique<BvhSearch<SpatialDim, ExecutionMode::OpenMP>>( binning_proximity_scale,
+                                                                                 residual_gap );
 #endif
 #ifdef TRIBOL_USE_CUDA
         case ExecutionMode::Cuda:
-          return std::make_unique<BvhSearch<SpatialDimension, ExecutionMode::Cuda>>( binning_proximity_scale,
-                                                                                     residual_gap );
+          return std::make_unique<BvhSearch<SpatialDim, ExecutionMode::Cuda>>( binning_proximity_scale, residual_gap );
 #endif
 #ifdef TRIBOL_USE_HIP
         case ExecutionMode::Hip:
-          return std::make_unique<BvhSearch<SpatialDimension, ExecutionMode::Hip>>( binning_proximity_scale,
-                                                                                    residual_gap );
+          return std::make_unique<BvhSearch<SpatialDim, ExecutionMode::Hip>>( binning_proximity_scale, residual_gap );
 #endif
         default:
           SLIC_ERROR_ROOT( "BVH search cannot run with the configured execution mode." );
@@ -62,17 +59,17 @@ std::unique_ptr<CoarseSearch> createCoarseSearchForDimension( BinningMethod binn
 
 }  // namespace
 
-std::unique_ptr<CoarseSearch> createCoarseSearch( int spatial_dimension, BinningMethod binning_method,
+std::unique_ptr<CoarseSearch> createCoarseSearch( int spatial_dim, BinningMethod binning_method,
                                                   ExecutionMode execution_mode, RealT binning_proximity_scale,
                                                   RealT residual_gap )
 {
-  switch ( spatial_dimension ) {
+  switch ( spatial_dim ) {
     case 2:
-      return createCoarseSearchForDimension<2>( binning_method, execution_mode, binning_proximity_scale, residual_gap );
+      return createCoarseSearchForDim<2>( binning_method, execution_mode, binning_proximity_scale, residual_gap );
     case 3:
-      return createCoarseSearchForDimension<3>( binning_method, execution_mode, binning_proximity_scale, residual_gap );
+      return createCoarseSearchForDim<3>( binning_method, execution_mode, binning_proximity_scale, residual_gap );
     default:
-      SLIC_ERROR_ROOT( "Invalid coarse-search spatial dimension: " << spatial_dimension );
+      SLIC_ERROR_ROOT( "Invalid coarse-search spatial dim: " << spatial_dim );
       return nullptr;
   }
 }

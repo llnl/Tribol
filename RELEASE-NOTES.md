@@ -8,44 +8,34 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
-- `MeshData::Viewer::getFaceCoords<Coords>(face_id)` returns an owning, fixed-size `MdArray` with the requested
-  node/component extents. Pair kernels pass the two returned array views to pair functions. The existing output-pointer
-  overload remains available.
-- Added `MfemMatrixAssembler` for rectangular element-pair matrices with independent row and column spaces, maps,
-  and local DOF ordering. Pair-force and scalar-field assemblers share its host and execution-space block packing
-  and true-DOF transfers. Matrix views can pack blocks alongside vector accumulation in the same kernel.
-- Common Plane supports force-only MFEM evaluation without Enzyme through
-  `setMfemUseCommonPlaneFormulation(cs_id, true, false)`. This evaluates pair residuals directly and allocates no
-  Jacobian buffers or matrix transfer data; `df_dx` is absent. Existing two-argument calls still calculate forces and
-  an Enzyme Jacobian. Switching the third argument rebuilds the formulation and updates its transfer data.
-- Added opt-in linear 2D Common Plane contact through `setMfemUseCommonPlaneFormulation()`. `CommonPlaneFormulation`,
-  `NodalEnergyMortar`, and `QuadraturePointEnergyMortar` derive directly from `ContactFormulation` and compose shared
-  pair search, Enzyme derivative, contribution-buffer, and MFEM assembly components. Common Plane supports frictionless
-  constant-penalty contact, orders 0-5, and Sequential, OpenMP, CUDA, and HIP pair evaluation and numerical packing.
-  CUDA Enzyme builds require Clang-CUDA so the derivative plugin can transform device code. No nodal gap, energy, or
-  timestep is defined for Common Plane.
-- Added a two-stage execution pipeline that evaluates pairs into preallocated structure-of-arrays buffers and then
-  assembles vectors and element blocks in separate backend kernels. One `EnzymePairDerivative` supplies value/Jacobian
-  and weighted-Hessian operations to all formulations. Nodal penalty assembly uses explicit gap/area partials and
-  distinct penalty and Lagrange multiplier enforcement values. Quadrature-point enforcement needs no pressure/gap
-  field, and execution-space reductions globally sum Energy Mortar energy for both locations.
-- Contact formulations return caller-owned results through `computeNodalGaps()` and `computeNodalForces()`. MFEM
-  pair and nodal assemblers share the transfer of numerical contact contributions without retaining results.
+- Added a flexible `ContactFormulation` interface for developing energy- or residual-based contact methods with shared
+  search, differentiation, and assembly. Pair evaluation and assembly support Sequential, OpenMP, CUDA, and HIP;
+  CUDA differentiation requires Clang-CUDA. Common Plane and Energy Mortar use this interface alongside legacy methods.
+- Added mixed-field assembly with independent row and column FE spaces for rectangular matrices, including
+  displacement-pressure coupling in Lagrange multiplier methods.
+- Added opt-in linear 2D frictionless constant-penalty Common Plane contact through
+  `setMfemUseCommonPlaneFormulation()`. Force-only evaluation works without Enzyme; coordinate Jacobians require
+  Enzyme. Read results through `getMfemContactForce()` and `getMfemDfDx()`; the force getter returns a contact residual,
+  opposite in sign to the physical force from the legacy `getMfemResponse()` path.
 - Added `ProjectedEdgeSearch` to reject self-pairs, optionally reject shared-node pairs, and require opposing edge
   normals. Projected overlap is determined during quadrature generation rather than refined search; zero-width
   integration intervals produce no active penalty quadrature points.
-- Added allocation-free edge quadrature generation within Energy Mortar pair calculations. `setQuadratureOrder()`
-  selects orders 0-5, using one, two, or three Gauss-Legendre points; the default order 5 retains three points.
-- Added the `ENERGY_MORTAR` contact method for MFEM coupling schemes built with Enzyme and Redecomp. The method supports
-  nodal and quadrature-point enforcement and provides differentiated residual and Jacobian contributions.
+- Added `setQuadratureOrder()` for Energy Mortar and opted-in Common Plane linear-edge contact. Orders 0-5 select
+  one, two, or three Gauss-Legendre points; the default order 5 uses three points.
+- Added the `ENERGY_MORTAR` contact method for MFEM coupling schemes built with Enzyme and Redecomp, with nodal or
+  quadrature-point enforcement and the execution mode selected through `registerMfemCouplingScheme()`. Penalty
+  enforcement requires positive, finite constants supplied through `setMfemKinematicConstantPenalty()` before
+  `update()`.
 - Added the `VISCOUS_TANGENTIAL` contact model and APIs for setting mesh-specific viscous damping coefficients through
   native and MFEM coupling schemes.
 - Added nonzero residual-gap enforcement through `tribol::setResidualGap()`. Positive residual gaps shift the effective
   contact surface away from the registered mesh surface.
+- Added execution-mode selection through `registerMfemCouplingScheme()` and optional rank-count and force-rebuild
+  arguments to `updateMfemParallelDecomposition()`.
 - Added GPU execution support to the MFEM interface and GPU-aware Redecomp field and matrix transfers.
 - Added support for builds that configure `axom::IndexType` as a 64-bit integer across Tribol and Redecomp.
-- Added MFEM APIs for true-dof contact force, gap, and pressure vectors and for the individual `df/dx`, `df/dp`, and
-  `dg/dx` Jacobian blocks.
+- Added MFEM APIs for true-DOF contact force, gap, and pressure vectors, and Jacobian blocks through `getMfemDfDx()`,
+  `getMfemDfDp()`, and `getMfemWeightedGapJacobian()`.
 - Added higher-order contact infrastructure for quadratic Lagrange edges and 9-node quadrilaterals, including
   GPU-capable fixed-extent `MdSpan` and `MdArray` containers, basis and mapping utilities, and quadratic `MeshData`
   storage. Existing contact methods do not yet consume quadratic faces.
@@ -83,181 +73,9 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
-- Pair evaluation functions in `PairKernel.hpp` now return their value/Jacobian/Hessian buffers instead of writing
-  through caller-supplied output views. Pass the pair array directly; its size and allocator determine the returned
-  storage. Evaluation completes before returning, and results remain valid after the input pair list is destroyed.
-  Quadrature status checking remains separate. Production evaluation/assembly helpers and direct test callers use the
-  returned buffers.
-- Quadrature generators and generated rules now have distinct names. `PairQuadratureRule` was renamed to
-  `PairQuadratureRuleGenerator`, `PairQuadratureData` to `PairQuadratureRule`, and `PairQuadratureView` to
-  `PairQuadratureRuleView`. The generator is declared in `integ/PairQuadratureRuleGenerator.hpp`; generated rules remain
-  in `integ/QuadratureCommon.hpp`. Its nested `Generator` and `QuadratureData` aliases are now `BaseRuleGenerator` and
-  `Rule`. `QuadratureRuleGeneratorFactory.hpp` and `createWithQuadratureRuleGenerator()` replace the previous factory
-  header and function names. The compatibility concept is now `CompatibleQuadratureMappingAndGenerator`.
-  Formulation template parameters and local configuration objects use rule-generator terminology. Update direct
-  callers and includes to these names; quadrature generation and contact calculations are unchanged.
-- Common Plane and Energy Mortar now use concrete formulation templates that directly own their fixed pair function
-  and pair search and reference the required transfer data. Common Plane selects
-  `CommonPlaneResidualFormulation<Exec, PairFunction>` or
-  `CommonPlaneResidualJacobianFormulation<Exec, PairFunction>`. Energy Mortar selects
-  `QuadraturePointEnergyMortar<Exec, PairFunction>`, `NodalPenaltyEnergyMortar<Exec, PairFunction>`, or
-  `NodalLagrangeMultiplierEnergyMortar<Exec, PairFunction>`. Public MFEM selection functions and default outputs are
-  unchanged. Reusable pair and nodal evaluation/assembly functions retain concrete execution-mode and pair-function
-  types without a second runtime hierarchy. The former `ContactEvaluation` interface and its evaluator classes were
-  removed.
-- Weighted Hessian differentiation reuses the Jacobian produced by its AD calls. Nodal Energy Mortar reads weights
-  directly in that kernel, removing the temporary pair-weight array and its gather kernel.
-- Renamed `PairHessianBuffer`/`PairHessianView` to `PairJacobianHessianBuffer`/`PairJacobianHessianView` and
-  `PairEnergyHessianBuffer`/`PairEnergyHessianView` to `PairValueJacobianHessianBuffer`/`PairValueJacobianHessianView`.
-  Their gradient members and accessors now use Jacobian terminology; scalar energy buffers use `values` for function
-  outputs. Removed unused `PairResidualValue::coordinate_count` and the internal Energy Mortar `PairFunction` and
-  `CoordinateView` aliases. The nodal penalty area tolerance is defined with the nodal assembly functions in
-  `EnergyMortarEvaluation.hpp`.
-- Formulations, pair kernels, and MFEM assembly methods take a concrete `ExecutionMode` template argument.
-  Factories select formulation specializations at construction; evaluation, assembly, and scalar reductions retain
-  that mode as a template argument. `ContactFormulation` calls and runtime search configuration are unchanged.
-- Replaced `MfemPairAssembler` and `MfemFieldAssembler` with `MfemVectorAssembler` for scalar or vector nodal values.
-  Geometry blocks select input entries and connectivity; explicit FE spaces and a host transfer callback select the
-  destination. No Jacobian data or assembly-mode flags are required. Use `MfemMatrixAssembler` for matrices; callers
-  can compose vector and matrix views in one pair kernel and collect separate owned results.
-- Common Plane and quadrature-point Energy Mortar functions return
-  `PairResidualValue<num_geom1_dofs, num_geom2_dofs, num_components>` and
-  `PairEnergyValue` directly, without `PrimalResult` aliases. Nodal Energy Mortar's result struct is named
-  `NodalIntegralValue` and provides named weighted-gap and tributary-area access while retaining their contiguous
-  function-value layout, activation, and quadrature status.
-- Pair functions expose `evaluate(coords1, coords2)` with separate `Coords1` and `Coords2` view types. Common Plane and
-  both Energy Mortar functions construct their geometry inside this calculation. `PairFunctionType` checks both input
-  types, coordinate counts, and result types; functions without geometry types can implement the same interface.
-  `EnzymePairDerivative` takes both coordinate views as separate active inputs and includes geometry construction in
-  Jacobians and Hessians. Their coordinate ordering remains geometry1 followed by geometry2. Removed
-  `PairCoordinateFunction` and the separate `CoordinateFunctionType` concept. Scalar value/Jacobian/Hessian operations
-  require exactly one output.
-- Size variables use `num_...`, template parameters use `Num...`, and size accessors use `numberOf...()`, including
-  `num_values`, `NumBlocks`, `numberOfPairs()`, and `numberOfValues()`. `FaceElementTraits::node_count` and
-  `BasisFunction::node_count` are now `num_nodes`; `getFaceNodeCount()` is now `numberOfFaceNodes()`.
-  `QuadratureResult::required_point_count` is now `num_required_points`, and rule generators expose `max_num_points`
-  instead of `max_points`. `LinearEdgeGeometry::vertex_count` is now `num_vertices`. These API renames require caller
-  updates.
-- Scalar pair differentiation returns the value, Jacobian, Hessian, quadrature status, and activation together through
-  `EnzymePairDerivative::valueJacobianAndHessian()`. The scalar value/Jacobian/Hessian kernel reuses those AD outputs,
-  removing separate value and Jacobian calculations while retaining active zero-value derivatives.
-- Pair value/Jacobian differentiation returns values, quadrature status, and activation from its forward AD calls.
-  `evaluatePairValuesAndJacobians()` no longer evaluates the function separately to obtain quadrature state, and
-  differentiation no longer performs a separate value calculation. Pair results expose numerical values through
-  `values()`.
-- Pair value/Jacobian differentiation stops after its first AD call on failure or inactivity and returns zero
-  numerical outputs while retaining quadrature status and activation. Weighted Jacobian/Hessian calculations return
-  zeros without AD when every output weight is zero. Nodal gap and area integration remains active for open contact.
-- Public Energy Mortar registration accepts the enabled nonsequential execution modes. Formulation-backed updates
-  skip legacy face-geometry calculations and method-data setup while preserving the registered mesh node count.
-- Pair differentiation uses value, Jacobian, and Hessian terminology. Renamed `PairVectorGradients` to
-  `PairValueJacobian`, `PairWeightedHessian` to `PairWeightedJacobianHessian`, their first-derivative members to
-  `jacobian`, and `EnzymePairDerivative::weightedHessian()` to `weightedJacobianAndHessian()`. Removed the nested
-  `ValueJacobian` and `WeightedHessian` aliases; return types name the result structs directly.
-- Pair kernels use Jacobian and Hessian terminology for derivatives of the input function. Renamed
-  `evaluatePairWeightedHessians()` to `evaluatePairWeightedJacobiansAndHessians()` and
-  `evaluatePairEnergiesAndHessians()` to `evaluatePairValuesJacobiansAndHessians()`, documenting the weighted sums and
-  the scalar-only requirement of the value/Jacobian/Hessian kernel.
-- Moved pair evaluation, differentiation, contribution buffers, and MFEM vector/matrix assemblers into
-  `tribol/assembly/`. Includes for `PairContribution`, `PairEvaluation`, `PairKernel`, `PairEvaluationAssembly`,
-  `MfemVectorAssembler` and `MfemMatrixAssembler` now use that directory. Element-block copying is private to
-  `MfemMatrixAssembler`; `MfemElementAssembly.hpp` was removed.
-- Moved `GlobalScalarAssembler.hpp` from `tribol/physics/` to `tribol/common/`; it provides execution-space and MPI
-  scalar reductions independently of contact physics.
-- Added `tribol/common/Reductions.hpp` with `ReduceMax` and `ReduceSum` aliases accepting a Tribol `ExecutionMode`.
-- Nodal Energy Mortar selects penalty or Lagrange multiplier force calculation once at entry, with separate functions
-  sharing field and weighted-Hessian assembly. The LM calculation no longer allocates an unused area-weight vector.
-- Pair functions accept gap callables directly, replacing the `CommonPlaneResidual`, `EnergyMortarPenalty`, and
-  `EnergyMortarNodal` configuration wrappers. Nodal field partials are calculated by
-  `EnergyMortarNodalPartials::evaluate()` without a gap template parameter. Common Plane and Energy Mortar formulations
-  retain their configured pair functions instead of reconstructing them for each calculation.
-- Removed the `withFrozenQuadrature()` and scalar `energy()` methods. Pair calculations use `evaluate()` directly.
-  Energy Mortar derivative tests use production quadrature generation.
-- Removed the test-only `computeCommonPlaneResidual()`, `computeCommonPlanePair()`, and `CommonPlanePairData` interfaces
-  from the production header. Pair tests construct `CommonPlanePairFunction` and use the generic Enzyme derivatives.
-- Composed Common Plane clips crossing edges to their geometric interpenetrating overlap before generating quadrature
-  and uses uniform pressure from the overlap-centroid gap, matching legacy Common Plane. The configured base rule is
-  retained; residual-gap offsets affect pressure after geometric clipping.
-- Renamed `CommonPlaneEdgeMapping::Frame` to `CommonPlaneLine` and `makeFrame()` to `computeCommonPlaneLine()`.
-- Removed the `CommonPlaneQuadratureRule`, `CommonPlaneResidualData`, and `CommonPlaneFormulation::PairFunction` aliases;
-  use `PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, BaseRuleGenerator>`, `PairResidualValue`, and
-  `CommonPlanePairFunction` directly.
-- Residual, scalar-energy, and nodal functions implement their evaluation and assembly operations directly.
-  Scalar-energy forces reuse the energy Jacobian; force Jacobians use the energy Hessian.
-- Common Plane penalty stiffness is fixed at formulation construction, including MFEM penalty scales. The MFEM
-  constant and scale setters replace an enabled formulation without requiring a decomposition refresh. The factory
-  validates the effective scalar stiffness before constructing the formulation's pair function. The stiffness-combination
-  template parameter and `ScaledMeshPenaltyInputs` reader were removed. Low-level `setPenaltyScale()` calls leave a
-  composed formulation's stiffness unchanged; use `setMfemKinematicPenaltyScale()` to change Common Plane scales.
-- Energy Mortar penalty stiffness is fixed at formulation construction. `setMfemKinematicConstantPenalty()` constructs
-  the initial formulation once constants are available and replaces it on later changes. `update()` rejects incomplete
-  penalty settings. Nodal LM formulations remain available at registration. Direct Energy Mortar constructors now take
-  transfer data, a configured pair function, a pair search, and `PenaltyEnforcement` when required. The
-  stiffness-combination template parameter and `RegisteredPenaltyInputs`/`RegisteredPenaltyEnforcement` readers were
-  removed. Fixed penalties must be positive and finite, and no default stiffness is substituted for missing constants.
-- Replaced `MfemNodalAssembler` and `MfemNodalQuantityData` with separate vector and matrix assemblers and per-field
-  `AssembledField` results. Scalar nodal fields sharing one submesh space can accumulate in one kernel.
-  Energy Mortar applies gap normalization and activation in the formulation and uses matrix assembly for weighted
-  coordinate Hessians. Scalar true-DOF transfer is provided by `MfemSubmeshData`.
-- Nodal penalty Energy Mortar uses `0.5*k*min(weighted_gap,0)^2/area` with consistent coordinate derivatives,
-  including area coupling. This includes the one-half factor missing from the previous nodal penalty energy.
-- `ContactFormulation` now returns caller-owned results from `computeNodalGaps()` and `computeNodalForces()` instead
-  of retaining outputs behind update methods and getters. Direct Common Plane and Energy Mortar formulations replace
-  the adapter and pair-method hierarchy. Energy Mortar energies are globally summed; callers must not reduce them again
-  across MPI ranks.
-- Numerical coordinates, fields, matrix entries, and parameters consistently use `RealT` across Tribol, shared helpers,
-  Redecomp, examples, and tests. Public C++ declarations retain their existing types because `RealT` aliases `double`;
-  generated C/Fortran interfaces retain their concrete types. Single precision remains unsupported.
-- Pair quadrature constructs element geometry objects once per pair calculation. For linear edges, each object copies
-  the endpoints and caches the edge vector and squared length. Mappings use these objects by const reference to compute
-  Primal points, parent projection coordinates, normals, and Jacobians.
-- Energy Mortar generates and consumes quadrature locally for each pair during gap and force calculations. Independent
-  quadrature output is deferred, and the unused `ContactFormulation::updateIntegrationRule()` operation is removed.
-- `PairQuadratureRuleGenerator<Mapping, IntegrationSurfaceRuleGenerator>` combines an element-pair integration mapping
-  with an integration-surface rule generator. `SmoothedProjectedEdgeMapping` selects the integration interval and maps
-  its quadrature points to both elements' parametric coordinates, applying the first geometry's physical Jacobian once.
-  `EdgeQuadratureRuleGenerator<NumPoints>` generates an `IntegrationSurfaceRule` containing Gauss points and weights
-  expressed in the supplied interval's coordinates. `IntegrationSurfaceRuleView` provides read-only access to those
-  arrays.
-  The calculator evaluates fields at the returned parametric coordinates on both elements.
-  C++20 concepts check the mapping and generator interfaces, including whether the generator accepts the integration
-  surface and the mapping accepts the generated rule's view.
-  Rule generators expose `coordinate_dimension`, the number of coordinate components per integration-surface point.
-  `LinearEdgeGeometry`, `FaceElementTraits`, and `BasisFunction` use `parametric_dimension` in place of `parent_dimension`.
-  Consumers access geometry properties through the generator's `FirstGeometry` and `SecondGeometry` types. Energy Mortar
-  checks both geometries' parametric dimensions, vertex counts, and spatial dimensions.
-  Coordinate fields use `coords`, `geometry1_coords`, and `geometry2_coords`; geometry input views use the `Coords`
-  alias.
-  The basis coordinate-array alias is renamed from `ParentCoordinates` to `ParentCoords`, and
-  `GetParentNodeCoordinates()` is renamed to `getParentNodeCoords()`.
-  Methods and functions in `BasisFunction.hpp` use lower camelCase, including `eval()`, `evalParentDerivatives()`,
-  `numberOfFaceNodes()`, `mapToPhysical()`, and the interpolation, Jacobian, and derivative utilities.
-  Coordinates and weights use `RealT`. Mapping types identify their element geometries; the implemented mapping supports
-  straight two-dimensional edges. Co-oriented edge pairs produce valid zero-point rules before point generation,
-  including when mapping existing integration-surface quadrature points; they cannot contribute tributary area or
-  residual-gap forces.
-  Failed quadrature generation reports an exception before Energy Mortar consumes the data, including differentiated
-  calculations; invalid geometry is not treated as a valid zero-point rule.
-- Energy Mortar pair functions own their configured pair rules and fixed gap settings. The mapping owns smoothing
-  settings; refined search leaves overlap determination to quadrature generation.
-  `ContactParams` no longer carries a runtime quadrature count or smoothing length. Each calculation generates
-  quadrature from the current geometry and maps the points to both elements.
-  Pair evaluation, field scatter, element-block packing, and scalar reduction are device-callable.
-- Energy Mortar calculates straight-edge normal gaps from the corresponding element points. Very short nondegenerate mortar
-  edges retain their normal gap instead of depending on a line-intersection tolerance. The calculator's unused
-  `compute_projection_bounds()` helper was removed. Surface-region representations beyond edge intervals remain future
-  work.
 - `tribol::registerMesh()` now requires a `tribol::FaceOrderType` argument after `element_type`. Existing callers must
   pass `tribol::LINEAR_LAGRANGE` to retain the previous linear-face behavior.
 - Tribol now requires C++20 or newer.
-- Renamed the public element values `LINEAR_EDGE`, `LINEAR_TRIANGLE`, `LINEAR_QUAD`, `LINEAR_TET`, and `LINEAR_HEX` to
-  `EDGE`, `TRIANGLE`, `QUAD`, `TET`, and `HEX`; element shape and finite element order are now selected separately.
-- Renamed `FaceOrderType::LINEAR` to `FaceOrderType::LINEAR_LAGRANGE` and `ContactModel::COULOMB` to
-  `ContactModel::FRICTION_COULOMB`.
-- Renamed `LoggingLevel` values from all-uppercase names to `Undefined`, `Debug`, `Info`, `Warning`, `Error`, and
-  `NumLoggingLevels`.
-- `registerMfemCouplingScheme()` now accepts an optional execution mode, and `updateMfemParallelDecomposition()` accepts
-  an optional rank count and force-rebuild flag.
 - MFEM coupling schemes now reuse their Redecomp mesh until a configurable displacement threshold is exceeded. Use
   `setMfemRedecompTriggerDisplacement()` to change the threshold or force a rebuild when updating the decomposition.
 - MFEM element thickness calculations now use registered reference coordinates when available.
@@ -269,8 +87,6 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   interface.
 - Logging refactor using SLIC macros. Lots of warnings were demoted to DEBUG level.
 - Changed various computational geometry routines to return a FaceGeomError enum error handling
-- Changed LoggingLevel enum names by appending a TRIBOL prefix to avoid MACRO conflicts
-  with host codes.
 - Removed nullptr errors to allow more function call uniformity for ranks with null meshes. 
   Also removed any `continue` statements for null meshes.
 - Updated logging in timestep vote by removing logging macro calls inside the interface pairs 
@@ -290,7 +106,6 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   what device the mesh pointers reside on.
 - `tribol::registerCouplingScheme()` now contains an optional `tribol::ExecutionMode` argument
   that provides a suggested programming model to execute parallel loops.
-- `tribol::LoggingLevel`s renamed from `TRIBOL_<NAME>` to `<NAME>`
 - Changed the computational geometry to work within a class interface that confines method specific
   comp geom calculations for ease of use/implementation.  
 - All computational geometry for common planes now uses the average face plane coordinates of each face.
@@ -300,10 +115,6 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Added check for face convexity. If non-convex, a full overlap calculation is triggered for common-plane.
 
 ### Fixed
-- Pair and nodal assembly return allocated zero vectors and matrices for empty pair lists.
-  Common Plane reads updated MFEM penalty constants without another decomposition refresh. The installed pair-kernel
-  header can be included without Enzyme. Quadrature-point Energy Mortar reuses its weighted energy gradient as the
-  residual instead of differentiating the scalar energy twice.
 - Fixed MFEM submesh-to-parent dual transfers so shared response and gap degrees of freedom are assembled correctly.
 - Improved 2D polygon intersection robustness by using consistent length scales and centroid-angle vertex ordering.
 - Fixed Energy Mortar smoothing derivatives and memory leaks in Enzyme differentiation paths.

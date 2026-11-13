@@ -36,16 +36,16 @@ namespace tribol {
  * Each call accepts current mesh views, then builds and releases its BVH and bounding boxes. The search object does not
  * retain views that may become stale when a caller replaces mesh arrays.
  *
- * @tparam SpatialDimension Spatial dimension of the mesh coordinates
- * @tparam ExecMode Tribol execution mode used to construct and query bounding boxes
+ * @tparam SpatialDim Spatial dimension of the mesh coordinates
+ * @tparam Exec Tribol execution mode used to construct and query bounding boxes
  */
-template <int SpatialDimension, ExecutionMode ExecMode>
+template <int SpatialDim, ExecutionMode Exec>
 class BvhSearch : public CoarseSearch {
  public:
-  using AxomExecSpace = typename toAxomExecSpace<ExecMode>::type;
-  using Bvh = axom::spin::BVH<SpatialDimension, AxomExecSpace, RealT>;
+  using AxomExecSpace = typename toAxomExecSpace<Exec>::type;
+  using Bvh = axom::spin::BVH<SpatialDim, AxomExecSpace, RealT>;
   using BoundingBox = typename Bvh::BoxType;
-  using Point = axom::primal::Point<RealT, SpatialDimension>;
+  using Point = axom::primal::Point<RealT, SpatialDim>;
 
   /**
    * @brief Store the proximity values applied by each BVH search
@@ -108,45 +108,44 @@ class BvhSearch : public CoarseSearch {
                                                candidates.size(), mesh1.getAllocatorId() );
       auto pairs = candidate_pairs.view();
       // This loop must finish before its local BVH query arrays are released at the end of the call.
-      forAllExec<ExecMode, false>( candidates.size(), [candidate_ids, candidate_offsets, candidate_counts,
-                                                       pairs] TRIBOL_HOST_DEVICE( IndexT candidate ) {
+      forAllExec<Exec, false>( candidates.size(), [candidate_ids, candidate_offsets, candidate_counts,
+                                                   pairs] TRIBOL_HOST_DEVICE( IndexT candidate ) {
         const IndexT mesh1_element = candidate_ids[candidate];
         const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, candidate );
         pairs[candidate] = InterfacePair{ mesh1_element, mesh2_element };
       } );
     } else {
-      ArrayT<IndexT> retained_pair_count_data( { 0 }, mesh1.getAllocatorId() );
-      auto retained_pair_count = retained_pair_count_data.view();
+      ArrayT<IndexT> num_retained_pairs_data( { 0 }, mesh1.getAllocatorId() );
+      auto num_retained_pairs = num_retained_pairs_data.view();
 
       // A same-mesh search visits both pair directions. Exact self-pairs cannot represent contact, so retain only one
       // direction of each pair with different element IDs.
-      forAllExec<ExecMode, false>( candidates.size(), [candidate_ids, candidate_offsets, candidate_counts,
-                                                       retained_pair_count] TRIBOL_HOST_DEVICE( IndexT candidate ) {
+      forAllExec<Exec, false>( candidates.size(), [candidate_ids, candidate_offsets, candidate_counts,
+                                                   num_retained_pairs] TRIBOL_HOST_DEVICE( IndexT candidate ) {
         const IndexT mesh1_element = candidate_ids[candidate];
         const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, candidate );
         if ( mesh1_element > mesh2_element ) {
-          tribol::atomicInc( retained_pair_count.data() );
+          tribol::atomicInc( num_retained_pairs.data() );
         }
       } );
 
-      ArrayT<IndexT, 1, MemorySpace::Host> retained_pair_count_host( retained_pair_count_data );
-      candidate_pairs = ArrayT<InterfacePair>( axom::ArrayOptions::Uninitialized{}, retained_pair_count_host[0],
-                                               retained_pair_count_host[0], mesh1.getAllocatorId() );
-      retained_pair_count_data.fill( 0 );
+      ArrayT<IndexT, 1, MemorySpace::Host> num_retained_pairs_host( num_retained_pairs_data );
+      candidate_pairs = ArrayT<InterfacePair>( axom::ArrayOptions::Uninitialized{}, num_retained_pairs_host[0],
+                                               num_retained_pairs_host[0], mesh1.getAllocatorId() );
+      num_retained_pairs_data.fill( 0 );
       auto pairs = candidate_pairs.view();
 
       // Repeating the inexpensive ID comparison avoids retaining a candidate-sized Boolean array between kernels.
-      forAllExec<ExecMode, false>(
-          candidates.size(), [candidate_ids, candidate_offsets, candidate_counts, retained_pair_count,
-                              pairs] TRIBOL_HOST_DEVICE( IndexT candidate ) {
-            const IndexT mesh1_element = candidate_ids[candidate];
-            const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, candidate );
-            if ( mesh1_element <= mesh2_element ) {
-              return;
-            }
-            const IndexT retained_pair_index = tribol::atomicInc( retained_pair_count.data() );
-            pairs[retained_pair_index] = InterfacePair{ mesh1_element, mesh2_element };
-          } );
+      forAllExec<Exec, false>( candidates.size(), [candidate_ids, candidate_offsets, candidate_counts,
+                                                   num_retained_pairs, pairs] TRIBOL_HOST_DEVICE( IndexT candidate ) {
+        const IndexT mesh1_element = candidate_ids[candidate];
+        const IndexT mesh2_element = algorithm::binarySearch( candidate_offsets, candidate_counts, candidate );
+        if ( mesh1_element <= mesh2_element ) {
+          return;
+        }
+        const IndexT retained_pair_index = tribol::atomicInc( num_retained_pairs.data() );
+        pairs[retained_pair_index] = InterfacePair{ mesh1_element, mesh2_element };
+      } );
     }
 
     return candidate_pairs;
@@ -172,35 +171,35 @@ class BvhSearch : public CoarseSearch {
     const RealT binning_proximity_scale = binning_proximity_scale_;
     const RealT residual_gap = residual_gap_;
     // The BVH reads these boxes immediately after this function returns, so the loop must complete before returning.
-    forAllExec<ExecMode, false>( mesh.numberOfElements(), [mesh, boxes, binning_proximity_scale,
-                                                           residual_gap] TRIBOL_HOST_DEVICE( IndexT element ) {
+    forAllExec<Exec, false>( mesh.numberOfElements(), [mesh, boxes, binning_proximity_scale,
+                                                       residual_gap] TRIBOL_HOST_DEVICE( IndexT element ) {
       BoundingBox bounding_box;
       Point average_position;
-      for ( int dimension = 0; dimension < SpatialDimension; ++dimension ) {
-        average_position[dimension] = 0.0;
+      for ( int dim = 0; dim < SpatialDim; ++dim ) {
+        average_position[dim] = 0.0;
       }
 
-      const IndexT node_count = mesh.numberOfNodesPerElement();
-      for ( IndexT local_node = 0; local_node < node_count; ++local_node ) {
+      const IndexT num_nodes_per_element = mesh.numberOfNodesPerElement();
+      for ( IndexT local_node = 0; local_node < num_nodes_per_element; ++local_node ) {
         const IndexT node = mesh.getGlobalNodeId( element, local_node );
         Point position;
-        for ( int dimension = 0; dimension < SpatialDimension; ++dimension ) {
-          position[dimension] = mesh.getPosition()[dimension][node];
-          average_position[dimension] += position[dimension];
+        for ( int dim = 0; dim < SpatialDim; ++dim ) {
+          position[dim] = mesh.getPosition()[dim][node];
+          average_position[dim] += position[dim];
         }
         bounding_box.addPoint( position );
       }
 
-      for ( int dimension = 0; dimension < SpatialDimension; ++dimension ) {
-        average_position[dimension] /= static_cast<RealT>( node_count );
+      for ( int dim = 0; dim < SpatialDim; ++dim ) {
+        average_position[dim] /= static_cast<RealT>( num_nodes_per_element );
       }
 
       RealT squared_nodal_radius = 0.0;
-      for ( IndexT local_node = 0; local_node < node_count; ++local_node ) {
+      for ( IndexT local_node = 0; local_node < num_nodes_per_element; ++local_node ) {
         const IndexT node = mesh.getGlobalNodeId( element, local_node );
         RealT squared_distance = 0.0;
-        for ( int dimension = 0; dimension < SpatialDimension; ++dimension ) {
-          const RealT distance = mesh.getPosition()[dimension][node] - average_position[dimension];
+        for ( int dim = 0; dim < SpatialDim; ++dim ) {
+          const RealT distance = mesh.getPosition()[dim][node] - average_position[dim];
           squared_distance += distance * distance;
         }
         squared_nodal_radius = squared_distance > squared_nodal_radius ? squared_distance : squared_nodal_radius;

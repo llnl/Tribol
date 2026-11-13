@@ -22,8 +22,8 @@ namespace tribol {
  * include the physical line measure. No element Jacobian is applied during reverse mapping.
  */
 struct CommonPlaneEdgeMapping {
-  using FirstGeometry = LinearEdgeGeometry;           ///< First directed edge.
-  using SecondGeometry = LinearEdgeGeometry;          ///< Second directed edge.
+  using Geometry1 = LinearEdgeGeometry;               ///< First directed edge.
+  using Geometry2 = LinearEdgeGeometry;               ///< Second directed edge.
   using Point = LinearEdgeGeometry::Point;            ///< Physical point.
   using Vector = LinearEdgeGeometry::Vector;          ///< Physical displacement or unit direction.
   using IntegrationSurface = EdgeQuadratureInterval;  ///< Physical tangent-coordinate interval.
@@ -42,8 +42,8 @@ struct CommonPlaneEdgeMapping {
    * @pre Both edges are nondegenerate and have opposing normals.
    * @return Owning origin and unit directions; no geometry is retained.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static CommonPlaneLine computeCommonPlaneLine( const FirstGeometry& edge1,
-                                                                                         const SecondGeometry& edge2 )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static CommonPlaneLine computeCommonPlaneLine( const Geometry1& edge1,
+                                                                                         const Geometry2& edge2 )
   {
     auto normal = edge2.normal() - edge1.normal();
     normal /= std::sqrt( normal.dot( normal ) );
@@ -59,8 +59,8 @@ struct CommonPlaneEdgeMapping {
    * disjoint or touching intervals return valid collapsed bounds and contribute no points. Noncrossing edges retain
    * their full projected overlap, allowing the pressure law to apply a prescribed residual gap.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurface makeIntegrationSurface( const FirstGeometry& edge1,
-                                                                                     const SecondGeometry& edge2 ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurface makeIntegrationSurface( const Geometry1& edge1,
+                                                                                     const Geometry2& edge2 ) const
   {
     if ( !validEdges( edge1, edge2 ) ) {
       return { MdArray<RealT, 2>{ 0.0, 0.0 }, false };
@@ -101,12 +101,12 @@ struct CommonPlaneEdgeMapping {
    * @param edge1 First current edge.
    * @param edge2 Second current edge.
    * @param reference Physical tangent coordinates and line weights.
-   * @param[out] output Parent coordinates and physical line weights.
+   * @param[out] output Parametric coordinates and physical line weights.
    * @return Success with the initialized count; nonopposing normals give zero points. InvalidGeometry returns zero
    * points, and InsufficientCapacity reports the full required count. Either failure leaves output untouched.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult mapToElements( const FirstGeometry& edge1,
-                                                                          const SecondGeometry& edge2,
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult mapToElements( const Geometry1& edge1,
+                                                                          const Geometry2& edge2,
                                                                           IntegrationSurfaceRuleView<1> reference,
                                                                           PairQuadratureRuleView<1, 1> output ) const
   {
@@ -128,9 +128,9 @@ struct CommonPlaneEdgeMapping {
     const RealT determinant2 = Vector::cross_product( edge2.direction(), line.normal )[2];
     for ( IndexT q = 0; q < num_points; ++q ) {
       const auto point = line.origin + reference.coords( q, 0 ) * line.tangent;
-      output.geometry1_coords( q, 0 ) =
+      output.geom1_parametric_coords( q, 0 ) =
           2.0 * Vector::cross_product( Vector( edge1.origin(), point ), line.normal )[2] / determinant1 - 1.0;
-      output.geometry2_coords( q, 0 ) =
+      output.geom2_parametric_coords( q, 0 ) =
           2.0 * Vector::cross_product( Vector( edge2.origin(), point ), line.normal )[2] / determinant2 - 1.0;
       output.weights[q] = reference.weights[q];
     }
@@ -147,8 +147,7 @@ struct CommonPlaneEdgeMapping {
    * @param edge2 Second current edge.
    * @return Whether both squared lengths are finite and at least the squared minimum length.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static bool validEdges( const FirstGeometry& edge1,
-                                                                  const SecondGeometry& edge2 )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static bool validEdges( const Geometry1& edge1, const Geometry2& edge2 )
   {
     const RealT minimum_squared = minimum_edge_length_ * minimum_edge_length_;
     return std::isfinite( edge1.squaredLength() ) && std::isfinite( edge2.squaredLength() ) &&
@@ -161,8 +160,7 @@ struct CommonPlaneEdgeMapping {
    * @param edge2 Second current edge.
    * @return True when the edge normals have a negative dot product.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static bool opposingNormals( const FirstGeometry& edge1,
-                                                                       const SecondGeometry& edge2 )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static bool opposingNormals( const Geometry1& edge1, const Geometry2& edge2 )
   {
     return edge1.direction().dot( edge2.direction() ) < 0.0;
   }

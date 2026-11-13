@@ -13,24 +13,25 @@ namespace tribol {
 MfemVectorAssembler::MfemVectorAssembler( MfemVectorSpace space, std::vector<MfemVectorBlock> blocks )
     : space_( std::move( space ) ), blocks_( std::move( blocks ) )
 {
-  const int components = space_.redecomp_fes.GetVDim();
-  if ( components <= 0 || components != space_.final_fes.GetVDim() || !space_.transfer || blocks_.empty() ) {
+  const int num_values_per_node = space_.redecomp_fes.GetVDim();
+  if ( num_values_per_node <= 0 || num_values_per_node != space_.final_fes.GetVDim() || !space_.transfer ||
+       blocks_.empty() ) {
     throw std::invalid_argument(
-        "Vector assembly requires matching positive component counts, a transfer, and blocks." );
+        "Vector assembly requires matching positive numbers of values per node, a transfer, and blocks." );
   }
   for ( const auto& block : blocks_ ) {
-    const IndexT nodes = block.connectivity.shape()[1];
-    if ( block.geometry < 0 || block.geometry > 1 || block.offset < 0 || nodes <= 0 ) {
+    const IndexT num_nodes_per_element = block.connectivity.shape()[1];
+    if ( block.geometry < 0 || block.geometry > 1 || block.offset < 0 || num_nodes_per_element <= 0 ) {
       throw std::invalid_argument( "Vector geometry selectors, offsets, or node counts are invalid." );
     }
     const IndexT max_size = std::numeric_limits<IndexT>::max();
-    if ( nodes > ( max_size - block.offset ) / components ) {
+    if ( num_nodes_per_element > ( max_size - block.offset ) / num_values_per_node ) {
       throw std::length_error( "Vector input extent exceeds the supported index range." );
     }
-    num_values_ = std::max( num_values_, block.offset + nodes * components );
+    size_values_ = std::max( size_values_, block.offset + num_nodes_per_element * num_values_per_node );
   }
-  redecomp_dual_values_.SetSpace( const_cast<mfem::FiniteElementSpace*>( &space_.redecomp_fes ) );
-  redecomp_dual_values_ = 0.0;
+  redecomp_values_.SetSpace( const_cast<mfem::FiniteElementSpace*>( &space_.redecomp_fes ) );
+  redecomp_values_ = 0.0;
 }
 
 shared::ParVector MfemVectorAssembler::assemble() const
@@ -40,7 +41,7 @@ shared::ParVector MfemVectorAssembler::assemble() const
   result.fill( 0.0 );
   mfem::Vector local( final_fes->GetVSize() );
   local = 0.0;
-  space_.transfer( redecomp_dual_values_, local );
+  space_.transfer( redecomp_values_, local );
   final_fes->GetProlongationMatrix()->MultTranspose( local, result.get() );
   return result;
 }
@@ -50,20 +51,22 @@ MfemVectorAssembler makeDisplacementVectorAssembler( const MfemMeshData& data, M
                                                      MeshData::Viewer mesh2 )
 {
   const auto& redecomp_fes = *data.GetRedecompResponse().FESpace();
-  const int components = redecomp_fes.GetVDim();
-  if ( components <= 0 || mesh1.spatialDimension() != components || mesh2.spatialDimension() != components ||
-       mesh1.numberOfNodesPerElement() <= 0 || mesh2.numberOfNodesPerElement() <= 0 ) {
+  const int num_values_per_node = redecomp_fes.GetVDim();
+  if ( num_values_per_node <= 0 || mesh1.spatialDim() != num_values_per_node ||
+       mesh2.spatialDim() != num_values_per_node || mesh1.numberOfNodesPerElement() <= 0 ||
+       mesh2.numberOfNodesPerElement() <= 0 ) {
     throw std::invalid_argument( "Displacement vector assembly requires matching geometry and FE-space dimensions." );
   }
-  const IndexT nodes1 = mesh1.numberOfNodesPerElement();
-  if ( nodes1 > std::numeric_limits<IndexT>::max() / components ) {
+  const IndexT num_geom1_nodes = mesh1.numberOfNodesPerElement();
+  if ( num_geom1_nodes > std::numeric_limits<IndexT>::max() / num_values_per_node ) {
     throw std::length_error( "Displacement vector input extent exceeds the supported index range." );
   }
-  return { { *data.GetParentCoords().ParFESpace(), redecomp_fes,
-             [&data]( const mfem::GridFunction& values, mfem::Vector& destination ) {
-               data.GetParentRedecompTransfer().RedecompToParent( values, destination );
-             } },
-           { { 0, mesh1.getConnectivity(), 0 }, { 1, mesh2.getConnectivity(), nodes1 * components } } };
+  return {
+      { *data.GetParentCoords().ParFESpace(), redecomp_fes,
+        [&data]( const mfem::GridFunction& values, mfem::Vector& destination ) {
+          data.GetParentRedecompTransfer().RedecompToParent( values, destination );
+        } },
+      { { 0, mesh1.getConnectivity(), 0 }, { 1, mesh2.getConnectivity(), num_geom1_nodes * num_values_per_node } } };
 }
 
 MfemVectorAssembler makeNodalVectorAssembler( const MfemSubmeshData& data, MeshData::Viewer mesh1 )

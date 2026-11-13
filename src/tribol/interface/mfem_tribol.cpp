@@ -656,7 +656,7 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
     }
     auto DfDx = std::move( result.df_dx );
     auto DfDp = std::move( result.df_dp );
-    auto DgDx = std::move( result.dg_dx );
+    auto DgDx = std::move( result.weighted_gap_jacobian );
 
     // Determine sizes
     mfem::Array<int> offsets( 3 );
@@ -759,7 +759,7 @@ std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp( IndexT cs_id )
   return nullptr;
 }
 
-std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx( IndexT cs_id )
+std::unique_ptr<mfem::HypreParMatrix> getMfemWeightedGapJacobian( IndexT cs_id )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(
@@ -768,9 +768,9 @@ std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx( IndexT cs_id )
                               cs_id ) );
 
   if ( cs->hasContactFormulation() ) {
-    return std::move( cs->getContactFormulationResult().dg_dx );
+    return std::move( cs->getContactFormulationResult().weighted_gap_jacobian );
   }
-  SLIC_ERROR_ROOT( "getMfemDgDx() is only supported for coupling schemes with a ContactFormulation." );
+  SLIC_ERROR_ROOT( "getMfemWeightedGapJacobian() is only supported for coupling schemes with a ContactFormulation." );
   return nullptr;
 }
 

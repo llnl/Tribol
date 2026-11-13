@@ -152,7 +152,7 @@ void checkForceSense( tribol::CouplingScheme const* cs, bool isTied = false )
       for ( tribol::IndexT a = 0; a < mesh.numberOfNodesPerElement(); ++a ) {
         int node_id = mesh.getGlobalNodeId( kf, a );
         RealT force_mag = 0.;
-        if ( mesh1.spatialDimension() == 3 ) {
+        if ( mesh1.spatialDim() == 3 ) {
           force_mag = tribol::dotProd( mesh.getResponse()[0][node_id], mesh.getResponse()[1][node_id],
                                        mesh.getResponse()[2][node_id], mesh.getElementNormals()[0][kf],
                                        mesh.getElementNormals()[1][kf], mesh.getElementNormals()[2][kf] );

@@ -9,7 +9,7 @@
  * Jacobians, without contact physics. Nonmatching two- and three-edge surfaces exercise shared nodes, scalar submesh
  * transfers, three independent fields with signed values, and all matrix blocks. Tests run on one and two ranks, with
  * contact data on rank zero. Assembly tests run on Sequential and OpenMP backends. Physics and Enzyme derivatives are
- * checked by the formulation tests. Separate force and matrix components check shared-node accumulation and combine
+ * checked by the formulation tests. Separate force and matrix assemblers check shared-node accumulation and combine
  * their views in one kernel.
  * Independent scalar/coordinate matrix assemblers check both rectangular orientations, execution-space packing,
  * invalid layouts, and empty pair lists on the same nonmatching surfaces.
@@ -27,29 +27,29 @@
 
 namespace {
 using namespace tribol;
-constexpr int dimension = 2;       ///< Physical components in this two-dimensional patch.
-constexpr int nodes_per_edge = 2;  ///< Finite-element nodes on a linear edge.
-constexpr int pair_size = 2;       ///< Elements in a pair.
-constexpr int pair_dofs = dimension * nodes_per_edge * pair_size;  ///< Coordinate entries per pair.
+constexpr int dim = 2;                                       ///< Spatial dimension of this patch.
+constexpr int nodes_per_edge = 2;                            ///< Finite-element nodes on a linear edge.
+constexpr int pair_size = 2;                                 ///< Elements in a pair.
+constexpr int pair_dofs = dim * nodes_per_edge * pair_size;  ///< Coordinate entries per pair.
 constexpr RealT tolerance = 1.0e-10;  ///< Roundoff allowance for MPI sums and matrix-vector products.
 
 /**
- * @brief Assign distinct residual-row values from physical position and component.
+ * @brief Assign distinct residual-row values from physical position and spatial coordinate index.
  * @param x Node x coordinate.
  * @param y Node y coordinate.
- * @param component Spatial component.
+ * @param spatial_dim Spatial coordinate index.
  * @return Row value for the prescribed residual and outer-product Jacobian.
  */
-RealT rowValue( RealT x, RealT y, int component ) { return 1.0 + x + 2.0 * y + 3.0 * component; }
+RealT rowValue( RealT x, RealT y, int spatial_dim ) { return 1.0 + x + 2.0 * y + 3.0 * spatial_dim; }
 
 /**
  * @brief Assign column values different from the row values, so transposing the Jacobian changes its action.
  * @param x Node x coordinate.
  * @param y Node y coordinate.
- * @param component Spatial component.
+ * @param spatial_dim Spatial coordinate index.
  * @return Column value for the prescribed outer-product Jacobian.
  */
-RealT columnValue( RealT x, RealT y, int component ) { return -2.0 + 3.0 * x - y - 4.0 * component; }
+RealT columnValue( RealT x, RealT y, int spatial_dim ) { return -2.0 + 3.0 * x - y - 4.0 * spatial_dim; }
 
 /** @brief Provide parent and Redecomp transfers without selecting a contact formulation. */
 class MfemVectorAssemblerTest : public testing::Test {
@@ -63,8 +63,8 @@ class MfemVectorAssemblerTest : public testing::Test {
                                                                                    .translate( { 0.0, 0.99 } )
                                                                                    .updateBdrAttrib( 1, 5 )
                                                                                    .updateBdrAttrib( 3, 6 ) } ) ) ) );
-    fec_ = std::make_unique<mfem::H1_FECollection>( 1, dimension );
-    fes_ = std::make_unique<mfem::ParFiniteElementSpace>( mesh_.get(), fec_.get(), dimension, mfem::Ordering::byVDIM );
+    fec_ = std::make_unique<mfem::H1_FECollection>( 1, dim );
+    fes_ = std::make_unique<mfem::ParFiniteElementSpace>( mesh_.get(), fec_.get(), dim, mfem::Ordering::byVDIM );
     coords_ = std::make_unique<mfem::ParGridFunction>( fes_.get() );
     mesh_->GetNodes( *coords_ );
     registerMfemCouplingScheme( 0, 0, 1, *mesh_, *coords_, { 3 }, { 5 }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE,
@@ -88,9 +88,8 @@ class MfemVectorAssemblerTest : public testing::Test {
   {
     auto& cs = scheme();
     auto& mesh_data = *cs.getMfemMeshData();
-    auto submesh_data =
-        std::make_unique<MfemSubmeshData>( mesh_data.GetSubmesh(), mesh_data.GetLORMesh(),
-                                           std::make_unique<mfem::H1_FECollection>( 1, dimension ), 1, false );
+    auto submesh_data = std::make_unique<MfemSubmeshData>(
+        mesh_data.GetSubmesh(), mesh_data.GetLORMesh(), std::make_unique<mfem::H1_FECollection>( 1, dim ), 1, false );
     submesh_data->UpdateMfemSubmeshData( mesh_data.GetRedecompMesh(), true );
     cs.setMfemSubmeshData( std::move( submesh_data ) );
     cs.setMfemJacobianData( std::make_unique<MfemJacobianData>( mesh_data, *cs.getMfemSubmeshData() ) );
@@ -121,7 +120,7 @@ class MfemVectorAssemblerTest : public testing::Test {
 /** @brief Share scalar-vector/matrix configuration and execution across nodal assembly tests. */
 class TestNodalAssembly {
  public:
-  /** @brief Configure independent components for each field. @param data Displacement transfers.
+  /** @brief Configure independent vector and matrix assemblers for each field. @param data Displacement transfers.
    * @param dual Scalar transfers. @param jacobian Matrix transfers. @param mesh1 Field geometry.
    * @param mesh2 Second coordinate geometry. @param num_fields Independent fields. @param num_pairs Pair count. */
   TestNodalAssembly( const MfemMeshData& data, const MfemSubmeshData& dual, const MfemJacobianData& jacobian,
@@ -154,16 +153,16 @@ class TestNodalAssembly {
   }
 
  private:
-  std::vector<MfemVectorAssembler> vectors_;   ///< Scalar components, one per field.
-  std::vector<MfemMatrixAssembler> matrices_;  ///< Coordinate Jacobian components, one per field.
+  std::vector<MfemVectorAssembler> vectors_;   ///< Vector assemblers, one per scalar field.
+  std::vector<MfemMatrixAssembler> matrices_;  ///< Coordinate Jacobian assemblers, one per field.
 };
 
 // A nonsymmetric outer product has a known action that checks row/column ordering and every pair block independently.
 TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_jacobian )
 {
   mfem::ParGridFunction direction( fes_.get() );
-  mfem::VectorFunctionCoefficient direction_coefficient( dimension, []( const mfem::Vector& x, mfem::Vector& value ) {
-    value.SetSize( dimension );
+  mfem::VectorFunctionCoefficient direction_coefficient( dim, []( const mfem::Vector& x, mfem::Vector& value ) {
+    value.SetSize( dim );
     value[0] = 2.0 + x[0] - 0.5 * x[1];
     value[1] = -1.0 + 0.25 * x[0] + 2.0 * x[1];
   } );
@@ -187,8 +186,8 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
     for ( const int node : nodes ) {
       const RealT x = ( *coords_ )[fes_->DofToVDof( node, 0 )];
       const RealT y = ( *coords_ )[fes_->DofToVDof( node, 1 )];
-      for ( int component = 0; component < dimension; ++component ) {
-        local_column_sums[side] += columnValue( x, y, component ) * direction[fes_->DofToVDof( node, component )];
+      for ( int spatial_dim = 0; spatial_dim < dim; ++spatial_dim ) {
+        local_column_sums[side] += columnValue( x, y, spatial_dim ) * direction[fes_->DofToVDof( node, spatial_dim )];
       }
     }
   }
@@ -209,18 +208,18 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
     for ( const int node : nodes ) {
       const RealT x = ( *coords_ )[fes_->DofToVDof( node, 0 )];
       const RealT y = ( *coords_ )[fes_->DofToVDof( node, 1 )];
-      for ( int component = 0; component < dimension; ++component ) {
-        element_column_sum += columnValue( x, y, component ) * direction[fes_->DofToVDof( node, component )];
+      for ( int spatial_dim = 0; spatial_dim < dim; ++spatial_dim ) {
+        element_column_sum += columnValue( x, y, spatial_dim ) * direction[fes_->DofToVDof( node, spatial_dim )];
       }
     }
     const RealT pair_column_sum = num_elements[1 - side] * element_column_sum + column_sums[1 - side];
     for ( const int node : nodes ) {
       const RealT x = ( *coords_ )[fes_->DofToVDof( node, 0 )];
       const RealT y = ( *coords_ )[fes_->DofToVDof( node, 1 )];
-      for ( int component = 0; component < dimension; ++component ) {
-        const int dof = fes_->DofToVDof( node, component );
-        expected_residual[dof] += rowValue( x, y, component ) * num_elements[1 - side];
-        expected_action[dof] += rowValue( x, y, component ) * pair_column_sum;
+      for ( int spatial_dim = 0; spatial_dim < dim; ++spatial_dim ) {
+        const int dof = fes_->DofToVDof( node, spatial_dim );
+        expected_residual[dof] += rowValue( x, y, spatial_dim ) * num_elements[1 - side];
+        expected_action[dof] += rowValue( x, y, spatial_dim ) * pair_column_sum;
       }
     }
   }
@@ -240,16 +239,17 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
                              pair_list.getAllocatorID() );
     for ( IndexT pair = 0; pair < pair_list.size(); ++pair ) {
       const auto element_pair = pair_list[pair];
-      std::array<MdArray<RealT, nodes_per_edge, dimension>, pair_size> coords;
+      std::array<MdArray<RealT, nodes_per_edge, dim>, pair_size> coords;
       mesh1.getFaceCoords( element_pair.element_id1_, coords[0].data() );
       mesh2.getFaceCoords( element_pair.element_id2_, coords[1].data() );
       MdArray<RealT, pair_dofs> columns{};
       for ( int side = 0; side < pair_size; ++side ) {
         for ( int node = 0; node < nodes_per_edge; ++node ) {
-          for ( int component = 0; component < dimension; ++component ) {
-            const int dof = ( side * nodes_per_edge + node ) * dimension + component;
-            residuals[pair * pair_dofs + dof] = rowValue( coords[side]( node, 0 ), coords[side]( node, 1 ), component );
-            columns[dof] = columnValue( coords[side]( node, 0 ), coords[side]( node, 1 ), component );
+          for ( int spatial_dim = 0; spatial_dim < dim; ++spatial_dim ) {
+            const int dof = ( side * nodes_per_edge + node ) * dim + spatial_dim;
+            residuals[pair * pair_dofs + dof] =
+                rowValue( coords[side]( node, 0 ), coords[side]( node, 1 ), spatial_dim );
+            columns[dof] = columnValue( coords[side]( node, 0 ), coords[side]( node, 1 ), spatial_dim );
           }
         }
       }
@@ -265,8 +265,8 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
     assembler.addPairs<ExecutionMode::Sequential, pair_dofs, 2>(
         pair_list,
         [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) { return residuals_view[pair * pair_dofs + row]; } );
-    constexpr IndexT element_dofs = pair_dofs / 2;
-    matrix.addPairs<ExecutionMode::Sequential, element_dofs, element_dofs, 4>(
+    constexpr IndexT size_geom_coords = pair_dofs / 2;
+    matrix.addPairs<ExecutionMode::Sequential, size_geom_coords, size_geom_coords, 4>(
         pair_list, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
           return jacobians_view[( pair * pair_dofs + row ) * pair_dofs + column];
         } );
@@ -279,7 +279,7 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
   EXPECT_FALSE( result.time_step.has_value() );
   EXPECT_EQ( result.gap, nullptr );
   EXPECT_EQ( result.pressure, nullptr );
-  EXPECT_EQ( result.dg_dx, nullptr );
+  EXPECT_EQ( result.weighted_gap_jacobian, nullptr );
   EXPECT_EQ( result.df_dp, nullptr );
   auto error = *result.force;
   error -= *residual_reference;
@@ -308,8 +308,8 @@ TEST_F( MfemVectorAssemblerTest, returns_zero_outputs_for_empty_or_rejected_inpu
   const auto zero_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };
   EXPECT_THROW( ( assembler.addPairs<ExecutionMode::Sequential, pair_dofs - 1, 2>( empty, zero_force ) ),
                 std::invalid_argument );
-  constexpr IndexT element_dofs = pair_dofs / 2;
-  EXPECT_THROW( ( matrix.view<element_dofs - 1, element_dofs, 4>() ), std::invalid_argument );
+  constexpr IndexT size_geom_coords = pair_dofs / 2;
+  EXPECT_THROW( ( matrix.view<size_geom_coords - 1, size_geom_coords, 4>() ), std::invalid_argument );
   const auto force = assembler.assemble();
   const auto df_dx = matrix.assemble();
   EXPECT_EQ( force.size(), fes_->GetTrueVSize() );
@@ -368,7 +368,7 @@ TEST_F( MfemVectorAssemblerTest, assembles_scalar_fields_and_dual_transfers )
     MPI_Allreduce( &local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
     const RealT expected = global_pairs * node_weight_sum * factors[field_index];
     EXPECT_NEAR( global_sum, expected, tolerance );
-    result[field_index].dvalues_dx->Mult( direction, action );
+    result[field_index].jacobian->Mult( direction, action );
     const RealT local_action = action.Sum();
     RealT global_action = 0.0;
     MPI_Allreduce( &local_action, &global_action, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
@@ -419,13 +419,13 @@ TEST_P( MfemMatrixAssemblerTest, assembles_rectangular_matrices_in_both_orientat
     const auto& map2 = data.GetElemMap2();
     const MfemMatrixSpace scalar{ transfer.SubmeshPath(), dual.GetRedecompFESpace() };
     const MfemMatrixSpace coordinate{ transfer.ParentPath(), *data.GetRedecompResponse().FESpace() };
-    constexpr IndexT element_dofs = nodes_per_edge * dimension;
+    constexpr IndexT size_geom_coords = nodes_per_edge * dim;
     const std::vector<MfemMatrixBlock> forward_blocks{
         { 0, 0, nodes_per_edge, nodes_per_edge, 0, 0, map1, map1 },
-        { 0, 1, nodes_per_edge, nodes_per_edge, 0, element_dofs, map1, map2 } };
+        { 0, 1, nodes_per_edge, nodes_per_edge, 0, size_geom_coords, map1, map2 } };
     const std::vector<MfemMatrixBlock> reverse_blocks{
         { 0, 0, nodes_per_edge, nodes_per_edge, 0, 0, map1, map1 },
-        { 1, 0, nodes_per_edge, nodes_per_edge, element_dofs, 0, map2, map1 } };
+        { 1, 0, nodes_per_edge, nodes_per_edge, size_geom_coords, 0, map2, map1 } };
     const int allocator_id = pair_list.getAllocatorID();
     MfemMatrixAssembler forward( scalar, coordinate, forward_blocks, pair_list.size(), allocator_id );
     MfemMatrixAssembler reverse( coordinate, scalar, reverse_blocks, pair_list.size(), allocator_id );
@@ -433,7 +433,7 @@ TEST_P( MfemMatrixAssemblerTest, assembles_rectangular_matrices_in_both_orientat
     MfemMatrixAssembler empty_forward( scalar, coordinate, forward_blocks, 0, allocator_id );
     const ArrayT<InterfacePair> wrong_pair_count( pair_list.size() + 1, pair_list.size() + 1, allocator_id );
 
-    EXPECT_THROW( ( forward.view<3, element_dofs, 2>() ), std::invalid_argument );
+    EXPECT_THROW( ( forward.view<3, size_geom_coords, 2>() ), std::invalid_argument );
     auto invalid_blocks = forward_blocks;
     invalid_blocks[0].row_geometry = 2;
     EXPECT_THROW( MfemMatrixAssembler( scalar, coordinate, invalid_blocks, 0, allocator_id ), std::invalid_argument );
@@ -450,11 +450,11 @@ TEST_P( MfemMatrixAssemblerTest, assembles_rectangular_matrices_in_both_orientat
     const auto read_reverse = [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT coordinate, IndexT node ) {
       return read_forward( pair, node, coordinate );
     };
-    EXPECT_THROW( ( forward.addPairs<Exec, nodes_per_edge, element_dofs, 2>( wrong_pair_count, read_forward ) ),
+    EXPECT_THROW( ( forward.addPairs<Exec, nodes_per_edge, size_geom_coords, 2>( wrong_pair_count, read_forward ) ),
                   std::invalid_argument );
-    reference.addPairs<ExecutionMode::Sequential, nodes_per_edge, element_dofs, 2>( pair_list, read_forward );
-    forward.addPairs<Exec, nodes_per_edge, element_dofs, 2>( pair_list, read_forward );
-    reverse.addPairs<Exec, element_dofs, nodes_per_edge, 2>( pair_list, read_reverse );
+    reference.addPairs<ExecutionMode::Sequential, nodes_per_edge, size_geom_coords, 2>( pair_list, read_forward );
+    forward.addPairs<Exec, nodes_per_edge, size_geom_coords, 2>( pair_list, read_forward );
+    reverse.addPairs<Exec, size_geom_coords, nodes_per_edge, 2>( pair_list, read_reverse );
     const auto expected_forward = reference.assemble();
     const auto expected_reverse = expected_forward.transpose();
     const auto actual_forward = forward.assemble();
@@ -507,16 +507,17 @@ TEST_P( MfemMatrixAssemblerTest, composes_residual_and_jacobian_assembly_views )
     EXPECT_EQ( norm( initial_force.get() ), 0.0 );
     const auto zero_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };
     EXPECT_THROW( ( force_only.addPairs<Exec, pair_dofs - 1, 2>( pair_list, zero_force ) ), std::invalid_argument );
-    constexpr IndexT element_dofs = pair_dofs / 2;
+    constexpr IndexT size_geom_coords = pair_dofs / 2;
     const auto read_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT row ) { return row + 1.0; };
     const auto read_jacobian = [] TRIBOL_HOST_DEVICE( IndexT, IndexT row, IndexT column ) {
       return ( row + 1.0 ) * ( column + 2.0 );
     };
     reference.addPairs<ExecutionMode::Sequential, pair_dofs, 2>( pair_list, read_force );
-    reference_matrix.addPairs<ExecutionMode::Sequential, element_dofs, element_dofs, 4>( pair_list, read_jacobian );
+    reference_matrix.addPairs<ExecutionMode::Sequential, size_geom_coords, size_geom_coords, 4>( pair_list,
+                                                                                                 read_jacobian );
     force_only.addPairs<Exec, pair_dofs, 2>( pair_list, read_force );
-    matrix_only.addPairs<Exec, element_dofs, element_dofs, 4>( pair_list, read_jacobian );
-    const auto matrix_view = composed_matrix.view<element_dofs, element_dofs, 4>();
+    matrix_only.addPairs<Exec, size_geom_coords, size_geom_coords, 4>( pair_list, read_jacobian );
+    const auto matrix_view = composed_matrix.view<size_geom_coords, size_geom_coords, 4>();
     const auto force_view = composed.view<Exec, 2>();
     const auto pairs_view = pair_list.view();
     forAllExec<Exec>( pair_list.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
@@ -580,8 +581,8 @@ TEST_P( MfemMatrixAssemblerTest, assembles_scalar_fields_and_gradients )
       auto error = result[field].values.get();
       error -= expected[field].values.get();
       EXPECT_LT( norm( error ), tolerance );
-      expected[field].dvalues_dx->Mult( direction, expected_action );
-      result[field].dvalues_dx->Mult( direction, action );
+      expected[field].jacobian->Mult( direction, expected_action );
+      result[field].jacobian->Mult( direction, action );
       action -= expected_action;
       EXPECT_LT( norm( action ), tolerance );
     }
