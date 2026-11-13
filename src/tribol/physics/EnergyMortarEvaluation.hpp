@@ -106,8 +106,8 @@ shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& 
         return weights;
       } );
   const auto hessian_view = hessians.view();
-  auto assembler = detail::makeCoordinateMatrixAssembler( mesh_data, jacobian_data, mesh1, mesh2, num_pairs,
-                                                          pairs.getAllocatorID() );
+  auto assembler =
+      detail::makeForceJacobianAssembler( mesh_data, jacobian_data, mesh1, mesh2, num_pairs, pairs.getAllocatorID() );
   assembler.addPairs<Exec, PairFunction::size_coords / 2, PairFunction::size_coords / 2, 4>(
       pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
         return hessian_view.hessian( pair, row, column );

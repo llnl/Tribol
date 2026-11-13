@@ -61,9 +61,9 @@ std::array<AssembledField, NumFields> assembleNodalValuesAndJacobians(
   vectors.reserve( NumFields );
   matrices.reserve( NumFields );
   for ( IndexT field = 0; field < NumFields; ++field ) {
-    vectors.push_back( makeNodalVectorAssembler( submesh_data, mesh1 ) );
-    matrices.push_back( makeNodalCoordinateMatrixAssembler( mesh_data, submesh_data, jacobian_data, mesh1, mesh2,
-                                                            pairs.size(), pairs.getAllocatorID() ) );
+    vectors.push_back( makeScalarFieldVectorAssembler( submesh_data, mesh1 ) );
+    matrices.push_back( makeScalarFieldJacobianAssembler( mesh_data, submesh_data, jacobian_data, mesh1, mesh2,
+                                                          pairs.size(), pairs.getAllocatorID() ) );
   }
   MdArray<MfemVectorAssemblyView<1>, NumFields> value_views{};
   MdArray<MfemMatrixAssemblyView<NumNodes, size_geom_coords, 2>, NumFields> matrix_views{};
@@ -113,9 +113,9 @@ ContactFormulationResult assemblePairForcesAndJacobian( const ArrayT<InterfacePa
 {
   static_assert( SizeCoords % 2 == 0 );
   constexpr IndexT size_geom_coords = SizeCoords / 2;
-  auto forces = makeDisplacementVectorAssembler( mesh_data, mesh1, mesh2 );
+  auto forces = makeForceVectorAssembler( mesh_data, mesh1, mesh2 );
   auto jacobian =
-      makeCoordinateMatrixAssembler( mesh_data, jacobian_data, mesh1, mesh2, pairs.size(), pairs.getAllocatorID() );
+      makeForceJacobianAssembler( mesh_data, jacobian_data, mesh1, mesh2, pairs.size(), pairs.getAllocatorID() );
   const auto force_view = forces.view<Exec, 2>();
   const auto matrix_view = jacobian.view<size_geom_coords, size_geom_coords, 4>();
   const auto pairs_view = pairs.view();
@@ -154,7 +154,7 @@ ContactFormulationResult evaluateAndAssemblePairResidual( const ArrayT<Interface
   auto all_pair_values = evaluatePairValues<Exec>( pairs, mesh1, mesh2, pair_function );
   checkPairQuadratureResults<Exec>( all_pair_values.quadratureResults() );
 
-  auto assembler = detail::makeDisplacementVectorAssembler( mesh_data, mesh1, mesh2 );
+  auto assembler = detail::makeForceVectorAssembler( mesh_data, mesh1, mesh2 );
   const auto all_pair_values_view = all_pair_values.view();
   assembler.addPairs<Exec, PairFunction::size_coords, 2>(
       pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) { return all_pair_values_view.value( pair, row ); } );
@@ -223,7 +223,7 @@ ContactFormulationResult evaluateAndAssemblePairEnergy( const ArrayT<InterfacePa
   auto all_pair_values = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function );
   checkPairQuadratureResults<Exec>( all_pair_values.quadratureResults() );
 
-  auto assembler = detail::makeDisplacementVectorAssembler( mesh_data, mesh1, mesh2 );
+  auto assembler = detail::makeForceVectorAssembler( mesh_data, mesh1, mesh2 );
   const auto all_pair_values_view = all_pair_values.view();
   assembler.addPairs<Exec, PairFunction::size_coords, 2>( pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) {
     return all_pair_values_view.jacobian( pair, 0, row );

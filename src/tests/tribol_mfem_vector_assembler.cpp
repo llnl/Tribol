@@ -191,9 +191,9 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
   const auto pair_list = pairs();
   ContactFormulationResult result;
   {
-    auto assembler = detail::makeDisplacementVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
-    auto matrix = detail::makeCoordinateMatrixAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2,
-                                                         pair_list.size(), pair_list.getAllocatorID() );
+    auto assembler = detail::makeForceVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
+    auto matrix = detail::makeForceJacobianAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2,
+                                                      pair_list.size(), pair_list.getAllocatorID() );
     ArrayT<RealT> residuals( pair_list.size() * pair_dofs, pair_list.size() * pair_dofs, pair_list.getAllocatorID() );
     ArrayT<RealT> jacobians( pair_list.size() * pair_dofs * pair_dofs, pair_list.size() * pair_dofs * pair_dofs,
                              pair_list.getAllocatorID() );
@@ -261,9 +261,9 @@ TEST_F( MfemVectorAssemblerTest, returns_zero_outputs_for_empty_or_rejected_inpu
 {
   auto& cs = scheme();
   const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
-  auto assembler = detail::makeDisplacementVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
-  auto matrix = detail::makeCoordinateMatrixAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2,
-                                                       0, mesh1.getAllocatorId() );
+  auto assembler = detail::makeForceVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
+  auto matrix = detail::makeForceJacobianAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2, 0,
+                                                    mesh1.getAllocatorId() );
   const ArrayT<InterfacePair> empty( 0, 0, mesh1.getAllocatorId() );
   const auto zero_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };
   EXPECT_THROW( ( assembler.addPairs<ExecutionMode::Sequential, pair_dofs - 1, 2>( empty, zero_force ) ),
@@ -339,7 +339,7 @@ TEST_F( MfemVectorAssemblerTest, scalar_values_need_no_jacobian_data )
   cs.setMfemJacobianData( nullptr );
   const auto& dual = *cs.getMfemSubmeshData();
   const auto mesh1 = cs.getMesh1().getView();
-  auto assembler = detail::makeNodalVectorAssembler( dual, mesh1 );
+  auto assembler = detail::makeScalarFieldVectorAssembler( dual, mesh1 );
   EXPECT_THROW( ( assembler.view<ExecutionMode::Sequential, 2>() ), std::invalid_argument );
   const auto zero = assembler.assemble();
   EXPECT_EQ( norm( zero.get() ), 0.0 );
@@ -448,16 +448,16 @@ TEST_P( MfemMatrixAssemblerTest, composes_residual_and_jacobian_assembly_views )
     const auto& transfers = *cs.getMfemJacobianData();
     const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
     const auto pair_list = pairs();
-    auto reference = detail::makeDisplacementVectorAssembler( data, mesh1, mesh2 );
-    auto composed = detail::makeDisplacementVectorAssembler( data, mesh1, mesh2 );
-    auto force_only = detail::makeDisplacementVectorAssembler( data, mesh1, mesh2 );
+    auto reference = detail::makeForceVectorAssembler( data, mesh1, mesh2 );
+    auto composed = detail::makeForceVectorAssembler( data, mesh1, mesh2 );
+    auto force_only = detail::makeForceVectorAssembler( data, mesh1, mesh2 );
     const int allocator_id = pair_list.getAllocatorID();
     auto reference_matrix =
-        detail::makeCoordinateMatrixAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
+        detail::makeForceJacobianAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
     auto composed_matrix =
-        detail::makeCoordinateMatrixAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
+        detail::makeForceJacobianAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
     auto matrix_only =
-        detail::makeCoordinateMatrixAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
+        detail::makeForceJacobianAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
     const auto initial_force = force_only.assemble();
     EXPECT_EQ( norm( initial_force.get() ), 0.0 );
     const auto zero_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };

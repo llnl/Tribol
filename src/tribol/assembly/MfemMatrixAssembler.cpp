@@ -58,15 +58,15 @@ shared::ParSparseMat MfemMatrixAssembler::assemble() const
 }
 
 namespace detail {
-MfemMatrixAssembler makeCoordinateMatrixAssembler( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
-                                                   MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT num_pairs,
-                                                   int allocator_id )
+MfemMatrixAssembler makeForceJacobianAssembler( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
+                                                MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT num_pairs,
+                                                int allocator_id )
 {
   const int dim = mesh1.spatialDim();
   const MdArray<IndexT, 2> nodes{ mesh1.numberOfNodesPerElement(), mesh2.numberOfNodesPerElement() };
   const auto& coordinate_space = *mesh_data.GetRedecompResponse().FESpace();
   if ( dim <= 0 || mesh2.spatialDim() != dim || coordinate_space.GetVDim() != dim || nodes[0] <= 0 || nodes[1] <= 0 ) {
-    throw std::invalid_argument( "Coordinate matrix assembly requires matching dimensions and positive node counts." );
+    throw std::invalid_argument( "Force Jacobian assembly requires matching dimensions and positive node counts." );
   }
   const MdArray<IndexT, 2> offsets{ 0, checkedMatrixSize( nodes[0], dim ) };
   const std::array<const Array1D<int>*, 2> maps{ &mesh_data.GetElemMap1(), &mesh_data.GetElemMap2() };
@@ -82,16 +82,17 @@ MfemMatrixAssembler makeCoordinateMatrixAssembler( const MfemMeshData& mesh_data
   const MfemMatrixSpace space{ jacobian_data.ParentPath(), coordinate_space };
   return { space, space, std::move( blocks ), num_pairs, allocator_id };
 }
-MfemMatrixAssembler makeNodalCoordinateMatrixAssembler( const MfemMeshData& mesh_data,
-                                                        const MfemSubmeshData& submesh_data,
-                                                        const MfemJacobianData& jacobian_data, MeshData::Viewer mesh1,
-                                                        MeshData::Viewer mesh2, IndexT num_pairs, int allocator_id )
+MfemMatrixAssembler makeScalarFieldJacobianAssembler( const MfemMeshData& mesh_data,
+                                                      const MfemSubmeshData& submesh_data,
+                                                      const MfemJacobianData& jacobian_data, MeshData::Viewer mesh1,
+                                                      MeshData::Viewer mesh2, IndexT num_pairs, int allocator_id )
 {
   const auto& coordinates = *mesh_data.GetRedecompResponse().FESpace();
   const auto& field = submesh_data.GetRedecompFESpace();
   if ( field.GetVDim() != 1 || submesh_data.GetSubmeshFESpace().GetVDim() != 1 || mesh1.spatialDim() <= 0 ||
        mesh1.spatialDim() != coordinates.GetVDim() || mesh2.spatialDim() != coordinates.GetVDim() ) {
-    throw std::invalid_argument( "Nodal coordinate matrices require scalar rows and matching coordinate dimensions." );
+    throw std::invalid_argument(
+        "Scalar field Jacobian assembly requires scalar rows and matching coordinate dimensions." );
   }
   const IndexT nodes1 = mesh1.numberOfNodesPerElement();
   const auto& map1 = mesh_data.GetElemMap1();

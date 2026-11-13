@@ -47,19 +47,18 @@ shared::ParVector MfemVectorAssembler::assemble() const
 }
 
 namespace detail {
-MfemVectorAssembler makeDisplacementVectorAssembler( const MfemMeshData& data, MeshData::Viewer mesh1,
-                                                     MeshData::Viewer mesh2 )
+MfemVectorAssembler makeForceVectorAssembler( const MfemMeshData& data, MeshData::Viewer mesh1, MeshData::Viewer mesh2 )
 {
   const auto& redecomp_fes = *data.GetRedecompResponse().FESpace();
   const int num_values_per_node = redecomp_fes.GetVDim();
   if ( num_values_per_node <= 0 || mesh1.spatialDim() != num_values_per_node ||
        mesh2.spatialDim() != num_values_per_node || mesh1.numberOfNodesPerElement() <= 0 ||
        mesh2.numberOfNodesPerElement() <= 0 ) {
-    throw std::invalid_argument( "Displacement vector assembly requires matching geometry and FE-space dimensions." );
+    throw std::invalid_argument( "Force vector assembly requires matching geometry and FE-space dimensions." );
   }
   const IndexT num_geom1_nodes = mesh1.numberOfNodesPerElement();
   if ( num_geom1_nodes > std::numeric_limits<IndexT>::max() / num_values_per_node ) {
-    throw std::length_error( "Displacement vector input extent exceeds the supported index range." );
+    throw std::length_error( "Force vector input extent exceeds the supported index range." );
   }
   return {
       { *data.GetParentCoords().ParFESpace(), redecomp_fes,
@@ -69,10 +68,10 @@ MfemVectorAssembler makeDisplacementVectorAssembler( const MfemMeshData& data, M
       { { 0, mesh1.getConnectivity(), 0 }, { 1, mesh2.getConnectivity(), num_geom1_nodes * num_values_per_node } } };
 }
 
-MfemVectorAssembler makeNodalVectorAssembler( const MfemSubmeshData& data, MeshData::Viewer mesh1 )
+MfemVectorAssembler makeScalarFieldVectorAssembler( const MfemSubmeshData& data, MeshData::Viewer mesh1 )
 {
   if ( data.GetRedecompFESpace().GetVDim() != 1 || data.GetSubmeshFESpace().GetVDim() != 1 ) {
-    throw std::invalid_argument( "Nodal vector assembly requires scalar FE spaces." );
+    throw std::invalid_argument( "Scalar field vector assembly requires scalar FE spaces." );
   }
   return { { data.GetSubmeshFESpace(), data.GetRedecompFESpace(),
              [&data]( const mfem::GridFunction& values, mfem::Vector& destination ) {

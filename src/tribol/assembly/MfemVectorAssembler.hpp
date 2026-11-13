@@ -165,22 +165,22 @@ class MfemVectorAssembler {
 };
 
 namespace detail {
-/** @brief Configure displacement entries from both geometries.
+/** @brief Configure contact residual assembly, dual to displacement, on parent true DOFs.
  * @param data Displacement data for the current decomposition; must outlive the returned assembler.
  * @param mesh1 First geometry. @param mesh2 Second geometry.
- * @return Vector assembler referencing the two connectivities and parent transfer data.
+ * @return Force vector assembler referencing both geometries' connectivities and parent transfer data.
  * @throws std::invalid_argument Geometry dimensions do not match the displacement space.
  * @throws std::length_error Input extents exceed the supported index range. */
-MfemVectorAssembler makeDisplacementVectorAssembler( const MfemMeshData& data, MeshData::Viewer mesh1,
-                                                     MeshData::Viewer mesh2 );
+MfemVectorAssembler makeForceVectorAssembler( const MfemMeshData& data, MeshData::Viewer mesh1,
+                                              MeshData::Viewer mesh2 );
 
-/** @brief Configure scalar nodal entries from geometry1.
+/** @brief Configure scalar nodal field contributions from geometry1 on submesh true DOFs.
  * @param data Scalar field data for the current decomposition; must outlive the returned assembler.
  * @param mesh1 Geometry1 connectivity indexing the scalar Redecomp DOFs.
  * @return Vector assembler referencing scalar submesh transfers and geometry1 connectivity.
  * @throws std::invalid_argument The configured FE spaces are not scalar, or the node count is invalid.
  * @throws std::length_error Input extent exceeds the supported index range. */
-MfemVectorAssembler makeNodalVectorAssembler( const MfemSubmeshData& data, MeshData::Viewer mesh1 );
+MfemVectorAssembler makeScalarFieldVectorAssembler( const MfemSubmeshData& data, MeshData::Viewer mesh1 );
 }  // namespace detail
 }  // namespace tribol
 #endif  // BUILD_REDECOMP

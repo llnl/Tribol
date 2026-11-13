@@ -206,21 +206,21 @@ class MfemMatrixAssembler {
 
 namespace detail {
 /**
- * @brief Configure all four coordinate blocks for a pair of displacement elements.
+ * @brief Configure all four force-Jacobian blocks with parent force rows and parent coordinate columns.
  * @param mesh_data Displacement spaces and element maps for the current decomposition; must outlive the assembler.
  * @param jacobian_data Initialized parent-coordinate transfer path; must outlive the returned assembler.
  * @param mesh1 First geometry's nodal layout.
  * @param mesh2 Second geometry's nodal layout.
  * @param num_pairs Number of contributing pairs.
  * @param allocator_id Execution-accessible allocator for element blocks.
- * @return Matrix assembler referencing the supplied displacement FE spaces, element maps, and transfer path.
+ * @return Force-Jacobian assembler referencing the supplied displacement FE spaces, element maps, and transfer path.
  * @throws std::invalid_argument Geometry dimensions or node counts do not match the displacement layout.
  * @throws std::length_error Required storage exceeds the supported index range.
  */
-MfemMatrixAssembler makeCoordinateMatrixAssembler( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
-                                                   MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT num_pairs,
-                                                   int allocator_id );
-/** @brief Configure a scalar nodal field's two coordinate-Jacobian blocks.
+MfemMatrixAssembler makeForceJacobianAssembler( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
+                                                MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT num_pairs,
+                                                int allocator_id );
+/** @brief Configure a scalar nodal field's coordinate Jacobian with submesh field rows and parent coordinate columns.
  * @param mesh_data Displacement spaces and element maps; must outlive the returned assembler.
  * @param submesh_data Scalar field spaces for the current decomposition; must outlive the returned assembler.
  * @param jacobian_data Initialized scalar and parent-coordinate transfer paths.
@@ -230,10 +230,10 @@ MfemMatrixAssembler makeCoordinateMatrixAssembler( const MfemMeshData& mesh_data
  * @return Matrix assembler with scalar submesh rows and parent displacement columns.
  * @throws std::invalid_argument Field spaces are not scalar or geometry dimensions do not match the coordinate space.
  * @throws std::length_error Required storage exceeds the supported index range. */
-MfemMatrixAssembler makeNodalCoordinateMatrixAssembler( const MfemMeshData& mesh_data,
-                                                        const MfemSubmeshData& submesh_data,
-                                                        const MfemJacobianData& jacobian_data, MeshData::Viewer mesh1,
-                                                        MeshData::Viewer mesh2, IndexT num_pairs, int allocator_id );
+MfemMatrixAssembler makeScalarFieldJacobianAssembler( const MfemMeshData& mesh_data,
+                                                      const MfemSubmeshData& submesh_data,
+                                                      const MfemJacobianData& jacobian_data, MeshData::Viewer mesh1,
+                                                      MeshData::Viewer mesh2, IndexT num_pairs, int allocator_id );
 }  // namespace detail
 
 }  // namespace tribol
