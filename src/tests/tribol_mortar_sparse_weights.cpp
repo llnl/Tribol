@@ -32,7 +32,7 @@ using RealT = tribol::RealT;
 
 void computeGapsFromSparseWts( tribol::CouplingScheme* cs, RealT* gaps )
 {
-  int const dim = cs->spatialDimension();
+  int const dim = cs->spatialDim();
 
   ////////////////////////////////////////////////////////////////////////
   //

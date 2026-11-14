@@ -9,8 +9,10 @@
 # Add single source tests
 #------------------------------------------------------------------------------
 set( tribol_tests
+     tribol_energy_mortar_definition.cpp
      tribol_basis_function.cpp
      tribol_check_tpl.cpp
+     tribol_common_plane_formulation.cpp
      tribol_common_plane_penalty.cpp
      tribol_common_plane_gap_rate.cpp
      tribol_common_plane_gpu.cpp
@@ -75,6 +77,11 @@ foreach( test ${tribol_tests} )
   endif()
 
 endforeach()
+
+if(TRIBOL_USE_ENZYME)
+  # Enzyme rejects the aggregate-heavy edge geometry IR produced at -O0.
+  target_compile_options(tribol_energy_mortar_definition_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
+endif()
 
 #------------------------------------------------------------------------------
 # Add shared tests
@@ -167,6 +174,8 @@ endif()
 if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 
   set( combined_tests
+      tribol_mfem_vector_assembler.cpp
+      tribol_mfem_common_plane_formulation.cpp
       tribol_mfem_data.cpp
       tribol_mfem_common_plane.cpp
       tribol_mfem_mortar_lm.cpp
@@ -205,6 +214,18 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
     endif()
 
   endforeach()
+
+  blt_add_test(NAME tribol_mfem_vector_assembler COMMAND tribol_mfem_vector_assembler_test NUM_MPI_TASKS 1)
+  if(TRIBOL_USE_ENZYME)
+    # Direct residual evaluators instantiate Enzyme's geometry derivatives in this translation unit.
+    target_compile_options(tribol_mfem_common_plane_formulation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
+  endif()
+
+  blt_add_test(NAME tribol_mfem_common_plane_formulation
+      COMMAND tribol_mfem_common_plane_formulation_test NUM_MPI_TASKS 1)
+  if (ENABLE_CUDA)
+    set_target_properties(tribol_mfem_common_plane_formulation_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
+  endif()
 
 endif()
 
@@ -255,6 +276,10 @@ if( TRIBOL_USE_ENZYME )
 
   endforeach()
 
+  # Enzyme rejects the aggregate-heavy edge geometry IR produced at -O0.
+  target_compile_options(tribol_finite_diff_energy_mortar_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
+  target_compile_options(tribol_energy_mortar_quadrature_settings_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
+
 endif()
 
 #------------------------------------------------------------------------------
@@ -277,6 +302,9 @@ if( MFEM_FOUND )
 endif()
 
 if( TRIBOL_USE_ENZYME )
+
+  blt_add_test(NAME tribol_energy_mortar_quadrature_settings_2rank
+      COMMAND tribol_energy_mortar_quadrature_settings_test NUM_MPI_TASKS 2)
 
   set(enzyme_smoke_depends ClangEnzymeFlags gtest)
   blt_add_executable(

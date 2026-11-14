@@ -7,6 +7,7 @@
 #define SRC_TRIBOL_MESH_MESHDATA_HPP_
 
 // C++ includes
+#include <cassert>
 #include <ostream>
 
 // Shared includes
@@ -14,6 +15,7 @@
 
 // Tribol includes
 #include "tribol/common/ArrayTypes.hpp"
+#include "tribol/common/MdArray.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/utils/DataManager.hpp"
 
@@ -184,7 +186,7 @@ class MeshData {
      *
      * @return spatial dimension
      */
-    TRIBOL_HOST_DEVICE int spatialDimension() const { return static_cast<int>( m_position.size() ); }
+    TRIBOL_HOST_DEVICE int spatialDim() const { return static_cast<int>( m_position.size() ); }
 
     /**
      * @brief Number of nodes in the mesh
@@ -362,15 +364,34 @@ class MeshData {
      */
     TRIBOL_HOST_DEVICE const Array2DView<const IndexT>& getConnectivity() const { return m_connectivity; }
 
-    /*!
-     *
-     * \brief returns pointer to array of stacked nodal coordinates for given face
-     *
-     * \param [in] face_id integer id of face
-     * \param [in/out] coords pointer to an array of stacked (x,y,z) nodal coordinates
-     *
+    /**
+     * @brief Gather one face's coordinates into caller-provided node-by-spatial-dimension storage.
+     * @param face_id Face index in this mesh.
+     * @param[out] coords Contiguous output with numberOfNodesPerElement()*spatialDim() entries.
+     * @pre face_id identifies an existing face, and the output storage is accessible on the executing backend.
      */
     TRIBOL_HOST_DEVICE inline void getFaceCoords( IndexT face_id, RealT* coords ) const;
+
+    /**
+     * @brief Gather one face's coordinates into an owning node-by-spatial-dimension array.
+     * @tparam Coords Fixed rank-two coordinate span or array type specifying nodes per face and spatial coordinates.
+     * @param face_id Face index in this mesh.
+     * @return MdArray<RealT, Coords::extent<0>(), Coords::extent<1>()> in local finite-element node, then value-index
+     * order. Changing mesh coordinates after the call does not change the returned array. No dynamic storage is
+     * allocated.
+     * @pre face_id identifies an existing face, and the requested extents match the mesh's nodal layout.
+     */
+    template <typename Coords>
+      requires( Coords::rank() == 2 )
+    TRIBOL_HOST_DEVICE auto getFaceCoords( IndexT face_id ) const
+    {
+      assert( face_id >= 0 && face_id < numberOfElements() );
+      assert( Coords::template extent<0>() == numberOfNodesPerElement() );
+      assert( Coords::template extent<1>() == spatialDim() );
+      MdArray<RealT, Coords::template extent<0>(), Coords::template extent<1>()> coordinates{};
+      getFaceCoords( face_id, coordinates.data() );
+      return coordinates;
+    }
 
     /*!
      *
@@ -466,7 +487,7 @@ class MeshData {
    * @param num_elements number of elements on the contact surface
    * @param num_nodes length of the nodal field arrays
    * @param connectivity caller-owned finite element node connectivity
-   * @param element_type edge or face shape of the contact elements
+   * @param element_type edge or face shape of the surface elements
    * @param face_order finite element order represented by each connectivity row
    * @param x caller-owned x-components of the mesh coordinates
    * @param y caller-owned y-components of the mesh coordinates
@@ -504,7 +525,7 @@ class MeshData {
    *
    * @return spatial dimension
    */
-  int spatialDimension() const { return m_dim; }
+  int spatialDim() const { return m_dim; }
 
   /**
    * @brief Get the memory space of nodal/element data stored in the mesh
@@ -793,7 +814,7 @@ using MeshManager = DataManager<MeshData>;
 
 TRIBOL_HOST_DEVICE inline void MeshData::Viewer::getFaceCoords( IndexT face_id, RealT* coords ) const
 {
-  auto dim = spatialDimension();
+  auto dim = spatialDim();
 
   for ( IndexT a{ 0 }; a < numberOfNodesPerElement(); ++a ) {
     IndexT node_id = getGlobalNodeId( face_id, a );
@@ -809,7 +830,7 @@ TRIBOL_HOST_DEVICE inline void MeshData::Viewer::getFaceCoords( IndexT face_id, 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE inline void MeshData::Viewer::getFaceVelocities( IndexT face_id, RealT* vels ) const
 {
-  auto dim = spatialDimension();
+  auto dim = spatialDim();
 
   for ( IndexT a{ 0 }; a < numberOfNodesPerElement(); ++a ) {
     IndexT node_id = getGlobalNodeId( face_id, a );
@@ -825,7 +846,7 @@ TRIBOL_HOST_DEVICE inline void MeshData::Viewer::getFaceVelocities( IndexT face_
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE inline void MeshData::Viewer::getFaceNormal( IndexT face_id, RealT* nrml ) const
 {
-  for ( int d{ 0 }; d < spatialDimension(); ++d ) {
+  for ( int d{ 0 }; d < spatialDim(); ++d ) {
     nrml[d] = m_n[d][face_id];
   }
   return;
@@ -835,7 +856,7 @@ TRIBOL_HOST_DEVICE inline void MeshData::Viewer::getFaceNormal( IndexT face_id, 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE inline void MeshData::Viewer::getFaceCentroid( IndexT face_id, RealT* cx ) const
 {
-  for ( int d{ 0 }; d < spatialDimension(); ++d ) {
+  for ( int d{ 0 }; d < spatialDim(); ++d ) {
     cx[d] = m_c[d][face_id];
   }
   return;

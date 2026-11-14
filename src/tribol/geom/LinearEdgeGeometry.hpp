@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
+// Copyright (c) Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -28,25 +28,24 @@ namespace tribol {
  */
 class LinearEdgeGeometry {
  public:
-  static constexpr int vertex_count = 2;                          ///< Number of vertices defining the straight edge.
-  static constexpr int parametric_dimension = 1;                  ///< Number of parametric coordinate components.
-  static constexpr int spatial_dimension = 2;                     ///< Physical components per endpoint.
-  using Point = axom::primal::Point<RealT, spatial_dimension>;    ///< Physical point on the edge.
-  using Vector = axom::primal::Vector<RealT, spatial_dimension>;  ///< Vector in physical space.
-  using Coords =
-      MdSpan<const RealT, vertex_count, spatial_dimension>;  ///< Input coordinates [vertex][spatial component].
+  static constexpr int num_vertices = 2;                          ///< Number of vertices defining the straight edge.
+  static constexpr int parametric_dim = 1;                        ///< Number of parametric coordinates.
+  static constexpr int spatial_dim = 2;                           ///< Spatial dimension of each endpoint.
+  using Point = axom::primal::Point<RealT, spatial_dim>;          ///< Physical point on the edge.
+  using Vector = axom::primal::Vector<RealT, spatial_dim>;        ///< Vector in physical space.
+  using Coords = MdSpan<const RealT, num_vertices, spatial_dim>;  ///< Input coordinates [vertex][spatial_dim].
 
   /**
    * @brief Copy the edge vertices and calculate the edge vector and squared length once.
    *
    * The edge vector is (x1 - x0, y1 - y0), directed from the first input vertex to the second.
    * Its magnitude is the physical edge length; no normalization is applied.
-   * @param coords Current vertices indexed by vertex, then physical component.
+   * @param coords Current vertices indexed by vertex, then spatial dimension.
    * @pre Coordinates are finite.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE explicit LinearEdgeGeometry( Coords coords )
       : origin_( coords.data() ),
-        end_( coords.data() + spatial_dimension ),
+        end_( coords.data() + spatial_dim ),
         edge_( origin_, end_ ),
         length_squared_( edge_.dot( edge_ ) )
   {
@@ -94,7 +93,7 @@ class LinearEdgeGeometry {
    * @pre The edge is nondegenerate.
    * @return Parametric coordinate xi of the projection.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT parentCoordinate( const Point& point ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT parametricCoordinate( const Point& point ) const
   {
     return 2.0 * Vector( origin_, point ).dot( edge_ ) / length_squared_ - 1.0;
   }
@@ -109,17 +108,6 @@ class LinearEdgeGeometry {
     Vector result{ edge_[1], -edge_[0] };
     result /= length();
     return result;
-  }
-
-  /**
-   * @brief Map a parametric edge coordinate using the supplied physical vertex coordinates.
-   * @param coords Current edge vertex coordinates.
-   * @param xi Parametric coordinate; vertices are at -1 and 1. Values outside [-1,1] allow extrapolation.
-   * @return Physical point; no input views are retained.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static Point position( Coords coords, RealT xi )
-  {
-    return LinearEdgeGeometry( coords ).position( xi );
   }
 
  private:

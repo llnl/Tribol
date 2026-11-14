@@ -1,11 +1,11 @@
-// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
+// Copyright (c) Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
 
 /**
  * @file
- * @brief Integration-surface and element-pair quadrature arrays, views, and generation results.
+ * @brief Integration-surface and element-pair quadrature rules, views, generation results, and validation.
  *
  * Integration-surface representations shared by mappings and rule generators belong in this header. Keep
  * representations for additional element topologies or geometries here alongside EdgeQuadratureInterval.
@@ -21,11 +21,13 @@
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Enzyme.hpp"
 #include "tribol/common/MdArray.hpp"
+#include "tribol/common/Reductions.hpp"
 
 namespace tribol {
 
 /**
- * @brief Bounds on a one-dimensional integration surface in normalized parent coordinates.
+ * @brief Bounds in a one-dimensional integration surface's coordinates, which need not be normalized element
+ * coordinates.
  */
 struct EdgeQuadratureInterval {
   MdArray<RealT, 2> bounds{ -1.0, 1.0 };  ///< Lower and upper bounds; default to the whole reference edge.
@@ -41,29 +43,77 @@ enum class QuadratureStatus
 };
 
 /**
+ * @brief Throw a quadrature failure outside differentiated calculations.
+ * @param status Failed generation status; must not be Success.
+ * @throws std::length_error The rule requires more point storage.
+ * @throws std::invalid_argument Pair geometry is invalid.
+ */
+[[noreturn, gnu::noinline]]
+#ifdef TRIBOL_USE_ENZYME
+MFEM_ENZYME_INACTIVE
+#endif
+    void reportQuadratureFailure( QuadratureStatus status );
+
+/**
  * @brief Reports the complete point count, even when the supplied storage is too small
  *
- * Success initializes every point below required_point_count; success with zero points means zero integration
+ * Success initializes every point below num_required_points; success with zero points means zero integration
  * measure. InsufficientCapacity may leave partial output, which must be discarded. InvalidGeometry
  * returns zero points and its output must also be discarded. Unused capacity is never part of a completed rule.
  */
 struct QuadratureResult {
   QuadratureStatus status{ QuadratureStatus::Success };  ///< Whether the complete rule can be consumed.
-  IndexT required_point_count{ 0 };  ///< Complete count on success or overflow; zero for invalid geometry.
+  IndexT num_required_points{ 0 };  ///< Complete count on success or overflow; zero for invalid geometry.
 };
+
+namespace detail {
+
+/**
+ * @brief Find the most severe quadrature error across all pairs using the specified execution policy.
+ * @tparam Exec Concrete execution policy.
+ * @param results One status per pair in execution-accessible memory.
+ * @return Highest-severity status present in the array, or Success when the array is empty.
+ */
+template <ExecutionMode Exec>
+QuadratureStatus reduceQuadratureStatus( ArrayViewT<const QuadratureResult> results )
+{
+  ReduceMax<Exec, int> status( static_cast<int>( QuadratureStatus::Success ) );
+  forAllExec<Exec>( results.size(),
+                    [=] TRIBOL_HOST_DEVICE( IndexT pair ) { status.max( static_cast<int>( results[pair].status ) ); } );
+  return static_cast<QuadratureStatus>( status.get() );
+}
+
+}  // namespace detail
+
+/**
+ * @brief Check the quadrature rules produced for all pairs and throw if any rule reports an error.
+ * @tparam Exec Concrete execution mode used to populate the results.
+ * @param results One preallocated result per pair.
+ * Empty results pass the check.
+ * @throws std::invalid_argument A rule reports invalid geometry.
+ * @throws std::length_error A rule reports insufficient quadrature capacity.
+ */
+template <ExecutionMode Exec>
+void checkPairQuadratureResults( const Array1D<QuadratureResult>& results )
+{
+  const auto status = detail::reduceQuadratureStatus<Exec>( results.view() );
+  if ( status != QuadratureStatus::Success ) {
+    reportQuadratureFailure( status );
+  }
+}
 
 /**
  * @brief Provide read-only access to quadrature points and weights in the integration surface's coordinates.
  *
  * The mapping defines the coordinates and any conversion of weights to physical integration weights. Arrays are
- * indexed by point, then coordinate component. The caller's arrays must remain alive while this view is used.
+ * indexed by point, then coordinate index. The caller's arrays must remain alive while this view is used.
  *
- * @tparam CoordinateDimension Number of coordinate components stored for each integration-surface quadrature point.
+ * @tparam CoordinateDim Number of coordinates stored for each integration-surface quadrature point.
  */
-template <int CoordinateDimension>
+template <int CoordinateDim>
 struct IntegrationSurfaceRuleView {
-  static_assert( CoordinateDimension == 1 || CoordinateDimension == 2 );
-  ArrayViewT<const RealT, 2> coords;  ///< Integration-surface coordinates [point][component].
+  static_assert( CoordinateDim == 1 || CoordinateDim == 2 );
+  ArrayViewT<const RealT, 2> coords;  ///< Integration-surface coordinates [point][parametric_dim].
   ArrayViewT<const RealT> weights;    ///< Weights in integration-surface coordinates.
 
   /**
@@ -78,52 +128,51 @@ struct IntegrationSurfaceRuleView {
    *
    * Both arrays must have the same point count and remain alive while the view is used.
    *
-   * @param coords Integration-surface coordinate array [point][CoordinateDimension].
+   * @param coords Integration-surface coordinate array [point][CoordinateDim].
    * @param weights Weights in the integration surface's coordinates, one per point.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceRuleView( ArrayViewT<const RealT, 2> coords,
                                                                       ArrayViewT<const RealT> weights )
       : coords( coords ), weights( weights )
   {
-    assert( coords.shape()[0] == weights.size() && coords.shape()[1] == CoordinateDimension );
+    assert( coords.shape()[0] == weights.size() && coords.shape()[1] == CoordinateDim );
   }
 };
 
 /**
- * @brief Own fixed-capacity integration-surface quadrature points and weights that can remain frozen as geometry
- * changes.
+ * @brief Own fixed-capacity integration-surface quadrature points and weights.
  *
  * Views refer to this object's arrays and must not outlive it.
  *
- * @tparam CoordinateDimension Number of coordinate components stored for each integration-surface quadrature point.
+ * @tparam CoordinateDim Number of coordinates stored for each integration-surface quadrature point.
  * @tparam Capacity Number of points available in the fixed-size backing arrays.
  */
-template <int CoordinateDimension, IndexT Capacity>
+template <int CoordinateDim, IndexT Capacity>
 struct IntegrationSurfaceRule {
-  MdArray<RealT, Capacity, CoordinateDimension> coords{};  ///< Integration-surface coordinates [point][component].
-  MdArray<RealT, Capacity> weights{};                      ///< Owned weights in integration-surface coordinates.
-  QuadratureResult result{};                               ///< Completion status and number of populated points.
+  MdArray<RealT, Capacity, CoordinateDim> coords{};  ///< Integration-surface coordinates [point][parametric_dim].
+  MdArray<RealT, Capacity> weights{};                ///< Owned weights in integration-surface coordinates.
+  QuadratureResult result{};                         ///< Completion status and number of populated points.
 
   /**
    * @brief Return a view of the completed integration-surface quadrature points and weights.
    *
-   * @pre result.status is Success and required_point_count does not exceed Capacity.
+   * @pre result.status is Success and num_required_points does not exceed Capacity.
    *
    * @return Read-only views of the initialized points and weights, valid while this object remains alive.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceRuleView<CoordinateDimension> getView() const&
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceRuleView<CoordinateDim> getView() const&
   {
     assert( result.status == QuadratureStatus::Success );
-    assert( result.required_point_count >= 0 && result.required_point_count <= Capacity );
-    const axom::StackArray<axom::IndexType, 2> shape{ result.required_point_count, CoordinateDimension };
+    assert( result.num_required_points >= 0 && result.num_required_points <= Capacity );
+    const axom::StackArray<axom::IndexType, 2> shape{ result.num_required_points, CoordinateDim };
     return { ArrayViewT<const RealT, 2>{ coords.data(), shape },
-             ArrayViewT<const RealT>{ weights.data(), result.required_point_count } };
+             ArrayViewT<const RealT>{ weights.data(), result.num_required_points } };
   }
 
   /**
    * @brief Prevent returning a view of arrays in a temporary rule.
    */
-  IntegrationSurfaceRuleView<CoordinateDimension> getView() const&& = delete;
+  IntegrationSurfaceRuleView<CoordinateDim> getView() const&& = delete;
 };
 
 /**
@@ -131,19 +180,22 @@ struct IntegrationSurfaceRule {
  *
  * Parametric quadrature-point coordinates locate each point within an element. Contact calculations use them to find
  * the point's physical position and evaluate the element basis there.
- * LinearEdgeGeometry uses one coordinate, xi, with vertices at -1 and 1. Arrays are indexed by point, then coordinate
- * component. Mapping to the second element does not add another Jacobian. The caller's arrays must remain alive while
+ * LinearEdgeGeometry uses one coordinate, xi, with vertices at -1 and 1. Arrays are indexed by point, then parametric
+ * coordinate
+ * index. Mapping to the second element does not add another Jacobian. The caller's arrays must remain alive while
  * this view is used.
- * @tparam ParametricDimension1 Number of coordinates used to parameterize geometry1: one for an edge, two for a face.
- * @tparam ParametricDimension2 Number of coordinates used to parameterize geometry2: one for an edge, two for a face.
+ * @tparam ParametricDim1 Number of coordinates used to parameterize geometry1: one for an edge, two for a face.
+ * @tparam ParametricDim2 Number of coordinates used to parameterize geometry2: one for an edge, two for a face.
  * @tparam ReadOnly Whether array entries are read-only.
  */
-template <int ParametricDimension1, int ParametricDimension2, bool ReadOnly = false>
-struct PairQuadratureView {
+template <int ParametricDim1, int ParametricDim2, bool ReadOnly = false>
+struct PairQuadratureRuleView {
   using Value = std::conditional_t<ReadOnly, const RealT, RealT>;  ///< RealT with the requested write access.
-  ArrayViewT<Value, 2> geometry1_coords;  ///< Quadrature-point coordinates in geometry1's element parameterization.
-  ArrayViewT<Value, 2> geometry2_coords;  ///< Quadrature-point coordinates in geometry2's element parameterization.
-  ArrayViewT<Value> weights;              ///< Weights including the mapping's physical integration measure.
+  ArrayViewT<Value, 2>
+      geom1_parametric_coords;  ///< Quadrature-point coordinates in geometry1's element parameterization.
+  ArrayViewT<Value, 2>
+      geom2_parametric_coords;  ///< Quadrature-point coordinates in geometry2's element parameterization.
+  ArrayViewT<Value> weights;    ///< Weights including the mapping's physical integration measure.
 
   /** @brief Return the available point capacity. @return Number of weight entries. */
   TRIBOL_HOST_DEVICE IndexT capacity() const { return weights.size(); }
@@ -154,13 +206,13 @@ struct PairQuadratureView {
    * @param geometry2_points Quadrature-point coordinates in geometry2's element parameterization.
    * @param weights Physical integration weights.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureView( ArrayViewT<Value, 2> geometry1_points,
-                                                              ArrayViewT<Value, 2> geometry2_points,
-                                                              ArrayViewT<Value> weights )
-      : geometry1_coords( geometry1_points ), geometry2_coords( geometry2_points ), weights( weights )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureRuleView( ArrayViewT<Value, 2> geometry1_points,
+                                                                  ArrayViewT<Value, 2> geometry2_points,
+                                                                  ArrayViewT<Value> weights )
+      : geom1_parametric_coords( geometry1_points ), geom2_parametric_coords( geometry2_points ), weights( weights )
   {
-    assert( geometry1_points.shape()[0] == weights.size() && geometry1_points.shape()[1] == ParametricDimension1 );
-    assert( geometry2_points.shape()[0] == weights.size() && geometry2_points.shape()[1] == ParametricDimension2 );
+    assert( geometry1_points.shape()[0] == weights.size() && geometry1_points.shape()[1] == ParametricDim1 );
+    assert( geometry2_points.shape()[0] == weights.size() && geometry2_points.shape()[1] == ParametricDim2 );
   }
 };
 
@@ -171,48 +223,46 @@ struct PairQuadratureView {
  * Parametric quadrature-point coordinates locate each point within an element. Contact calculations use them to find
  * the point's physical position and evaluate the element basis there.
  * LinearEdgeGeometry uses one coordinate, xi, with vertices at -1 and 1.
- * @tparam ParametricDimension1 Number of coordinates used to parameterize geometry1: one for an edge, two for a face.
- * @tparam ParametricDimension2 Number of coordinates used to parameterize geometry2: one for an edge, two for a face.
+ * @tparam ParametricDim1 Number of coordinates used to parameterize geometry1: one for an edge, two for a face.
+ * @tparam ParametricDim2 Number of coordinates used to parameterize geometry2: one for an edge, two for a face.
  * @tparam Capacity Available points in the local backing arrays.
  */
-template <int ParametricDimension1, int ParametricDimension2, IndexT Capacity>
-struct PairQuadratureData {
-  MdArray<RealT, Capacity, ParametricDimension1>
-      geometry1_coords{};  ///< Quadrature-point coordinates in geometry1's element parameterization.
-  MdArray<RealT, Capacity, ParametricDimension2>
-      geometry2_coords{};              ///< Quadrature-point coordinates in geometry2's element parameterization.
+template <int ParametricDim1, int ParametricDim2, IndexT Capacity>
+struct PairQuadratureRule {
+  MdArray<RealT, Capacity, ParametricDim1>
+      geom1_parametric_coords{};  ///< Quadrature-point coordinates in geometry1's element parameterization.
+  MdArray<RealT, Capacity, ParametricDim2>
+      geom2_parametric_coords{};       ///< Quadrature-point coordinates in geometry2's element parameterization.
   MdArray<RealT, Capacity> weights{};  ///< Owned physical integration weights.
   QuadratureResult result{};           ///< Status and initialized point count.
 
   /** @brief Return views of all available output storage. @return Writable views valid while this object is alive. */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureView<ParametricDimension1, ParametricDimension2>
-  getOutputView() &
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureRuleView<ParametricDim1, ParametricDim2> getOutputView() &
   {
-    return { { geometry1_coords.data(), { Capacity, ParametricDimension1 } },
-             { geometry2_coords.data(), { Capacity, ParametricDimension2 } },
+    return { { geom1_parametric_coords.data(), { Capacity, ParametricDim1 } },
+             { geom2_parametric_coords.data(), { Capacity, ParametricDim2 } },
              { weights.data(), Capacity } };
   }
 
   /**
    * @brief Return read-only views of the initialized quadrature coordinates and weights.
-   * @pre result.status is Success and required_point_count does not exceed Capacity.
+   * @pre result.status is Success and num_required_points does not exceed Capacity.
    * @return Read-only arrays valid while this owner is alive.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureView<ParametricDimension1, ParametricDimension2, true> getView()
-      const&
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureRuleView<ParametricDim1, ParametricDim2, true> getView() const&
   {
     assert( result.status == QuadratureStatus::Success );
-    assert( result.required_point_count >= 0 && result.required_point_count <= Capacity );
-    const IndexT count = result.required_point_count;
-    return { { geometry1_coords.data(), { count, ParametricDimension1 } },
-             { geometry2_coords.data(), { count, ParametricDimension2 } },
-             { weights.data(), count } };
+    assert( result.num_required_points >= 0 && result.num_required_points <= Capacity );
+    const IndexT num_points = result.num_required_points;
+    return { { geom1_parametric_coords.data(), { num_points, ParametricDim1 } },
+             { geom2_parametric_coords.data(), { num_points, ParametricDim2 } },
+             { weights.data(), num_points } };
   }
 
   /** @brief Prevent returning output views from a temporary rule. */
-  PairQuadratureView<ParametricDimension1, ParametricDimension2> getOutputView() && = delete;
+  PairQuadratureRuleView<ParametricDim1, ParametricDim2> getOutputView() && = delete;
   /** @brief Prevent returning initialized point views from a temporary rule. */
-  PairQuadratureView<ParametricDimension1, ParametricDimension2, true> getView() const&& = delete;
+  PairQuadratureRuleView<ParametricDim1, ParametricDim2, true> getView() const&& = delete;
 };
 
 }  // namespace tribol

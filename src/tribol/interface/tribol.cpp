@@ -5,6 +5,7 @@
 
 #include "tribol.hpp"
 
+#include <cmath>
 #include <stdexcept>
 
 // Tribol includes
@@ -181,6 +182,16 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location )
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnforcementLocation(): call tribol::registerCouplingScheme() "
                                << "prior to calling this routine." );
 
+  if ( cs->getParameters().use_common_plane_formulation && location != EnforcementLocation::QuadraturePoint ) {
+    throw std::invalid_argument( "Common Plane requires quadrature-point enforcement." );
+  }
+  if ( location != EnforcementLocation::Nodal && location != EnforcementLocation::QuadraturePoint ) {
+    throw std::invalid_argument( "Unsupported enforcement location." );
+  }
+  if ( cs->getContactMethod() == ENERGY_MORTAR && location == EnforcementLocation::QuadraturePoint &&
+       cs->getEnforcementMethod() != PENALTY ) {
+    throw std::invalid_argument( "Quadrature-point Energy Mortar requires penalty enforcement." );
+  }
   cs->getParameters().enforcement_location = location;
 
   // Automatically rebuild the formulation to reflect the new setting
@@ -191,12 +202,17 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location )
 void setQuadratureOrder( IndexT cs_id, int order )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-  if ( !cs || cs->getContactMethod() != ENERGY_MORTAR || order < 0 || order > 5 ) {
+  if ( !cs ||
+       ( cs->getContactMethod() != ENERGY_MORTAR &&
+         !( cs->getContactMethod() == COMMON_PLANE && cs->getParameters().use_common_plane_formulation ) ) ||
+       order < 0 || order > 5 ) {
     throw std::invalid_argument(
-        "setQuadratureOrder requires a registered ENERGY_MORTAR scheme and an order from 0 through 5." );
+        "setQuadratureOrder requires ENERGY_MORTAR or opted-in COMMON_PLANE and an order from 0 through 5." );
   }
   cs->getParameters().quadrature_order = order;
-  if ( cs->hasContactFormulation() ) cs->updateContactFormulation();
+  if ( cs->hasContactFormulation() ) {
+    cs->updateContactFormulation();
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -377,7 +393,9 @@ void setResidualGap( IndexT cs_id, RealT residual_gap )
   // check to see if coupling scheme exists
   SLIC_ERROR_ROOT_IF(
       !cs, "tribol::setResidualGap(): call tribol::registerCouplingScheme() " << "prior to calling this routine." );
-  SLIC_ERROR_ROOT_IF( residual_gap < 0.0, "tribol::setResidualGap(): residual gap must be nonnegative." );
+  if ( !std::isfinite( residual_gap ) || residual_gap < 0.0 ) {
+    throw std::invalid_argument( "tribol::setResidualGap(): residual gap must be nonnegative and finite." );
+  }
 
   cs->getParameters().residual_gap = residual_gap;
   if ( cs->hasContactFormulation() ) {
@@ -438,7 +456,7 @@ void registerNodalDisplacements( IndexT mesh_id, const RealT* dx, const RealT* d
     mesh->getNodalFields().m_is_nodal_displacement_set = false;
   }
 
-  if ( mesh->spatialDimension() == 3 ) {
+  if ( mesh->spatialDim() == 3 ) {
     if ( dz == nullptr ) {
       mesh->getNodalFields().m_is_nodal_displacement_set = false;
     }
@@ -461,7 +479,7 @@ void registerNodalVelocities( IndexT mesh_id, const RealT* vx, const RealT* vy, 
     mesh->getNodalFields().m_is_velocity_set = false;
   }
 
-  if ( mesh->spatialDimension() == 3 ) {
+  if ( mesh->spatialDim() == 3 ) {
     if ( vz == nullptr ) {
       mesh->getNodalFields().m_is_velocity_set = false;
     }
@@ -494,7 +512,7 @@ void registerNodalResponse( IndexT mesh_id, RealT* rx, RealT* ry, RealT* rz )
     mesh->getNodalFields().m_is_nodal_response_set = false;
   }
 
-  if ( mesh->spatialDimension() == 3 ) {
+  if ( mesh->spatialDim() == 3 ) {
     if ( rz == nullptr ) {
       mesh->getNodalFields().m_is_nodal_response_set = false;
     }

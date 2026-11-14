@@ -40,7 +40,7 @@ class EnzymeNodalNormalTest : public testing::Test {
     EdgeAvgNodalNormal normal_method;
     MethodData dndx_data;
     normal_method.Compute( mesh, &dndx_data );
-    auto num_dofs = mesh.numberOfNodes() * mesh.spatialDimension();
+    auto num_dofs = mesh.numberOfNodes() * mesh.spatialDim();
     mfem::SparseMatrix dndx( num_dofs );
     // get nonmortar/nonmortar contributions
     auto& elem_Js =
@@ -48,11 +48,11 @@ class EnzymeNodalNormalTest : public testing::Test {
     // assemble element contributions to a global sparse matrix
     auto num_nodes_per_el = mesh.numberOfNodesPerElement();
     for ( int i{ 0 }; i < mesh.numberOfElements(); ++i ) {
-      for ( int d1{ 0 }; d1 < mesh.spatialDimension(); ++d1 ) {
+      for ( int d1{ 0 }; d1 < mesh.spatialDim(); ++d1 ) {
         for ( int j{ 0 }; j < num_nodes_per_el; ++j ) {
           auto global_idx_j = mesh.numberOfNodes() * d1 + mesh.getGlobalNodeId( i, j );
           auto local_idx_j = num_nodes_per_el * d1 + j;
-          for ( int d2{ 0 }; d2 < mesh.spatialDimension(); ++d2 ) {
+          for ( int d2{ 0 }; d2 < mesh.spatialDim(); ++d2 ) {
             for ( int k{ 0 }; k < num_nodes_per_el; ++k ) {
               auto global_idx_k = mesh.numberOfNodes() * d2 + mesh.getGlobalNodeId( i, k );
               auto local_idx_k = num_nodes_per_el * d2 + k;
@@ -69,14 +69,14 @@ class EnzymeNodalNormalTest : public testing::Test {
     mfem::DenseMatrix dndx_fd( num_dofs );
     auto mesh_view = mesh.getView();
     tribol::Array2D<RealT> n_base = mesh_view.getNodalNormals();
-    for ( int dx{ 0 }; dx < mesh.spatialDimension(); ++dx ) {
+    for ( int dx{ 0 }; dx < mesh.spatialDim(); ++dx ) {
       for ( int nx{ 0 }; nx < mesh.numberOfNodes(); ++nx ) {
         auto x_idx = dx * mesh.numberOfNodes() + nx;
         x[dx * mesh.numberOfNodes() + nx] += delta_;
         // Compute without Jacobian contributions
         normal_method.Compute( mesh );
         auto local_mesh_view = mesh.getView();
-        for ( int dn{ 0 }; dn < mesh.spatialDimension(); ++dn ) {
+        for ( int dn{ 0 }; dn < mesh.spatialDim(); ++dn ) {
           for ( int nn{ 0 }; nn < mesh.numberOfNodes(); ++nn ) {
             auto n_idx = dn * mesh.numberOfNodes() + nn;
             dndx_fd( n_idx, x_idx ) = ( local_mesh_view.getNodalNormals()( dn, nn ) - n_base( dn, nn ) ) / delta_;

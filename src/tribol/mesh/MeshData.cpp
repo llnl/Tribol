@@ -260,9 +260,9 @@ int MeshData::getDimFromElementType() const
 //------------------------------------------------------------------------------
 ArrayViewT<const IndexT, 2> MeshData::createConnectivity( IndexT num_elements, const IndexT* connectivity )
 {
-  const int face_node_count = getFaceNodeCount( m_element_type, m_face_order );
-  if ( face_node_count > 0 ) {
-    return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, face_node_count } );
+  const int num_face_nodes = numberOfFaceNodes( m_element_type, m_face_order );
+  if ( num_face_nodes > 0 ) {
+    return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, num_face_nodes } );
   }
 
   SLIC_ERROR_ROOT( "Unsupported element type and face order for a contact mesh." );

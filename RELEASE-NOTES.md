@@ -8,21 +8,34 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added a flexible `ContactFormulation` interface for developing energy- or residual-based contact methods with shared
+  search, differentiation, and assembly. Pair evaluation and assembly support Sequential, OpenMP, CUDA, and HIP;
+  CUDA differentiation requires Clang-CUDA. Common Plane and Energy Mortar use this interface alongside legacy methods.
+- Added mixed-field assembly with independent row and column FE spaces for rectangular matrices, including
+  displacement-pressure coupling in Lagrange multiplier methods.
+- Added opt-in linear 2D frictionless constant-penalty Common Plane contact through
+  `setMfemUseCommonPlaneFormulation()`. Force-only evaluation works without Enzyme; coordinate Jacobians require
+  Enzyme. Read results through `getMfemContactForce()` and `getMfemDfDx()`; the force getter returns a contact residual,
+  opposite in sign to the physical force from the legacy `getMfemResponse()` path.
 - Added `ProjectedEdgeSearch` to reject self-pairs, optionally reject shared-node pairs, and require opposing edge
   normals. Projected overlap is determined during quadrature generation rather than refined search; zero-width
   integration intervals produce no active penalty quadrature points.
-- Added allocation-free edge quadrature generation within Energy Mortar pair calculations. `setQuadratureOrder()`
-  selects orders 0-5, using one, two, or three Gauss-Legendre points; the default order 5 retains three points.
-- Added the `ENERGY_MORTAR` contact method for MFEM coupling schemes built with Enzyme and Redecomp. The method supports
-  nodal and quadrature-point enforcement and provides differentiated residual and Jacobian contributions.
+- Added `setQuadratureOrder()` for Energy Mortar and opted-in Common Plane linear-edge contact. Orders 0-5 select
+  one, two, or three Gauss-Legendre points; the default order 5 uses three points.
+- Added the `ENERGY_MORTAR` contact method for MFEM coupling schemes built with Enzyme and Redecomp, with nodal or
+  quadrature-point enforcement and the execution mode selected through `registerMfemCouplingScheme()`. Penalty
+  enforcement requires positive, finite constants supplied through `setMfemKinematicConstantPenalty()` before
+  `update()`.
 - Added the `VISCOUS_TANGENTIAL` contact model and APIs for setting mesh-specific viscous damping coefficients through
   native and MFEM coupling schemes.
 - Added nonzero residual-gap enforcement through `tribol::setResidualGap()`. Positive residual gaps shift the effective
   contact surface away from the registered mesh surface.
+- Added execution-mode selection through `registerMfemCouplingScheme()` and optional rank-count and force-rebuild
+  arguments to `updateMfemParallelDecomposition()`.
 - Added GPU execution support to the MFEM interface and GPU-aware Redecomp field and matrix transfers.
 - Added support for builds that configure `axom::IndexType` as a 64-bit integer across Tribol and Redecomp.
-- Added MFEM APIs for true-dof contact force, gap, and pressure vectors and for the individual `df/dx`, `df/dp`, and
-  `dg/dx` Jacobian blocks.
+- Added MFEM APIs for true-DOF contact force, gap, and pressure vectors, and Jacobian blocks through `getMfemDfDx()`,
+  `getMfemDfDp()`, and `getMfemWeightedGapJacobian()`.
 - Added higher-order contact infrastructure for quadratic Lagrange edges and 9-node quadrilaterals, including
   GPU-capable fixed-extent `MdSpan` and `MdArray` containers, basis and mapping utilities, and quadratic `MeshData`
   storage. Existing contact methods do not yet consume quadratic faces.
@@ -60,59 +73,9 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
-- Numerical coordinates, fields, matrix entries, and parameters consistently use `RealT` across Tribol, shared helpers,
-  Redecomp, examples, and tests. Public C++ declarations retain their existing types because `RealT` aliases `double`;
-  generated C/Fortran interfaces retain their concrete types. Single precision remains unsupported.
-- Pair quadrature constructs element geometry objects once per pair calculation. For linear edges, each object copies
-  the endpoints and caches the edge vector and squared length. Mappings use these objects by const reference to compute
-  Primal points, parent projection coordinates, normals, and Jacobians.
-- Energy Mortar generates and consumes quadrature locally for each pair during gap and force calculations. Independent
-  quadrature output is deferred, and the unused `ContactFormulation::updateIntegrationRule()` operation is removed.
-- `PairQuadratureRule<Mapping, IntegrationSurfaceRuleGenerator>` combines an element-pair integration mapping with an
-  integration-surface rule generator. `SmoothedProjectedEdgeMapping` selects the integration interval and maps
-  its quadrature points to both elements' parametric coordinates, applying the first geometry's physical Jacobian once.
-  `EdgeQuadratureRuleGenerator<NumPoints>` generates an `IntegrationSurfaceRule` containing Gauss points and weights
-  expressed in the supplied interval's coordinates. `IntegrationSurfaceRuleView` provides read-only access to those
-  arrays.
-  The calculator evaluates fields at the returned parametric coordinates on both elements.
-  C++20 concepts check the mapping and generator interfaces, including whether the generator accepts the integration
-  surface and the mapping accepts the generated rule's view.
-  Rule generators expose `coordinate_dimension`, the number of coordinate components per integration-surface point.
-  `LinearEdgeGeometry`, `FaceElementTraits`, and `BasisFunction` use `parametric_dimension` in place of `parent_dimension`.
-  Consumers access geometry properties through the rule's `FirstGeometry` and `SecondGeometry` types. Energy Mortar
-  checks both geometries' parametric dimensions, vertex counts, and spatial dimensions.
-  Coordinate fields use `coords`, `geometry1_coords`, and `geometry2_coords`; geometry input views use the `Coords`
-  alias.
-  The basis coordinate-array alias is renamed from `ParentCoordinates` to `ParentCoords`, and
-  `GetParentNodeCoordinates()` is renamed to `getParentNodeCoords()`.
-  Methods and functions in `BasisFunction.hpp` use lower camelCase, including `eval()`, `evalParentDerivatives()`,
-  `getFaceNodeCount()`, `mapToPhysical()`, and the interpolation, Jacobian, and derivative utilities.
-  Coordinates and weights use `RealT`. Mapping types identify their element geometries; the implemented mapping supports
-  straight two-dimensional edges. Co-oriented edge pairs produce valid zero-point rules before point generation,
-  including when mapping existing integration-surface quadrature points; they cannot contribute tributary area or
-  residual-gap forces.
-  Failed quadrature generation reports an exception before Energy Mortar consumes the data, including differentiated
-  calculations; invalid geometry is not treated as a valid zero-point rule.
-- `EnergyMortarAdapter` owns its configured pair rule, and its calculator keeps a reference to that generator.
-  The mapping owns smoothing settings; refined search leaves overlap determination to quadrature generation.
-  `ContactParams` no longer carries a runtime quadrature count or smoothing length. Frozen integration-surface
-  quadrature points are mapped to both current elements, preserving the varying and frozen derivative modes.
-  Assembly remains host-only; the generators are device-callable.
-- Energy Mortar calculates straight-edge normal gaps from the corresponding element points. Very short nondegenerate mortar
-  edges retain their normal gap instead of depending on a line-intersection tolerance. The calculator's unused
-  `compute_projection_bounds()` helper was removed. Surface-region representations beyond edge intervals remain future
-  work.
 - `tribol::registerMesh()` now requires a `tribol::FaceOrderType` argument after `element_type`. Existing callers must
   pass `tribol::LINEAR_LAGRANGE` to retain the previous linear-face behavior.
 - Tribol now requires C++20 or newer.
-- Renamed the public element values `LINEAR_EDGE`, `LINEAR_TRIANGLE`, `LINEAR_QUAD`, `LINEAR_TET`, and `LINEAR_HEX` to
-  `EDGE`, `TRIANGLE`, `QUAD`, `TET`, and `HEX`; element shape and finite element order are now selected separately.
-- Renamed `FaceOrderType::LINEAR` to `FaceOrderType::LINEAR_LAGRANGE` and `ContactModel::COULOMB` to
-  `ContactModel::FRICTION_COULOMB`.
-- Renamed `LoggingLevel` values from all-uppercase names to `Undefined`, `Debug`, `Info`, `Warning`, `Error`, and
-  `NumLoggingLevels`.
-- `registerMfemCouplingScheme()` now accepts an optional execution mode, and `updateMfemParallelDecomposition()` accepts
-  an optional rank count and force-rebuild flag.
 - MFEM coupling schemes now reuse their Redecomp mesh until a configurable displacement threshold is exceeded. Use
   `setMfemRedecompTriggerDisplacement()` to change the threshold or force a rebuild when updating the decomposition.
 - MFEM element thickness calculations now use registered reference coordinates when available.
@@ -124,8 +87,6 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   interface.
 - Logging refactor using SLIC macros. Lots of warnings were demoted to DEBUG level.
 - Changed various computational geometry routines to return a FaceGeomError enum error handling
-- Changed LoggingLevel enum names by appending a TRIBOL prefix to avoid MACRO conflicts
-  with host codes.
 - Removed nullptr errors to allow more function call uniformity for ranks with null meshes. 
   Also removed any `continue` statements for null meshes.
 - Updated logging in timestep vote by removing logging macro calls inside the interface pairs 
@@ -145,7 +106,6 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   what device the mesh pointers reside on.
 - `tribol::registerCouplingScheme()` now contains an optional `tribol::ExecutionMode` argument
   that provides a suggested programming model to execute parallel loops.
-- `tribol::LoggingLevel`s renamed from `TRIBOL_<NAME>` to `<NAME>`
 - Changed the computational geometry to work within a class interface that confines method specific
   comp geom calculations for ease of use/implementation.  
 - All computational geometry for common planes now uses the average face plane coordinates of each face.

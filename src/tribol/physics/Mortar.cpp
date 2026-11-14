@@ -199,7 +199,7 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
 
   // declare local variables to hold face nodal coordinates
   // and overlap vertex coordinates
-  int const dim = cs->spatialDimension();
+  int const dim = cs->spatialDim();
   Array2D<RealT> mortarX( numNodesPerFace, dim );
   Array2D<RealT> nonmortarX( numNodesPerFace, dim );
   Array2D<RealT> mortarX_bar( numNodesPerFace, dim );
@@ -264,7 +264,7 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
 template <>
 int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
 {
-#ifdef TRIBOL_USE_ENZYME
+#if defined( TRIBOL_USE_ENZYME ) && !defined( TRIBOL_DEVICE_CODE )
   if ( cs->isEnzymeEnabled() ) {
     return ApplyNormalEnzyme( cs );
   }
@@ -280,7 +280,7 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
   // Number of stored mortar planes that contribute to the residual and/or Jacobian terms.
   const IndexT contact_plane_count = cs->getNumActivePairs();
 
-  int const dim = cs->spatialDimension();
+  int const dim = cs->spatialDim();
 
   ////////////////////////////////////////////////////////////////////////
   //
@@ -589,7 +589,7 @@ void ComputeSingleMortarJacobian( SurfaceContactElem& elem )
   return;
 }
 
-#ifdef TRIBOL_USE_ENZYME
+#if defined( TRIBOL_USE_ENZYME ) && !defined( TRIBOL_DEVICE_CODE )
 
 //------------------------------------------------------------------------------
 int ApplyNormalEnzyme( CouplingScheme* cs )
@@ -1094,7 +1094,7 @@ int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs )
   // CheckInterfacePair stores only method-approved geometry, so the contact-plane array is compact.
   const IndexT contact_plane_count = cs->getNumActivePairs();
 
-  const int dim = cs->spatialDimension();
+  const int dim = cs->spatialDim();
 
   auto mortarMesh = cs->getMesh1().getView();
   auto nonmortarMesh = cs->getMesh2().getView();

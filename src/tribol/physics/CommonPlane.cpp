@@ -244,7 +244,7 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     RealT xf1[max_dim * max_nodes_per_face];
     RealT xf2[max_dim * max_nodes_per_face];
     RealT xVert[max_dim * max_nodes_per_overlap];
-    int dim = cs_view.spatialDimension();
+    int dim = cs_view.spatialDim();
     int num_nodes_per_face = mesh1.numberOfNodesPerElement();
     initRealArray( xf1, dim * num_nodes_per_face, 0. );
     initRealArray( xf2, dim * num_nodes_per_face, 0. );

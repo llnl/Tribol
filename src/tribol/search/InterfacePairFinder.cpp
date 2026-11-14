@@ -203,7 +203,7 @@ std::unique_ptr<SearchBase> MakeFilteredSearch( CouplingScheme& coupling_scheme 
 InterfacePairFinder::InterfacePairFinder( CouplingScheme* coupling_scheme ) : m_coupling_scheme( coupling_scheme )
 {
   SLIC_ASSERT_MSG( coupling_scheme != nullptr, "Coupling scheme was invalid (null pointer)" );
-  const int spatial_dimension = m_coupling_scheme->spatialDimension();
+  const int spatial_dimension = m_coupling_scheme->spatialDim();
   m_search = nullptr;
 
   if ( isOnDevice( coupling_scheme->getExecutionMode() ) && coupling_scheme->getBinningMethod() == BINNING_GRID ) {

@@ -25,13 +25,13 @@ constexpr tribol::IndexT mesh2_id = 29;
 constexpr tribol::RealT proximity_scale_for_raised_nodes = 0.2;
 constexpr tribol::RealT no_residual_gap = 0.0;
 
-template <int SpatialDimension>
+template <int SpatialDim>
 void ExpectBothSearchesFindCandidates( tribol::MeshData& mesh1, tribol::MeshData& mesh2,
                                        const CandidateIds& expected_candidates )
 {
-  auto grid = tribol::createCoarseSearch( SpatialDimension, tribol::BINNING_GRID, tribol::ExecutionMode::Sequential,
+  auto grid = tribol::createCoarseSearch( SpatialDim, tribol::BINNING_GRID, tribol::ExecutionMode::Sequential,
                                           proximity_scale_for_raised_nodes, no_residual_gap );
-  auto bvh = tribol::createCoarseSearch( SpatialDimension, tribol::BINNING_BVH, tribol::ExecutionMode::Sequential,
+  auto bvh = tribol::createCoarseSearch( SpatialDim, tribol::BINNING_BVH, tribol::ExecutionMode::Sequential,
                                          proximity_scale_for_raised_nodes, no_residual_gap );
   ASSERT_NE( grid, nullptr );
   ASSERT_NE( bvh, nullptr );

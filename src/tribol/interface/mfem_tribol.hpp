@@ -49,6 +49,11 @@ namespace tribol {
  * @param [in] enforcement_method
  * @param [in] binning_method
  * @param [in] exec_mode Execution mode for the coupling scheme (Sequential by default)
+ *
+ * Quadrature-point ENERGY_MORTAR uses parent-only Jacobian transfer and creates no pressure/gap fields. Nodal
+ * enforcement creates those fields when selected; switching locations rebuilds the formulation and transfer data.
+ * Penalty Energy Mortar is registered without a formulation until setMfemKinematicConstantPenalty() supplies the
+ * required constants. Nodal LM formulations are available immediately after registration.
  */
 void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, const mfem::ParMesh& mesh,
                                  const mfem::ParGridFunction& current_coords, std::set<int> b_attributes_1,
@@ -57,6 +62,22 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
                                  EnforcementMethod enforcement_method,
                                  BinningMethod binning_method = DEFAULT_BINNING_METHOD,
                                  ExecutionMode exec_mode = ExecutionMode::Sequential );
+
+/**
+ * @brief Select Common Plane forces with an optional coordinate Jacobian, or restore legacy Common Plane.
+ * @param cs_id MFEM COMMON_PLANE coupling scheme with positive constant penalties already configured.
+ * @param enabled True selects the formulation; false restores the legacy response path.
+ * @param compute_jacobian Whether to calculate df_dx. Defaults to true to preserve force-and-Jacobian evaluation.
+ * False calculates forces without Enzyme, Jacobian buffers, or matrix transfers. Ignored when enabled is false.
+ * @throws std::invalid_argument Unsupported method, geometry, penalty, or execution settings; selection is unchanged.
+ * @throws std::runtime_error Jacobian calculation was requested without Enzyme support; selection is unchanged.
+ *
+ * Supports linear 2D MFEM frictionless penalty contact without LOR subdivision. Use getMfemContactForce()
+ * and, when requested, getMfemDfDx() after update(), rather than getMfemResponse(). The returned vector is a contact
+ * residual; its negative is the physical force returned by legacy Common Plane. Nodal gaps, energy, and timestep output
+ * are unsupported.
+ */
+void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_jacobian = true );
 
 /**
  * @brief Sets factor of refinement in low-order refined (LOR) representation of
@@ -102,6 +123,14 @@ void setMfemRedecompTriggerDisplacement( IndexT cs_id, RealT val );
  * @param cs_id The ID of the coupling scheme with the MFEM mesh
  * @param mesh1_penalty Penalty parameter for the first contact surface mesh
  * @param mesh2_penalty Penalty parameter for the second contact surface mesh
+ *
+ * For penalty Energy Mortar, constructs or replaces the formulation with the arithmetic mean of these constants.
+ * For the opt-in Common Plane formulation, replaces it using these constants as springs in series. Existing penalty
+ * scales are cleared; call setMfemKinematicPenaltyScale() after this setter to apply scales to the new constants.
+ * The formulation keeps that effective stiffness until replaced. Construction requires no decomposition refresh;
+ * call updateMfemParallelDecomposition() with current coordinates before calculating contact.
+ * @throws std::invalid_argument A composed formulation's mesh or effective penalty is nonpositive or nonfinite; its
+ * existing penalty data and formulation are unchanged.
  */
 void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT mesh2_penalty );
 
@@ -157,6 +186,10 @@ void setMfemRatePercentPenalty( IndexT cs_id, RealT mesh1_ratio, RealT mesh2_rat
  * @param cs_id The ID of the coupling scheme with the MFEM mesh
  * @param mesh1_scale Scaling coefficient of the kinematic penalty for the first contact surface mesh
  * @param mesh2_scale Scaling coefficient of the kinematic penalty for the second contact surface mesh
+ *
+ * Replaces an enabled Common Plane formulation using the scaled mesh constants, without a decomposition refresh.
+ * Its effective stiffness stays fixed until the formulation is replaced. Energy Mortar does not apply these scales.
+ * @throws std::invalid_argument A Common Plane scaled mesh penalty is nonpositive or nonfinite.
  */
 void setMfemKinematicPenaltyScale( IndexT cs_id, RealT mesh1_scale, RealT mesh2_scale );
 
@@ -240,9 +273,10 @@ void registerMfemReferenceCoords( IndexT cs_id, const mfem::ParGridFunction& ref
 void getMfemResponse( IndexT cs_id, mfem::Vector& r );
 
 /**
- * @brief Returns the true-dof contact force vector
+ * @brief Return the assembled contact residual on parent true DOFs
  *
- * @note This returns a true-dof vector (i.e. values on shared DOFs are already consistent across ranks).
+ * @note Values on shared DOFs are already consistent across ranks. For the Common Plane formulation, the negative of
+ * this residual is the physical force returned by the legacy getMfemResponse() path.
  *
  * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
  * @pre Redecomp mesh must be created and up to date by calling updateMfemParallelDecomposition()
@@ -284,6 +318,8 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id );
 /**
  * @brief Get the derivative of the force with respect to displacement
  *
+ * Transfers the latest result out of the coupling scheme. Returns null if it was not calculated or already taken.
+ *
  * @param cs_id Coupling scheme id with a registered MFEM mesh
  * @return Unique pointer to MFEM HypreParMatrix
  */
@@ -292,21 +328,28 @@ std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx( IndexT cs_id );
 /**
  * @brief Get the derivative of the force with respect to pressure
  *
+ * Transfers the latest result out of the coupling scheme. Returns null if it was not calculated or already taken.
+ *
  * @param cs_id Coupling scheme id with a registered MFEM mesh
  * @return Unique pointer to MFEM HypreParMatrix
  */
 std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp( IndexT cs_id );
 
 /**
- * @brief Get the derivative of the gap with respect to displacement
+ * @brief Get the weighted-gap coordinate Jacobian
+ *
+ * Penalty enforcement zeros opening rows; this is not the derivative of the normalized gap output. Transfers the latest
+ * result out of the coupling scheme and returns null if it was not calculated or already taken.
  *
  * @param cs_id Coupling scheme id with a registered MFEM mesh
  * @return Unique pointer to MFEM HypreParMatrix
  */
-std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx( IndexT cs_id );
+std::unique_ptr<mfem::HypreParMatrix> getMfemWeightedGapJacobian( IndexT cs_id );
 
 /**
- * @brief Returns gap vector to a given mfem::Vector
+ * @brief Returns a legacy-method gap vector to a given mfem::Vector
+ *
+ * @throws std::logic_error The scheme uses ContactFormulation; use getMfemContactGap() instead.
  *
  * @note This is stored as an MFEM dual vector, meaning the shared DOFs expect to be summed over all ranks to obtain
  * their value.
@@ -323,7 +366,9 @@ void getMfemGap( IndexT cs_id, mfem::Vector& g );
 /**
  * @brief Returns the true-dof contact gap vector
  *
- * @note This returns a true-dof vector (i.e. values on shared DOFs are already consistent across ranks).
+ * @note Values on shared DOFs are already consistent across ranks. Nodal Energy Mortar returns normalized gaps for
+ * penalty enforcement and weighted gaps for LM enforcement. Quadrature-point methods have no nodal gap output.
+ * @throws std::logic_error The latest calculation did not provide nodal gaps.
  *
  * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
  * @pre Redecomp mesh must be created and up to date by calling updateMfemParallelDecomposition()
@@ -349,8 +394,11 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id );
 /**
  * @brief Returns a reference to the true-dof contact pressure vector
  *
- * In penalty-style methods, this corresponds to the pressure true-dof vector. In Lagrange-multiplier-based methods,
- * this may be interpreted as the multiplier vector.
+ * For nodal penalty enforcement, returns the pressure in the latest coupling-scheme result. For LM enforcement,
+ * returns the caller-supplied multiplier input for the next update(), available immediately after registration.
+ * Formulations retain neither this input nor computed pressure. Quadrature-point methods have no nodal pressure.
+ *
+ * @throws std::logic_error No nodal pressure output or multiplier input is available.
  *
  * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
  *

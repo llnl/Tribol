@@ -3,11 +3,15 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+/** @file @brief Check execution-mode selection and runtime selection of compile-time host operations. */
 #include <iostream>
 
 #include <gtest/gtest.h>
 
 #include "tribol/interface/tribol.hpp"
+#include "tribol/common/LoopExec.hpp"
+#include "ExecutionTest.hpp"
+#include <memory>
 #include "tribol/mesh/CouplingScheme.hpp"
 
 #ifdef TRIBOL_USE_UMPIRE
@@ -16,6 +20,32 @@
 #endif
 
 namespace tribol {
+
+/** @brief Select each enabled compile-time mode without running a device kernel. */
+class ExecutionDispatchTest : public detail::ExecutionTest {};
+
+// The selected specialization must run once and return an owned result through the runtime entry point.
+TEST_P( ExecutionDispatchTest, selects_mode_and_returns_owned_result )
+{
+  int calls = 0;
+  const auto result = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    ++calls;
+    return std::make_unique<ExecutionMode>( Exec );
+  } );
+  EXPECT_EQ( calls, 1 );
+  EXPECT_EQ( *result, GetParam() );
+}
+
+// Dynamic must be resolved before selection; rejection must leave the callback uncalled.
+TEST( ExecutionDispatch, rejects_dynamic_without_calling_operation )
+{
+  bool called = false;
+  EXPECT_THROW( dispatchExecutionMode( ExecutionMode::Dynamic, [&]<ExecutionMode Exec>() { called = true; } ),
+                std::invalid_argument );
+  EXPECT_FALSE( called );
+}
+
+INSTANTIATE_TEST_SUITE_P( execution, ExecutionDispatchTest, detail::enabledExecutionModes() );
 
 /**
  * @brief This test checks the tribol::ExecutionMode is valid for a given

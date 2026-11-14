@@ -8,8 +8,11 @@
 
 // C++ includes
 #include <type_traits>
+#include <stdexcept>
+#include <utility>
 
 // Tribol includes
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/ExecModel.hpp"
 
 // Axom includes
@@ -22,6 +25,42 @@
 #endif
 
 namespace tribol {
+
+/**
+ * @brief Select an enabled compile-time execution mode for a host operation.
+ *
+ * Use at construction or another runtime entry point, then carry Exec through the selected calculation's kernels.
+ * For example, a formulation factory can pass a lambda with template parameter ExecutionMode Exec to construct
+ * a formulation specialized for that mode.
+ * @tparam Function Host callable with a templated operator()<ExecutionMode>(); every specialization has the same
+ * return type, which may be void.
+ * @param execution_mode Concrete execution mode to select.
+ * @param function Operation called exactly once for the selected mode; not retained.
+ * @return The selected operation's result, preserving references and ownership.
+ * @throws std::invalid_argument Mode is Dynamic or unsupported by this build; function is not called.
+ */
+template <typename Function>
+decltype( auto ) dispatchExecutionMode( ExecutionMode execution_mode, Function&& function )
+{
+  switch ( execution_mode ) {
+    case ExecutionMode::Sequential:
+      return std::forward<Function>( function ).template operator()<ExecutionMode::Sequential>();
+#ifdef TRIBOL_USE_OPENMP
+    case ExecutionMode::OpenMP:
+      return std::forward<Function>( function ).template operator()<ExecutionMode::OpenMP>();
+#endif
+#ifdef TRIBOL_USE_CUDA
+    case ExecutionMode::Cuda:
+      return std::forward<Function>( function ).template operator()<ExecutionMode::Cuda>();
+#endif
+#ifdef TRIBOL_USE_HIP
+    case ExecutionMode::Hip:
+      return std::forward<Function>( function ).template operator()<ExecutionMode::Hip>();
+#endif
+    default:
+      throw std::invalid_argument( "Execution mode must be concrete and enabled in this build." );
+  }
+}
 
 // Check Tribol has RAJA if we are using CUDA, HIP, or OpenMP.
 #if defined( TRIBOL_USE_CUDA ) && !defined( TRIBOL_USE_RAJA )
@@ -55,8 +94,8 @@ namespace detail {
 template <ExecutionMode T>
 struct forAllType {};
 
-template <ExecutionMode EXEC, typename BODY, bool ASYNC, int BLOCK_SIZE>
-void forAllImpl( forAllType<EXEC>, IndexT, BODY&& )
+template <ExecutionMode Exec, typename BODY, bool ASYNC, int BLOCK_SIZE>
+void forAllImpl( forAllType<Exec>, IndexT, BODY&& )
 {
   SLIC_ERROR_ROOT( "forAllExec not defined for the given ExecutionMode." );
 }
@@ -137,10 +176,10 @@ void forAllImpl( forAllType<ExecutionMode::OpenMP>, IndexT N, BODY&& body )
  * callers to select an Axom execution policy. Dynamic has no specialization because an Axom execution-space type must
  * be selected at compile time.
  *
- * @tparam EXEC Tribol execution mode
+ * @tparam Exec Tribol execution mode
  * @tparam BLOCK_SIZE Number of threads in each CUDA or HIP block
  */
-template <ExecutionMode EXEC, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE>
+template <ExecutionMode Exec, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE>
 struct toAxomExecSpace;
 
 template <int BLOCK_SIZE>
@@ -177,17 +216,17 @@ struct toAxomExecSpace<ExecutionMode::Hip, BLOCK_SIZE> {
  * synchronizes before reading results on the host or releasing that storage. Sequential and OpenMP loops always
  * complete before returning.
  *
- * @tparam EXEC Execution mode for loop
+ * @tparam Exec Execution mode for loop
  * @tparam ASYNC Whether CUDA and HIP loops may return before their kernels complete
  * @tparam BLOCK_SIZE Block size for kernel (if applicable)
  * @tparam BODY Functor type defining what to do inside the loop
  * @param N Number of items to iterate over
  * @param body Functor body defining what to do inside the loop
  */
-template <ExecutionMode EXEC, bool ASYNC = false, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE, typename BODY>
+template <ExecutionMode Exec, bool ASYNC = false, int BLOCK_SIZE = TRIBOL_BLOCK_SIZE, typename BODY>
 void forAllExec( IndexT N, BODY&& body )
 {
-  detail::forAllImpl<BODY, ASYNC, BLOCK_SIZE>( detail::forAllType<EXEC>(), N, std::move( body ) );
+  detail::forAllImpl<BODY, ASYNC, BLOCK_SIZE>( detail::forAllType<Exec>(), N, std::move( body ) );
 }
 
 /**

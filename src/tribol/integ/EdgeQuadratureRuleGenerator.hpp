@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
+// Copyright (c) Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -26,13 +26,13 @@ namespace tribol {
 template <int NumPoints>
 struct EdgeQuadratureRuleGenerator {
   static_assert( NumPoints >= 1 && NumPoints <= 3 );
-  static constexpr int coordinate_dimension = 1;  ///< Number of coordinate components per integration point.
-  static constexpr int max_points = NumPoints;    ///< Maximum number of points in a successfully generated rule.
+  static constexpr int coordinate_dim = 1;          ///< Number of coordinates per integration point.
+  static constexpr int max_num_points = NumPoints;  ///< Maximum number of points in a successfully generated rule.
   /// Maximum polynomial degree integrated exactly in integration-surface coordinates.
   static constexpr int polynomial_order = 2 * NumPoints - 1;
 
   /** @brief Quadrature points and weights expressed in the supplied interval's coordinates. */
-  using IntegrationSurfaceRule = tribol::IntegrationSurfaceRule<coordinate_dimension, NumPoints>;
+  using IntegrationSurfaceRule = tribol::IntegrationSurfaceRule<coordinate_dim, NumPoints>;
 
   /**
    * @brief Generate quadrature points and weights on the supplied interval.
@@ -68,7 +68,7 @@ struct EdgeQuadratureRuleGenerator {
       rule.coords( q, 0 ) = scale * gaussPoint( q ) + center;
       rule.weights[q] = scale * gaussWeight( q );
     }
-    rule.result.required_point_count = NumPoints;
+    rule.result.num_required_points = NumPoints;
     return rule;
   }
 

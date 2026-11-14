@@ -717,7 +717,7 @@ class MfemMeshData {
   int GetNumNodes() const { return GetUpdateData().num_nodes_; }
 
   /**
-   * @brief Get the number of finite-element nodes in each contact element
+   * @brief Get the number of finite-element nodes in each surface element
    *
    * @return int
    */
@@ -1060,6 +1060,10 @@ class MfemMeshData {
    */
   const mfem::ParMesh* GetLORMesh() const { return lor_mesh_.get(); }
 
+  /// Whether a decomposition exists and newly created transfer data can be initialized immediately.
+  /// @return True after UpdateMfemMeshData() has created the current Redecomp mesh, including on empty ranks.
+  bool HasRedecompMesh() const { return update_data_ != nullptr; }
+
   /**
    * @brief Get the redecomp mesh containing redecomposed contact surfaces
    *
@@ -1160,8 +1164,8 @@ class MfemMeshData {
     /**
      * @brief Construct a new UpdateData object
      *
-     * @param submesh Parent-linked boundary submesh of contact elements
-     * @param lor_mesh LOR mesh of contact elements (if using LOR; nullptr otherwise)
+     * @param submesh Parent-linked boundary submesh of surface elements
+     * @param lor_mesh LOR mesh of surface elements (if using LOR; nullptr otherwise)
      * @param parent_fes Vector finite element space on the original parent mesh
      * @param submesh_gridfn Grid function on the parent-linked boundary submesh used to temporarily store variables
      *        being transferred
@@ -1629,6 +1633,16 @@ class MfemSubmeshData {
   void GetSubmeshGap( mfem::Vector& g ) const;
 
   /**
+   * @brief Transfer a scalar submesh true-DOF field onto the current Redecomp finite-element space.
+   * @param true_dofs Field on this submesh's scalar true DOFs.
+   * @return Owned Redecomp grid function with values at all local field DOFs; the associated spaces must remain alive.
+   * @pre UpdateMfemSubmeshData() has initialized the current transfer and Redecomp space.
+   * @throws std::invalid_argument The field space is nonscalar or the vector length does not match; no field is
+   * returned.
+   */
+  mfem::GridFunction TransferTrueDofsToRedecomp( const mfem::Vector& true_dofs ) const;
+
+  /**
    * @brief Get the parent-linked boundary submesh to redecomp mesh pressure
    * transfer object
    *
@@ -1642,6 +1656,13 @@ class MfemSubmeshData {
    * @return const mfem::ParFiniteElementSpace&
    */
   const mfem::ParFiniteElementSpace& GetSubmeshFESpace() const { return *submesh_pressure_.ParFESpace(); }
+
+  /**
+   * @brief Get the current Redecomp finite-element space for fields transferred through this submesh.
+   * @return Reference to the field space, valid until the decomposition is rebuilt.
+   * @pre UpdateMfemSubmeshData() has initialized the current decomposition.
+   */
+  const mfem::FiniteElementSpace& GetRedecompFESpace() const { return *pressure_.GetRedecompGridFn().FESpace(); }
 
   /**
    * @brief Get the finite element space on the LOR mesh
@@ -1873,7 +1894,7 @@ struct PackedPairJacobianContribs {
   }
 
   /**
-   * @brief Reserve packed storage for a batch of element contributions
+   * @brief Reserve packed storage for a set of element contributions
    *
    * @param n_pairs Number of element-pair contributions that will be appended.
    * @param n_jacobian_scalar_values Total number of scalar Jacobian values that will be appended across all pairs.
@@ -2031,6 +2052,11 @@ class MfemJacobianTransfer {
 class MfemJacobianData {
  public:
   /**
+   * @brief Construct displacement-only Jacobian transfer without pressure or gap fields.
+   * @param parent_data Displacement mesh and transfer data; must outlive this object.
+   */
+  explicit MfemJacobianData( const MfemMeshData& parent_data );
+  /**
    * @brief Construct a new MfemJacobianData object
    *
    * @param parent_data MFEM data associated with displacement and velocity
@@ -2052,7 +2078,7 @@ class MfemJacobianData {
    *
    * @note @p row_final_fes and @p col_final_fes must be one of:
    * - parent FE space (parent_data_.GetParentCoords().ParFESpace())
-   * - multiplier submesh FE space (submesh_data_.GetSubmeshFESpace())
+   * - multiplier submesh FE space, when constructed with pressure/gap data
    */
   shared::ParSparseMat GetMfemJacobian( const mfem::ParFiniteElementSpace* row_final_fes,
                                         const mfem::ParFiniteElementSpace* col_final_fes,
@@ -2068,7 +2094,7 @@ class MfemJacobianData {
   const MfemJacobianPath& ParentPath() const;
 
   /**
-   * @brief Access the transfer pathway for submesh-final Jacobians
+   * @brief Access the transfer pathway for submesh-final Jacobians (requires pressure/gap data)
    *
    * This maps from the multiplier submesh true dofs into the selected dual surface DOF space (LOR if active, otherwise
    * submesh).
@@ -2086,10 +2112,10 @@ class MfemJacobianData {
      * @brief Construct a new UpdateData object
      *
      * @param parent_data MFEM data associated with displacement and velocity
-     * @param submesh_data MFEM data associated with pressure and gap
+     * @param submesh_data Optional pressure/gap data; null builds only the displacement path.
      * @param submesh2parent_vdof_list Global parent vdof for each local submesh vdof
      */
-    UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data,
+    UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData* submesh_data,
                 const mfem::Array<HYPRE_BigInt>& submesh2parent_vdof_list );
 
     /**
@@ -2123,9 +2149,9 @@ class MfemJacobianData {
   const MfemMeshData& parent_data_;
 
   /**
-   * @brief MFEM and transfer data associated with pressure and gap
+   * @brief Pointer to pressure/gap transfer data; null for displacement-only formulations.
    */
-  const MfemSubmeshData& submesh_data_;
+  const MfemSubmeshData* submesh_data_{ nullptr };
 
   /**
    * @brief List giving global parent vdof given the submesh vdof
