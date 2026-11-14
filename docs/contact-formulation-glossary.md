@@ -127,9 +127,8 @@ The outputs may be energy, residual entries, or gap/area integrals. Settings are
 produce zero contracted derivatives. Energy partials with respect to weighted gap and tributary area are distinct from
 energy derivatives with respect to spatial coordinates.
 
-A **pair contribution** contains one pair's numerical outputs before global assembly. A **pair kernel** evaluates a
-batch
-into execution-accessible buffers. **Assembly** sums vector entries at shared DOFs, packs matrix blocks, transfers
+A **pair contribution** contains one pair's numerical outputs before global assembly. A **pair kernel** evaluates a pair
+list into execution-accessible buffers. **Assembly** sums vector entries at shared DOFs, packs matrix blocks, transfers
 between mesh levels, and accumulates results on true DOFs. An **assembled field** contains scalar field values and their
 coordinate `jacobian`. A **contact residual**, exposed as `force`, is the vector of contact contributions to the
 discrete equations. Its sign convention is defined by the formulation.

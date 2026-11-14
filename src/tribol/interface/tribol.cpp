@@ -5,6 +5,7 @@
 
 #include "tribol.hpp"
 
+#include <cmath>
 #include <stdexcept>
 
 // Tribol includes
@@ -188,8 +189,7 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location )
     throw std::invalid_argument( "Unsupported enforcement location." );
   }
   if ( cs->getContactMethod() == ENERGY_MORTAR && location == EnforcementLocation::QuadraturePoint &&
-       cs->getEnforcementMethod() == LAGRANGE_MULTIPLIER &&
-       !cs->getEnforcementOptions().penalty_options.kinematic_calc_set ) {
+       cs->getEnforcementMethod() != PENALTY ) {
     throw std::invalid_argument( "Quadrature-point Energy Mortar requires penalty enforcement." );
   }
   cs->getParameters().enforcement_location = location;
@@ -393,7 +393,9 @@ void setResidualGap( IndexT cs_id, RealT residual_gap )
   // check to see if coupling scheme exists
   SLIC_ERROR_ROOT_IF(
       !cs, "tribol::setResidualGap(): call tribol::registerCouplingScheme() " << "prior to calling this routine." );
-  SLIC_ERROR_ROOT_IF( residual_gap < 0.0, "tribol::setResidualGap(): residual gap must be nonnegative." );
+  if ( !std::isfinite( residual_gap ) || residual_gap < 0.0 ) {
+    throw std::invalid_argument( "tribol::setResidualGap(): residual gap must be nonnegative and finite." );
+  }
 
   cs->getParameters().residual_gap = residual_gap;
   if ( cs->hasContactFormulation() ) {

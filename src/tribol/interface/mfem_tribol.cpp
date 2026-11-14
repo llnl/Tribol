@@ -15,6 +15,7 @@
 #include "tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/physics/ContactFormulationFactory.hpp"
+#include "tribol/physics/PenaltyStiffness.hpp"
 #include <stdexcept>
 
 namespace tribol {
@@ -441,12 +442,21 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the penalty." );
+  const bool rebuild_formulation = cs->getContactMethod() == ENERGY_MORTAR || cs->hasContactFormulation();
+  if ( rebuild_formulation ) {
+    const RealT checked_mesh1_penalty = detail::checkedPenaltyStiffness( mesh1_penalty );
+    const RealT checked_mesh2_penalty = detail::checkedPenaltyStiffness( mesh2_penalty );
+    const RealT effective_penalty = cs->getContactMethod() == ENERGY_MORTAR
+                                        ? AveragePenaltyStiffness{}( checked_mesh1_penalty, checked_mesh2_penalty )
+                                        : SeriesPenaltyStiffness{}( checked_mesh1_penalty, checked_mesh2_penalty );
+    detail::checkedPenaltyStiffness( effective_penalty );
+  }
   setPenaltyOptions( cs_id, KINEMATIC, KINEMATIC_CONSTANT );
   cs->getMfemMeshData()->ClearAllPenaltyData();
   cs->getMfemMeshData()->SetMesh1KinematicConstantPenalty( mesh1_penalty );
   cs->getMfemMeshData()->SetMesh2KinematicConstantPenalty( mesh2_penalty );
 
-  if ( cs->getContactMethod() == ENERGY_MORTAR || cs->hasContactFormulation() ) {
+  if ( rebuild_formulation ) {
     cs->updateContactFormulation();
   }
 }

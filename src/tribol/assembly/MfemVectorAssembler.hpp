@@ -129,7 +129,7 @@ class MfemVectorAssembler {
   }
 
   /**
-   * @brief Accumulate a batch of pair entries in the selected execution space.
+   * @brief Accumulate one pair list's entries in the selected execution space.
    * @tparam SizeValues Input scalar entry count. @tparam NumBlocks Geometry blocks per pair.
    * @tparam ValueReader Device-callable `(pair, row) -> RealT` reader.
    * @tparam Exec Concrete execution mode.

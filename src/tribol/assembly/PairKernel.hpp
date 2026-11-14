@@ -52,17 +52,15 @@ PairValueBuffer<PairFunction::size_values> evaluatePairValues( const ArrayT<Inte
   const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = pairs_view[pair_index];
-    // Call function to evaluate pair quantity
     const auto coords1 = mesh1.getFaceCoords<typename PairFunction::Coords1>( pair.element_id1_ );
     const auto coords2 = mesh2.getFaceCoords<typename PairFunction::Coords2>( pair.element_id2_ );
     const auto pair_values_struct = pair_function.evaluate( coords1.view(), coords2.view() );
-    // Fill the buffer with quantities evaluated at the pair
     all_pair_values_view.quadrature[pair_index] = pair_values_struct.quadrature_result;
     const bool active = pair_values_struct.quadrature_result.status == QuadratureStatus::Success &&
                         pair_values_struct.has_active_points;
     const auto pair_values = pair_values_struct.values();
-    for ( IndexT i{ 0 }; i < PairFunction::size_values; ++i ) {
-      all_pair_values_view.setValue( pair_index, i, active ? pair_values[i] : 0.0 );
+    for ( IndexT value_index{ 0 }; value_index < PairFunction::size_values; ++value_index ) {
+      all_pair_values_view.setValue( pair_index, value_index, active ? pair_values[value_index] : 0.0 );
     }
   } );
   return all_pair_values;
@@ -108,18 +106,17 @@ PairValueJacobianBuffer<PairFunction::size_values, PairFunction::size_coords> ev
   const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = pairs_view[pair_index];
-    // Evaluate pair values and their coordinate Jacobian
     const auto coords1 = mesh1.getFaceCoords<typename PairFunction::Coords1>( pair.element_id1_ );
     const auto coords2 = mesh2.getFaceCoords<typename PairFunction::Coords2>( pair.element_id2_ );
     const auto pair_values_struct =
         EnzymePairDerivative<PairFunction>::valuesAndJacobian( coords1.view(), coords2.view(), pair_function );
-    // Fill the buffer with quantities evaluated at the pair
     all_pair_values_view.quadrature[pair_index] = pair_values_struct.quadrature_result;
     const auto& pair_values = pair_values_struct.values;
-    for ( IndexT i{ 0 }; i < PairFunction::size_values; ++i ) {
-      all_pair_values_view.setValue( pair_index, i, pair_values[i] );
-      for ( IndexT j{ 0 }; j < PairFunction::size_coords; ++j ) {
-        all_pair_values_view.setJacobian( pair_index, i, j, pair_values_struct.jacobian( i, j ) );
+    for ( IndexT value_index{ 0 }; value_index < PairFunction::size_values; ++value_index ) {
+      all_pair_values_view.setValue( pair_index, value_index, pair_values[value_index] );
+      for ( IndexT coordinate{ 0 }; coordinate < PairFunction::size_coords; ++coordinate ) {
+        all_pair_values_view.setJacobian( pair_index, value_index, coordinate,
+                                          pair_values_struct.jacobian( value_index, coordinate ) );
       }
     }
   } );
@@ -174,17 +171,16 @@ PairJacobianHessianBuffer<PairFunction::size_coords> evaluatePairWeightedJacobia
   const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = pairs_view[pair_index];
-    // Evaluate the weighted coordinate Jacobian and Hessian
     const auto coords1 = mesh1.getFaceCoords<typename PairFunction::Coords1>( pair.element_id1_ );
     const auto coords2 = mesh2.getFaceCoords<typename PairFunction::Coords2>( pair.element_id2_ );
     const auto weights = read_weights( pair_index );
     const auto pair_values_struct = EnzymePairDerivative<PairFunction>::weightedJacobianAndHessian(
         coords1.view(), coords2.view(), pair_function, weights.view() );
-    // Fill the buffer with quantities evaluated at the pair
-    for ( IndexT i{ 0 }; i < PairFunction::size_coords; ++i ) {
-      all_pair_values_view.setJacobian( pair_index, i, pair_values_struct.jacobian[i] );
-      for ( IndexT j{ 0 }; j < PairFunction::size_coords; ++j ) {
-        all_pair_values_view.setHessian( pair_index, i, j, pair_values_struct.hessian( i, j ) );
+    for ( IndexT coordinate_row{ 0 }; coordinate_row < PairFunction::size_coords; ++coordinate_row ) {
+      all_pair_values_view.setJacobian( pair_index, coordinate_row, pair_values_struct.jacobian[coordinate_row] );
+      for ( IndexT coordinate_column{ 0 }; coordinate_column < PairFunction::size_coords; ++coordinate_column ) {
+        all_pair_values_view.setHessian( pair_index, coordinate_row, coordinate_column,
+                                         pair_values_struct.hessian( coordinate_row, coordinate_column ) );
       }
     }
   } );
@@ -230,18 +226,18 @@ PairValueJacobianHessianBuffer<PairFunction::size_coords> evaluatePairValuesJaco
   const auto pairs_view = pairs.view();
   forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
     const auto pair = pairs_view[pair_index];
-    // Evaluate the scalar pair value, coordinate Jacobian, and Hessian
     const auto coords1 = mesh1.getFaceCoords<typename PairFunction::Coords1>( pair.element_id1_ );
     const auto coords2 = mesh2.getFaceCoords<typename PairFunction::Coords2>( pair.element_id2_ );
     const auto pair_values_struct =
         EnzymePairDerivative<PairFunction>::valueJacobianAndHessian( coords1.view(), coords2.view(), pair_function );
-    // Fill the buffer with quantities evaluated at the pair
     all_pair_values_view.values[pair_index] = pair_values_struct.value;
     all_pair_values_view.quadrature[pair_index] = pair_values_struct.quadrature_result;
-    for ( IndexT i{ 0 }; i < PairFunction::size_coords; ++i ) {
-      all_pair_values_view.derivatives.setJacobian( pair_index, i, pair_values_struct.jacobian[i] );
-      for ( IndexT j{ 0 }; j < PairFunction::size_coords; ++j ) {
-        all_pair_values_view.derivatives.setHessian( pair_index, i, j, pair_values_struct.hessian( i, j ) );
+    for ( IndexT coordinate_row{ 0 }; coordinate_row < PairFunction::size_coords; ++coordinate_row ) {
+      all_pair_values_view.derivatives.setJacobian( pair_index, coordinate_row,
+                                                    pair_values_struct.jacobian[coordinate_row] );
+      for ( IndexT coordinate_column{ 0 }; coordinate_column < PairFunction::size_coords; ++coordinate_column ) {
+        all_pair_values_view.derivatives.setHessian( pair_index, coordinate_row, coordinate_column,
+                                                     pair_values_struct.hessian( coordinate_row, coordinate_column ) );
       }
     }
   } );

@@ -379,6 +379,37 @@ TEST_P( MfemCommonPlaneTest, uses_changed_constants_without_decomposition_refres
   EXPECT_LT( norm( updated ), 1.0e-11 );
 }
 
+// Rejected constants must not clear the active formulation's registered constants or scales.
+TEST_P( MfemCommonPlaneTest, rejects_invalid_constants_without_changing_scheme )
+{
+  enable( false );
+  setMfemKinematicPenaltyScale( 0, 2.0, 3.0 );
+  auto* formulation = scheme().getContactFormulation();
+  const auto& mesh_data = *scheme().getMfemMeshData();
+  const RealT mesh1_penalty = *mesh_data.GetMesh1KinematicConstantPenalty();
+  const RealT mesh2_penalty = *mesh_data.GetMesh2KinematicConstantPenalty();
+  const RealT mesh1_scale = *mesh_data.GetMesh1KinematicPenaltyScale();
+  const RealT mesh2_scale = *mesh_data.GetMesh2KinematicPenaltyScale();
+  const auto check_unchanged = [&] {
+    EXPECT_EQ( scheme().getContactFormulation(), formulation );
+    EXPECT_EQ( *mesh_data.GetMesh1KinematicConstantPenalty(), mesh1_penalty );
+    EXPECT_EQ( *mesh_data.GetMesh2KinematicConstantPenalty(), mesh2_penalty );
+    EXPECT_EQ( *mesh_data.GetMesh1KinematicPenaltyScale(), mesh1_scale );
+    EXPECT_EQ( *mesh_data.GetMesh2KinematicPenaltyScale(), mesh2_scale );
+  };
+  for ( const RealT invalid :
+        { -1.0, 0.0, std::numeric_limits<RealT>::infinity(), std::numeric_limits<RealT>::quiet_NaN() } ) {
+    SCOPED_TRACE( invalid );
+    EXPECT_THROW( setMfemKinematicConstantPenalty( 0, invalid, 6.0 ), std::invalid_argument );
+    check_unchanged();
+    EXPECT_THROW( setMfemKinematicConstantPenalty( 0, 2.0, invalid ), std::invalid_argument );
+    check_unchanged();
+  }
+  const RealT largest_penalty = std::numeric_limits<RealT>::max();
+  EXPECT_THROW( setMfemKinematicConstantPenalty( 0, largest_penalty, largest_penalty ), std::invalid_argument );
+  check_unchanged();
+}
+
 // Unequal scales configured before decomposition must multiply each constant before combining springs in series.
 TEST_P( MfemCommonPlaneTest, constructs_with_scales_before_decomposition )
 {

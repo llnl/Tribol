@@ -129,7 +129,8 @@ void setMfemRedecompTriggerDisplacement( IndexT cs_id, RealT val );
  * scales are cleared; call setMfemKinematicPenaltyScale() after this setter to apply scales to the new constants.
  * The formulation keeps that effective stiffness until replaced. Construction requires no decomposition refresh;
  * call updateMfemParallelDecomposition() with current coordinates before calculating contact.
- * @throws std::invalid_argument A composed formulation's penalty is nonpositive or nonfinite.
+ * @throws std::invalid_argument A composed formulation's mesh or effective penalty is nonpositive or nonfinite; its
+ * existing penalty data and formulation are unchanged.
  */
 void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT mesh2_penalty );
 

@@ -142,6 +142,8 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
  * ENERGY_MORTAR creates pressure/gap fields only for nodal enforcement. Switching locations releases the previous
  * formulation and its cached outputs and initializes the selected transfer data on any existing decomposition.
  * Views into the previous pressure/gap fields must not be retained across this call.
+ * @throws std::invalid_argument The value is not a supported location, Common Plane was given nodal enforcement, or
+ * quadrature-point Energy Mortar was given non-penalty enforcement; the coupling scheme is unchanged.
  */
 void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
 
@@ -256,6 +258,7 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
  *
  * @note Configure the residual gap after registering the coupling scheme and before its first update. For MFEM
  * coupling schemes, this must precede the first call to updateMfemParallelDecomposition().
+ * @throws std::invalid_argument The residual gap is negative or nonfinite; the coupling scheme is unchanged.
  */
 void setResidualGap( IndexT cs_id, RealT residual_gap );
 

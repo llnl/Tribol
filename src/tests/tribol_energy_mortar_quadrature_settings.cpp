@@ -14,7 +14,7 @@
  * precede penalty configuration, but no penalty formulation is constructed until the settings are complete. Each
  * formulation retains its construction stiffness until replaced.
  * Direct force, Jacobian, and energy scaling checks use Sequential and OpenMP when enabled, with host mesh storage.
- * Scalar force-only helpers check active and empty pair batches without computing or returning a force Jacobian.
+ * Scalar force-only helpers check active and empty pair lists without computing or returning a force Jacobian.
  * Public registration checks host execution modes and verifies that updates leave legacy face data unallocated.
  * Touching nonmatching surfaces retain the penalty tangent at zero gap, including zero nodal Hessian weights.
  */
@@ -496,16 +496,79 @@ TEST_P( EnergyMortarRegistrationTest, constructs_formulation_on_existing_decompo
   EXPECT_GT( result.force->Norml2(), 0.0 );
 }
 
-// Each mesh stiffness must be positive and finite, even when the arithmetic mean would be positive.
-TEST_P( EnergyMortarQuadratureSettingsTest, rejects_invalid_mesh_penalties_before_combining )
+// Rejected mesh stiffnesses must leave both the installed formulation and its registered inputs unchanged.
+TEST_P( EnergyMortarQuadratureSettingsTest, rejects_invalid_mesh_penalties_without_changing_scheme )
 {
+  auto& cs = tribol::CouplingSchemeManager::getInstance().at( 0 );
+  auto* formulation = cs.getContactFormulation();
+  const auto& mesh_data = *cs.getMfemMeshData();
+  const tribol::RealT mesh1_penalty = *mesh_data.GetMesh1KinematicConstantPenalty();
+  const tribol::RealT mesh2_penalty = *mesh_data.GetMesh2KinematicConstantPenalty();
+  const auto check_unchanged = [&] {
+    EXPECT_EQ( cs.getContactFormulation(), formulation );
+    EXPECT_EQ( *mesh_data.GetMesh1KinematicConstantPenalty(), mesh1_penalty );
+    EXPECT_EQ( *mesh_data.GetMesh2KinematicConstantPenalty(), mesh2_penalty );
+  };
   for ( const tribol::RealT invalid : { -10.0, 0.0, std::numeric_limits<tribol::RealT>::quiet_NaN(),
                                         std::numeric_limits<tribol::RealT>::infinity() } ) {
     SCOPED_TRACE( invalid );
     EXPECT_THROW( tribol::setMfemKinematicConstantPenalty( 0, invalid, 20.0 ), std::invalid_argument );
+    check_unchanged();
     EXPECT_THROW( tribol::setMfemKinematicConstantPenalty( 0, 20.0, invalid ), std::invalid_argument );
+    check_unchanged();
   }
+  const tribol::RealT largest_penalty = std::numeric_limits<tribol::RealT>::max();
+  EXPECT_THROW( tribol::setMfemKinematicConstantPenalty( 0, largest_penalty, largest_penalty ), std::invalid_argument );
+  check_unchanged();
   EXPECT_NO_THROW( tribol::setMfemKinematicConstantPenalty( 0, 2.0, 6.0 ) );
+}
+
+// Invalid offsets must be rejected before the search and gap definitions capture them.
+TEST_P( EnergyMortarQuadratureSettingsTest, rejects_invalid_residual_gaps_without_rebuilding )
+{
+  auto& cs = tribol::CouplingSchemeManager::getInstance().at( 0 );
+  auto* formulation = cs.getContactFormulation();
+  const tribol::RealT residual_gap = cs.getParameters().residual_gap;
+  for ( const tribol::RealT invalid :
+        { -1.0, -std::numeric_limits<tribol::RealT>::infinity(), std::numeric_limits<tribol::RealT>::infinity(),
+          std::numeric_limits<tribol::RealT>::quiet_NaN() } ) {
+    SCOPED_TRACE( invalid );
+    EXPECT_THROW( tribol::setResidualGap( 0, invalid ), std::invalid_argument );
+    EXPECT_EQ( cs.getParameters().residual_gap, residual_gap );
+    EXPECT_EQ( cs.getContactFormulation(), formulation );
+  }
+}
+
+// Penalty data on an LM scheme must not make quadrature-point enforcement appear valid.
+TEST( EnergyMortarConfiguration, rejects_quadrature_point_lm_without_releasing_nodal_state )
+{
+  struct FinalizeAfterTest {
+    ~FinalizeAfterTest() { tribol::finalize(); }
+  };
+  tribol::finalize();
+  mfem::ParMesh mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::SquareMesh( 2, 1 ) );
+  mfem::H1_FECollection fec( 1, 2 );
+  mfem::ParFiniteElementSpace fes( &mesh, &fec, 2 );
+  mfem::ParGridFunction coordinates( &fes );
+  mesh.GetNodes( coordinates );
+  [[maybe_unused]] FinalizeAfterTest finalize_after_test;
+  tribol::registerMfemCouplingScheme(
+      0, 0, 1, mesh, coordinates, { 1 }, { 3 }, tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
+      tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID, tribol::ExecutionMode::Sequential );
+  tribol::setMfemKinematicConstantPenalty( 0, 100.0, 100.0 );
+  auto& cs = tribol::CouplingSchemeManager::getInstance().at( 0 );
+  auto* formulation = cs.getContactFormulation();
+  auto* submesh_data = cs.getMfemSubmeshData();
+  auto* jacobian_data = cs.getMfemJacobianData();
+  auto* multiplier = &cs.getContactMultiplier();
+
+  EXPECT_THROW( tribol::setEnforcementLocation( 0, tribol::EnforcementLocation::QuadraturePoint ),
+                std::invalid_argument );
+  EXPECT_EQ( cs.getParameters().enforcement_location, tribol::EnforcementLocation::Nodal );
+  EXPECT_EQ( cs.getContactFormulation(), formulation );
+  EXPECT_EQ( cs.getMfemSubmeshData(), submesh_data );
+  EXPECT_EQ( cs.getMfemJacobianData(), jacobian_data );
+  EXPECT_EQ( &cs.getContactMultiplier(), multiplier );
 }
 
 INSTANTIATE_TEST_SUITE_P( enforcement, EnergyMortarRegistrationTest,
