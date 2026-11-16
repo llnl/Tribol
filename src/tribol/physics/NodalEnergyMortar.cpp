@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include "tribol/physics/EnergyMortar.hpp"
+#include "tribol/physics/NodalEnergyMortar.hpp"
 
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
 namespace tribol {

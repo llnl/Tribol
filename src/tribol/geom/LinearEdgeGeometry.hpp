@@ -75,13 +75,13 @@ class LinearEdgeGeometry {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT jacobian() const { return 0.5 * length(); }
 
   /**
-   * @brief Map a parametric edge coordinate to a point in the current physical configuration.
-   * @param xi Parametric coordinate; vertices are at -1 and 1. Values outside [-1,1] allow extrapolation.
-   * @return Physical point, including for degenerate edge geometry.
+   * @brief Map an element-parametric coordinate view to a point in the current physical configuration.
+   * @param parametric_coords One coordinate on the reference edge; vertices are at -1 and 1.
+   * @return Physical point, including for degenerate edges. Coordinates outside [-1,1] extrapolate the edge.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Point position( RealT xi ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Point position( MdSpan<const RealT, parametric_dim> parametric_coords ) const
   {
-    return Point::lerp( origin_, end_, 0.5 * ( xi + 1.0 ) );
+    return Point::lerp( origin_, end_, 0.5 * ( parametric_coords[0] + 1.0 ) );
   }
 
   /**

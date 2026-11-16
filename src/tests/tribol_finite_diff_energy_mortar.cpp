@@ -8,10 +8,14 @@
 #include <gtest/gtest.h>
 
 #include "axom/slic/core/SimpleLogger.hpp"
+#include "tribol/physics/QuadraturePointEnergyMortar.hpp"
+#include "tribol/integ/BasisFunction.hpp"
+#include "tribol/geom/OpposingNormalGap.hpp"
+#include "tribol/physics/PairIntegrals.hpp"
 #include "tribol/geom/OffsetGap.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
-#include "tribol/physics/EnergyMortarPairFunctions.hpp"
+#include "tribol/integ/PairQuadratureRuleGenerator.hpp"
 #include "tribol/assembly/PairEvaluation.hpp"
 
 namespace {
@@ -77,8 +81,8 @@ void checkRuleGenerator()
   using Gap = OffsetGap<OpposingNormalGap>;
   const RuleGenerator rule_generator;
   const Gap gap{ {}, 0.05 };
-  const EnergyMortarEnergyPairFunction<RuleGenerator, Gap> energy{ rule_generator, 7.0, gap };
-  const EnergyMortarNodalIntegralPairFunction<RuleGenerator, Gap> nodal{ rule_generator, gap };
+  const PairEnergyIntegral<RuleGenerator, PenaltyEnergyDensity<Gap>> energy{ rule_generator, { 7.0, gap } };
+  const PairNodalGapIntegral<RuleGenerator, Gap, BasisFunction<EDGE, LINEAR_LAGRANGE>> nodal{ rule_generator, gap };
   const MdArray<RealT, decltype( energy )::size_coords> coordinates{ 0.0, 0.0, 2.0, 0.15, 1.7, 0.35, 0.3, 0.15 };
   SCOPED_TRACE( testing::Message() << "Gauss points: " << NumPoints );
   checkFiniteDifferences( energy, coordinates, MdArray<RealT, decltype( energy )::size_values>{ 1.0 } );
@@ -95,7 +99,7 @@ TEST( EnergyMortarFiniteDifference, production_quadrature )
 TEST( EnergyMortarFiniteDifference, invalid_geometry_reports_status_before_derivatives )
 {
   using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
-  const EnergyMortarEnergyPairFunction<RuleGenerator> energy{ RuleGenerator{}, 1.0 };
+  const PairEnergyIntegral<RuleGenerator, PenaltyEnergyDensity<OpposingNormalGap>> energy{ RuleGenerator{}, { 1.0 } };
   const MdArray<RealT, decltype( energy )::size_coords> coordinates{ 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0 };
   EXPECT_NE( energy
                  .evaluate( { coordinates.data(), decltype( energy )::size_geom1_coords },

@@ -23,12 +23,17 @@
 #include "gtest/gtest.h"
 #include "axom/slic/core/SimpleLogger.hpp"
 #include "ExecutionTest.hpp"
+#include "tribol/enforcement/PenaltyEnergy.hpp"
+#include "tribol/physics/QuadraturePointEnergyMortar.hpp"
+#include "tribol/integ/BasisFunction.hpp"
+#include "tribol/geom/OpposingNormalGap.hpp"
+#include "tribol/physics/PairIntegrals.hpp"
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 #include "tribol/geom/OffsetGap.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
-#include "tribol/physics/EnergyMortarPairFunctions.hpp"
+#include "tribol/integ/PairQuadratureRuleGenerator.hpp"
 #include "tribol/assembly/PairContribution.hpp"
 #include "tribol/assembly/PairEvaluation.hpp"
 #include "tribol/assembly/PairKernel.hpp"
@@ -158,10 +163,14 @@ static_assert( !PairFunctionType<EmptyFirstGeometryPairFunction> );
 static_assert( !PairFunctionType<EmptySecondGeometryPairFunction> );
 
 // Energy and nodal-integral functions accept two coordinate views with fixed sizes.
-static_assert( PairFunctionType<EnergyMortarEnergyPairFunction<
-                   PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>>> );
-static_assert( PairFunctionType<EnergyMortarNodalIntegralPairFunction<
-                   PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>>> );
+static_assert(
+    PairFunctionType<
+        PairEnergyIntegral<PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>,
+                           PenaltyEnergyDensity<OpposingNormalGap>>> );
+static_assert(
+    PairFunctionType<
+        PairNodalGapIntegral<PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>,
+                             OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>> );
 
 /** @brief One-coordinate geometry caching a nonlinear coordinate expression. */
 struct SquaredCoordinateGeometry {
@@ -210,8 +219,8 @@ static_assert( PairFunctionType<CachedGeometryPairFunction> );
 
 /** @brief Pair energy and nodal integrals written by one backend thread. */
 struct ParallelIntegralResult {
-  PairEnergyValue energy;                   ///< Quadrature-point energy and status.
-  EnergyMortarNodalIntegralValue<2> nodal;  ///< Nodal integrals and status.
+  PairEnergyValue energy;      ///< Quadrature-point energy and status.
+  PairNodalGapValue<2> nodal;  ///< Nodal integrals and status.
 };
 
 /** @brief Nodal field inputs and exact penalty partials for one backend test case. */
@@ -228,15 +237,15 @@ void checkParallelIntegrals( ExecutionMode mode, int allocator )
 {
   using RuleGenerator =
       PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>;
-  using Energy = EnergyMortarEnergyPairFunction<RuleGenerator>;
-  using Nodal = EnergyMortarNodalIntegralPairFunction<RuleGenerator>;
+  using Energy = PairEnergyIntegral<RuleGenerator, PenaltyEnergyDensity<OpposingNormalGap>>;
+  using Nodal = PairNodalGapIntegral<RuleGenerator, OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
   ArrayT<ParallelIntegralResult> results( 1, 1, allocator );
   const auto output = results.view();
   forAllExec( mode, 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
     const MdArray<RealT, 2, 2> coordinates1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
     const MdArray<RealT, 2, 2> coordinates2{ MdArray<RealT, 2>{ 3.0, 0.1 }, MdArray<RealT, 2>{ -1.0, 0.1 } };
     const RuleGenerator rule_generator( SmoothedProjectedEdgeMapping{ 0.0 } );
-    output[0] = { Energy{ rule_generator, 4.0 }.evaluate( coordinates1.view(), coordinates2.view() ),
+    output[0] = { Energy{ rule_generator, { 4.0 } }.evaluate( coordinates1.view(), coordinates2.view() ),
                   Nodal{ rule_generator }.evaluate( coordinates1.view(), coordinates2.view() ) };
   } );
   const ArrayT<ParallelIntegralResult, 1, MemorySpace::Host> host( results );
@@ -378,18 +387,22 @@ concept CanEvaluateScalarPairKernel =
     requires { &evaluatePairValuesJacobiansAndHessians<ExecutionMode::Sequential, Function>; };
 
 // The scalar kernel accepts energy outputs and rejects vector nodal integrals at its interface.
-static_assert( CanEvaluateScalarPairKernel<EnergyMortarEnergyPairFunction<
-                   PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>>> );
-static_assert( !CanEvaluateScalarPairKernel<EnergyMortarNodalIntegralPairFunction<
-                   PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>>> );
+static_assert(
+    CanEvaluateScalarPairKernel<
+        PairEnergyIntegral<PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>,
+                           PenaltyEnergyDensity<OpposingNormalGap>>> );
+static_assert(
+    !CanEvaluateScalarPairKernel<
+        PairNodalGapIntegral<PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>,
+                             OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>> );
 
 // Both kernels must return values and quadrature status for active, open, zero-gap, and invalid pairs. A rigid vertical
 // edge translation has analytic derivatives; zero gap retains activation and the compressive Hessian.
 TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_hessians )
 {
   using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
-  using Function = EnergyMortarEnergyPairFunction<RuleGenerator>;
-  const Function function{ RuleGenerator{ SmoothedProjectedEdgeMapping{ 0.0 } }, 4.0 };
+  using Function = PairEnergyIntegral<RuleGenerator, PenaltyEnergyDensity<OpposingNormalGap>>;
+  const Function function{ RuleGenerator{ SmoothedProjectedEdgeMapping{ 0.0 } }, { 4.0 } };
   const auto x1 = copyToExecutionSpace<RealT>( { 0.0, 2.0 } );
   const auto y1 = copyToExecutionSpace<RealT>( { 0.0, 0.0 } );
   const auto conn1 = copyToExecutionSpace<IndexT>( { 0, 1 } );
@@ -678,7 +691,7 @@ struct VectorPolynomialPairFunction : ScalarPolynomialPairFunction {
 TEST_P( EnergyMortarDefinitionTest, open_nodal_integrals_keep_values_and_jacobians )
 {
   using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
-  using Function = EnergyMortarNodalIntegralPairFunction<RuleGenerator>;
+  using Function = PairNodalGapIntegral<RuleGenerator, OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
   using PairResult = Function::Result;
   ArrayT<PairValueJacobian<Function::size_values, Function::size_coords>> results( 1, 1, allocatorId() );
   const auto output = results.view();
@@ -801,8 +814,8 @@ void checkRuleDerivatives()
   using Gap = OffsetGap<OpposingNormalGap>;
   const RuleGenerator rule_generator;
   const Gap gap{ {}, 0.05 };
-  const EnergyMortarEnergyPairFunction<RuleGenerator, Gap> energy{ rule_generator, 7.0, gap };
-  const EnergyMortarNodalIntegralPairFunction<RuleGenerator, Gap> nodal{ rule_generator, gap };
+  const PairEnergyIntegral<RuleGenerator, PenaltyEnergyDensity<Gap>> energy{ rule_generator, { 7.0, gap } };
+  const PairNodalGapIntegral<RuleGenerator, Gap, BasisFunction<EDGE, LINEAR_LAGRANGE>> nodal{ rule_generator, gap };
   const MdArray<RealT, decltype( energy )::size_coords> coordinates{ 0.0, 0.0, 2.0, 0.15, 1.7, 0.35, 0.3, 0.15 };
   SCOPED_TRACE( testing::Message() << "points=" << NumPoints );
   ASSERT_EQ( nodal

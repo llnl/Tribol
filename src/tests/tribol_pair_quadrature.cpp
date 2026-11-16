@@ -120,8 +120,10 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
         results_view[0] = rule.result;
         const auto points = rule.getView();
         for ( IndexT q = 0; q < rule.result.num_required_points; ++q ) {
-          const auto physical1 = LinearEdgeGeometry( edge1.view() ).position( points.geom1_parametric_coords( q, 0 ) );
-          const auto physical2 = LinearEdgeGeometry( edge2.view() ).position( points.geom2_parametric_coords( q, 0 ) );
+          const auto physical1 =
+              LinearEdgeGeometry( edge1.view() ).position( { &points.geom1_parametric_coords( q, 0 ), 1 } );
+          const auto physical2 =
+              LinearEdgeGeometry( edge2.view() ).position( { &points.geom2_parametric_coords( q, 0 ), 1 } );
           quadrature_point_data_view( q, 0 ) = points.geom1_parametric_coords( q, 0 );
           quadrature_point_data_view( q, 1 ) = physical1[0];
           quadrature_point_data_view( q, 2 ) = physical1[1];
@@ -190,13 +192,15 @@ TEST_P( EdgeQuadratureTest, owns_coordinate_snapshot )
     // Changing the input array must leave the edge's stored vertices, edge vector, and squared length unchanged.
     coords( 0, 0 ) = -5.0;
     coords( 1, 1 ) = 8.0;
-    const auto midpoint = edge.position( 0.0 );
+    const MdArray<RealT, 1> midpoint_coords{ 0.0 };
+    const MdArray<RealT, 1> extrapolated_coords{ 1.5 };
+    const auto midpoint = edge.position( midpoint_coords.view() );
     const auto normal = edge.normal();
     output[MidpointX] = midpoint[0];
     output[MidpointY] = midpoint[1];
     // Offset the original midpoint by one unit normal; its orthogonal projection still has parent coordinate zero.
     output[ProjectedParent] = edge.parametricCoordinate( LinearEdgeGeometry::Point{ 3.3, 3.4 } );
-    output[ExtrapolatedParent] = edge.parametricCoordinate( edge.position( 1.5 ) );
+    output[ExtrapolatedParent] = edge.parametricCoordinate( edge.position( extrapolated_coords.view() ) );
     output[NormalX] = normal[0];
     output[NormalY] = normal[1];
     output[Length] = edge.length();
@@ -643,8 +647,10 @@ TEST_P( EdgeQuadratureTest, maps_integration_surface_rule_to_both_tilted_edges )
     results_view[0] = mapped_quadrature.result;
     const auto points = mapped_quadrature.getView();
     for ( int q = 0; q < mapped_quadrature.result.num_required_points; ++q ) {
-      const auto physical1 = LinearEdgeGeometry( edge1.view() ).position( points.geom1_parametric_coords( q, 0 ) );
-      const auto physical2 = LinearEdgeGeometry( edge2.view() ).position( points.geom2_parametric_coords( q, 0 ) );
+      const auto physical1 =
+          LinearEdgeGeometry( edge1.view() ).position( { &points.geom1_parametric_coords( q, 0 ), 1 } );
+      const auto physical2 =
+          LinearEdgeGeometry( edge2.view() ).position( { &points.geom2_parametric_coords( q, 0 ), 1 } );
       records_view( q, 0 ) = physical1[0];
       records_view( q, 1 ) = physical2[0];
       records_view( q, 2 ) = physical2[1];
@@ -695,8 +701,10 @@ TEST_P( EdgeQuadratureTest, uses_first_edge_length_for_physical_weights )
     results_view[0] = mapped_quadrature.result;
     const auto points = mapped_quadrature.getView();
     for ( int q = 0; q < mapped_quadrature.result.num_required_points; ++q ) {
-      const auto physical1 = LinearEdgeGeometry( edge1.view() ).position( points.geom1_parametric_coords( q, 0 ) );
-      const auto physical2 = LinearEdgeGeometry( edge2.view() ).position( points.geom2_parametric_coords( q, 0 ) );
+      const auto physical1 =
+          LinearEdgeGeometry( edge1.view() ).position( { &points.geom1_parametric_coords( q, 0 ), 1 } );
+      const auto physical2 =
+          LinearEdgeGeometry( edge2.view() ).position( { &points.geom2_parametric_coords( q, 0 ), 1 } );
       records_view( q, 0 ) = physical1[0];
       records_view( q, 1 ) = physical2[0];
       records_view( q, 2 ) = points.weights[q];
@@ -792,8 +800,13 @@ struct ParallelEdgeMapping {
                                                                     const LinearEdgeGeometry& edge2 ) const
   {
     // The overlap starts at the larger left endpoint and ends at the smaller right endpoint.
-    const RealT left = edge1.origin()[0] > edge2.position( 1.0 )[0] ? edge1.origin()[0] : edge2.position( 1.0 )[0];
-    const RealT right = edge1.position( 1.0 )[0] < edge2.origin()[0] ? edge1.position( 1.0 )[0] : edge2.origin()[0];
+    const MdArray<RealT, 1> endpoint_coords{ 1.0 };
+    const RealT left = edge1.origin()[0] > edge2.position( endpoint_coords.view() )[0]
+                           ? edge1.origin()[0]
+                           : edge2.position( endpoint_coords.view() )[0];
+    const RealT right = edge1.position( endpoint_coords.view() )[0] < edge2.origin()[0]
+                            ? edge1.position( endpoint_coords.view() )[0]
+                            : edge2.origin()[0];
     return { MdArray<RealT, 2>{ left, right }, true };
   }
 

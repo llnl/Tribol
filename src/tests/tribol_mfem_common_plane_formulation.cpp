@@ -10,7 +10,8 @@
  * Direct calls check output availability and validity after destroying the formulation.
  * Fixed penalties and MFEM setters that rebuild formulations are checked without refreshing the decomposition.
  * Direct force and Jacobian scaling checks use Sequential and OpenMP when enabled, with host mesh storage.
- * Tilted nonmatching surfaces compare clipped-overlap forces against legacy Common Plane for every base rule.
+ * Tilted nonmatching surfaces check legacy force agreement with one point and a different load distribution with
+ * higher-order rules on the clipped overlap.
  * Local quadrature and full pair derivatives are checked in tribol_common_plane_formulation.
  * Force-only selection and mode changes run without Enzyme as well, checking that no Jacobian transfers or outputs
  * are created. Nonmatching legacy forces provide an independent reference for force-only assembly.
@@ -28,7 +29,7 @@
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/physics/CommonPlaneFormulation.hpp"
 #include "tribol/assembly/PairEvaluationAssembly.hpp"
-#include "tribol/physics/PenaltyStiffness.hpp"
+#include "tribol/enforcement/PenaltyStiffness.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/integ/QuadratureRuleGeneratorFactory.hpp"
 #include "tribol/search/CoarseSearchFactory.hpp"
@@ -269,15 +270,13 @@ TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
     auto alternate = dispatchExecutionMode( execution_mode, [&]<ExecutionMode Exec>() {
       return createWithQuadratureRuleGenerator(
           GetParam(), CommonPlaneEdgeMapping{}, [&]( auto rule_generator ) -> std::unique_ptr<ContactFormulation> {
-            using BaseRuleGenerator = typename decltype( rule_generator )::BaseRuleGenerator;
             auto coarse = createCoarseSearch( scheme().spatialDim(), scheme().getBinningMethod(), execution_mode,
                                               scheme().getEffectiveBinningProximityScale(), 0.0 );
             auto refined = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
-            CommonPlaneResidualPairFunction<BaseRuleGenerator, OffsetGap<CommonPlaneGap>> pair_function{
-                std::move( rule_generator ), AveragePenaltyStiffness{}( 2.0, 6.0 ),
-                OffsetGap{ CommonPlaneGap{}, 0.0 } };
-            return std::make_unique<CommonPlaneResidualJacobianFormulation<Exec, decltype( pair_function )>>(
-                *scheme().getMfemMeshData(), *scheme().getMfemJacobianData(), std::move( pair_function ),
+            return std::make_unique<
+                CommonPlaneResidualJacobianFormulation<Exec, decltype( rule_generator ), OffsetGap<CommonPlaneGap>>>(
+                *scheme().getMfemMeshData(), *scheme().getMfemJacobianData(), std::move( rule_generator ),
+                AveragePenaltyStiffness{}( 2.0, 6.0 ), OffsetGap{ CommonPlaneGap{}, 0.0 },
                 PairListBuilder{ std::move( coarse ), std::move( refined ) } );
           } );
     } );
@@ -437,8 +436,9 @@ TEST_P( MfemCommonPlaneTest, rejects_invalid_scales_at_construction )
   evaluate();
 }
 
-// An interface crossing inside an element pair must use its penetrating portion and match legacy centroid pressure.
-TEST_P( MfemCommonPlaneTest, matches_legacy_for_interpenetrating_overlap )
+// Crossing nonmatching surfaces match legacy centroid pressure with one point. Higher-order rules integrate varying
+// pressure on the same penetrating interval and must produce a different nodal load distribution.
+TEST_P( MfemCommonPlaneTest, uses_configured_pressure_rule_for_interpenetrating_overlap )
 {
   const auto upper_nodes = upperBodyNodes();
   for ( int node = 0; node < upper_nodes.Size(); ++node ) {
@@ -459,7 +459,11 @@ TEST_P( MfemCommonPlaneTest, matches_legacy_for_interpenetrating_overlap )
   evaluate();
   auto error = getMfemContactForce( 0 );
   error += true_legacy;
-  EXPECT_LT( norm( error ), 1.0e-11 );
+  if ( GetParam() == 1 ) {
+    EXPECT_LT( norm( error ), 1.0e-11 );
+  } else {
+    EXPECT_GT( norm( error ), 1.0e-11 );
+  }
 }
 
 // Parent Jacobians differentiate assembled residuals through nonmatching pair maps and MPI transfers.

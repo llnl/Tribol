@@ -5,10 +5,10 @@
 
 /**
  * @file
- * @brief Combine two supplied mesh penalty stiffnesses independently of contact geometry and enforcement.
+ * @brief Validate and combine supplied mesh stiffnesses for penalty enforcement.
  */
-#ifndef SRC_TRIBOL_PHYSICS_PENALTYSTIFFNESS_HPP_
-#define SRC_TRIBOL_PHYSICS_PENALTYSTIFFNESS_HPP_
+#ifndef SRC_TRIBOL_ENFORCEMENT_PENALTYSTIFFNESS_HPP_
+#define SRC_TRIBOL_ENFORCEMENT_PENALTYSTIFFNESS_HPP_
 
 #include <cmath>
 #include <stdexcept>
@@ -64,4 +64,4 @@ struct SeriesPenaltyStiffness {
 };
 
 }  // namespace tribol
-#endif  // SRC_TRIBOL_PHYSICS_PENALTYSTIFFNESS_HPP_
+#endif  // SRC_TRIBOL_ENFORCEMENT_PENALTYSTIFFNESS_HPP_

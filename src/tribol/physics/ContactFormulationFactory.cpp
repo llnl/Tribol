@@ -5,6 +5,8 @@
 
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
+#include "tribol/physics/NodalEnergyMortar.hpp"
+#include "tribol/physics/QuadraturePointEnergyMortar.hpp"
 #include "tribol/physics/ContactFormulationFactory.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/common/Parameters.hpp"
@@ -18,8 +20,7 @@
 #include <stdexcept>
 #include "tribol/physics/CommonPlaneFormulation.hpp"
 #include "tribol/assembly/PairEvaluationAssembly.hpp"
-#include "tribol/physics/EnergyMortar.hpp"
-#include "tribol/physics/PenaltyStiffness.hpp"
+#include "tribol/enforcement/PenaltyStiffness.hpp"
 
 namespace tribol {
 
@@ -143,21 +144,21 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
   return createWithQuadratureRuleGenerator(
       cs->getParameters().quadrature_order, CommonPlaneEdgeMapping{},
       [&]( auto rule_generator ) -> std::unique_ptr<ContactFormulation> {
-        using BaseRuleGenerator = typename decltype( rule_generator )::BaseRuleGenerator;
-        CommonPlaneResidualPairFunction<BaseRuleGenerator, OffsetGap<CommonPlaneGap>> pair_function{
-            std::move( rule_generator ), penalty, OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap } };
         auto pair_builder = makePairListBuilder<Exec>( *cs );
         if ( cs->getParameters().common_plane_compute_jacobian ) {
 #ifdef TRIBOL_USE_ENZYME
-          return std::make_unique<CommonPlaneResidualJacobianFormulation<Exec, decltype( pair_function )>>(
-              *cs->getMfemMeshData(), *cs->getMfemJacobianData(), std::move( pair_function ),
-              std::move( pair_builder ) );
+          return std::make_unique<
+              CommonPlaneResidualJacobianFormulation<Exec, decltype( rule_generator ), OffsetGap<CommonPlaneGap>>>(
+              *cs->getMfemMeshData(), *cs->getMfemJacobianData(), std::move( rule_generator ), penalty,
+              OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap }, std::move( pair_builder ) );
 #else
           throw std::runtime_error( "Common Plane Jacobian calculation requires Enzyme." );
 #endif
         }
-        return std::make_unique<CommonPlaneResidualFormulation<Exec, decltype( pair_function )>>(
-            *cs->getMfemMeshData(), std::move( pair_function ), std::move( pair_builder ) );
+        return std::make_unique<
+            CommonPlaneResidualFormulation<Exec, decltype( rule_generator ), OffsetGap<CommonPlaneGap>>>(
+            *cs->getMfemMeshData(), std::move( rule_generator ), penalty,
+            OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap }, std::move( pair_builder ) );
       } );
 }
 
@@ -179,22 +180,19 @@ std::unique_ptr<ContactFormulation> createEnergyMortarForRuleGenerator( Coupling
                             : 0.0;
   auto pair_builder = makePairListBuilder<Exec>( *cs );
   if ( cs->getParameters().enforcement_location == EnforcementLocation::QuadraturePoint ) {
-    EnergyMortarEnergyPairFunction<PairRuleGenerator, OffsetGap<OpposingNormalGap>> pair_function{
-        std::move( rule_generator ), penalty, OffsetGap{ OpposingNormalGap{}, residual_gap } };
-    return std::make_unique<QuadraturePointEnergyMortar<Exec, decltype( pair_function )>>(
-        data, *cs->getMfemJacobianData(), std::move( pair_function ), std::move( pair_builder ) );
+    return std::make_unique<QuadraturePointEnergyMortar<Exec, PairRuleGenerator, OffsetGap<OpposingNormalGap>>>(
+        data, *cs->getMfemJacobianData(), std::move( rule_generator ), penalty,
+        OffsetGap{ OpposingNormalGap{}, residual_gap }, std::move( pair_builder ) );
   }
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "Nodal Energy Mortar requires pressure/gap data." );
-  EnergyMortarNodalIntegralPairFunction<PairRuleGenerator, OffsetGap<OpposingNormalGap>> pair_function{
-      std::move( rule_generator ), OffsetGap{ OpposingNormalGap{}, residual_gap } };
   if ( use_penalty ) {
-    return std::make_unique<NodalPenaltyEnergyMortar<Exec, decltype( pair_function )>>(
-        data, *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( pair_function ), penalty,
-        std::move( pair_builder ) );
+    return std::make_unique<NodalPenaltyEnergyMortar<Exec, PairRuleGenerator, OffsetGap<OpposingNormalGap>>>(
+        data, *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( rule_generator ), penalty,
+        OffsetGap{ OpposingNormalGap{}, residual_gap }, std::move( pair_builder ) );
   }
-  return std::make_unique<NodalLagrangeMultiplierEnergyMortar<Exec, decltype( pair_function )>>(
-      data, *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( pair_function ),
-      std::move( pair_builder ) );
+  return std::make_unique<NodalLagrangeMultiplierEnergyMortar<Exec, PairRuleGenerator, OffsetGap<OpposingNormalGap>>>(
+      data, *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( rule_generator ),
+      OffsetGap{ OpposingNormalGap{}, residual_gap }, std::move( pair_builder ) );
 }
 
 template <ExecutionMode Exec>

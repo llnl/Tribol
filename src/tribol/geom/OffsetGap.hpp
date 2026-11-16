@@ -26,6 +26,20 @@ template <typename GapDefinition>
 struct OffsetGap {
   GapDefinition gap;          ///< Owned geometric gap definition.
   RealT residual_gap{ 0.0 };  ///< Fixed offset subtracted from the geometric gap; must be finite.
+  /** @brief Compute the underlying gap's geometry data without applying the fixed offset.
+   * @tparam Geometry1 First geometry type.
+   * @tparam Geometry2 Second geometry type.
+   * @param geometry1 First current geometry.
+   * @param geometry2 Second current geometry.
+   * @return Underlying gap's per-pair geometry data.
+   */
+  template <typename Geometry1, typename Geometry2>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto computePairGeometryData( const Geometry1& geometry1,
+                                                                        const Geometry2& geometry2 ) const
+  {
+    return gap.computePairGeometryData( geometry1, geometry2 );
+  }
+
   /**
    * @brief Evaluate the geometric gap and subtract the configured residual gap.
    * @tparam Arguments Point and optional prepared geometry argument types.

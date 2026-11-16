@@ -7,10 +7,13 @@
  * @file
  * @brief Test common-line quadrature and direct penalty residuals on every enabled backend. Host Enzyme checks compare
  * the full pair Jacobian with finite differences; MFEM assembly and selection have separate integration tests.
- * Crossing edges check clipped interval bounds, point locations, and uniform centroid pressure for every base rule.
- * Value-only pair kernels check activation, quadrature failures, allocator selection, and empty input on every enabled
- * execution backend. Values from an earlier call remain unchanged after another evaluation. Returned face-coordinate
- * arrays follow reordered connectivity and remain valid when mesh coordinates change; geometry copies their values.
+ * Crossing edges check clipped interval bounds, point locations, and nodal loads from pointwise pressure. One-point
+ * loads match centroid pressure; higher-order rules integrate the varying pressure. Gap offsets check activation at
+ * individual quadrature points. Independent residual bases and prescribed nodal pressure check shared traction
+ * integration. Value-only pair kernels check activation, quadrature failures, allocator selection, and empty input on
+ * every enabled execution backend. Values from an earlier call remain unchanged after another evaluation. Returned
+ * face-coordinate arrays follow reordered connectivity and remain valid when mesh coordinates change; geometry copies
+ * their values.
  */
 #include <cmath>
 #include "gtest/gtest.h"
@@ -26,10 +29,15 @@ namespace {
 using namespace tribol;
 constexpr RealT tolerance = 1.0e-12;  ///< Roundoff allowance for geometry and exact polynomial integrals.
 using Coordinates = MdArray<RealT, LinearEdgeGeometry::num_vertices, LinearEdgeGeometry::spatial_dim>;
-using CommonPlaneResidualValue = CommonPlaneResidualPairFunction<EdgeQuadratureRuleGenerator<1>>::Result;
+using CommonPlaneResidualValue =
+    PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<1>>,
+                         CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>::Result;
 
 // Common Plane exposes the same values and quadrature state required by the shared pair derivative calculations.
-static_assert( PairFunctionType<CommonPlaneResidualPairFunction<EdgeQuadratureRuleGenerator<1>>> );
+static_assert(
+    PairFunctionType<
+        PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<1>>,
+                             CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>> );
 
 #ifdef TRIBOL_USE_ENZYME
 /**
@@ -76,9 +84,12 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
         const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, test.separation }, MdArray<RealT, 2>{ 0.0, test.separation } };
         const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>
             rule_generator;
-        const CommonPlaneResidualPairFunction<EdgeQuadratureRuleGenerator<NumPoints>, OffsetGap<CommonPlaneGap>>
-            function{ rule_generator, ComputePenaltyStiffnessPerArea( 2.0, 6.0 ),
-                      OffsetGap{ CommonPlaneGap{}, test.residual_gap } };
+        const PairTractionIntegral<
+            PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>,
+            CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>, BasisFunction<EDGE, LINEAR_LAGRANGE>>
+            function{
+                rule_generator,
+                { ComputePenaltyStiffnessPerArea( 2.0, 6.0 ), OffsetGap{ CommonPlaneGap{}, test.residual_gap } } };
         output[0] = function.evaluate( edge1.view(), edge2.view() );
       } );
       const ArrayT<CommonPlaneResidualValue, 1, MemorySpace::Host> host( results );
@@ -120,8 +131,8 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
         output( q, Parent1 ) = points.geom1_parametric_coords( q, 0 );
         output( q, Parent2 ) = points.geom2_parametric_coords( q, 0 );
         output( q, Weight ) = points.weights[q];
-        output( q, Point1X ) = geometry1.position( output( q, Parent1 ) )[0];
-        output( q, Point2X ) = geometry2.position( output( q, Parent2 ) )[0];
+        output( q, Point1X ) = geometry1.position( { &output( q, Parent1 ), 1 } )[0];
+        output( q, Point2X ) = geometry2.position( { &output( q, Parent2 ), 1 } )[0];
       }
     } );
     const ArrayT<RealT, 2, MemorySpace::Host> values( records );
@@ -141,7 +152,7 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
     }
   }
 
-  /** @brief Check crossing-edge intervals and centroid-pressure loads. @tparam NumPoints Configured Gauss point count.
+  /** @brief Check crossing-edge intervals and pointwise-pressure loads. @tparam NumPoints Configured Gauss point count.
    */
   template <int NumPoints>
   void checkInterpenetratingOverlap()
@@ -152,7 +163,7 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
       RealT residual_gap;   ///< Offset applied to pressure after clipping the geometric interval.
       RealT lower;          ///< Exact lower endpoint of the penetrating interval.
       RealT upper;          ///< Exact upper endpoint of the penetrating interval.
-      RealT total_force_y;  ///< Exact edge1 load for unit penalty and uniform centroid pressure.
+      RealT total_force_y;  ///< Exact edge1 load for unit penalty and an affine compressive gap.
     };
     // The first two full-overlap midpoints are open. The third is closed, and the last applies a pressure offset.
     const Case cases[] = { { 0.25, -0.25, 0.0, -1.0, -0.5, -0.0625 },
@@ -182,12 +193,14 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
         const auto points = rule_generator.generate( geometry1, geometry2 );
         const auto line = CommonPlaneEdgeMapping::computeCommonPlaneLine( geometry1, geometry2 );
         output[0].interval = CommonPlaneEdgeMapping{}.makeIntegrationSurface( geometry1, geometry2 );
-        const CommonPlaneResidualPairFunction<EdgeQuadratureRuleGenerator<NumPoints>, OffsetGap<CommonPlaneGap>>
-            function{ rule_generator, 1.0, OffsetGap{ CommonPlaneGap{}, test.residual_gap } };
+        const PairTractionIntegral<
+            PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>,
+            CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>, BasisFunction<EDGE, LINEAR_LAGRANGE>>
+            function{ rule_generator, { 1.0, OffsetGap{ CommonPlaneGap{}, test.residual_gap } } };
         output[0].residual = function.evaluate( edge1.view(), edge2.view() );
         for ( int point = 0; point < NumPoints; ++point ) {
-          const auto point1 = geometry1.position( points.geom1_parametric_coords( point, 0 ) );
-          const auto point2 = geometry2.position( points.geom2_parametric_coords( point, 0 ) );
+          const auto point1 = geometry1.position( { &points.geom1_parametric_coords( point, 0 ), 1 } );
+          const auto point2 = geometry2.position( { &points.geom2_parametric_coords( point, 0 ), 1 } );
           output[0].x1[point] = point1[0];
           output[0].x2[point] = point2[0];
           output[0].gaps[point] = CommonPlaneGap{}( point1, point2, line );
@@ -216,9 +229,16 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
       const RealT center = 0.5 * ( test.lower + test.upper );
       EXPECT_NEAR( measure, test.upper - test.lower, tolerance );
       EXPECT_NEAR( first_moment / measure, center, tolerance );
+      // The one-point rule applies centroid pressure. Two or more points integrate N_i(x) * (2*slope*x-offset)
+      // exactly, including the pressure variation's contribution to the first moment of the load.
+      RealT load_moment = center * test.total_force_y;
+      if constexpr ( NumPoints >= 2 ) {
+        const RealT length = test.upper - test.lower;
+        load_moment += test.slope * length * length * length / 6.0;
+      }
       const MdArray<RealT, 4> loads{
-          0.5 * ( 1.0 - center ) * test.total_force_y, 0.5 * ( 1.0 + center ) * test.total_force_y,
-          -0.5 * ( 1.0 + center ) * test.total_force_y, -0.5 * ( 1.0 - center ) * test.total_force_y };
+          0.5 * ( test.total_force_y - load_moment ), 0.5 * ( test.total_force_y + load_moment ),
+          -0.5 * ( test.total_force_y + load_moment ), -0.5 * ( test.total_force_y - load_moment ) };
       const auto residual_values = sample.residual.values();
       for ( int node = 0; node < loads.size(); ++node ) {
         EXPECT_NEAR( residual_values[2 * node], 0.0, tolerance );
@@ -260,9 +280,11 @@ TEST_P( CommonPlaneTest, constructs_geometry_from_returned_face_coordinate_array
     coordinates( 0, 0 ) = -3.0;
     coordinates( 1, 1 ) = -2.0;
     const LinearEdgeGeometry geometries[] = { original, other, updated };
+    const MdArray<RealT, 1> first_coords{ -1.0 };
+    const MdArray<RealT, 1> second_coords{ 1.0 };
     for ( IndexT i = 0; i < 3; ++i ) {
-      const auto first = geometries[i].position( -1.0 );
-      const auto second = geometries[i].position( 1.0 );
+      const auto first = geometries[i].position( first_coords.view() );
+      const auto second = geometries[i].position( second_coords.view() );
       output[0]( i, 0 ) = first[0];
       output[0]( i, 1 ) = first[1];
       output[0]( i, 2 ) = second[0];
@@ -304,7 +326,9 @@ TEST_P( CommonPlaneTest, balances_rotated_pair_forces_and_moments )
     const Coordinates edge1{ MdArray<RealT, 2>{ 1.0, 2.0 }, MdArray<RealT, 2>{ 4.0, 6.0 } };
     const Coordinates edge2{ MdArray<RealT, 2>{ 3.8, 6.15 }, MdArray<RealT, 2>{ 0.8, 2.15 } };
     const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>> rule_generator;
-    const CommonPlaneResidualPairFunction<EdgeQuadratureRuleGenerator<3>> function{ rule_generator, 2.0 };
+    const PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>>,
+                               CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>
+        function{ rule_generator, { 2.0 } };
     const auto result = function.evaluate( edge1.view(), edge2.view() );
     const auto values = result.values();
     for ( int i = 0; i < 2 * Coordinates::size(); ++i ) {
@@ -388,23 +412,135 @@ TEST_P( CommonPlaneTest, reports_geometry_and_capacity_without_writing )
   }
 }
 
-// Each base rule integrates only the penetrating interval and uses the same uniform centroid pressure.
+// Each base rule integrates only the penetrating interval; higher-order rules resolve the varying pressure.
 TEST_P( CommonPlaneTest, integrates_interpenetrating_overlap_with_configured_rule )
 {
   checkInterpenetratingOverlap<1>();
   checkInterpenetratingOverlap<2>();
   checkInterpenetratingOverlap<3>();
 }
+/** @brief Interpolate fixed nodal pressures and integrate them even on an opening pair. */
+struct NodalPressureTraction {
+  MdArray<RealT, 2> pressures{ 1.0, 3.0 };  ///< Fixed nodal values on geometry2.
+
+  /** @brief Use geometry2's unit normal for this pair.
+   * @param geometry1 First geometry, unused by this prescribed traction.
+   * @param geometry2 Second current geometry.
+   * @return Current traction direction.
+   */
+  TRIBOL_HOST_DEVICE auto computePairGeometryData( const LinearEdgeGeometry& TRIBOL_UNUSED_PARAM( geometry1 ),
+                                                   const LinearEdgeGeometry& geometry2 ) const
+  {
+    return geometry2.normal();
+  }
+
+  /** @brief Interpolate pressure from geometry2's parametric point without a gap activation check.
+   * @param point1 First physical point, unused.
+   * @param point2 Second physical point, unused.
+   * @param parametric_coords1 First parametric point, unused.
+   * @param parametric_coords2 Point used to interpolate the fixed nodal pressures.
+   * @param normal Current unit traction direction.
+   * @return Active, unweighted vector traction.
+   */
+  TRIBOL_HOST_DEVICE QuadraturePointValue<MdArray<RealT, 2>> operator()(
+      const LinearEdgeGeometry::Point& TRIBOL_UNUSED_PARAM( point1 ),
+      const LinearEdgeGeometry::Point& TRIBOL_UNUSED_PARAM( point2 ),
+      MdSpan<const RealT, 1> TRIBOL_UNUSED_PARAM( parametric_coords1 ), MdSpan<const RealT, 1> parametric_coords2,
+      const LinearEdgeGeometry::Vector& normal ) const
+  {
+    const RealT xi = parametric_coords2[0];
+    const RealT pressure = 0.5 * ( ( 1.0 - xi ) * pressures[0] + ( 1.0 + xi ) * pressures[1] );
+    return { MdArray<RealT, 2>{ pressure * normal[0], pressure * normal[1] }, true };
+  }
+};
+
+// Independent residual bases and a pressure field must work without penalty-specific point activation. Geometry2
+// lies below geometry1, giving an opening Common Plane gap, but the prescribed pressure still contributes.
+TEST_P( CommonPlaneTest, integrates_supplied_traction_with_independent_bases )
+{
+  using RuleGenerator = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
+  using Integral = PairTractionIntegral<RuleGenerator, NodalPressureTraction, BasisFunction<EDGE, LINEAR_LAGRANGE>,
+                                        BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
+  static_assert( PairFunctionType<Integral> );
+  ArrayT<Integral::Result> results( 1, 1, allocatorId() );
+  const auto output = results.view();
+  forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
+    const Coordinates edge1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 } };
+    const Coordinates edge2{ MdArray<RealT, 2>{ 1.0, -0.1 }, MdArray<RealT, 2>{ -1.0, -0.1 } };
+    const Integral pair_integral{ {}, {} };
+    output[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
+  } );
+  const ArrayT<Integral::Result, 1, MemorySpace::Host> host( results );
+  ASSERT_EQ( host[0].quadrature_result.status, QuadratureStatus::Success );
+  EXPECT_EQ( host[0].quadrature_result.num_required_points, 2 );
+  EXPECT_TRUE( host[0].has_active_points );
+  // Geometry1's pressure is 2-x. Geometry2's reversed coordinate gives 2+xi and endpoint/endpoint/midpoint ordering.
+  const MdArray<RealT, 2> loads1{ 7.0 / 3.0, 5.0 / 3.0 };
+  const MdArray<RealT, 3> loads2{ -1.0 / 3.0, -1.0, -8.0 / 3.0 };
+  for ( IndexT node = 0; node < loads1.size(); ++node ) {
+    EXPECT_NEAR( host[0].geometry1( node, 0 ), 0.0, tolerance );
+    EXPECT_NEAR( host[0].geometry1( node, 1 ), loads1[node], tolerance );
+  }
+  for ( IndexT node = 0; node < loads2.size(); ++node ) {
+    EXPECT_NEAR( host[0].geometry2( node, 0 ), 0.0, tolerance );
+    EXPECT_NEAR( host[0].geometry2( node, 1 ), loads2[node], tolerance );
+  }
+}
+
+// A gap offset opens the centroid while leaving one of two Gauss points compressive. Only that point contributes.
+// A larger opening offset makes both points inactive and must return zero residuals.
+TEST_P( CommonPlaneTest, activates_each_quadrature_point_after_gap_offset )
+{
+  const RealT active_x = -0.5 - 0.5 / std::sqrt( 3.0 );
+  for ( const RealT residual_gap : { -0.3, -0.5 } ) {
+    SCOPED_TRACE( residual_gap );
+    ArrayT<CommonPlaneResidualValue> results( 1, 1, allocatorId() );
+    const auto output = results.view();
+    forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
+      const Coordinates edge1{ MdArray<RealT, 2>{ -1.0, -0.25 }, MdArray<RealT, 2>{ 1.0, 0.25 } };
+      const Coordinates edge2{ MdArray<RealT, 2>{ 1.0, -0.25 }, MdArray<RealT, 2>{ -1.0, 0.25 } };
+      const PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>,
+                                 CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>,
+                                 BasisFunction<EDGE, LINEAR_LAGRANGE>>
+          pair_integral{ {}, { 1.0, OffsetGap{ CommonPlaneGap{}, residual_gap } } };
+      output[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
+    } );
+    const ArrayT<CommonPlaneResidualValue, 1, MemorySpace::Host> host( results );
+    ASSERT_EQ( host[0].quadrature_result.status, QuadratureStatus::Success );
+    EXPECT_EQ( host[0].quadrature_result.num_required_points, 2 );
+    const RealT gap = 0.5 * active_x - residual_gap;
+    const bool active = gap <= 0.0;
+    EXPECT_EQ( host[0].has_active_points, active );
+    // The clipped interval is [-1, 0], so each Gauss weight is 0.5 and N_0(x)=(1-x)/2.
+    const RealT weighted_pressure = active ? 0.5 * gap : 0.0;
+    const RealT first_load = 0.5 * ( 1.0 - active_x ) * weighted_pressure;
+    const RealT second_load = 0.5 * ( 1.0 + active_x ) * weighted_pressure;
+    const MdArray<RealT, 4> loads{ first_load, second_load, -second_load, -first_load };
+    const auto values = host[0].values();
+    for ( int node = 0; node < loads.size(); ++node ) {
+      EXPECT_NEAR( values[2 * node], 0.0, tolerance );
+      EXPECT_NEAR( values[2 * node + 1], loads[node], tolerance );
+    }
+  }
+}
+
 /** @brief Supply a nonzero entry even for inactive or invalid pairs to check kernel output masking. */
-struct UnmaskedResidualPairFunction : CommonPlaneResidualPairFunction<EdgeQuadratureRuleGenerator<2>> {
-  using CommonPlaneResidualPairFunction<EdgeQuadratureRuleGenerator<2>>::CommonPlaneResidualPairFunction;
+struct UnmaskedResidualPairFunction
+    : PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>,
+                           CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>> {
+  using PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>,
+                             CommonPlanePenaltyTraction<CommonPlaneGap>,
+                             BasisFunction<EDGE, LINEAR_LAGRANGE>>::PairTractionIntegral;
 
   /** @brief Evaluate the pair and overwrite one residual entry regardless of state.
    * @param coords1 First edge coordinates. @param coords2 Second edge coordinates.
    * @return Residual with its original quadrature status and activation, and a nonzero first entry. */
   TRIBOL_HOST_DEVICE Result evaluate( Coords1 coords1, Coords2 coords2 ) const
   {
-    auto result = CommonPlaneResidualPairFunction<EdgeQuadratureRuleGenerator<2>>::evaluate( coords1, coords2 );
+    auto result =
+        PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>,
+                             CommonPlanePenaltyTraction<CommonPlaneGap>,
+                             BasisFunction<EDGE, LINEAR_LAGRANGE>>::evaluate( coords1, coords2 );
     result.geometry1( 0, 0 ) = 1.0;
     return result;
   }
@@ -413,8 +549,10 @@ struct UnmaskedResidualPairFunction : CommonPlaneResidualPairFunction<EdgeQuadra
 // A force-only kernel must keep pair slots distinct and preserve active zero-gap and invalid-geometry state.
 TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_derivatives )
 {
-  using Function = CommonPlaneResidualPairFunction<EdgeQuadratureRuleGenerator<2>>;
-  const Function function{ {}, 1.0 };
+  using Function =
+      PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>,
+                           CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
+  const Function function{ {}, { 1.0 } };
   const auto x1 = copyToExecutionSpace<RealT>( { 0.0, 2.0 } );
   const auto y1 = copyToExecutionSpace<RealT>( { 0.0, 0.0 } );
   const auto conn1 = copyToExecutionSpace<IndexT>( { 0, 1 } );
@@ -447,7 +585,7 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
                 std::invalid_argument );
   // A second calculation uses different stiffness and must leave the first returned buffer unchanged.
   auto doubled = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
-    return evaluatePairValues<Exec>( pairs, mesh1.getView(), mesh2.getView(), Function{ {}, 2.0 } );
+    return evaluatePairValues<Exec>( pairs, mesh1.getView(), mesh2.getView(), Function{ {}, { 2.0 } } );
   } );
   const Array1D<RealT, MemorySpace::Host> doubled_values( doubled.values() );
   const Array1D<RealT, MemorySpace::Host> unchanged( buffer.values() );
@@ -457,7 +595,8 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
   }
   // The kernel must zero inactive or failed outputs even when evaluate() supplies nonzero numerical entries.
   auto unmasked = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
-    return evaluatePairValues<Exec>( pairs, mesh1.getView(), mesh2.getView(), UnmaskedResidualPairFunction{ {}, 1.0 } );
+    return evaluatePairValues<Exec>( pairs, mesh1.getView(), mesh2.getView(),
+                                     UnmaskedResidualPairFunction{ {}, { 1.0 } } );
   } );
   const Array1D<RealT, MemorySpace::Host> masked_values( unmasked.values() );
   for ( IndexT pair = 0; pair < pairs.size(); ++pair ) {
@@ -481,16 +620,22 @@ INSTANTIATE_TEST_SUITE_P( execution, CommonPlaneTest, tribol::detail::enabledExe
 template <int NumPoints>
 void checkJacobian()
 {
-  using Function = CommonPlaneResidualPairFunction<EdgeQuadratureRuleGenerator<NumPoints>, OffsetGap<CommonPlaneGap>>;
+  using Function =
+      PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>,
+                           CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
   const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>> rule_generator;
-  const Function function{ rule_generator, 2.5, OffsetGap{ CommonPlaneGap{}, 0.03 } };
   constexpr RealT step =
       2.0e-7;  // Small enough to resolve derivatives without changing the active or overlap branches.
+  // The longer second edge in the offset case keeps the limiting overlap endpoint unchanged under perturbation.
   const Coordinates cases1[] = { Coordinates{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.2 } },
-                                 Coordinates{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 } } };
+                                 Coordinates{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 } },
+                                 Coordinates{ MdArray<RealT, 2>{ -1.0, -0.25 }, MdArray<RealT, 2>{ 1.0, 0.25 } } };
   const Coordinates cases2[] = { Coordinates{ MdArray<RealT, 2>{ 1.8, 0.35 }, MdArray<RealT, 2>{ 0.2, 0.1 } },
-                                 Coordinates{ MdArray<RealT, 2>{ 0.8, 0.2 }, MdArray<RealT, 2>{ -0.8, -0.2 } } };
-  for ( int geometry = 0; geometry < 2; ++geometry ) {
+                                 Coordinates{ MdArray<RealT, 2>{ 0.8, 0.2 }, MdArray<RealT, 2>{ -0.8, -0.2 } },
+                                 Coordinates{ MdArray<RealT, 2>{ 1.2, -0.3 }, MdArray<RealT, 2>{ -1.2, 0.3 } } };
+  const MdArray<RealT, 3> residual_gaps{ 0.03, 0.03, -0.3 };
+  for ( int geometry = 0; geometry < residual_gaps.size(); ++geometry ) {
+    const Function function{ rule_generator, { 2.5, OffsetGap{ CommonPlaneGap{}, residual_gaps[geometry] } } };
     const auto coordinates = packPairCoordinates( cases1[geometry].view(), cases2[geometry].view() );
     const auto expected = function.evaluate( cases1[geometry].view(), cases2[geometry].view() );
     const auto result =
@@ -498,7 +643,7 @@ void checkJacobian()
     const auto expected_values = expected.values();
     ASSERT_EQ( result.quadrature_result.status, QuadratureStatus::Success );
     EXPECT_EQ( result.quadrature_result.num_required_points, NumPoints );
-    EXPECT_TRUE( result.has_active_points );
+    EXPECT_EQ( result.has_active_points, expected.has_active_points );
     for ( IndexT row = 0; row < Function::size_values; ++row ) {
       EXPECT_DOUBLE_EQ( result.values[row], expected_values[row] );
     }
@@ -525,8 +670,10 @@ void checkJacobian()
   }
   const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
   const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, 0.0 }, MdArray<RealT, 2>{ 0.0, 0.0 } };
-  using UnshiftedFunction = CommonPlaneResidualPairFunction<EdgeQuadratureRuleGenerator<NumPoints>>;
-  const UnshiftedFunction unshifted{ rule_generator, 1.0 };
+  using UnshiftedFunction =
+      PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>,
+                           CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
+  const UnshiftedFunction unshifted{ rule_generator, { 1.0 } };
   const auto zero = unshifted.evaluate( edge1.view(), edge2.view() );
   EXPECT_TRUE( zero.has_active_points );
   const auto derivatives =
@@ -550,8 +697,8 @@ void checkJacobian()
   }
 }
 
-// All reference counts differentiate current normals, interval bounds, edge lengths, and the interpenetration boundary
-// and centroid pressure.
+// All rules differentiate current normals, interval bounds, edge lengths, and pointwise pressure. A shifted gap
+// checks mixed open/compressive quadrature points without crossing their activation boundaries under perturbation.
 TEST( CommonPlaneJacobian, matches_finite_differences )
 {
   checkJacobian<1>();

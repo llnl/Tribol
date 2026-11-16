@@ -15,7 +15,7 @@
 #include "tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/physics/ContactFormulationFactory.hpp"
-#include "tribol/physics/PenaltyStiffness.hpp"
+#include "tribol/enforcement/PenaltyStiffness.hpp"
 #include <stdexcept>
 
 namespace tribol {

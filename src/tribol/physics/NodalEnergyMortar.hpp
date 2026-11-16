@@ -3,15 +3,30 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-/** @file @brief Nodal Energy Mortar gap, penalty, and Lagrange multiplier evaluation and assembly. */
-#ifndef SRC_TRIBOL_PHYSICS_ENERGYMORTAREVALUATION_HPP_
-#define SRC_TRIBOL_PHYSICS_ENERGYMORTAREVALUATION_HPP_
+/** @file @brief Nodal Energy Mortar integrals, penalty and Lagrange multiplier enforcement, and contact formulations.
+ */
+#ifndef SRC_TRIBOL_PHYSICS_NODALENERGYMORTAR_HPP_
+#define SRC_TRIBOL_PHYSICS_NODALENERGYMORTAR_HPP_
+
 #include "tribol/config.hpp"
+#include "tribol/enforcement/PenaltyEnergy.hpp"
+#include "tribol/geom/OpposingNormalGap.hpp"
+#include "tribol/integ/PairQuadratureRuleGenerator.hpp"
+#include "tribol/physics/PairIntegrals.hpp"
+#include "tribol/integ/BasisFunction.hpp"
+
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
 #include "tribol/assembly/PairEvaluationAssembly.hpp"
-#include "tribol/physics/EnergyMortarPairFunctions.hpp"
+#include "tribol/physics/ContactFormulation.hpp"
+#include "tribol/search/PairListBuilder.hpp"
+#include <utility>
+#include "tribol/enforcement/PenaltyStiffness.hpp"
+#endif
 
 namespace tribol {
+
+#if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
+
 namespace detail {
 inline constexpr RealT nodal_area_tolerance =
     1.0e-14;  ///< Minimum supported tributary-area magnitude for penalty contact.
@@ -320,6 +335,143 @@ ContactFormulationResult evaluateAndAssembleNodalLagrangeMultiplier(
   return result;
 }
 
-}  // namespace tribol
+/**
+ * @brief Nodal penalty Energy Mortar with normalized compressive gaps and penalty forces.
+ *
+ * Uses PairNodalGapIntegral with a linear Lagrange basis on geometry1; enforcement follows nodal assembly.
+ * @tparam Exec Concrete execution mode for search, evaluation, and assembly kernels.
+ * @tparam PairRuleGenerator Generates quadrature points and physical weights for the current edge pair.
+ * @tparam GapDefinition Geometric or offset alignment-corrected gap.
+ */
+template <ExecutionMode Exec, typename PairRuleGenerator, typename GapDefinition = OpposingNormalGap>
+class NodalPenaltyEnergyMortar final : public ContactFormulation {
+ public:
+  /**
+   * @brief Construct the nodal gap integral, own the penalty stiffness and search, and reference transfer data.
+   * @param mesh_data Displacement transfer data; must outlive this formulation.
+   * @param submesh_data Pressure and gap transfer data; must outlive this formulation.
+   * @param jacobian_data Parent and scalar-field Jacobian transfer data; must outlive this formulation.
+   * @param rule_generator Configured pair quadrature generator, retained by value.
+   * @param penalty Fixed positive, finite penalty stiffness.
+   * @param gap Configured alignment-corrected gap, retained by value.
+   * @param pair_builder Owned pair search.
+   * @throws std::invalid_argument Penalty stiffness is nonpositive or nonfinite.
+   */
+  NodalPenaltyEnergyMortar( const MfemMeshData& mesh_data, const MfemSubmeshData& submesh_data,
+                            const MfemJacobianData& jacobian_data, PairRuleGenerator rule_generator, RealT penalty,
+                            GapDefinition gap, PairListBuilder pair_builder )
+      : mesh_data_( mesh_data ),
+        submesh_data_( submesh_data ),
+        jacobian_data_( jacobian_data ),
+        pair_integral_( std::move( rule_generator ), std::move( gap ) ),
+        penalty_( detail::checkedPenaltyStiffness( penalty ) ),
+        pair_builder_( std::move( pair_builder ) )
+  {
+  }
+
+  /**
+   * @brief Calculate normalized compressive nodal gaps and their coordinate Jacobian.
+   * @param mesh1 Current first mesh.
+   * @param mesh2 Current second mesh.
+   * @return Owned gap and weighted_gap_jacobian; other outputs are absent.
+   */
+  ContactFormulationResult computeNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
+  {
+    const auto pairs = pair_builder_.build( mesh1, mesh2 );
+    return evaluateAndAssembleNodalPenaltyGaps<Exec>( pairs, mesh1, mesh2, mesh_data_, submesh_data_, jacobian_data_,
+                                                      pair_integral_ );
+  }
+
+  /**
+   * @brief Calculate nodal penalty energy, gaps, pressure, forces, and coordinate derivatives.
+   * @param mesh1 Current first mesh.
+   * @param mesh2 Current second mesh.
+   * @return Owned energy, gap, pressure, force, weighted_gap_jacobian, and df_dx; df_dp is absent.
+   */
+  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
+  {
+    const auto pairs = pair_builder_.build( mesh1, mesh2 );
+    return evaluateAndAssembleNodalPenalty<Exec>( pairs, mesh1, mesh2, mesh_data_, submesh_data_, jacobian_data_,
+                                                  pair_integral_, penalty_ );
+  }
+
+ private:
+  const MfemMeshData& mesh_data_;          ///< Displacement transfer data referenced for this formulation's lifetime.
+  const MfemSubmeshData& submesh_data_;    ///< Scalar transfer data referenced for this formulation's lifetime.
+  const MfemJacobianData& jacobian_data_;  ///< Matrix transfer data referenced for this formulation's lifetime.
+  const PairNodalGapIntegral<PairRuleGenerator, GapDefinition, BasisFunction<EDGE, LINEAR_LAGRANGE>>
+      pair_integral_;    ///< Integrates weighted gaps and tributary areas on geometry1 before contact activation.
+  const RealT penalty_;  ///< Fixed positive, finite penalty stiffness.
+  PairListBuilder pair_builder_;  ///< Owned pair search.
+};
+
+/**
+ * @brief Nodal Lagrange multiplier Energy Mortar with signed weighted gaps and mixed derivatives.
+ *
+ * Uses PairNodalGapIntegral with a linear Lagrange basis on geometry1; enforcement follows nodal assembly.
+ * @tparam Exec Concrete execution mode for search, evaluation, and assembly kernels.
+ * @tparam PairRuleGenerator Generates quadrature points and physical weights for the current edge pair.
+ * @tparam GapDefinition Geometric or offset alignment-corrected gap.
+ */
+template <ExecutionMode Exec, typename PairRuleGenerator, typename GapDefinition = OpposingNormalGap>
+class NodalLagrangeMultiplierEnergyMortar final : public ContactFormulation {
+ public:
+  /**
+   * @brief Construct the nodal gap integral, own the search, and reference required transfer data.
+   * @param mesh_data Displacement transfer data; must outlive this formulation.
+   * @param submesh_data Pressure and gap transfer data; must outlive this formulation.
+   * @param jacobian_data Parent and scalar-field Jacobian transfer data; must outlive this formulation.
+   * @param rule_generator Configured pair quadrature generator, retained by value.
+   * @param gap Configured alignment-corrected gap, retained by value.
+   * @param pair_builder Owned pair search.
+   */
+  NodalLagrangeMultiplierEnergyMortar( const MfemMeshData& mesh_data, const MfemSubmeshData& submesh_data,
+                                       const MfemJacobianData& jacobian_data, PairRuleGenerator rule_generator,
+                                       GapDefinition gap, PairListBuilder pair_builder )
+      : mesh_data_( mesh_data ),
+        submesh_data_( submesh_data ),
+        jacobian_data_( jacobian_data ),
+        pair_integral_( std::move( rule_generator ), std::move( gap ) ),
+        pair_builder_( std::move( pair_builder ) )
+  {
+  }
+
+  /**
+   * @brief Calculate signed weighted nodal gaps and their coordinate Jacobian.
+   * @param mesh1 Current first mesh.
+   * @param mesh2 Current second mesh.
+   * @return Owned gap and weighted_gap_jacobian; other outputs are absent.
+   */
+  ContactFormulationResult computeNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
+  {
+    const auto pairs = pair_builder_.build( mesh1, mesh2 );
+    return evaluateAndAssembleNodalLagrangeMultiplierGaps<Exec>( pairs, mesh1, mesh2, mesh_data_, submesh_data_,
+                                                                 jacobian_data_, pair_integral_ );
+  }
+
+  /**
+   * @brief Calculate nodal LM energy, gaps, pressure, forces, and mixed derivatives.
+   * @param mesh1 Current first mesh.
+   * @param mesh2 Current second mesh.
+   * @return Owned energy, gap, pressure, force, weighted_gap_jacobian, df_dx, and df_dp.
+   */
+  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
+  {
+    const auto pairs = pair_builder_.build( mesh1, mesh2 );
+    return evaluateAndAssembleNodalLagrangeMultiplier<Exec>( pairs, mesh1, mesh2, mesh_data_, submesh_data_,
+                                                             jacobian_data_, pair_integral_ );
+  }
+
+ private:
+  const MfemMeshData& mesh_data_;          ///< Displacement transfer data referenced for this formulation's lifetime.
+  const MfemSubmeshData& submesh_data_;    ///< Scalar transfer data referenced for this formulation's lifetime.
+  const MfemJacobianData& jacobian_data_;  ///< Matrix transfer data referenced for this formulation's lifetime.
+  const PairNodalGapIntegral<PairRuleGenerator, GapDefinition, BasisFunction<EDGE, LINEAR_LAGRANGE>>
+      pair_integral_;  ///< Integrates weighted gaps and tributary areas on geometry1 before contact activation.
+  PairListBuilder pair_builder_;  ///< Owned pair search.
+};
+
 #endif
-#endif  // SRC_TRIBOL_PHYSICS_ENERGYMORTAREVALUATION_HPP_
+
+}  // namespace tribol
+#endif  // SRC_TRIBOL_PHYSICS_NODALENERGYMORTAR_HPP_

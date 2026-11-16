@@ -5,7 +5,8 @@
 
 /**
  * @file
- * @brief Pair-function values, Jacobians, and Hessians, with fixed-size Enzyme differentiation.
+ * @brief Quadrature-point values and pair-function values, Jacobians, and Hessians, with fixed-size Enzyme
+ * differentiation.
  */
 #ifndef SRC_TRIBOL_ASSEMBLY_PAIREVALUATION_HPP_
 #define SRC_TRIBOL_ASSEMBLY_PAIREVALUATION_HPP_
@@ -17,6 +18,15 @@
 #include "tribol/integ/QuadratureCommon.hpp"
 
 namespace tribol {
+
+/** @brief One quadrature-point quantity and whether its values or derivatives must be integrated.
+ * @tparam T Scalar energy density or fixed-size vector traction.
+ */
+template <typename T>
+struct QuadraturePointValue {
+  T value{};            ///< Unweighted quantity; the integral applies the physical quadrature weight.
+  bool active = false;  ///< Whether to retain this point, including a zero value with a nonzero tangent.
+};
 
 /** @brief Pair energy, quadrature status, and compressive-point activation. */
 struct PairEnergyValue {
@@ -237,7 +247,7 @@ class EnzymePairDerivative {
    * Successful active evaluations retain derivatives even when their values are zero. Nodal gap and area integrals
    * remain active whenever quadrature is nonempty, before nodal enforcement determines whether contact is compressive.
    *
-   * For example, suppose f is a configured CommonPlaneResidualPairFunction of type PairFunction, and coords1 and
+   * For example, suppose f is a configured PairTractionIntegral of type PairFunction, and coords1 and
    * coords2 hold the two edges' coordinates. A pair kernel could use:
    * @code
    * const auto pair_values_struct =
@@ -247,7 +257,7 @@ class EnzymePairDerivative {
    * const RealT force_jacobian_entry = pair_values_struct.jacobian( 0, 0 );
    * @endcode
    * Here f is the pair force vector. The caller could store its values and Jacobian for later assembly. The same
-   * operation on an EnergyMortarNodalIntegralPairFunction would return gap/area values and their coordinate Jacobian.
+   * operation on an PairNodalGapIntegral would return gap/area values and their coordinate Jacobian.
    *
    * @param coords1 Current geometry1 coordinates.
    * @param coords2 Current geometry2 coordinates.
@@ -291,7 +301,7 @@ class EnzymePairDerivative {
    * call. All-zero weights return zero Jacobian and Hessian without evaluating or differentiating the pair_function.
    * Quadrature validity must still be checked separately.
    *
-   * For example, suppose f is an EnergyMortarNodalIntegralPairFunction of type PairFunction for two-node edges, with
+   * For example, suppose f is an PairNodalGapIntegral of type PairFunction for two-node edges, with
    * outputs (G0, G1, A0, A1), and its quadrature has been checked. A nodal LM calculation could use fixed multipliers:
    * @code
    * const MdArray<RealT, PairFunction::size_values> weights{ 2.0, 3.0, 0.0, 0.0 };
@@ -300,7 +310,7 @@ class EnzymePairDerivative {
    * @endcode
    * pair_derivatives_struct.jacobian is 2.0*J_G0 + 3.0*J_G1 and pair_derivatives_struct.hessian is
    * 2.0*H_G0 + 3.0*H_G1. The Hessian could contribute to the coordinate Jacobian of the LM force. For a scalar
-   * EnergyMortarEnergyPairFunction E, a single weight of 1.0 returns J_E and H_E, which could supply the force and its
+   * PairEnergyIntegral E, a single weight of 1.0 returns J_E and H_E, which could supply the force and its
    * coordinate Jacobian.
    *
    * @param coords1 Current geometry1 coordinates.
@@ -347,7 +357,7 @@ class EnzymePairDerivative {
    * They stop after the first AD call. Successful active evaluations retain derivatives even when f(x) is zero.
    * The caller must check quadrature status before consuming the numerical outputs.
    *
-   * For example, suppose f is a configured EnergyMortarEnergyPairFunction of type PairFunction. A pair kernel could
+   * For example, suppose f is a configured PairEnergyIntegral of type PairFunction. A pair kernel could
    * evaluate its energy and derivatives together:
    * @code
    * const auto pair_values = EnzymePairDerivative<PairFunction>::valueJacobianAndHessian( coords1.view(),

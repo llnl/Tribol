@@ -75,7 +75,7 @@ PairValueBuffer<PairFunction::size_values> evaluatePairValues( const ArrayT<Inte
  * the recorded quadrature results before using these outputs. Failed or inactive evaluations store zero values
  * and Jacobians.
  *
- * For example, suppose function is a configured CommonPlaneResidualPairFunction of type PairFunction, pairs is an
+ * For example, suppose function is a configured PairTractionIntegral of type PairFunction, pairs is an
  * accepted pair list, and mesh1 and mesh2 are current mesh views. A caller could evaluate its local nodal forces and
  * their Jacobians:
  * @code
@@ -131,7 +131,7 @@ PairValueJacobianBuffer<PairFunction::size_values, PairFunction::size_coords> ev
  * matrix. Function values and the full unweighted Jacobian are not returned. The weights multiply outputs of f;
  * they are distinct from quadrature weights, which are already included in f.
  *
- * For example, suppose function is an EnergyMortarNodalIntegralPairFunction of type PairFunction for two-node
+ * For example, suppose function is an PairNodalGapIntegral of type PairFunction for two-node
  * edges and its quadrature has already been checked. Its four outputs are weighted gaps G0, G1 followed by areas A0,
  * A1. A hypothetical nodal LM calculation could use multipliers 2.0 and 3.0, and zero area weights, to
  * differentiate 2.0*G0
@@ -195,7 +195,7 @@ PairJacobianHessianBuffer<PairFunction::size_coords> evaluatePairWeightedJacobia
  * pairs receive zero values and derivatives; the caller must check quadrature results before using the outputs.
  * Active inputs retain their derivatives even when f(x) is zero.
  *
- * For example, suppose function is a configured EnergyMortarEnergyPairFunction of type PairFunction. A
+ * For example, suppose function is a configured PairEnergyIntegral of type PairFunction. A
  * quadrature-point formulation could request its scalar energy E, Jacobian J_E, and Hessian H_E together:
  * @code
  * auto results = evaluatePairValuesJacobiansAndHessians<Exec>( pairs, mesh1, mesh2, pair_function );

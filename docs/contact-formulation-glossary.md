@@ -84,7 +84,9 @@ FE-space ordering and column-major matrix storage. Row and column spaces, multip
 | Coarse candidate | An element pair returned by spatial search. Spatial proximity alone does not establish contact. |
 | Refined candidate | A coarse candidate that passes topology and geometry checks, such as opposing normals. It can still have empty quadrature or no compressive contact. |
 | Quadrature overlap | The integration interval or surface determined from the current pair geometry. |
-| Pair function | A function that takes the current coordinate arrays of two surface elements and calculates their pair-local values, quadrature status, and activation. Values may be energy, residual entries, weighted gaps, or tributary areas. Its configured settings remain fixed during evaluation and differentiation. |
+| Pair function | A function that takes the current coordinate arrays of two surface elements and calculates their pair-local values, quadrature status, and activation. Values may be energy, residual entries, weighted gaps, or tributary areas. Its configured settings remain fixed during evaluation and differentiation. A pair function need not perform integration. |
+| Pair integral | A pair function that integrates a supplied traction, scalar energy density, or basis-weighted gap over generated quadrature. The configured point calculation supplies the physics and activation. |
+| Quadrature-point value | An unweighted scalar or vector quantity with an activation flag. A point can remain active when its value is zero and its derivatives are nonzero. The integral applies the physical quadrature weight. |
 | Active pair | A successfully evaluated pair with points whose values or derivatives must be retained by the pair function. This includes integration before contact activation and does not require a nonzero current energy or residual. |
 | Rule generator | A configured operation producing quadrature points and weights for current geometry. A base rule generator supplies the reference integration rule. |
 | Generated rule | The resulting points, weights, and generation status. A rule is data, not its generator. |

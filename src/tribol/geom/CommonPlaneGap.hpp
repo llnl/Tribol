@@ -14,6 +14,17 @@
 namespace tribol {
 /** @brief Calculate the unshifted gap along a valid current common-plane normal. */
 struct CommonPlaneGap {
+  /** @brief Compute the common line once for the current pair's gap evaluations.
+   * @param geometry1 First current edge.
+   * @param geometry2 Second current edge.
+   * @return Common line; both edges must satisfy computeCommonPlaneLine() preconditions.
+   */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto computePairGeometryData( const LinearEdgeGeometry& geometry1,
+                                                                        const LinearEdgeGeometry& geometry2 ) const
+  {
+    return CommonPlaneEdgeMapping::computeCommonPlaneLine( geometry1, geometry2 );
+  }
+
   /**
    * @brief Project the separation between physical quadrature points onto the common normal.
    * @param point1 Point on the first edge.

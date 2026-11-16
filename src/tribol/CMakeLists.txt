@@ -31,6 +31,9 @@ set(tribol_headers
     common/Parameters.hpp
     common/Reductions.hpp
 
+    enforcement/PenaltyEnergy.hpp
+    enforcement/PenaltyStiffness.hpp
+
     geom/CompGeom.hpp
     geom/ElementNormal.hpp
     geom/GeomUtilities.hpp
@@ -67,10 +70,9 @@ set(tribol_headers
     physics/ContactFormulation.hpp
     physics/ContactFormulationFactory.hpp
     physics/Mortar.hpp
-    physics/EnergyMortarEvaluation.hpp
-    physics/EnergyMortarPairFunctions.hpp
-    physics/PenaltyStiffness.hpp
-    physics/EnergyMortar.hpp
+    physics/PairIntegrals.hpp
+    physics/NodalEnergyMortar.hpp
+    physics/QuadraturePointEnergyMortar.hpp
     physics/Physics.hpp
 
     search/CoarseSearch.hpp
@@ -118,7 +120,7 @@ set(tribol_sources
     physics/CommonPlane.cpp
     physics/ContactFormulationFactory.cpp
     physics/Mortar.cpp
-    physics/EnergyMortar.cpp
+    physics/NodalEnergyMortar.cpp
     physics/Physics.cpp
      
     search/CoarseSearchFactory.cpp

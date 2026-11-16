@@ -47,8 +47,9 @@ struct CommonPlaneEdgeMapping {
   {
     auto normal = edge2.normal() - edge1.normal();
     normal /= std::sqrt( normal.dot( normal ) );
-    return { Point::lerp( edge1.position( 0.0 ), edge2.position( 0.0 ), 0.5 ), normal,
-             Vector{ normal[1], -normal[0] } };
+    const MdArray<RealT, 1> midpoint_coords{ 0.0 };
+    return { Point::lerp( edge1.position( midpoint_coords.view() ), edge2.position( midpoint_coords.view() ), 0.5 ),
+             normal, Vector{ normal[1], -normal[0] } };
   }
 
   /**
@@ -69,10 +70,11 @@ struct CommonPlaneEdgeMapping {
       return { MdArray<RealT, 2>{ 0.0, 0.0 }, true };
     }
     const auto line = computeCommonPlaneLine( edge1, edge2 );
+    const MdArray<RealT, 1> endpoint_coords{ 1.0 };
     const RealT a0 = Vector( line.origin, edge1.origin() ).dot( line.tangent );
-    const RealT a1 = Vector( line.origin, edge1.position( 1.0 ) ).dot( line.tangent );
+    const RealT a1 = Vector( line.origin, edge1.position( endpoint_coords.view() ) ).dot( line.tangent );
     const RealT b0 = Vector( line.origin, edge2.origin() ).dot( line.tangent );
-    const RealT b1 = Vector( line.origin, edge2.position( 1.0 ) ).dot( line.tangent );
+    const RealT b1 = Vector( line.origin, edge2.position( endpoint_coords.view() ) ).dot( line.tangent );
     // With opposing normals, the tangent follows edge1 and opposes edge2, so a0 < a1 and b1 < b0.
     RealT lower = a0 > b1 ? a0 : b1;
     RealT upper = a1 < b0 ? a1 : b0;
@@ -82,10 +84,14 @@ struct CommonPlaneEdgeMapping {
 
     // The gap is affine along straight edges. Opposite endpoint signs locate an intersection inside both edges.
     // Clip at the geometric zero gap before applying any residual-gap offset in the pressure calculation.
-    const auto point1_lower = edge1.position( 2.0 * ( lower - a0 ) / ( a1 - a0 ) - 1.0 );
-    const auto point2_lower = edge2.position( 2.0 * ( lower - b0 ) / ( b1 - b0 ) - 1.0 );
-    const auto point1_upper = edge1.position( 2.0 * ( upper - a0 ) / ( a1 - a0 ) - 1.0 );
-    const auto point2_upper = edge2.position( 2.0 * ( upper - b0 ) / ( b1 - b0 ) - 1.0 );
+    const MdArray<RealT, 2> geom1_parametric_bounds{ 2.0 * ( lower - a0 ) / ( a1 - a0 ) - 1.0,
+                                                     2.0 * ( upper - a0 ) / ( a1 - a0 ) - 1.0 };
+    const MdArray<RealT, 2> geom2_parametric_bounds{ 2.0 * ( lower - b0 ) / ( b1 - b0 ) - 1.0,
+                                                     2.0 * ( upper - b0 ) / ( b1 - b0 ) - 1.0 };
+    const auto point1_lower = edge1.position( { &geom1_parametric_bounds[0], 1 } );
+    const auto point2_lower = edge2.position( { &geom2_parametric_bounds[0], 1 } );
+    const auto point1_upper = edge1.position( { &geom1_parametric_bounds[1], 1 } );
+    const auto point2_upper = edge2.position( { &geom2_parametric_bounds[1], 1 } );
     const RealT lower_gap = Vector( point2_lower, point1_lower ).dot( line.normal );
     const RealT upper_gap = Vector( point2_upper, point1_upper ).dot( line.normal );
     if ( lower_gap < 0.0 && upper_gap > 0.0 ) {

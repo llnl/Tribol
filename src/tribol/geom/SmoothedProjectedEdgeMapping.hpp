@@ -92,7 +92,7 @@ struct SmoothedProjectedEdgeMapping {
     const RealT jacobian = edge1.jacobian();
     for ( IndexT q = 0; q < count; ++q ) {
       const RealT parametric_coord1 = integration_surface_rule.coords( q, 0 );
-      const auto physical = edge1.position( parametric_coord1 );
+      const auto physical = edge1.position( { &integration_surface_rule.coords( q, 0 ), 1 } );
       output.geom1_parametric_coords( q, 0 ) = parametric_coord1;
       output.geom2_parametric_coords( q, 0 ) = edge2.parametricCoordinate( physical );
       output.weights[q] = integration_surface_rule.weights[q] * jacobian;
@@ -151,16 +151,18 @@ struct SmoothedProjectedEdgeMapping {
     if ( normalsAreCooriented( edge1, edge2 ) ) return { MdArray<RealT, 2>{ 0.0, 0.0 }, true };
     const auto normal = edge2.normal();
     const RealT determinant = Vector::cross_product( edge1.direction(), normal )[2];
+    const MdArray<RealT, 1> endpoint_coords{ 1.0 };
     RealT coordinate0;
     RealT coordinate1;
     if ( std::abs( determinant ) < minimum_projection_determinant_ ) {
       coordinate0 = edge1.parametricCoordinate( edge2.origin() );
-      coordinate1 = edge1.parametricCoordinate( edge2.position( 1.0 ) );
+      coordinate1 = edge1.parametricCoordinate( edge2.position( endpoint_coords.view() ) );
     } else {
       const RealT fraction0 =
           Vector::cross_product( Vector( edge1.origin(), edge2.origin() ), normal )[2] / determinant;
       const RealT fraction1 =
-          Vector::cross_product( Vector( edge1.origin(), edge2.position( 1.0 ) ), normal )[2] / determinant;
+          Vector::cross_product( Vector( edge1.origin(), edge2.position( endpoint_coords.view() ) ), normal )[2] /
+          determinant;
       coordinate0 = 2.0 * fraction0 - 1.0;
       coordinate1 = 2.0 * fraction1 - 1.0;
     }
