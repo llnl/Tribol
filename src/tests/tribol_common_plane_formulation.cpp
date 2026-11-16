@@ -22,7 +22,12 @@
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/physics/CommonPlane.hpp"
-#include "tribol/physics/CommonPlaneFormulation.hpp"
+#include "tribol/enforcement/CommonPlanePenaltyTraction.hpp"
+#include "tribol/geom/OffsetGap.hpp"
+#include "tribol/integ/BasisFunction.hpp"
+#include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
+#include "tribol/integ/PairQuadratureRuleGenerator.hpp"
+#include "tribol/physics/PairIntegrals.hpp"
 #include "tribol/assembly/PairKernel.hpp"
 
 namespace {
