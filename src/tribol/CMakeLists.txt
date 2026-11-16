@@ -31,7 +31,6 @@ set(tribol_headers
     common/Parameters.hpp
     common/Reductions.hpp
 
-    enforcement/CommonPlanePenaltyTraction.hpp
     enforcement/PenaltyEnergy.hpp
     enforcement/PenaltyStiffness.hpp
 

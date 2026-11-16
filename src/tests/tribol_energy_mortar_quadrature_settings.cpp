@@ -35,7 +35,6 @@
 #include "tribol/physics/NodalEnergyMortar.hpp"
 #include "tribol/physics/QuadraturePointEnergyMortar.hpp"
 #include "tribol/physics/ContactFormulationFactory.hpp"
-#include "tribol/enforcement/PenaltyEnergy.hpp"
 #include "tribol/enforcement/PenaltyStiffness.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/integ/QuadratureRuleGeneratorFactory.hpp"

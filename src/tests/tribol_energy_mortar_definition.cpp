@@ -24,6 +24,7 @@
 #include "axom/slic/core/SimpleLogger.hpp"
 #include "ExecutionTest.hpp"
 #include "tribol/enforcement/PenaltyEnergy.hpp"
+#include "tribol/physics/QuadraturePointEnergyMortar.hpp"
 #include "tribol/integ/BasisFunction.hpp"
 #include "tribol/geom/OpposingNormalGap.hpp"
 #include "tribol/physics/PairIntegrals.hpp"
