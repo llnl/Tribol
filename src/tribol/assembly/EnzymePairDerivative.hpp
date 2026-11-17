@@ -130,11 +130,12 @@ class EnzymePairDerivative {
       MdArray<RealT, size_coords> coordinate_seed{};
       MdArray<RealT, size_values> jacobian_col{};
       coordinate_seed[coordinate] = 1.0;
-      __enzyme_fwddiff<void>(
-          (void*)evaluateKernel, TRIBOL_ENZYME_DUP, coords1.data(), coordinate_seed.data(), TRIBOL_ENZYME_DUP,
-          coords2.data(), coordinate_seed.data() + size_geom1_coords, TRIBOL_ENZYME_CONST, (const void*)&pair_function,
-          TRIBOL_ENZYME_DUP, pair_values_struct.values.data(), jacobian_col.data(), TRIBOL_ENZYME_CONST,
-          &pair_values_struct.quadrature_result, TRIBOL_ENZYME_CONST, &pair_values_struct.has_active_points );
+      __enzyme_fwddiff<void>( (void*)evaluatePairFunctionEnzyme, TRIBOL_ENZYME_DUP, coords1.data(),
+                              coordinate_seed.data(), TRIBOL_ENZYME_DUP, coords2.data(),
+                              coordinate_seed.data() + size_geom1_coords, TRIBOL_ENZYME_CONST,
+                              (const void*)&pair_function, TRIBOL_ENZYME_DUP, pair_values_struct.values.data(),
+                              jacobian_col.data(), TRIBOL_ENZYME_CONST, &pair_values_struct.quadrature_result,
+                              TRIBOL_ENZYME_CONST, &pair_values_struct.has_active_points );
       if ( pair_values_struct.quadrature_result.status != QuadratureStatus::Success ||
            !pair_values_struct.has_active_points ) {
         pair_values_struct.values = {};
@@ -190,10 +191,11 @@ class EnzymePairDerivative {
     for ( IndexT column = 0; column < size_coords; ++column ) {
       MdArray<RealT, size_coords> coordinate_seed{}, hessian_col{};
       coordinate_seed[column] = 1.0;
-      __enzyme_fwddiff<void>( (void*)weightedJacobianKernel, TRIBOL_ENZYME_DUP, coords1.data(), coordinate_seed.data(),
-                              TRIBOL_ENZYME_DUP, coords2.data(), coordinate_seed.data() + size_geom1_coords,
-                              TRIBOL_ENZYME_CONST, (const void*)&pair_function, TRIBOL_ENZYME_CONST, weights.data(),
-                              TRIBOL_ENZYME_DUP, pair_derivatives_struct.jacobian.data(), hessian_col.data() );
+      __enzyme_fwddiff<void>( (void*)reverseWeightedJacobianEnzyme, TRIBOL_ENZYME_DUP, coords1.data(),
+                              coordinate_seed.data(), TRIBOL_ENZYME_DUP, coords2.data(),
+                              coordinate_seed.data() + size_geom1_coords, TRIBOL_ENZYME_CONST,
+                              (const void*)&pair_function, TRIBOL_ENZYME_CONST, weights.data(), TRIBOL_ENZYME_DUP,
+                              pair_derivatives_struct.jacobian.data(), hessian_col.data() );
       for ( IndexT row = 0; row < size_coords; ++row ) {
         pair_derivatives_struct.hessian( row, column ) = hessian_col[row];
       }
@@ -241,12 +243,12 @@ class EnzymePairDerivative {
     for ( IndexT column = 0; column < size_coords; ++column ) {
       MdArray<RealT, size_coords> coordinate_seed{}, hessian_col{};
       coordinate_seed[column] = 1.0;
-      __enzyme_fwddiff<void>( (void*)scalarJacobianKernel, TRIBOL_ENZYME_DUP, coords1.data(), coordinate_seed.data(),
-                              TRIBOL_ENZYME_DUP, coords2.data(), coordinate_seed.data() + size_geom1_coords,
-                              TRIBOL_ENZYME_CONST, (const void*)&pair_function, TRIBOL_ENZYME_DUP,
-                              pair_values_struct.jacobian.data(), hessian_col.data(), TRIBOL_ENZYME_CONST,
-                              &pair_values_struct.value, TRIBOL_ENZYME_CONST, &pair_values_struct.quadrature_result,
-                              TRIBOL_ENZYME_CONST, &pair_values_struct.has_active_points );
+      __enzyme_fwddiff<void>(
+          (void*)reverseScalarJacobianEnzyme, TRIBOL_ENZYME_DUP, coords1.data(), coordinate_seed.data(),
+          TRIBOL_ENZYME_DUP, coords2.data(), coordinate_seed.data() + size_geom1_coords, TRIBOL_ENZYME_CONST,
+          (const void*)&pair_function, TRIBOL_ENZYME_DUP, pair_values_struct.jacobian.data(), hessian_col.data(),
+          TRIBOL_ENZYME_CONST, &pair_values_struct.value, TRIBOL_ENZYME_CONST, &pair_values_struct.quadrature_result,
+          TRIBOL_ENZYME_CONST, &pair_values_struct.has_active_points );
       if ( pair_values_struct.quadrature_result.status != QuadratureStatus::Success ||
            !pair_values_struct.has_active_points ) {
         pair_values_struct.value = 0.0;
@@ -271,14 +273,14 @@ class EnzymePairDerivative {
    * @param[out] quadrature_result Quadrature status, passed without differentiation.
    * @param[out] has_active_points Activation, passed without differentiation.
    */
-  TRIBOL_HOST_DEVICE static void scalarJacobianKernel( const RealT* coords1, const RealT* coords2,
-                                                       const void* pair_function_void, RealT* scalar_jacobian,
-                                                       RealT* value, QuadratureResult* quadrature_result,
-                                                       bool* has_active_points )
+  TRIBOL_HOST_DEVICE static void reverseScalarJacobianEnzyme( const RealT* coords1, const RealT* coords2,
+                                                              const void* pair_function_void, RealT* scalar_jacobian,
+                                                              RealT* value, QuadratureResult* quadrature_result,
+                                                              bool* has_active_points )
   {
     MdArray<RealT, size_coords> jacobian_values{};
     RealT value_seed = 1.0;
-    __enzyme_autodiff<void>( (void*)evaluateKernel, TRIBOL_ENZYME_DUP, coords1, jacobian_values.data(),
+    __enzyme_autodiff<void>( (void*)evaluatePairFunctionEnzyme, TRIBOL_ENZYME_DUP, coords1, jacobian_values.data(),
                              TRIBOL_ENZYME_DUP, coords2, jacobian_values.data() + size_geom1_coords,
                              TRIBOL_ENZYME_CONST, pair_function_void, TRIBOL_ENZYME_DUP, value, &value_seed,
                              TRIBOL_ENZYME_CONST, quadrature_result, TRIBOL_ENZYME_CONST, has_active_points );
@@ -298,9 +300,10 @@ class EnzymePairDerivative {
    * @param[out] quadrature_result Quadrature status, passed without differentiation.
    * @param[out] has_active_points Activation, passed without differentiation.
    */
-  TRIBOL_HOST_DEVICE static void evaluateKernel( const RealT* coords1, const RealT* coords2,
-                                                 const void* pair_function_void, RealT* values,
-                                                 QuadratureResult* quadrature_result, bool* has_active_points )
+  TRIBOL_HOST_DEVICE static void evaluatePairFunctionEnzyme( const RealT* coords1, const RealT* coords2,
+                                                             const void* pair_function_void, RealT* values,
+                                                             QuadratureResult* quadrature_result,
+                                                             bool* has_active_points )
   {
     const auto& pair_function = *static_cast<const PairFunction*>( pair_function_void );
     const auto pair_values_struct =
@@ -323,9 +326,9 @@ class EnzymePairDerivative {
    * @param weights Fixed output weights, with size_values entries.
    * @param[out] weighted_value Weighted scalar value.
    */
-  TRIBOL_HOST_DEVICE static void weightedValueKernel( const RealT* coords1, const RealT* coords2,
-                                                      const void* pair_function_void, const RealT* weights,
-                                                      RealT* weighted_value )
+  TRIBOL_HOST_DEVICE static void evaluateWeightedValueEnzyme( const RealT* coords1, const RealT* coords2,
+                                                              const void* pair_function_void, const RealT* weights,
+                                                              RealT* weighted_value )
   {
     const auto& pair_function = *static_cast<const PairFunction*>( pair_function_void );
     const auto pair_values_struct =
@@ -345,14 +348,14 @@ class EnzymePairDerivative {
    * @param weights Fixed output weights, with size_values entries.
    * @param[out] weighted_jacobian Weighted Jacobian sum_i weights_i * df_i/dx_j, with one entry per coordinate.
    */
-  TRIBOL_HOST_DEVICE static void weightedJacobianKernel( const RealT* coords1, const RealT* coords2,
-                                                         const void* pair_function_void, const RealT* weights,
-                                                         RealT* weighted_jacobian )
+  TRIBOL_HOST_DEVICE static void reverseWeightedJacobianEnzyme( const RealT* coords1, const RealT* coords2,
+                                                                const void* pair_function_void, const RealT* weights,
+                                                                RealT* weighted_jacobian )
   {
     MdArray<RealT, size_coords> jacobian_values{};
     RealT weighted_value = 0.0;
     RealT weighted_value_seed = 1.0;
-    __enzyme_autodiff<void>( (void*)weightedValueKernel, TRIBOL_ENZYME_DUP, coords1, jacobian_values.data(),
+    __enzyme_autodiff<void>( (void*)evaluateWeightedValueEnzyme, TRIBOL_ENZYME_DUP, coords1, jacobian_values.data(),
                              TRIBOL_ENZYME_DUP, coords2, jacobian_values.data() + size_geom1_coords,
                              TRIBOL_ENZYME_CONST, pair_function_void, TRIBOL_ENZYME_CONST, weights, TRIBOL_ENZYME_DUP,
                              &weighted_value, &weighted_value_seed );
