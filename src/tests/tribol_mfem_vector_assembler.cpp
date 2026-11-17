@@ -22,7 +22,7 @@
 #include "tribol/interface/mfem_tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/assembly/MfemVectorAssembler.hpp"
-#include "tribol/assembly/PairEvaluationAssembly.hpp"
+#include "tribol/assembly/AssemblePairs.hpp"
 #include "tribol/assembly/MfemMatrixAssembler.hpp"
 
 namespace {

@@ -15,7 +15,7 @@
 #include "tribol/integ/BasisFunction.hpp"
 
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
-#include "tribol/assembly/PairEvaluationAssembly.hpp"
+#include "tribol/assembly/AssemblePairs.hpp"
 #include "tribol/physics/ContactFormulation.hpp"
 #include "tribol/search/PairListBuilder.hpp"
 #include <utility>

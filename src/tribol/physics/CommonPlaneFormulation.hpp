@@ -11,7 +11,7 @@
 #include "tribol/geom/CommonPlaneEdgeMapping.hpp"
 #include "tribol/geom/CommonPlaneGap.hpp"
 #include "tribol/integ/BasisFunction.hpp"
-#include "tribol/assembly/PairEvaluationAssembly.hpp"
+#include "tribol/assembly/AssemblePairs.hpp"
 #include "tribol/physics/integrals/PairIntegrals.hpp"
 #include "tribol/physics/ContactFormulation.hpp"
 #include "tribol/search/PairListBuilder.hpp"

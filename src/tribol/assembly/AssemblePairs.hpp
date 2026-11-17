@@ -4,8 +4,8 @@
 // SPDX-License-Identifier: (MIT)
 
 /** @file @brief Evaluate pair functions and assemble their residuals and stiffnesses on MFEM parent DOFs. */
-#ifndef SRC_TRIBOL_ASSEMBLY_PAIREVALUATIONASSEMBLY_HPP_
-#define SRC_TRIBOL_ASSEMBLY_PAIREVALUATIONASSEMBLY_HPP_
+#ifndef SRC_TRIBOL_ASSEMBLY_ASSEMBLEPAIRS_HPP_
+#define SRC_TRIBOL_ASSEMBLY_ASSEMBLEPAIRS_HPP_
 
 #include "tribol/config.hpp"
 
@@ -238,4 +238,4 @@ ContactFormulationResult evaluateAndAssemblePairEnergyResidualStiffness( const A
 }  // namespace tribol
 #endif  // BUILD_REDECOMP
 
-#endif  // SRC_TRIBOL_ASSEMBLY_PAIREVALUATIONASSEMBLY_HPP_
+#endif  // SRC_TRIBOL_ASSEMBLY_ASSEMBLEPAIRS_HPP_
