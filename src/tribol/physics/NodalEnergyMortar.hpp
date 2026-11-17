@@ -59,23 +59,23 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<Int
                                                                 const MfemSubmeshData& submesh_data,
                                                                 const MfemJacobianData& jacobian_data )
 {
-  using PairResult = typename PairFunction::Result;
+  using PairNodalGap = typename PairFunction::PairNodalGap;
   constexpr IndexT num_nodes = PairFunction::num_nodes;
   constexpr IndexT size_coords = PairFunction::size_coords;
   static_assert( PairFunction::size_values == 2 * num_nodes );
   auto buffer = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function );
   const auto contributions_view = buffer.view();
   checkPairQuadratureResults<Exec>( buffer.quadratureResults() );
-  constexpr IndexT num_fields = PairResult::num_fields;
+  constexpr IndexT num_fields = PairNodalGap::num_fields;
   auto fields = detail::assembleNodalValuesAndJacobians<Exec, num_fields, num_nodes, size_coords>(
       pairs, mesh1, mesh2, mesh_data, submesh_data, jacobian_data,
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node ) {
-        const auto integral_field = static_cast<typename PairResult::Field>( field );
-        return contributions_view.value( pair, PairResult::valueIndex( integral_field, node ) );
+        const auto integral_field = static_cast<typename PairNodalGap::Field>( field );
+        return contributions_view.value( pair, PairNodalGap::valueIndex( integral_field, node ) );
       },
       [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT field, IndexT node, IndexT coordinate ) {
-        const auto integral_field = static_cast<typename PairResult::Field>( field );
-        return contributions_view.jacobian( pair, PairResult::valueIndex( integral_field, node ), coordinate );
+        const auto integral_field = static_cast<typename PairNodalGap::Field>( field );
+        return contributions_view.jacobian( pair, PairNodalGap::valueIndex( integral_field, node ), coordinate );
       } );
   return { std::move( fields[0] ), std::move( fields[1] ) };
 }
@@ -102,7 +102,7 @@ shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& 
                                                    const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
                                                    WeightReader read_weights )
 {
-  using PairResult = typename PairFunction::Result;
+  using PairNodalGap = typename PairFunction::PairNodalGap;
   constexpr IndexT num_nodes = PairFunction::num_nodes;
   static_assert( PairFunction::size_values == 2 * num_nodes );
   const IndexT num_pairs = pairs.size();
@@ -114,8 +114,8 @@ shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& 
         const auto nodes = connectivity( pairs_view[pair_index].element_id1_ );
         for ( IndexT node = 0; node < num_nodes; ++node ) {
           const auto nodal_weights = read_weights( nodes[node] );
-          weights[PairResult::weightedGapIndex( node )] = nodal_weights[0];
-          weights[PairResult::tributaryAreaIndex( node )] = nodal_weights[1];
+          weights[PairNodalGap::weightedGapIndex( node )] = nodal_weights[0];
+          weights[PairNodalGap::tributaryAreaIndex( node )] = nodal_weights[1];
         }
         return weights;
       } );

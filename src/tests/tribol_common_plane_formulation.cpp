@@ -36,7 +36,7 @@ constexpr RealT tolerance = 1.0e-12;  ///< Roundoff allowance for geometry and e
 using Coordinates = MdArray<RealT, LinearEdgeGeometry::num_vertices, LinearEdgeGeometry::spatial_dim>;
 using CommonPlaneResidualValue =
     PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<1>>,
-                         CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>::Result;
+                         CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>::PairResidual;
 
 // Common Plane exposes the same values and quadrature state required by the shared pair derivative calculations.
 static_assert(
@@ -467,7 +467,7 @@ TEST_P( CommonPlaneTest, integrates_supplied_traction_with_independent_bases )
   using Integral = PairTractionIntegral<RuleGenerator, NodalPressureTraction, BasisFunction<EDGE, LINEAR_LAGRANGE>,
                                         BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
   static_assert( PairFunctionType<Integral> );
-  ArrayT<Integral::Result> results( 1, 1, allocatorId() );
+  ArrayT<Integral::PairResidual> results( 1, 1, allocatorId() );
   const auto output = results.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
     const Coordinates edge1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 } };
@@ -475,7 +475,7 @@ TEST_P( CommonPlaneTest, integrates_supplied_traction_with_independent_bases )
     const Integral pair_integral{ {}, {} };
     output[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
   } );
-  const ArrayT<Integral::Result, 1, MemorySpace::Host> host( results );
+  const ArrayT<Integral::PairResidual, 1, MemorySpace::Host> host( results );
   ASSERT_EQ( host[0].quadrature_result.status, QuadratureStatus::Success );
   EXPECT_EQ( host[0].quadrature_result.num_required_points, 2 );
   EXPECT_TRUE( host[0].has_active_points );
@@ -540,14 +540,14 @@ struct UnmaskedResidualPairFunction
   /** @brief Evaluate the pair and overwrite one residual entry regardless of state.
    * @param coords1 First edge coordinates. @param coords2 Second edge coordinates.
    * @return Residual with its original quadrature status and activation, and a nonzero first entry. */
-  TRIBOL_HOST_DEVICE Result evaluate( Coords1 coords1, Coords2 coords2 ) const
+  TRIBOL_HOST_DEVICE PairResidual evaluate( Coords1 coords1, Coords2 coords2 ) const
   {
-    auto result =
+    auto pair_residual =
         PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>,
                              CommonPlanePenaltyTraction<CommonPlaneGap>,
                              BasisFunction<EDGE, LINEAR_LAGRANGE>>::evaluate( coords1, coords2 );
-    result.geometry1( 0, 0 ) = 1.0;
-    return result;
+    pair_residual.geometry1( 0, 0 ) = 1.0;
+    return pair_residual;
   }
 };
 

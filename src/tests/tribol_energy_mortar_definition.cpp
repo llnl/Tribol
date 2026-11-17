@@ -692,7 +692,7 @@ TEST_P( EnergyMortarDefinitionTest, open_nodal_integrals_keep_values_and_jacobia
 {
   using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
   using Function = PairNodalGapIntegral<RuleGenerator, OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
-  using PairResult = Function::Result;
+  using PairNodalGap = Function::PairNodalGap;
   ArrayT<PairValueJacobian<Function::size_values, Function::size_coords>> results( 1, 1, allocatorId() );
   const auto output = results.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
@@ -706,8 +706,8 @@ TEST_P( EnergyMortarDefinitionTest, open_nodal_integrals_keep_values_and_jacobia
   ASSERT_EQ( result.quadrature_result.status, QuadratureStatus::Success );
   EXPECT_TRUE( result.has_active_points );
   for ( IndexT node = 0; node < Function::num_nodes; ++node ) {
-    const IndexT gap_row = PairResult::weightedGapIndex( node );
-    const IndexT area_row = PairResult::tributaryAreaIndex( node );
+    const IndexT gap_row = PairNodalGap::weightedGapIndex( node );
+    const IndexT area_row = PairNodalGap::tributaryAreaIndex( node );
     EXPECT_NEAR( result.values[gap_row], 0.1, tolerance );
     EXPECT_NEAR( result.values[area_row], 1.0, tolerance );
     // Translating geometry2 upward decreases each nodal gap while leaving its area unchanged.

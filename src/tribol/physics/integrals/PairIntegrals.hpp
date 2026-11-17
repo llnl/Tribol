@@ -36,16 +36,32 @@ namespace tribol {
 template <typename PairRuleGenerator, typename TractionFunction, typename Basis1, typename Basis2 = Basis1>
 class PairTractionIntegral {
  public:
-  using Geometry1 = typename PairRuleGenerator::Geometry1;                      ///< First element geometry.
-  using Geometry2 = typename PairRuleGenerator::Geometry2;                      ///< Second element geometry.
-  using Coords1 = typename Geometry1::Coords;                                   ///< Geometry1 coordinate view.
-  using Coords2 = typename Geometry2::Coords;                                   ///< Geometry2 coordinate view.
-  static constexpr IndexT size_geom1_coords = Coords1::size();                  ///< Geometry1 coordinate extent.
-  static constexpr IndexT size_geom2_coords = Coords2::size();                  ///< Geometry2 coordinate extent.
-  static constexpr IndexT size_coords = size_geom1_coords + size_geom2_coords;  ///< Combined coordinate extent.
-  using Result =
-      PairResidualValue<Basis1::size_basis, Basis2::size_basis, Geometry1::spatial_dim>;  ///< Pair residual and state.
-  static constexpr IndexT size_values = Result::size_values;  ///< Flattened residual extent.
+  using Geometry1 = typename PairRuleGenerator::Geometry1;  ///< First element geometry.
+  using Geometry2 = typename PairRuleGenerator::Geometry2;  ///< Second element geometry.
+  using Coords1 = typename Geometry1::Coords;               ///< Geometry1 coordinate view.
+  using Coords2 = typename Geometry2::Coords;               ///< Geometry2 coordinate view.
+  /**
+   * @brief Number of scalar coordinates that define geometry1.
+   *
+   * For example, a two-vertex edge in 2D stores {x0, y0, x1, y1}, so this value is 4.
+   */
+  static constexpr IndexT size_geom1_coords = Coords1::size();
+  /**
+   * @brief Number of scalar coordinates that define geometry2.
+   *
+   * For example, a two-vertex edge in 2D stores {x0, y0, x1, y1}, so this value is 4.
+   */
+  static constexpr IndexT size_geom2_coords = Coords2::size();
+  /**
+   * @brief Total number of scalar coordinates that define the geometry pair.
+   *
+   * For example, two 2D edges each contribute four coordinates, so this value is 8. Geometry1 coordinates come first,
+   * followed by geometry2 coordinates.
+   */
+  static constexpr IndexT size_coords = size_geom1_coords + size_geom2_coords;
+  using PairResidual =
+      PairResidualValue<Basis1::size_basis, Basis2::size_basis, Geometry1::spatial_dim>;  ///< Integrated pair residual.
+  static constexpr IndexT size_values = PairResidual::size_values;  ///< Flattened residual extent.
   static_assert( Geometry1::spatial_dim == Geometry2::spatial_dim );
   static_assert( Basis1::parametric_dim == Geometry1::parametric_dim );
   static_assert( Basis2::parametric_dim == Geometry2::parametric_dim );
@@ -65,15 +81,15 @@ class PairTractionIntegral {
    * @return Residual and quadrature status. Failed, empty, or wholly inactive rules return zero residuals and inactive
    * state. Failure status must be checked before using the output. The supplied traction sets the residual sign.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Result evaluate( Coords1 coords1, Coords2 coords2 ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairResidual evaluate( Coords1 coords1, Coords2 coords2 ) const
   {
     const Geometry1 geometry1( coords1 );
     const Geometry2 geometry2( coords2 );
     const auto points = rule_generator_.generate( geometry1, geometry2 );
-    Result result;
-    result.quadrature_result = points.result;
+    PairResidual pair_residual;
+    pair_residual.quadrature_result = points.result;
     if ( points.result.status != QuadratureStatus::Success || points.result.num_required_points == 0 ) {
-      return result;
+      return pair_residual;
     }
     const auto pair_geometry_data = traction_function_.computePairGeometryData( geometry1, geometry2 );
     for ( IndexT point = 0; point < points.result.num_required_points; ++point ) {
@@ -87,7 +103,7 @@ class PairTractionIntegral {
       if ( !traction.active ) {
         continue;
       }
-      result.has_active_points = true;
+      pair_residual.has_active_points = true;
       MdArray<RealT, Basis1::size_basis> basis1{};
       MdArray<RealT, Basis2::size_basis> basis2{};
       Basis1::eval( parametric_coords1, basis1.view() );
@@ -95,14 +111,14 @@ class PairTractionIntegral {
       for ( IndexT spatial_dim = 0; spatial_dim < Geometry1::spatial_dim; ++spatial_dim ) {
         const RealT weighted_traction = points.weights[point] * traction.value[spatial_dim];
         for ( IndexT basis_index = 0; basis_index < Basis1::size_basis; ++basis_index ) {
-          result.geometry1( basis_index, spatial_dim ) += basis1[basis_index] * weighted_traction;
+          pair_residual.geometry1( basis_index, spatial_dim ) += basis1[basis_index] * weighted_traction;
         }
         for ( IndexT basis_index = 0; basis_index < Basis2::size_basis; ++basis_index ) {
-          result.geometry2( basis_index, spatial_dim ) -= basis2[basis_index] * weighted_traction;
+          pair_residual.geometry2( basis_index, spatial_dim ) -= basis2[basis_index] * weighted_traction;
         }
       }
     }
-    return result;
+    return pair_residual;
   }
 
  private:
@@ -119,14 +135,31 @@ class PairTractionIntegral {
 template <typename PairRuleGenerator, typename EnergyFunction>
 class PairEnergyIntegral {
  public:
-  using Geometry1 = typename PairRuleGenerator::Geometry1;                      ///< First element geometry.
-  using Geometry2 = typename PairRuleGenerator::Geometry2;                      ///< Second element geometry.
-  using Coords1 = typename Geometry1::Coords;                                   ///< Geometry1 coordinate view.
-  using Coords2 = typename Geometry2::Coords;                                   ///< Geometry2 coordinate view.
-  static constexpr IndexT size_values = 1;                                      ///< Scalar pair energy.
-  static constexpr IndexT size_geom1_coords = Coords1::size();                  ///< Geometry1 coordinate extent.
-  static constexpr IndexT size_geom2_coords = Coords2::size();                  ///< Geometry2 coordinate extent.
-  static constexpr IndexT size_coords = size_geom1_coords + size_geom2_coords;  ///< Combined coordinate extent.
+  using Geometry1 = typename PairRuleGenerator::Geometry1;  ///< First element geometry.
+  using Geometry2 = typename PairRuleGenerator::Geometry2;  ///< Second element geometry.
+  using Coords1 = typename Geometry1::Coords;               ///< Geometry1 coordinate view.
+  using Coords2 = typename Geometry2::Coords;               ///< Geometry2 coordinate view.
+  static constexpr IndexT size_values = 1;                  ///< Scalar pair energy.
+  /**
+   * @brief Number of scalar coordinates that define geometry1.
+   *
+   * For example, a two-vertex edge in 2D stores {x0, y0, x1, y1}, so this value is 4.
+   */
+  static constexpr IndexT size_geom1_coords = Coords1::size();
+  /**
+   * @brief Number of scalar coordinates that define geometry2.
+   *
+   * For example, a two-vertex edge in 2D stores {x0, y0, x1, y1}, so this value is 4.
+   */
+  static constexpr IndexT size_geom2_coords = Coords2::size();
+  /**
+   * @brief Total number of scalar coordinates that define the geometry pair.
+   *
+   * For example, two 2D edges each contribute four coordinates, so this value is 8. Geometry1 coordinates come first,
+   * followed by geometry2 coordinates.
+   */
+  static constexpr IndexT size_coords = size_geom1_coords + size_geom2_coords;
+  using PairEnergy = PairEnergyValue;  ///< Integrated pair energy and quadrature state.
 
   /** @brief Store fixed quadrature and energy density calculations by value.
    * @param rule_generator Current-geometry quadrature generator.
@@ -143,14 +176,14 @@ class PairEnergyIntegral {
    * @return Energy and status. Failed, empty, or wholly inactive rules return zero energy and inactive state.
    * Failure status must be checked before using the output.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairEnergyValue evaluate( Coords1 coords1, Coords2 coords2 ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairEnergy evaluate( Coords1 coords1, Coords2 coords2 ) const
   {
     const Geometry1 geometry1( coords1 );
     const Geometry2 geometry2( coords2 );
     const auto points = rule_generator_.generate( geometry1, geometry2 );
-    PairEnergyValue result{ 0.0, false, points.result };
+    PairEnergy pair_energy{ 0.0, false, points.result };
     if ( points.result.status != QuadratureStatus::Success || points.result.num_required_points == 0 ) {
-      return result;
+      return pair_energy;
     }
     const auto pair_geometry_data = energy_function_.computePairGeometryData( geometry1, geometry2 );
     for ( IndexT point = 0; point < points.result.num_required_points; ++point ) {
@@ -164,10 +197,10 @@ class PairEnergyIntegral {
       if ( !energy.active ) {
         continue;
       }
-      result.has_active_points = true;
-      result.energy += energy.value * points.weights[point];
+      pair_energy.has_active_points = true;
+      pair_energy.energy += energy.value * points.weights[point];
     }
-    return result;
+    return pair_energy;
   }
 
  private:
@@ -253,16 +286,32 @@ class PairNodalGapValue {
 template <typename PairRuleGenerator, typename GapDefinition, typename NodalBasis>
 class PairNodalGapIntegral {
  public:
-  using Geometry1 = typename PairRuleGenerator::Geometry1;      ///< First element geometry.
-  using Geometry2 = typename PairRuleGenerator::Geometry2;      ///< Second element geometry.
-  using Coords1 = typename Geometry1::Coords;                   ///< Geometry1 coordinate view.
-  using Coords2 = typename Geometry2::Coords;                   ///< Geometry2 coordinate view.
-  static constexpr IndexT num_nodes = NodalBasis::size_basis;   ///< Nodes carrying gap and area integrals.
-  static constexpr IndexT size_values = 2 * num_nodes;          ///< Weighted gaps followed by areas.
-  static constexpr IndexT size_geom1_coords = Coords1::size();  ///< Geometry1 coordinate extent.
-  static constexpr IndexT size_geom2_coords = Coords2::size();  ///< Geometry2 coordinate extent.
-  static constexpr IndexT size_coords = size_geom1_coords + size_geom2_coords;  ///< Combined coordinate extent.
-  using Result = PairNodalGapValue<num_nodes>;  ///< Pair-local weighted gaps, areas, and quadrature state.
+  using Geometry1 = typename PairRuleGenerator::Geometry1;     ///< First element geometry.
+  using Geometry2 = typename PairRuleGenerator::Geometry2;     ///< Second element geometry.
+  using Coords1 = typename Geometry1::Coords;                  ///< Geometry1 coordinate view.
+  using Coords2 = typename Geometry2::Coords;                  ///< Geometry2 coordinate view.
+  static constexpr IndexT num_nodes = NodalBasis::size_basis;  ///< Nodes carrying gap and area integrals.
+  static constexpr IndexT size_values = 2 * num_nodes;         ///< Weighted gaps followed by areas.
+  /**
+   * @brief Number of scalar coordinates that define geometry1.
+   *
+   * For example, a two-vertex edge in 2D stores {x0, y0, x1, y1}, so this value is 4.
+   */
+  static constexpr IndexT size_geom1_coords = Coords1::size();
+  /**
+   * @brief Number of scalar coordinates that define geometry2.
+   *
+   * For example, a two-vertex edge in 2D stores {x0, y0, x1, y1}, so this value is 4.
+   */
+  static constexpr IndexT size_geom2_coords = Coords2::size();
+  /**
+   * @brief Total number of scalar coordinates that define the geometry pair.
+   *
+   * For example, two 2D edges each contribute four coordinates, so this value is 8. Geometry1 coordinates come first,
+   * followed by geometry2 coordinates.
+   */
+  static constexpr IndexT size_coords = size_geom1_coords + size_geom2_coords;
+  using PairNodalGap = PairNodalGapValue<num_nodes>;  ///< Integrated nodal gaps, areas, and quadrature state.
   static_assert( NodalBasis::parametric_dim == Geometry1::parametric_dim );
 
   /** @brief Store fixed quadrature and gap configuration by value.
@@ -280,18 +329,18 @@ class PairNodalGapIntegral {
    * @return Nodal values and status; failed or empty rules give zero values and inactive state. Successful nonempty
    * quadrature is active even for opening gaps. Failure status must be checked before using the output.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Result evaluate( Coords1 coords1, Coords2 coords2 ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairNodalGap evaluate( Coords1 coords1, Coords2 coords2 ) const
   {
     const Geometry1 geometry1( coords1 );
     const Geometry2 geometry2( coords2 );
     const auto points = rule_generator_.generate( geometry1, geometry2 );
-    Result result;
-    result.quadrature_result = points.result;
+    PairNodalGap pair_nodal_gap;
+    pair_nodal_gap.quadrature_result = points.result;
     if ( points.result.status != QuadratureStatus::Success || points.result.num_required_points == 0 ) {
-      return result;
+      return pair_nodal_gap;
     }
     const auto pair_geometry_data = gap_.computePairGeometryData( geometry1, geometry2 );
-    result.has_active_points = true;
+    pair_nodal_gap.has_active_points = true;
     for ( IndexT point = 0; point < points.result.num_required_points; ++point ) {
       const MdSpan<const RealT, Geometry1::parametric_dim> parametric_coords1{
           &points.geom1_parametric_coords( point, 0 ), Geometry1::parametric_dim };
@@ -303,11 +352,11 @@ class PairNodalGapIntegral {
                               pair_geometry_data );
       for ( IndexT node = 0; node < num_nodes; ++node ) {
         const RealT area_contribution = points.weights[point] * basis[node];
-        result.weightedGap( node ) += area_contribution * gap;
-        result.tributaryArea( node ) += area_contribution;
+        pair_nodal_gap.weightedGap( node ) += area_contribution * gap;
+        pair_nodal_gap.tributaryArea( node ) += area_contribution;
       }
     }
-    return result;
+    return pair_nodal_gap;
   }
 
  private:
