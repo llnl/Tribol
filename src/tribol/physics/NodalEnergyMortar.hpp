@@ -65,7 +65,7 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<Int
   static_assert( PairFunction::size_values == 2 * num_nodes );
   auto buffer = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function );
   const auto contributions_view = buffer.view();
-  checkPairQuadratureResults<Exec>( buffer.quadratureResults() );
+  checkPairQuadratureMetadata<Exec>( buffer.quadratureMetadata() );
   constexpr IndexT num_fields = PairNodalGap::num_fields;
   auto fields = detail::assembleNodalValuesAndJacobians<Exec, num_fields, num_nodes, size_coords>(
       pairs, mesh1, mesh2, mesh_data, submesh_data, jacobian_data,

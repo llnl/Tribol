@@ -78,7 +78,7 @@ struct SmoothedProjectedEdgeMapping {
    * @return Success with the initialized count, InsufficientCapacity with the full count, or InvalidGeometry with zero
    * points. Invalid geometry and insufficient capacity leave output untouched. Valid zero measure returns zero points.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureMetadata
   mapToElements( const Geometry1& edge1, const Geometry2& edge2, IntegrationSurfaceRuleView<1> integration_surface_rule,
                  PairQuadratureRuleView<1, 1> output ) const
   {

@@ -101,8 +101,8 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
         output[0] = function.evaluate( edge1.view(), edge2.view() );
       } );
       const ArrayT<CommonPlaneResidualValue, 1, MemorySpace::Host> host( results );
-      ASSERT_EQ( host[0].quadrature_result.status, QuadratureStatus::Success );
-      EXPECT_EQ( host[0].quadrature_result.num_required_points, NumPoints );
+      ASSERT_EQ( host[0].quadrature_metadata.status, QuadratureStatus::Success );
+      EXPECT_EQ( host[0].quadrature_metadata.num_required_points, NumPoints );
       EXPECT_EQ( host[0].has_active_points, test.active );
       for ( int node = 0; node < BasisFunction<EDGE, LINEAR_LAGRANGE>::num_nodes; ++node ) {
         EXPECT_NEAR( host[0].geometry1( node, 0 ), 0.0, tolerance );
@@ -220,8 +220,8 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
       ASSERT_TRUE( sample.interval.valid );
       EXPECT_NEAR( sample.interval.bounds[0], test.lower, tolerance );
       EXPECT_NEAR( sample.interval.bounds[1], test.upper, tolerance );
-      ASSERT_EQ( sample.residual.quadrature_result.status, QuadratureStatus::Success );
-      EXPECT_EQ( sample.residual.quadrature_result.num_required_points, NumPoints );
+      ASSERT_EQ( sample.residual.quadrature_metadata.status, QuadratureStatus::Success );
+      EXPECT_EQ( sample.residual.quadrature_metadata.num_required_points, NumPoints );
       EXPECT_TRUE( sample.residual.has_active_points );
       RealT measure = 0.0;
       RealT first_moment = 0.0;
@@ -372,7 +372,7 @@ TEST_P( CommonPlaneTest, reports_geometry_and_capacity_without_writing )
     NumResults
   };
   constexpr RealT unwritten = -7.0;
-  ArrayT<QuadratureResult> records( NumResults, NumResults, allocatorId() );
+  ArrayT<QuadratureMetadata> records( NumResults, NumResults, allocatorId() );
   ArrayT<RealT> storage( 4, 4, allocatorId() );
   const auto output = records.view();
   const auto values = storage.view();
@@ -385,16 +385,16 @@ TEST_P( CommonPlaneTest, reports_geometry_and_capacity_without_writing )
     const Coordinates perpendicular{ MdArray<RealT, 2>{ 1.0, -1.0 }, MdArray<RealT, 2>{ 1.0, 1.0 } };
     const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>> rule_generator;
     output[InvalidFirst] =
-        rule_generator.generate( LinearEdgeGeometry( invalid.view() ), LinearEdgeGeometry( edge2.view() ) ).result;
+        rule_generator.generate( LinearEdgeGeometry( invalid.view() ), LinearEdgeGeometry( edge2.view() ) ).metadata;
     output[InvalidSecond] =
-        rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( invalid.view() ) ).result;
+        rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( invalid.view() ) ).metadata;
     output[Disjoint] =
-        rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( disjoint.view() ) ).result;
+        rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( disjoint.view() ) ).metadata;
     output[Cooriented] =
-        rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( cooriented.view() ) ).result;
+        rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( cooriented.view() ) ).metadata;
     output[Perpendicular] =
         rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( perpendicular.view() ) )
-            .result;
+            .metadata;
     for ( int i = 0; i < values.size(); ++i ) {
       values[i] = unwritten;
     }
@@ -403,7 +403,7 @@ TEST_P( CommonPlaneTest, reports_geometry_and_capacity_without_writing )
     output[Overflow] =
         rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( edge2.view() ), bounded );
   } );
-  const ArrayT<QuadratureResult, 1, MemorySpace::Host> results( records );
+  const ArrayT<QuadratureMetadata, 1, MemorySpace::Host> results( records );
   const ArrayT<RealT, 1, MemorySpace::Host> host( storage );
   for ( int invalid : { InvalidFirst, InvalidSecond } ) {
     EXPECT_EQ( results[invalid].status, QuadratureStatus::InvalidGeometry );
@@ -479,8 +479,8 @@ TEST_P( CommonPlaneTest, integrates_supplied_traction_with_independent_bases )
     output[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
   } );
   const ArrayT<Integral::PairResidual, 1, MemorySpace::Host> host( results );
-  ASSERT_EQ( host[0].quadrature_result.status, QuadratureStatus::Success );
-  EXPECT_EQ( host[0].quadrature_result.num_required_points, 2 );
+  ASSERT_EQ( host[0].quadrature_metadata.status, QuadratureStatus::Success );
+  EXPECT_EQ( host[0].quadrature_metadata.num_required_points, 2 );
   EXPECT_TRUE( host[0].has_active_points );
   // Geometry1's pressure is 2-x. Geometry2's reversed coordinate gives 2+xi and endpoint/endpoint/midpoint ordering.
   const MdArray<RealT, 2> loads1{ 7.0 / 3.0, 5.0 / 3.0 };
@@ -514,8 +514,8 @@ TEST_P( CommonPlaneTest, activates_each_quadrature_point_after_gap_offset )
       output[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
     } );
     const ArrayT<CommonPlaneResidualValue, 1, MemorySpace::Host> host( results );
-    ASSERT_EQ( host[0].quadrature_result.status, QuadratureStatus::Success );
-    EXPECT_EQ( host[0].quadrature_result.num_required_points, 2 );
+    ASSERT_EQ( host[0].quadrature_metadata.status, QuadratureStatus::Success );
+    EXPECT_EQ( host[0].quadrature_metadata.num_required_points, 2 );
     const RealT gap = 0.5 * active_x - residual_gap;
     const bool active = gap <= 0.0;
     EXPECT_EQ( host[0].has_active_points, active );
@@ -575,9 +575,9 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
   } );
   EXPECT_EQ( buffer.numberOfPairs(), pairs.size() );
   EXPECT_EQ( buffer.values().getAllocatorID(), pairs.getAllocatorID() );
-  EXPECT_EQ( buffer.quadratureResults().getAllocatorID(), pairs.getAllocatorID() );
+  EXPECT_EQ( buffer.quadratureMetadata().getAllocatorID(), pairs.getAllocatorID() );
   const Array1D<RealT, MemorySpace::Host> values( buffer.values() );
-  const Array1D<QuadratureResult, MemorySpace::Host> status( buffer.quadratureResults() );
+  const Array1D<QuadratureMetadata, MemorySpace::Host> status( buffer.quadratureMetadata() );
   for ( IndexT pair = 0; pair < pairs.size(); ++pair ) {
     EXPECT_EQ( status[pair].status, pair == 3 ? QuadratureStatus::InvalidGeometry : QuadratureStatus::Success );
     EXPECT_EQ( status[pair].num_required_points, pair == 3 ? 0 : 2 );
@@ -588,7 +588,7 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
   }
   EXPECT_THROW( dispatchExecutionMode( GetParam(),
                                        [&]<ExecutionMode Exec>() {
-                                         return checkPairQuadratureResults<Exec>( buffer.quadratureResults() );
+                                         return checkPairQuadratureMetadata<Exec>( buffer.quadratureMetadata() );
                                        } ),
                 std::invalid_argument );
   // A second calculation uses different stiffness and must leave the first returned buffer unchanged.
@@ -616,9 +616,9 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
   } );
   EXPECT_EQ( empty.numberOfPairs(), 0 );
   EXPECT_EQ( empty.values().size(), 0 );
-  EXPECT_EQ( empty.quadratureResults().size(), 0 );
+  EXPECT_EQ( empty.quadratureMetadata().size(), 0 );
   EXPECT_NO_THROW( dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
-    return checkPairQuadratureResults<Exec>( empty.quadratureResults() );
+    return checkPairQuadratureMetadata<Exec>( empty.quadratureMetadata() );
   } ) );
 }
 INSTANTIATE_TEST_SUITE_P( execution, CommonPlaneTest, tribol::detail::enabledExecutionModes() );
@@ -649,8 +649,8 @@ void checkJacobian()
     const auto result =
         EnzymePairDerivative<Function>::valuesAndJacobian( cases1[geometry].view(), cases2[geometry].view(), function );
     const auto expected_values = expected.values();
-    ASSERT_EQ( result.quadrature_result.status, QuadratureStatus::Success );
-    EXPECT_EQ( result.quadrature_result.num_required_points, NumPoints );
+    ASSERT_EQ( result.quadrature_metadata.status, QuadratureStatus::Success );
+    EXPECT_EQ( result.quadrature_metadata.num_required_points, NumPoints );
     EXPECT_EQ( result.has_active_points, expected.has_active_points );
     for ( IndexT row = 0; row < Function::size_values; ++row ) {
       EXPECT_DOUBLE_EQ( result.values[row], expected_values[row] );
@@ -666,8 +666,8 @@ void checkJacobian()
       const auto minus =
           function.evaluate( { minus_coordinates.data(), Function::size_geom1_coords },
                              { minus_coordinates.data() + Function::size_geom1_coords, Function::size_geom2_coords } );
-      ASSERT_EQ( plus.quadrature_result.status, QuadratureStatus::Success );
-      ASSERT_EQ( minus.quadrature_result.status, QuadratureStatus::Success );
+      ASSERT_EQ( plus.quadrature_metadata.status, QuadratureStatus::Success );
+      ASSERT_EQ( minus.quadrature_metadata.status, QuadratureStatus::Success );
       const auto plus_values = plus.values();
       const auto minus_values = minus.values();
       for ( int row = 0; row < Function::size_values; ++row ) {
@@ -694,8 +694,8 @@ void checkJacobian()
   const Coordinates invalid{};
   const auto failure =
       EnzymePairDerivative<UnshiftedFunction>::valuesAndJacobian( invalid.view(), edge2.view(), unshifted );
-  EXPECT_EQ( failure.quadrature_result.status, QuadratureStatus::InvalidGeometry );
-  EXPECT_EQ( failure.quadrature_result.num_required_points, 0 );
+  EXPECT_EQ( failure.quadrature_metadata.status, QuadratureStatus::InvalidGeometry );
+  EXPECT_EQ( failure.quadrature_metadata.num_required_points, 0 );
   EXPECT_FALSE( failure.has_active_points );
   for ( int row = 0; row < failure.values.size(); ++row ) {
     EXPECT_EQ( failure.values[row], 0.0 );

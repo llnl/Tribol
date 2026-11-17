@@ -31,7 +31,7 @@ struct PairEnergyValue {
   RealT energy = 0.0;  ///< Integrated energy, zero for empty or inactive rules.
   bool has_active_points =
       false;  ///< Whether values or derivatives contribute after successful quadrature, including zero gap.
-  QuadratureResult quadrature_result{};  ///< Failed quadrature output must not be consumed.
+  QuadratureMetadata quadrature_metadata{};  ///< Failed quadrature output must not be consumed.
 
   /** @brief Return the scalar energy as a one-entry function value vector. @return Integrated pair energy. */
   TRIBOL_HOST_DEVICE MdArray<RealT, 1> values() const { return MdArray<RealT, 1>{ energy }; }
@@ -61,7 +61,7 @@ class PairResidualValue {
   /** @brief Construct a zero residual with default quadrature state and no active points. */
   TRIBOL_HOST_DEVICE PairResidualValue() = default;
 
-  QuadratureResult quadrature_result{};  ///< Failed quadrature output must not be consumed.
+  QuadratureMetadata quadrature_metadata{};  ///< Failed quadrature output must not be consumed.
   bool has_active_points =
       false;  ///< Whether values or derivatives contribute after successful quadrature, including zero gap.
 
@@ -123,7 +123,7 @@ class PairResidualValue {
  *
  * Coords1 and Coords2 are read-only views whose sizes agree with size_geom1_coords and size_geom2_coords. Jacobian
  * columns follow geometry1 coordinates, then geometry2 coordinates. The const evaluation result supplies values(),
- * quadrature_result, and has_active_points. After successful quadrature, has_active_points indicates whether the
+ * quadrature_metadata, and has_active_points. After successful quadrature, has_active_points indicates whether the
  * function's values or derivatives must be retained. Nodal integration can be active before contact activation.
  * These requirements check types and expressions; numerical correctness, host/device execution, and Enzyme
  * compatibility must be verified separately.
@@ -156,7 +156,8 @@ concept PairFunctionType =
         typename PairFunction::Coords2( data2, PairFunction::size_geom2_coords )
       } -> std::same_as<typename PairFunction::Coords2>;
       { pair_values_struct.values() } -> std::same_as<MdArray<RealT, PairFunction::size_values>>;
-      requires std::same_as<std::remove_cvref_t<decltype( pair_values_struct.quadrature_result )>, QuadratureResult>;
+      requires std::same_as<std::remove_cvref_t<decltype( pair_values_struct.quadrature_metadata )>,
+                            QuadratureMetadata>;
       requires std::same_as<std::remove_cvref_t<decltype( pair_values_struct.has_active_points )>, bool>;
     };
 

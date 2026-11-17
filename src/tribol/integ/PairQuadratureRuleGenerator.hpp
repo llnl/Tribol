@@ -65,10 +65,11 @@ concept CompatibleQuadratureMappingAndGenerator =
         generator.generate( mapping.makeIntegrationSurface( geometry1, geometry2 ) )
       } -> std::same_as<typename Generator::IntegrationSurfaceRule>;
       { integration_surface_rule.getView() } -> std::same_as<IntegrationSurfaceRuleView<Generator::coordinate_dim>>;
-      QuadratureResult{ integration_surface_rule.result.status, integration_surface_rule.result.num_required_points };
+      QuadratureMetadata{ integration_surface_rule.metadata.status,
+                          integration_surface_rule.metadata.num_required_points };
       {
         mapping.mapToElements( geometry1, geometry2, integration_surface_rule_view, output )
-      } -> std::same_as<QuadratureResult>;
+      } -> std::same_as<QuadratureMetadata>;
     };
 
 /**
@@ -123,15 +124,15 @@ class PairQuadratureRuleGenerator {
    * @param[out] output Paired parametric coordinates and physical weights.
    * @return Generation status and full count; failed output must not be consumed.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureMetadata
   generate( const Geometry1& geometry1, const Geometry2& geometry2,
             PairQuadratureRuleView<Geometry1::parametric_dim, Geometry2::parametric_dim> output ) const
   {
     const auto integration_surface_rule =
         integration_surface_rule_generator_.generate( mapping_.makeIntegrationSurface( geometry1, geometry2 ) );
     // Return fields explicitly so Enzyme can identify their integer types.
-    if ( integration_surface_rule.result.status != QuadratureStatus::Success ) {
-      return { integration_surface_rule.result.status, integration_surface_rule.result.num_required_points };
+    if ( integration_surface_rule.metadata.status != QuadratureStatus::Success ) {
+      return { integration_surface_rule.metadata.status, integration_surface_rule.metadata.num_required_points };
     }
     return mapping_.mapToElements( geometry1, geometry2, integration_surface_rule.getView(), output );
   }
@@ -145,7 +146,7 @@ class PairQuadratureRuleGenerator {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Rule generate( const Geometry1& geometry1, const Geometry2& geometry2 ) const
   {
     Rule output{};
-    output.result = generate( geometry1, geometry2, output.getOutputView() );
+    output.metadata = generate( geometry1, geometry2, output.getOutputView() );
     return output;
   }
 
@@ -163,12 +164,11 @@ class PairQuadratureRuleGenerator {
  * @tparam Generator Type generating a local quadrature rule for two prepared element geometries.
  */
 template <typename Generator>
-concept PairRuleGenerator =
-    requires( const Generator& generator, const typename Generator::Geometry1& geometry1,
-              const typename Generator::Geometry2& geometry2 ) {
-      typename Generator::Rule;
-      { generator.generate( geometry1, geometry2 ) } -> std::same_as<typename Generator::Rule>;
-    };
+concept PairRuleGenerator = requires( const Generator& generator, const typename Generator::Geometry1& geometry1,
+                                      const typename Generator::Geometry2& geometry2 ) {
+  typename Generator::Rule;
+  { generator.generate( geometry1, geometry2 ) } -> std::same_as<typename Generator::Rule>;
+};
 
 }  // namespace tribol
 #endif

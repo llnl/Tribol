@@ -15,7 +15,7 @@
 #define SRC_TRIBOL_ASSEMBLY_EVALUATEPAIRS_HPP_
 
 #include "tribol/assembly/EnzymePairDerivative.hpp"
-#include "tribol/assembly/PairEvaluationBuffers.hpp"
+#include "tribol/assembly/PairBuffers.hpp"
 #include "tribol/assembly/PairFunctionData.hpp"
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
@@ -30,7 +30,7 @@ namespace tribol {
  * Each pair is evaluated once. This kernel requires no derivative provider or Enzyme support. Failed or inactive
  * evaluations store zero values; callers must check quadrature before assembly.
  * For example, Common Plane explicit contact could obtain a PairValueBuffer from evaluatePairValues(), check its
- * quadratureResults(), and assemble its active residual values as nodal forces.
+ * quadratureMetadata(), and assemble its active residual values as nodal forces.
  * @tparam PairFunction Function evaluating two rank-two node-by-spatial-dimension coordinate views.
  * @tparam Exec Concrete execution mode for pair evaluation.
  * @param pairs Supplied element pairs in execution-accessible memory.
@@ -55,8 +55,8 @@ PairValueBuffer<PairFunction::size_values> evaluatePairValues( const ArrayT<Inte
     const auto coords1 = mesh1.getFaceCoords<typename PairFunction::Coords1>( pair.element_id1_ );
     const auto coords2 = mesh2.getFaceCoords<typename PairFunction::Coords2>( pair.element_id2_ );
     const auto pair_values_struct = pair_function.evaluate( coords1.view(), coords2.view() );
-    all_pair_values_view.quadrature[pair_index] = pair_values_struct.quadrature_result;
-    const bool active = pair_values_struct.quadrature_result.status == QuadratureStatus::Success &&
+    all_pair_values_view.quadrature_metadata[pair_index] = pair_values_struct.quadrature_metadata;
+    const bool active = pair_values_struct.quadrature_metadata.status == QuadratureStatus::Success &&
                         pair_values_struct.has_active_points;
     const auto pair_values = pair_values_struct.values();
     for ( IndexT value_index{ 0 }; value_index < PairFunction::size_values; ++value_index ) {
@@ -80,7 +80,7 @@ PairValueBuffer<PairFunction::size_values> evaluatePairValues( const ArrayT<Inte
  * their Jacobians:
  * @code
  * auto results = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function );
- * checkPairQuadratureResults<Exec>( results.quadratureResults() );
+ * checkPairQuadratureMetadata<Exec>( results.quadratureMetadata() );
  * @endcode
  * After the check succeeds, the caller could assemble the values into a force vector and the Jacobians into a matrix.
  * This kernel stores each pair's contribution separately, including when pairs share nodes.
@@ -110,7 +110,7 @@ PairValueJacobianBuffer<PairFunction::size_values, PairFunction::size_coords> ev
     const auto coords2 = mesh2.getFaceCoords<typename PairFunction::Coords2>( pair.element_id2_ );
     const auto pair_values_struct =
         EnzymePairDerivative<PairFunction>::valuesAndJacobian( coords1.view(), coords2.view(), pair_function );
-    all_pair_values_view.quadrature[pair_index] = pair_values_struct.quadrature_result;
+    all_pair_values_view.quadrature_metadata[pair_index] = pair_values_struct.quadrature_metadata;
     const auto& pair_values = pair_values_struct.values;
     for ( IndexT value_index{ 0 }; value_index < PairFunction::size_values; ++value_index ) {
       all_pair_values_view.setValue( pair_index, value_index, pair_values[value_index] );
@@ -199,7 +199,7 @@ PairJacobianHessianBuffer<PairFunction::size_coords> evaluatePairWeightedJacobia
  * quadrature-point formulation could request its scalar energy E, Jacobian J_E, and Hessian H_E together:
  * @code
  * auto results = evaluatePairValuesJacobiansAndHessians<Exec>( pairs, mesh1, mesh2, pair_function );
- * checkPairQuadratureResults<Exec>( results.quadratureResults() );
+ * checkPairQuadratureMetadata<Exec>( results.quadratureMetadata() );
  * @endcode
  * After the check succeeds, the caller could sum E across pairs and MPI ranks, assemble J_E as the force vector,
  * and assemble H_E as its coordinate Jacobian. The first derivatives are those of the input energy E, not of the
@@ -231,7 +231,7 @@ PairValueJacobianHessianBuffer<PairFunction::size_coords> evaluatePairValuesJaco
     const auto pair_values_struct =
         EnzymePairDerivative<PairFunction>::valueJacobianAndHessian( coords1.view(), coords2.view(), pair_function );
     all_pair_values_view.values[pair_index] = pair_values_struct.value;
-    all_pair_values_view.quadrature[pair_index] = pair_values_struct.quadrature_result;
+    all_pair_values_view.quadrature_metadata[pair_index] = pair_values_struct.quadrature_metadata;
     for ( IndexT coordinate_row{ 0 }; coordinate_row < PairFunction::size_coords; ++coordinate_row ) {
       all_pair_values_view.derivatives.setJacobian( pair_index, coordinate_row,
                                                     pair_values_struct.jacobian[coordinate_row] );

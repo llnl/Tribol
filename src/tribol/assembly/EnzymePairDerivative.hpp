@@ -26,7 +26,7 @@ template <IndexT SizeValues, IndexT SizeCoords>
 struct PairValueJacobian {
   MdArray<RealT, SizeValues> values{};                ///< Function values f_i in function-defined order.
   MdArray<RealT, SizeValues, SizeCoords> jacobian{};  ///< J_ij, with value rows and coordinate columns.
-  QuadratureResult quadrature_result{};               ///< Quadrature status from the differentiated evaluation.
+  QuadratureMetadata quadrature_metadata{};           ///< Quadrature metadata from the differentiated evaluation.
   bool has_active_points = false;                     ///< Activation from the differentiated evaluation.
 };
 
@@ -54,7 +54,7 @@ struct PairValueJacobianHessian {
   RealT value = 0.0;                                 ///< Scalar function value f(x).
   MdArray<RealT, SizeCoords> jacobian{};             ///< Coordinate Jacobian J_j = df/dx_j.
   MdArray<RealT, SizeCoords, SizeCoords> hessian{};  ///< Coordinate Hessian H_jk = d^2 f/(dx_j dx_k).
-  QuadratureResult quadrature_result{};              ///< Quadrature status from the differentiated evaluation.
+  QuadratureMetadata quadrature_metadata{};          ///< Quadrature metadata from the differentiated evaluation.
   bool has_active_points = false;                    ///< Activation from the differentiated evaluation.
 };
 
@@ -69,7 +69,7 @@ struct PairValueJacobianHessian {
  * inputs; Jacobian columns and Hessian rows/columns follow geometry1 coordinates, then geometry2 coordinates. A
  * function that needs geometry constructs it inside evaluate(), so derivatives include cached lengths, normals,
  * and other coordinate-dependent quantities. The result's values() returns MdArray<RealT, size_values>;
- * quadrature_result and has_active_points describe the calculation. Settings and output weights are held fixed.
+ * quadrature_metadata and has_active_points describe the calculation. Settings and output weights are held fixed.
  * Output weights multiply outputs of f independently of any quadrature weights already included in f. Scalar energies
  * and vector residuals use the same Jacobian and Hessian terminology, referring to derivatives of the input
  * function f.
@@ -108,7 +108,7 @@ class EnzymePairDerivative {
    * @code
    * const auto pair_values_struct =
    *     EnzymePairDerivative<PairFunction>::valuesAndJacobian( coords1.view(), coords2.view(), f );
-   * // Record pair_values_struct.quadrature_result and pair_values_struct.has_active_points before assembly.
+   * // Record pair_values_struct.quadrature_metadata and pair_values_struct.has_active_points before assembly.
    * const RealT force_entry = pair_values_struct.values[0];
    * const RealT force_jacobian_entry = pair_values_struct.jacobian( 0, 0 );
    * @endcode
@@ -134,9 +134,9 @@ class EnzymePairDerivative {
                               coordinate_seed.data(), TRIBOL_ENZYME_DUP, coords2.data(),
                               coordinate_seed.data() + size_geom1_coords, TRIBOL_ENZYME_CONST,
                               (const void*)&pair_function, TRIBOL_ENZYME_DUP, pair_values_struct.values.data(),
-                              jacobian_col.data(), TRIBOL_ENZYME_CONST, &pair_values_struct.quadrature_result,
+                              jacobian_col.data(), TRIBOL_ENZYME_CONST, &pair_values_struct.quadrature_metadata,
                               TRIBOL_ENZYME_CONST, &pair_values_struct.has_active_points );
-      if ( pair_values_struct.quadrature_result.status != QuadratureStatus::Success ||
+      if ( pair_values_struct.quadrature_metadata.status != QuadratureStatus::Success ||
            !pair_values_struct.has_active_points ) {
         pair_values_struct.values = {};
         pair_values_struct.jacobian = {};
@@ -221,7 +221,7 @@ class EnzymePairDerivative {
    * const auto pair_values = EnzymePairDerivative<PairFunction>::valueJacobianAndHessian( coords1.view(),
    * coords2.view(), f
    * );
-   * // Record pair_values.quadrature_result for checking before assembly.
+   * // Record pair_values.quadrature_metadata for checking before assembly.
    * const RealT energy = pair_values.value;
    * const RealT force_entry = pair_values.jacobian[0];
    * const RealT force_jacobian_entry = pair_values.hessian( 0, 0 );
@@ -247,9 +247,9 @@ class EnzymePairDerivative {
           (void*)reverseScalarJacobianEnzyme, TRIBOL_ENZYME_DUP, coords1.data(), coordinate_seed.data(),
           TRIBOL_ENZYME_DUP, coords2.data(), coordinate_seed.data() + size_geom1_coords, TRIBOL_ENZYME_CONST,
           (const void*)&pair_function, TRIBOL_ENZYME_DUP, pair_values_struct.jacobian.data(), hessian_col.data(),
-          TRIBOL_ENZYME_CONST, &pair_values_struct.value, TRIBOL_ENZYME_CONST, &pair_values_struct.quadrature_result,
+          TRIBOL_ENZYME_CONST, &pair_values_struct.value, TRIBOL_ENZYME_CONST, &pair_values_struct.quadrature_metadata,
           TRIBOL_ENZYME_CONST, &pair_values_struct.has_active_points );
-      if ( pair_values_struct.quadrature_result.status != QuadratureStatus::Success ||
+      if ( pair_values_struct.quadrature_metadata.status != QuadratureStatus::Success ||
            !pair_values_struct.has_active_points ) {
         pair_values_struct.value = 0.0;
         pair_values_struct.jacobian = {};
@@ -270,12 +270,12 @@ class EnzymePairDerivative {
    * @param pair_function_void Pointer to fixed PairFunction settings, passed without differentiation.
    * @param[out] scalar_jacobian Coordinate Jacobian, differentiated by forward AD to obtain the Hessian.
    * @param[out] value Scalar function value, retained without forward differentiation.
-   * @param[out] quadrature_result Quadrature status, passed without differentiation.
+   * @param[out] quadrature_metadata Quadrature metadata, passed without differentiation.
    * @param[out] has_active_points Activation, passed without differentiation.
    */
   TRIBOL_HOST_DEVICE static void reverseScalarJacobianEnzyme( const RealT* coords1, const RealT* coords2,
                                                               const void* pair_function_void, RealT* scalar_jacobian,
-                                                              RealT* value, QuadratureResult* quadrature_result,
+                                                              RealT* value, QuadratureMetadata* quadrature_metadata,
                                                               bool* has_active_points )
   {
     MdArray<RealT, size_coords> jacobian_values{};
@@ -283,7 +283,7 @@ class EnzymePairDerivative {
     __enzyme_autodiff<void>( (void*)evaluatePairFunctionEnzyme, TRIBOL_ENZYME_DUP, coords1, jacobian_values.data(),
                              TRIBOL_ENZYME_DUP, coords2, jacobian_values.data() + size_geom1_coords,
                              TRIBOL_ENZYME_CONST, pair_function_void, TRIBOL_ENZYME_DUP, value, &value_seed,
-                             TRIBOL_ENZYME_CONST, quadrature_result, TRIBOL_ENZYME_CONST, has_active_points );
+                             TRIBOL_ENZYME_CONST, quadrature_metadata, TRIBOL_ENZYME_CONST, has_active_points );
     for ( IndexT coordinate = 0; coordinate < size_coords; ++coordinate ) {
       scalar_jacobian[coordinate] = jacobian_values[coordinate];
     }
@@ -297,12 +297,12 @@ class EnzymePairDerivative {
    * @param coords2 Active geometry2 coordinate storage.
    * @param pair_function_void Pointer to the fixed PairFunction configuration, passed without differentiation.
    * @param[out] values Function values, with size_values entries written and differentiated.
-   * @param[out] quadrature_result Quadrature status, passed without differentiation.
+   * @param[out] quadrature_metadata Quadrature metadata, passed without differentiation.
    * @param[out] has_active_points Activation, passed without differentiation.
    */
   TRIBOL_HOST_DEVICE static void evaluatePairFunctionEnzyme( const RealT* coords1, const RealT* coords2,
                                                              const void* pair_function_void, RealT* values,
-                                                             QuadratureResult* quadrature_result,
+                                                             QuadratureMetadata* quadrature_metadata,
                                                              bool* has_active_points )
   {
     const auto& pair_function = *static_cast<const PairFunction*>( pair_function_void );
@@ -313,8 +313,8 @@ class EnzymePairDerivative {
       values[value] = function_values[value];
     }
     // Copy fields individually to keep structure padding out of Enzyme's type analysis.
-    quadrature_result->status = pair_values_struct.quadrature_result.status;
-    quadrature_result->num_required_points = pair_values_struct.quadrature_result.num_required_points;
+    quadrature_metadata->status = pair_values_struct.quadrature_metadata.status;
+    quadrature_metadata->num_required_points = pair_values_struct.quadrature_metadata.num_required_points;
     *has_active_points = pair_values_struct.has_active_points;
   }
 

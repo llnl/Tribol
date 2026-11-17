@@ -43,7 +43,7 @@ struct EdgeQuadratureRuleGenerator {
   {
     if ( !interval.valid ) {
       IntegrationSurfaceRule rule{};
-      rule.result.status = QuadratureStatus::InvalidGeometry;
+      rule.metadata.status = QuadratureStatus::InvalidGeometry;
       return rule;
     }
     return generate( interval.bounds.view() );
@@ -68,7 +68,7 @@ struct EdgeQuadratureRuleGenerator {
       rule.coords( q, 0 ) = scale * gaussPoint( q ) + center;
       rule.weights[q] = scale * gaussWeight( q );
     }
-    rule.result.num_required_points = NumPoints;
+    rule.metadata.num_required_points = NumPoints;
     return rule;
   }
 

@@ -105,7 +105,7 @@ TEST( EnergyMortarFiniteDifference, invalid_geometry_reports_status_before_deriv
                  .evaluate( { coordinates.data(), decltype( energy )::size_geom1_coords },
                             { coordinates.data() + decltype( energy )::size_geom1_coords,
                               decltype( energy )::size_geom2_coords } )
-                 .quadrature_result.status,
+                 .quadrature_metadata.status,
              QuadratureStatus::Success );
 }
 

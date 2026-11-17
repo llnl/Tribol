@@ -7,12 +7,12 @@
  * @file
  * @brief Preallocated pair-local values and coordinate derivatives in structure-of-arrays buffers.
  *
- * Pair kernels returning quadrature results store zero numerical outputs for failed or inactive evaluations. Those
- * results must be checked before using the numerical outputs. Weighted derivative kernels require prior quadrature
- * validation and return only derivatives.
+ * Pair functions returning quadrature metadata store zero numerical outputs for failed or inactive evaluations.
+ * That metadata must be checked before using the numerical outputs. Weighted derivative functions require prior
+ * quadrature validation and return only derivatives.
  */
-#ifndef SRC_TRIBOL_ASSEMBLY_PAIREVALUATIONBUFFERS_HPP_
-#define SRC_TRIBOL_ASSEMBLY_PAIREVALUATIONBUFFERS_HPP_
+#ifndef SRC_TRIBOL_ASSEMBLY_PAIRBUFFERS_HPP_
+#define SRC_TRIBOL_ASSEMBLY_PAIRBUFFERS_HPP_
 
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/BasicTypes.hpp"
@@ -23,9 +23,9 @@ namespace tribol {
 /** @brief Device-copyable pair values and quadrature state without derivatives. @tparam SizeValues Values per pair. */
 template <IndexT SizeValues>
 struct PairValueView {
-  RealT* values{ nullptr };                 ///< Values in `[value][pair]` order.
-  QuadratureResult* quadrature{ nullptr };  ///< Pair quadrature status and point count.
-  IndexT num_pairs{ 0 };                    ///< Number of writable pair slots.
+  RealT* values{ nullptr };                            ///< Values in `[value][pair]` order.
+  QuadratureMetadata* quadrature_metadata{ nullptr };  ///< Pair quadrature status and point count.
+  IndexT num_pairs{ 0 };                               ///< Number of writable pair slots.
 
   /** @brief Store one value. @param pair Pair slot. @param value Function output index. @param result Numerical value.
    */
@@ -45,23 +45,23 @@ class PairValueBuffer {
   PairValueBuffer( IndexT num_pairs, int allocator_id )
       : num_pairs_( num_pairs ),
         values_( SizeValues * num_pairs, SizeValues * num_pairs, allocator_id ),
-        quadrature_( num_pairs, num_pairs, allocator_id )
+        quadrature_metadata_( num_pairs, num_pairs, allocator_id )
   {
   }
   /** @brief Return a writable view. @return View into this buffer's arrays; the buffer must remain alive while the view
    * is used. */
-  PairValueView<SizeValues> view() { return { values_.data(), quadrature_.data(), num_pairs_ }; }
+  PairValueView<SizeValues> view() { return { values_.data(), quadrature_metadata_.data(), num_pairs_ }; }
   /** @brief Return pair slots. @return Number of pairs allocated. */
   IndexT numberOfPairs() const { return num_pairs_; }
   /** @brief Return the owning values. @return Values in `[value][pair]` order. */
   const Array1D<RealT>& values() const { return values_; }
-  /** @brief Return quadrature results. @return One result per pair. */
-  const Array1D<QuadratureResult>& quadratureResults() const { return quadrature_; }
+  /** @brief Return quadrature metadata. @return One entry per pair. */
+  const Array1D<QuadratureMetadata>& quadratureMetadata() const { return quadrature_metadata_; }
 
  private:
-  IndexT num_pairs_;                      ///< Allocated pair slots.
-  Array1D<RealT> values_;                 ///< Numerical values in structure-of-arrays order.
-  Array1D<QuadratureResult> quadrature_;  ///< Quadrature status for each pair.
+  IndexT num_pairs_;                                 ///< Allocated pair slots.
+  Array1D<RealT> values_;                            ///< Numerical values in structure-of-arrays order.
+  Array1D<QuadratureMetadata> quadrature_metadata_;  ///< Quadrature metadata for each pair.
 };
 
 /**
@@ -75,10 +75,10 @@ class PairValueBuffer {
  */
 template <IndexT SizeValues, IndexT SizeCoords>
 struct PairValueJacobianView {
-  RealT* values{ nullptr };                 ///< Values in `[value][pair]` order.
-  RealT* jacobians{ nullptr };              ///< Derivatives in `[value][coordinate][pair]` order.
-  QuadratureResult* quadrature{ nullptr };  ///< Pair quadrature status and point count.
-  IndexT num_pairs{ 0 };                    ///< Number of writable pair slots.
+  RealT* values{ nullptr };                            ///< Values in `[value][pair]` order.
+  RealT* jacobians{ nullptr };                         ///< Derivatives in `[value][coordinate][pair]` order.
+  QuadratureMetadata* quadrature_metadata{ nullptr };  ///< Pair quadrature status and point count.
+  IndexT num_pairs{ 0 };                               ///< Number of writable pair slots.
 
   /** @brief Store one pair value. @param pair Pair slot. @param value Function output index. @param result Scalar
    * value. */
@@ -132,14 +132,14 @@ class PairValueJacobianBuffer {
       : num_pairs_( num_pairs ),
         values_( SizeValues * num_pairs, SizeValues * num_pairs, allocator_id ),
         jacobians_( SizeValues * SizeCoords * num_pairs, SizeValues * SizeCoords * num_pairs, allocator_id ),
-        quadrature_( num_pairs, num_pairs, allocator_id )
+        quadrature_metadata_( num_pairs, num_pairs, allocator_id )
   {
   }
 
   /** @brief Return a device-copyable writable view. @return View retaining no ownership. */
   PairValueJacobianView<SizeValues, SizeCoords> view()
   {
-    return { values_.data(), jacobians_.data(), quadrature_.data(), num_pairs_ };
+    return { values_.data(), jacobians_.data(), quadrature_metadata_.data(), num_pairs_ };
   }
 
   /** @brief Return the number of pair slots. @return Pair count. */
@@ -151,14 +151,14 @@ class PairValueJacobianBuffer {
   /** @brief Return the owning Jacobian array. @return Jacobians in structure-of-arrays order. */
   const Array1D<RealT>& jacobians() const { return jacobians_; }
 
-  /** @brief Return quadrature results. @return One result per pair. */
-  const Array1D<QuadratureResult>& quadratureResults() const { return quadrature_; }
+  /** @brief Return quadrature metadata. @return One entry per pair. */
+  const Array1D<QuadratureMetadata>& quadratureMetadata() const { return quadrature_metadata_; }
 
  private:
-  IndexT num_pairs_;                      ///< Pair slots allocated in every array.
-  Array1D<RealT> values_;                 ///< Values in `[value][pair]` order.
-  Array1D<RealT> jacobians_;              ///< Derivatives in `[value][coordinate][pair]` order.
-  Array1D<QuadratureResult> quadrature_;  ///< Quadrature status for each pair.
+  IndexT num_pairs_;                                 ///< Pair slots allocated in every array.
+  Array1D<RealT> values_;                            ///< Values in `[value][pair]` order.
+  Array1D<RealT> jacobians_;                         ///< Derivatives in `[value][coordinate][pair]` order.
+  Array1D<QuadratureMetadata> quadrature_metadata_;  ///< Quadrature metadata for each pair.
 };
 
 /**
@@ -233,13 +233,13 @@ class PairJacobianHessianBuffer {
   Array1D<RealT> hessians_;   ///< Coordinate Hessians in structure-of-arrays order.
 };
 
-/** @brief Device-copyable pair values, quadrature results, Jacobians, and Hessians. @tparam SizeCoords Coordinates.
+/** @brief Device-copyable pair values, quadrature metadata, Jacobians, and Hessians. @tparam SizeCoords Coordinates.
  */
 template <IndexT SizeCoords>
 struct PairValueJacobianHessianView {
-  RealT* values{ nullptr };                           ///< One scalar value per pair.
-  QuadratureResult* quadrature{ nullptr };            ///< One quadrature result per pair.
-  PairJacobianHessianView<SizeCoords> derivatives{};  ///< Coordinate Jacobians and Hessians.
+  RealT* values{ nullptr };                            ///< One scalar value per pair.
+  QuadratureMetadata* quadrature_metadata{ nullptr };  ///< One quadrature metadata entry per pair.
+  PairJacobianHessianView<SizeCoords> derivatives{};   ///< Coordinate Jacobians and Hessians.
 
   /** @brief Read the scalar value. @param pair Pair slot. @return Function value. */
   TRIBOL_HOST_DEVICE RealT value( IndexT pair ) const { return values[pair]; }
@@ -266,7 +266,7 @@ class PairValueJacobianHessianBuffer {
   /** @brief Allocate all pair outputs. @param num_pairs Pair count. @param allocator_id Execution allocator. */
   PairValueJacobianHessianBuffer( IndexT num_pairs, int allocator_id )
       : values_( num_pairs, num_pairs, allocator_id ),
-        quadrature_( num_pairs, num_pairs, allocator_id ),
+        quadrature_metadata_( num_pairs, num_pairs, allocator_id ),
         derivatives_( num_pairs, allocator_id )
   {
   }
@@ -274,18 +274,18 @@ class PairValueJacobianHessianBuffer {
   /** @brief Return a device-copyable writable view. @return View retaining no ownership. */
   PairValueJacobianHessianView<SizeCoords> view()
   {
-    return { values_.data(), quadrature_.data(), derivatives_.view() };
+    return { values_.data(), quadrature_metadata_.data(), derivatives_.view() };
   }
 
-  /** @brief Return quadrature results. @return One result per pair. */
-  const Array1D<QuadratureResult>& quadratureResults() const { return quadrature_; }
+  /** @brief Return quadrature metadata. @return One entry per pair. */
+  const Array1D<QuadratureMetadata>& quadratureMetadata() const { return quadrature_metadata_; }
 
  private:
   Array1D<RealT> values_;                              ///< Scalar values, zero for empty or inactive pairs.
-  Array1D<QuadratureResult> quadrature_;               ///< Quadrature status for each pair.
+  Array1D<QuadratureMetadata> quadrature_metadata_;    ///< Quadrature metadata for each pair.
   PairJacobianHessianBuffer<SizeCoords> derivatives_;  ///< Coordinate Jacobians and Hessians.
 };
 
 }  // namespace tribol
 
-#endif  // SRC_TRIBOL_ASSEMBLY_PAIREVALUATIONBUFFERS_HPP_
+#endif  // SRC_TRIBOL_ASSEMBLY_PAIRBUFFERS_HPP_

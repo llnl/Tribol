@@ -151,7 +151,7 @@ ContactFormulationResult evaluateAndAssemblePairResidual( const ArrayT<Interface
 {
   static_assert( PairFunction::size_values == PairFunction::size_coords, "Pair residuals must match coordinate DOFs." );
   auto all_pair_values = evaluatePairValues<Exec>( pairs, mesh1, mesh2, pair_function );
-  checkPairQuadratureResults<Exec>( all_pair_values.quadratureResults() );
+  checkPairQuadratureMetadata<Exec>( all_pair_values.quadratureMetadata() );
 
   auto assembler = detail::makeForceVectorAssembler( mesh_data, mesh1, mesh2 );
   const auto all_pair_values_view = all_pair_values.view();
@@ -186,7 +186,7 @@ ContactFormulationResult evaluateAndAssemblePairResidualStiffness( const ArrayT<
 {
   static_assert( PairFunction::size_values == PairFunction::size_coords, "Pair residuals must match coordinate DOFs." );
   auto all_pair_values = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function );
-  checkPairQuadratureResults<Exec>( all_pair_values.quadratureResults() );
+  checkPairQuadratureMetadata<Exec>( all_pair_values.quadratureMetadata() );
 
   const auto all_pair_values_view = all_pair_values.view();
   return detail::assemblePairResidualStiffness<Exec, PairFunction::size_coords>(
@@ -219,7 +219,7 @@ ContactFormulationResult evaluateAndAssemblePairEnergyResidualStiffness( const A
 {
   static_assert( PairFunction::size_values == 1, "Pair energies must have one scalar output." );
   auto all_pair_values = evaluatePairValuesJacobiansAndHessians<Exec>( pairs, mesh1, mesh2, pair_function );
-  checkPairQuadratureResults<Exec>( all_pair_values.quadratureResults() );
+  checkPairQuadratureMetadata<Exec>( all_pair_values.quadratureMetadata() );
 
   const auto all_pair_values_view = all_pair_values.view();
   auto result = detail::assemblePairResidualStiffness<Exec, PairFunction::size_coords>(

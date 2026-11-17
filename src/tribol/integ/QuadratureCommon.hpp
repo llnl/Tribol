@@ -61,7 +61,7 @@ MFEM_ENZYME_INACTIVE
  * measure. InsufficientCapacity may leave partial output, which must be discarded. InvalidGeometry
  * returns zero points and its output must also be discarded. Unused capacity is never part of a completed rule.
  */
-struct QuadratureResult {
+struct QuadratureMetadata {
   QuadratureStatus status{ QuadratureStatus::Success };  ///< Whether the complete rule can be consumed.
   IndexT num_required_points{ 0 };  ///< Complete count on success or overflow; zero for invalid geometry.
 };
@@ -71,32 +71,33 @@ namespace detail {
 /**
  * @brief Find the most severe quadrature error across all pairs using the specified execution policy.
  * @tparam Exec Concrete execution policy.
- * @param results One status per pair in execution-accessible memory.
+ * @param metadata One metadata entry per pair in execution-accessible memory.
  * @return Highest-severity status present in the array, or Success when the array is empty.
  */
 template <ExecutionMode Exec>
-QuadratureStatus reduceQuadratureStatus( ArrayViewT<const QuadratureResult> results )
+QuadratureStatus reduceQuadratureStatus( ArrayViewT<const QuadratureMetadata> metadata )
 {
   ReduceMax<Exec, int> status( static_cast<int>( QuadratureStatus::Success ) );
-  forAllExec<Exec>( results.size(),
-                    [=] TRIBOL_HOST_DEVICE( IndexT pair ) { status.max( static_cast<int>( results[pair].status ) ); } );
+  forAllExec<Exec>( metadata.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
+    status.max( static_cast<int>( metadata[pair].status ) );
+  } );
   return static_cast<QuadratureStatus>( status.get() );
 }
 
 }  // namespace detail
 
 /**
- * @brief Check the quadrature rules produced for all pairs and throw if any rule reports an error.
- * @tparam Exec Concrete execution mode used to populate the results.
- * @param results One preallocated result per pair.
- * Empty results pass the check.
+ * @brief Check the quadrature metadata produced for all pairs and throw if any rule reports an error.
+ * @tparam Exec Concrete execution mode used to populate the metadata.
+ * @param metadata One preallocated metadata entry per pair.
+ * Empty metadata passes the check.
  * @throws std::invalid_argument A rule reports invalid geometry.
  * @throws std::length_error A rule reports insufficient quadrature capacity.
  */
 template <ExecutionMode Exec>
-void checkPairQuadratureResults( const Array1D<QuadratureResult>& results )
+void checkPairQuadratureMetadata( const Array1D<QuadratureMetadata>& metadata )
 {
-  const auto status = detail::reduceQuadratureStatus<Exec>( results.view() );
+  const auto status = detail::reduceQuadratureStatus<Exec>( metadata.view() );
   if ( status != QuadratureStatus::Success ) {
     reportQuadratureFailure( status );
   }
@@ -151,22 +152,22 @@ template <int CoordinateDim, IndexT Capacity>
 struct IntegrationSurfaceRule {
   MdArray<RealT, Capacity, CoordinateDim> coords{};  ///< Integration-surface coordinates [point][parametric_dim].
   MdArray<RealT, Capacity> weights{};                ///< Owned weights in integration-surface coordinates.
-  QuadratureResult result{};                         ///< Completion status and number of populated points.
+  QuadratureMetadata metadata{};                     ///< Completion status and number of populated points.
 
   /**
    * @brief Return a view of the completed integration-surface quadrature points and weights.
    *
-   * @pre result.status is Success and num_required_points does not exceed Capacity.
+   * @pre metadata.status is Success and num_required_points does not exceed Capacity.
    *
    * @return Read-only views of the initialized points and weights, valid while this object remains alive.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE IntegrationSurfaceRuleView<CoordinateDim> getView() const&
   {
-    assert( result.status == QuadratureStatus::Success );
-    assert( result.num_required_points >= 0 && result.num_required_points <= Capacity );
-    const axom::StackArray<axom::IndexType, 2> shape{ result.num_required_points, CoordinateDim };
+    assert( metadata.status == QuadratureStatus::Success );
+    assert( metadata.num_required_points >= 0 && metadata.num_required_points <= Capacity );
+    const axom::StackArray<axom::IndexType, 2> shape{ metadata.num_required_points, CoordinateDim };
     return { ArrayViewT<const RealT, 2>{ coords.data(), shape },
-             ArrayViewT<const RealT>{ weights.data(), result.num_required_points } };
+             ArrayViewT<const RealT>{ weights.data(), metadata.num_required_points } };
   }
 
   /**
@@ -234,7 +235,7 @@ struct PairQuadratureRule {
   MdArray<RealT, Capacity, ParametricDim2>
       geom2_parametric_coords{};       ///< Quadrature-point coordinates in geometry2's element parameterization.
   MdArray<RealT, Capacity> weights{};  ///< Owned physical integration weights.
-  QuadratureResult result{};           ///< Status and initialized point count.
+  QuadratureMetadata metadata{};       ///< Status and initialized point count.
 
   /** @brief Return views of all available output storage. @return Writable views valid while this object is alive. */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureRuleView<ParametricDim1, ParametricDim2> getOutputView() &
@@ -246,14 +247,14 @@ struct PairQuadratureRule {
 
   /**
    * @brief Return read-only views of the initialized quadrature coordinates and weights.
-   * @pre result.status is Success and num_required_points does not exceed Capacity.
+   * @pre metadata.status is Success and num_required_points does not exceed Capacity.
    * @return Read-only arrays valid while this owner is alive.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureRuleView<ParametricDim1, ParametricDim2, true> getView() const&
   {
-    assert( result.status == QuadratureStatus::Success );
-    assert( result.num_required_points >= 0 && result.num_required_points <= Capacity );
-    const IndexT num_points = result.num_required_points;
+    assert( metadata.status == QuadratureStatus::Success );
+    assert( metadata.num_required_points >= 0 && metadata.num_required_points <= Capacity );
+    const IndexT num_points = metadata.num_required_points;
     return { { geom1_parametric_coords.data(), { num_points, ParametricDim1 } },
              { geom2_parametric_coords.data(), { num_points, ParametricDim2 } },
              { weights.data(), num_points } };

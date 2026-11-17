@@ -111,10 +111,10 @@ struct CommonPlaneEdgeMapping {
    * @return Success with the initialized count; nonopposing normals give zero points. InvalidGeometry returns zero
    * points, and InsufficientCapacity reports the full required count. Either failure leaves output untouched.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureResult mapToElements( const Geometry1& edge1,
-                                                                          const Geometry2& edge2,
-                                                                          IntegrationSurfaceRuleView<1> reference,
-                                                                          PairQuadratureRuleView<1, 1> output ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureMetadata mapToElements( const Geometry1& edge1,
+                                                                            const Geometry2& edge2,
+                                                                            IntegrationSurfaceRuleView<1> reference,
+                                                                            PairQuadratureRuleView<1, 1> output ) const
   {
     if ( !validEdges( edge1, edge2 ) ) {
       return { QuadratureStatus::InvalidGeometry, 0 };

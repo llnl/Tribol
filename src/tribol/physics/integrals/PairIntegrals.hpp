@@ -163,12 +163,12 @@ class PairTractionIntegral {
     const Geometry2 geometry2( coords2 );
     const auto points = rule_generator_.generate( geometry1, geometry2 );
     PairResidual pair_residual;
-    pair_residual.quadrature_result = points.result;
-    if ( points.result.status != QuadratureStatus::Success || points.result.num_required_points == 0 ) {
+    pair_residual.quadrature_metadata = points.metadata;
+    if ( points.metadata.status != QuadratureStatus::Success || points.metadata.num_required_points == 0 ) {
       return pair_residual;
     }
     const auto pair_geometry_data = traction_function_.computePairGeometryData( geometry1, geometry2 );
-    for ( IndexT point = 0; point < points.result.num_required_points; ++point ) {
+    for ( IndexT point = 0; point < points.metadata.num_required_points; ++point ) {
       const MdSpan<const RealT, Geometry1::parametric_dim> parametric_coords1{
           &points.geom1_parametric_coords( point, 0 ), Geometry1::parametric_dim };
       const MdSpan<const RealT, Geometry2::parametric_dim> parametric_coords2{
@@ -257,12 +257,12 @@ class PairEnergyIntegral {
     const Geometry1 geometry1( coords1 );
     const Geometry2 geometry2( coords2 );
     const auto points = rule_generator_.generate( geometry1, geometry2 );
-    PairEnergy pair_energy{ 0.0, false, points.result };
-    if ( points.result.status != QuadratureStatus::Success || points.result.num_required_points == 0 ) {
+    PairEnergy pair_energy{ 0.0, false, points.metadata };
+    if ( points.metadata.status != QuadratureStatus::Success || points.metadata.num_required_points == 0 ) {
       return pair_energy;
     }
     const auto pair_geometry_data = energy_function_.computePairGeometryData( geometry1, geometry2 );
-    for ( IndexT point = 0; point < points.result.num_required_points; ++point ) {
+    for ( IndexT point = 0; point < points.metadata.num_required_points; ++point ) {
       const MdSpan<const RealT, Geometry1::parametric_dim> parametric_coords1{
           &points.geom1_parametric_coords( point, 0 ), Geometry1::parametric_dim };
       const MdSpan<const RealT, Geometry2::parametric_dim> parametric_coords2{
@@ -345,7 +345,7 @@ class PairNodalGapValue {
 
   /// Whether successful quadrature is nonempty, including opening gaps; this does not indicate contact activation.
   bool has_active_points = false;
-  QuadratureResult quadrature_result{};  ///< Failed output must not be consumed.
+  QuadratureMetadata quadrature_metadata{};  ///< Failed output must not be consumed.
 
  private:
   MdArray<RealT, size_values> values_{};  ///< Weighted gaps followed by tributary areas in local-node order.
@@ -411,13 +411,13 @@ class PairNodalGapIntegral {
     const Geometry2 geometry2( coords2 );
     const auto points = rule_generator_.generate( geometry1, geometry2 );
     PairNodalGap pair_nodal_gap;
-    pair_nodal_gap.quadrature_result = points.result;
-    if ( points.result.status != QuadratureStatus::Success || points.result.num_required_points == 0 ) {
+    pair_nodal_gap.quadrature_metadata = points.metadata;
+    if ( points.metadata.status != QuadratureStatus::Success || points.metadata.num_required_points == 0 ) {
       return pair_nodal_gap;
     }
     const auto pair_geometry_data = gap_.computePairGeometryData( geometry1, geometry2 );
     pair_nodal_gap.has_active_points = true;
-    for ( IndexT point = 0; point < points.result.num_required_points; ++point ) {
+    for ( IndexT point = 0; point < points.metadata.num_required_points; ++point ) {
       const MdSpan<const RealT, Geometry1::parametric_dim> parametric_coords1{
           &points.geom1_parametric_coords( point, 0 ), Geometry1::parametric_dim };
       const MdSpan<const RealT, Geometry2::parametric_dim> parametric_coords2{
