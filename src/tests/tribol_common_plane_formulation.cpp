@@ -27,7 +27,7 @@
 #include "tribol/integ/BasisFunction.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
 #include "tribol/integ/PairQuadratureRuleGenerator.hpp"
-#include "tribol/physics/PairIntegrals.hpp"
+#include "tribol/physics/integrals/PairIntegrals.hpp"
 #include "tribol/assembly/PairKernel.hpp"
 
 namespace {

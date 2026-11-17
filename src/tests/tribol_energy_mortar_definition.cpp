@@ -27,7 +27,7 @@
 #include "tribol/physics/QuadraturePointEnergyMortar.hpp"
 #include "tribol/integ/BasisFunction.hpp"
 #include "tribol/geom/OpposingNormalGap.hpp"
-#include "tribol/physics/PairIntegrals.hpp"
+#include "tribol/physics/integrals/PairIntegrals.hpp"
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"

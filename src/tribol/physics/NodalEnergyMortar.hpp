@@ -11,7 +11,7 @@
 #include "tribol/config.hpp"
 #include "tribol/enforcement/PenaltyEnergy.hpp"
 #include "tribol/geom/OpposingNormalGap.hpp"
-#include "tribol/physics/PairIntegrals.hpp"
+#include "tribol/physics/integrals/PairIntegrals.hpp"
 #include "tribol/integ/BasisFunction.hpp"
 
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )

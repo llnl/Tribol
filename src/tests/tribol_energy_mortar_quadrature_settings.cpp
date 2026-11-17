@@ -31,7 +31,7 @@
 #include "tribol/interface/mfem_tribol.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/physics/PairIntegrals.hpp"
+#include "tribol/physics/integrals/PairIntegrals.hpp"
 #include "tribol/physics/NodalEnergyMortar.hpp"
 #include "tribol/physics/QuadraturePointEnergyMortar.hpp"
 #include "tribol/physics/ContactFormulationFactory.hpp"

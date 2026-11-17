@@ -9,7 +9,7 @@
 
 #include "tribol/config.hpp"
 #include "tribol/geom/OpposingNormalGap.hpp"
-#include "tribol/physics/PairIntegrals.hpp"
+#include "tribol/physics/integrals/PairIntegrals.hpp"
 
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
 #include "tribol/assembly/PairEvaluationAssembly.hpp"

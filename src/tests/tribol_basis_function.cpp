@@ -20,6 +20,9 @@
 #include "axom/slic/core/SimpleLogger.hpp"
 
 #include "tribol/common/BasicTypes.hpp"
+#if defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP )
+#include "tribol/common/ArrayTypes.hpp"
+#endif
 #include "tribol/common/MdArray.hpp"
 #include "tribol/integ/BasisFunction.hpp"
 

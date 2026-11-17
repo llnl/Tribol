@@ -64,13 +64,14 @@ set(tribol_headers
     mesh/MethodCouplingData.hpp
     mesh/MfemData.hpp
 
+    physics/integrals/PairIntegrals.hpp
+    
     physics/AlignedMortar.hpp
     physics/CommonPlane.hpp
     physics/CommonPlaneFormulation.hpp
     physics/ContactFormulation.hpp
     physics/ContactFormulationFactory.hpp
     physics/Mortar.hpp
-    physics/PairIntegrals.hpp
     physics/NodalEnergyMortar.hpp
     physics/QuadraturePointEnergyMortar.hpp
     physics/Physics.hpp
