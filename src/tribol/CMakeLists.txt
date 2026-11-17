@@ -13,11 +13,11 @@ set(tribol_headers
 
     assembly/ElementBlockStorage.hpp
     assembly/EnzymePairDerivative.hpp
+    assembly/EvaluatePairs.hpp
     assembly/MfemMatrixAssembler.hpp
     assembly/MfemVectorAssembler.hpp
     assembly/PairEvaluationAssembly.hpp
     assembly/PairEvaluationBuffers.hpp
-    assembly/PairEvaluationKernels.hpp
     assembly/PairFunctionData.hpp
 
     common/ArrayTypes.hpp

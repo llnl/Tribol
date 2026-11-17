@@ -36,8 +36,8 @@
 #include "tribol/integ/PairQuadratureRuleGenerator.hpp"
 #include "tribol/assembly/ElementBlockStorage.hpp"
 #include "tribol/assembly/EnzymePairDerivative.hpp"
+#include "tribol/assembly/EvaluatePairs.hpp"
 #include "tribol/assembly/PairEvaluationBuffers.hpp"
-#include "tribol/assembly/PairEvaluationKernels.hpp"
 #include "tribol/assembly/PairFunctionData.hpp"
 
 namespace {
