@@ -162,15 +162,19 @@ static_assert( !PairFunctionType<WrongQuadraturePairFunction> );
 static_assert( !PairFunctionType<EmptyFirstGeometryPairFunction> );
 static_assert( !PairFunctionType<EmptySecondGeometryPairFunction> );
 
+using ProjectedEdgeRuleGenerator =
+    PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>;
+using PenaltyEnergy = PenaltyEnergyDensity<OpposingNormalGap>;
+
+static_assert( PairEnergyFunction<PenaltyEnergy, ProjectedEdgeRuleGenerator> );
+static_assert( PairGapFunction<OpposingNormalGap, ProjectedEdgeRuleGenerator> );
+static_assert( !PairTractionFunction<PenaltyEnergy, ProjectedEdgeRuleGenerator> );
+static_assert( !PairEnergyFunction<OpposingNormalGap, ProjectedEdgeRuleGenerator> );
+
 // Energy and nodal-integral functions accept two coordinate views with fixed sizes.
-static_assert(
-    PairFunctionType<
-        PairEnergyIntegral<PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>,
-                           PenaltyEnergyDensity<OpposingNormalGap>>> );
-static_assert(
-    PairFunctionType<
-        PairNodalGapIntegral<PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>,
-                             OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>> );
+static_assert( PairFunctionType<PairEnergyIntegral<ProjectedEdgeRuleGenerator, PenaltyEnergy>> );
+static_assert( PairFunctionType<PairNodalGapIntegral<ProjectedEdgeRuleGenerator, OpposingNormalGap,
+                                                      BasisFunction<EDGE, LINEAR_LAGRANGE>>> );
 
 /** @brief One-coordinate geometry caching a nonlinear coordinate expression. */
 struct SquaredCoordinateGeometry {

@@ -155,5 +155,20 @@ class PairQuadratureRuleGenerator {
       integration_surface_rule_generator_{};  ///< Owned generator; no generated points or weights are retained.
 };
 
+/**
+ * @brief Requires associated element geometries and local generation of a paired quadrature rule.
+ *
+ * Geometry and rule interfaces are checked where their data is consumed. This requirement checks the generator's C++
+ * interface; host/device execution and differentiation must be verified separately.
+ * @tparam Generator Type generating a local quadrature rule for two prepared element geometries.
+ */
+template <typename Generator>
+concept PairRuleGenerator =
+    requires( const Generator& generator, const typename Generator::Geometry1& geometry1,
+              const typename Generator::Geometry2& geometry2 ) {
+      typename Generator::Rule;
+      { generator.generate( geometry1, geometry2 ) } -> std::same_as<typename Generator::Rule>;
+    };
+
 }  // namespace tribol
 #endif

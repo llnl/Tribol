@@ -31,6 +31,17 @@ namespace {
 using namespace tribol;
 constexpr RealT tolerance = 1.0e-12;  ///< Absolute tolerance for coordinates, weights, and polynomial integrals.
 
+using ProjectedEdgePairGenerator =
+    PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
+
+/** @brief Hide paired generation while retaining the associated geometry and rule types. */
+struct PairGeneratorWithoutPairGeneration : ProjectedEdgePairGenerator {
+  void generate() const;
+};
+
+static_assert( PairRuleGenerator<ProjectedEdgePairGenerator> );
+static_assert( !PairRuleGenerator<PairGeneratorWithoutPairGeneration> );
+
 /** @brief Run local rule calculations in memory accessible to the selected backend. */
 class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
  protected:

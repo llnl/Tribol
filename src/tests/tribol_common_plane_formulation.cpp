@@ -34,15 +34,20 @@ namespace {
 using namespace tribol;
 constexpr RealT tolerance = 1.0e-12;  ///< Roundoff allowance for geometry and exact polynomial integrals.
 using Coordinates = MdArray<RealT, LinearEdgeGeometry::num_vertices, LinearEdgeGeometry::spatial_dim>;
+using CommonPlaneRuleGenerator =
+    PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<1>>;
+using CommonPlaneTraction = CommonPlanePenaltyTraction<CommonPlaneGap>;
 using CommonPlaneResidualValue =
-    PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<1>>,
-                         CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>::PairResidual;
+    PairTractionIntegral<CommonPlaneRuleGenerator, CommonPlaneTraction,
+                         BasisFunction<EDGE, LINEAR_LAGRANGE>>::PairResidual;
+
+static_assert( PairTractionFunction<CommonPlaneTraction, CommonPlaneRuleGenerator> );
+static_assert( !PairEnergyFunction<CommonPlaneTraction, CommonPlaneRuleGenerator> );
 
 // Common Plane exposes the same values and quadrature state required by the shared pair derivative calculations.
 static_assert(
-    PairFunctionType<
-        PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<1>>,
-                             CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>> );
+    PairFunctionType<PairTractionIntegral<CommonPlaneRuleGenerator, CommonPlaneTraction,
+                                          BasisFunction<EDGE, LINEAR_LAGRANGE>>> );
 
 #ifdef TRIBOL_USE_ENZYME
 /**

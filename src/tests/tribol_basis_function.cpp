@@ -33,6 +33,15 @@ constexpr tribol::RealT comparison_tolerance = 1.0e-12;
 constexpr tribol::RealT finite_difference_step = 1.0e-7;
 constexpr tribol::RealT finite_difference_tolerance = 1.0e-8;
 
+/** @brief Supply basis dimensions without the required value evaluation operation. */
+struct BasisWithoutEvaluation {
+  static constexpr int parametric_dim = 1;  ///< One parametric coordinate.
+  static constexpr int size_basis = 2;      ///< Two basis values.
+};
+
+static_assert( tribol::FiniteElementBasis<tribol::BasisFunction<tribol::EDGE, tribol::LINEAR_LAGRANGE>> );
+static_assert( !tribol::FiniteElementBasis<BasisWithoutEvaluation> );
+
 // TODO: Replace this test adapter when MeshData::Viewer can expose face nodal fields through connectivity without
 // copying the values into contiguous element storage.
 template <tribol::IndexT NumValuesPerNode>

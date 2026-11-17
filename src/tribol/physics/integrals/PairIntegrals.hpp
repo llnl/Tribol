@@ -21,23 +21,102 @@
 #ifndef SRC_TRIBOL_PHYSICS_PAIRINTEGRALS_HPP_
 #define SRC_TRIBOL_PHYSICS_PAIRINTEGRALS_HPP_
 
+#include <concepts>
+#include <type_traits>
+#include <utility>
+
 #include "tribol/assembly/PairEvaluation.hpp"
+#include "tribol/integ/BasisFunction.hpp"
+#include "tribol/integ/PairQuadratureRuleGenerator.hpp"
 
 namespace tribol {
 
+namespace detail {
+
+/** Pair geometry data prepared once and reused at every quadrature point. */
+template <typename Function, typename Generator>
+using PairGeometryData = std::remove_cvref_t<decltype( std::declval<const Function&>().computePairGeometryData(
+    std::declval<const typename Generator::Geometry1&>(),
+    std::declval<const typename Generator::Geometry2&>() ) )>;
+
+/** Common point-call interface used by traction and energy calculations. */
+template <typename Function, typename Generator, typename Value>
+concept PairPointFunction =
+    PairRuleGenerator<Generator> &&
+    requires( const Function& function, const typename Generator::Geometry1& geometry1,
+              const typename Generator::Geometry2& geometry2,
+              MdSpan<const RealT, Generator::Geometry1::parametric_dim> parametric_coords1,
+              MdSpan<const RealT, Generator::Geometry2::parametric_dim> parametric_coords2,
+              const PairGeometryData<Function, Generator>& pair_geometry_data ) {
+      {
+        function( geometry1.position( parametric_coords1 ), geometry2.position( parametric_coords2 ),
+                  parametric_coords1, parametric_coords2, pair_geometry_data )
+      } -> std::same_as<QuadraturePointValue<Value>>;
+    };
+
+}  // namespace detail
+
+/**
+ * @brief Requires pair geometry preparation and vector traction evaluation at one paired quadrature point.
+ *
+ * These requirements check C++ expressions; host/device execution, differentiation, activation, and traction sign must
+ * be verified separately.
+ * @tparam Function Fixed traction calculation.
+ * @tparam Generator Pair quadrature generator defining both element geometries.
+ */
+template <typename Function, typename Generator>
+concept PairTractionFunction =
+    detail::PairPointFunction<Function, Generator,
+                              MdArray<RealT, Generator::Geometry1::spatial_dim>>;
+
+/**
+ * @brief Requires pair geometry preparation and scalar energy-density evaluation at one paired quadrature point.
+ *
+ * These requirements check C++ expressions; host/device execution, differentiation, activation, and physical units
+ * must be verified separately.
+ * @tparam Function Fixed energy-density calculation.
+ * @tparam Generator Pair quadrature generator defining both element geometries.
+ */
+template <typename Function, typename Generator>
+concept PairEnergyFunction = detail::PairPointFunction<Function, Generator, RealT>;
+
+/**
+ * @brief Requires pair geometry preparation and scalar gap evaluation at one paired quadrature point.
+ *
+ * Gap evaluation receives physical points and the prepared pair data but does not receive parametric coordinates.
+ * These requirements check C++ expressions; host/device execution, differentiation, and the gap sign convention must
+ * be verified separately.
+ * @tparam Function Fixed gap calculation.
+ * @tparam Generator Pair quadrature generator defining both element geometries.
+ */
+template <typename Function, typename Generator>
+concept PairGapFunction =
+    PairRuleGenerator<Generator> &&
+    requires( const Function& function, const typename Generator::Geometry1& geometry1,
+              const typename Generator::Geometry2& geometry2,
+              MdSpan<const RealT, Generator::Geometry1::parametric_dim> parametric_coords1,
+              MdSpan<const RealT, Generator::Geometry2::parametric_dim> parametric_coords2,
+              const detail::PairGeometryData<Function, Generator>& pair_geometry_data ) {
+      {
+        function( geometry1.position( parametric_coords1 ), geometry2.position( parametric_coords2 ),
+                  pair_geometry_data )
+      } -> std::same_as<RealT>;
+    };
+
 /**
  * @brief Integrate a supplied vector traction against independent bases on both geometries, with opposite signs.
- * @tparam PairRuleGenerator Generates paired parametric coordinates and physical weights from current geometries.
+ * @tparam RuleGenerator Generates paired parametric coordinates and physical weights from current geometries.
  * @tparam TractionFunction Fixed traction calculation supporting computePairGeometryData() and the point-call interface
  * above.
  * @tparam Basis1 Residual basis on geometry1.
  * @tparam Basis2 Residual basis on geometry2; it may differ from Basis1.
  */
-template <typename PairRuleGenerator, typename TractionFunction, typename Basis1, typename Basis2 = Basis1>
+template <PairRuleGenerator RuleGenerator, PairTractionFunction<RuleGenerator> TractionFunction,
+          FiniteElementBasis Basis1, FiniteElementBasis Basis2 = Basis1>
 class PairTractionIntegral {
  public:
-  using Geometry1 = typename PairRuleGenerator::Geometry1;  ///< First element geometry.
-  using Geometry2 = typename PairRuleGenerator::Geometry2;  ///< Second element geometry.
+  using Geometry1 = typename RuleGenerator::Geometry1;  ///< First element geometry.
+  using Geometry2 = typename RuleGenerator::Geometry2;  ///< Second element geometry.
   using Coords1 = typename Geometry1::Coords;               ///< Geometry1 coordinate view.
   using Coords2 = typename Geometry2::Coords;               ///< Geometry2 coordinate view.
   /**
@@ -70,7 +149,7 @@ class PairTractionIntegral {
    * @param rule_generator Current-geometry quadrature generator.
    * @param traction_function Point traction and activation calculation.
    */
-  TRIBOL_HOST_DEVICE PairTractionIntegral( PairRuleGenerator rule_generator, TractionFunction traction_function )
+  TRIBOL_HOST_DEVICE PairTractionIntegral( RuleGenerator rule_generator, TractionFunction traction_function )
       : rule_generator_( rule_generator ), traction_function_( traction_function )
   {
   }
@@ -122,21 +201,21 @@ class PairTractionIntegral {
   }
 
  private:
-  PairRuleGenerator rule_generator_;    ///< Owned quadrature generator.
+  RuleGenerator rule_generator_;        ///< Owned quadrature generator.
   TractionFunction traction_function_;  ///< Owned point traction and activation calculation.
 };
 
 /**
  * @brief Integrate a supplied scalar energy density over the current pair overlap.
- * @tparam PairRuleGenerator Generates paired parametric coordinates and physical weights.
+ * @tparam RuleGenerator Generates paired parametric coordinates and physical weights.
  * @tparam EnergyFunction Fixed energy density calculation supporting computePairGeometryData() and the point-call
  * interface above.
  */
-template <typename PairRuleGenerator, typename EnergyFunction>
+template <PairRuleGenerator RuleGenerator, PairEnergyFunction<RuleGenerator> EnergyFunction>
 class PairEnergyIntegral {
  public:
-  using Geometry1 = typename PairRuleGenerator::Geometry1;  ///< First element geometry.
-  using Geometry2 = typename PairRuleGenerator::Geometry2;  ///< Second element geometry.
+  using Geometry1 = typename RuleGenerator::Geometry1;  ///< First element geometry.
+  using Geometry2 = typename RuleGenerator::Geometry2;  ///< Second element geometry.
   using Coords1 = typename Geometry1::Coords;               ///< Geometry1 coordinate view.
   using Coords2 = typename Geometry2::Coords;               ///< Geometry2 coordinate view.
   static constexpr IndexT size_values = 1;                  ///< Scalar pair energy.
@@ -165,7 +244,7 @@ class PairEnergyIntegral {
    * @param rule_generator Current-geometry quadrature generator.
    * @param energy_function Point energy density and activation calculation.
    */
-  TRIBOL_HOST_DEVICE PairEnergyIntegral( PairRuleGenerator rule_generator, EnergyFunction energy_function )
+  TRIBOL_HOST_DEVICE PairEnergyIntegral( RuleGenerator rule_generator, EnergyFunction energy_function )
       : rule_generator_( rule_generator ), energy_function_( energy_function )
   {
   }
@@ -204,7 +283,7 @@ class PairEnergyIntegral {
   }
 
  private:
-  PairRuleGenerator rule_generator_;  ///< Owned quadrature generator.
+  RuleGenerator rule_generator_;  ///< Owned quadrature generator.
   EnergyFunction energy_function_;    ///< Owned point energy density and activation calculation.
 };
 
@@ -277,17 +356,18 @@ class PairNodalGapValue {
 
 /**
  * @brief Integrate weighted gaps and tributary areas against a nodal basis on geometry1, before contact activation.
- * @tparam PairRuleGenerator Generates paired parametric coordinates and physical weights.
+ * @tparam RuleGenerator Generates paired parametric coordinates and physical weights.
  * @tparam GapDefinition Fixed gap supporting computePairGeometryData(geometry1,geometry2) and
  * (point1,point2,pair_geometry_data).
  * @tparam NodalBasis Scalar nodal basis on geometry1; current nodal assembly requires basis functions to match FE
  * nodes.
  */
-template <typename PairRuleGenerator, typename GapDefinition, typename NodalBasis>
+template <PairRuleGenerator RuleGenerator, PairGapFunction<RuleGenerator> GapDefinition,
+          FiniteElementBasis NodalBasis>
 class PairNodalGapIntegral {
  public:
-  using Geometry1 = typename PairRuleGenerator::Geometry1;     ///< First element geometry.
-  using Geometry2 = typename PairRuleGenerator::Geometry2;     ///< Second element geometry.
+  using Geometry1 = typename RuleGenerator::Geometry1;         ///< First element geometry.
+  using Geometry2 = typename RuleGenerator::Geometry2;         ///< Second element geometry.
   using Coords1 = typename Geometry1::Coords;                  ///< Geometry1 coordinate view.
   using Coords2 = typename Geometry2::Coords;                  ///< Geometry2 coordinate view.
   static constexpr IndexT num_nodes = NodalBasis::size_basis;  ///< Nodes carrying gap and area integrals.
@@ -318,7 +398,7 @@ class PairNodalGapIntegral {
    * @param rule_generator Current-geometry quadrature generator.
    * @param gap Gap calculation and its geometry preparation.
    */
-  TRIBOL_HOST_DEVICE PairNodalGapIntegral( PairRuleGenerator rule_generator, GapDefinition gap = {} )
+  TRIBOL_HOST_DEVICE PairNodalGapIntegral( RuleGenerator rule_generator, GapDefinition gap = {} )
       : rule_generator_( rule_generator ), gap_( gap )
   {
   }
@@ -360,7 +440,7 @@ class PairNodalGapIntegral {
   }
 
  private:
-  PairRuleGenerator rule_generator_;  ///< Owned quadrature generator.
+  RuleGenerator rule_generator_;  ///< Owned quadrature generator.
   GapDefinition gap_;                 ///< Owned gap calculation.
 };
 

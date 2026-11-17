@@ -7,6 +7,8 @@
 #define SRC_TRIBOL_INTEG_BASISFUNCTION_HPP_
 
 #include <cmath>
+#include <concepts>
+#include <type_traits>
 
 #include "tribol/common/Enzyme.hpp"
 #include "tribol/common/MdArray.hpp"
@@ -274,6 +276,26 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline void evalQuadraticLagrange1DDeriv
  */
 template <InterfaceElementType Element, FaceOrderType Order>
 struct BasisFunction;
+
+/**
+ * @brief Requires a fixed-size scalar basis that can evaluate its values at one parametric point.
+ *
+ * The compile-time dimensions size local arrays used by integration kernels. Derivative-specific algorithms impose
+ * their additional requirements where derivatives are consumed. These requirements check C++ expressions; host/device
+ * execution and differentiability must be verified separately.
+ * @tparam Basis Type providing compile-time dimensions and static basis evaluation.
+ */
+template <typename Basis>
+concept FiniteElementBasis =
+    requires {
+      typename std::integral_constant<int, Basis::parametric_dim>;
+      typename std::integral_constant<int, Basis::size_basis>;
+      requires( Basis::parametric_dim > 0 && Basis::size_basis > 0 );
+    } &&
+    requires( MdSpan<const RealT, Basis::parametric_dim> parametric_coords,
+              MdSpan<RealT, Basis::size_basis> basis_values ) {
+      { Basis::eval( parametric_coords, basis_values ) } -> std::same_as<void>;
+    };
 
 template <>
 struct BasisFunction<EDGE, LINEAR_LAGRANGE> : FaceElementTraits<EDGE, LINEAR_LAGRANGE> {
