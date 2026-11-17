@@ -16,7 +16,6 @@
 
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
-#include "tribol/common/MdArray.hpp"
 #include "tribol/integ/QuadratureCommon.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"

@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include "tribol/config.hpp"
+#include "tribol/config.hpp"  // IWYU pragma: keep
 #include "tribol/common/BasicTypes.hpp"
 
 #include <gtest/gtest.h>
@@ -17,7 +17,7 @@
 // MFEM includes
 #include "mfem.hpp"
 
-#include "axom/slic.hpp"
+#include "axom/slic/core/SimpleLogger.hpp"
 
 #include "shared/mesh/MeshBuilder.hpp"
 

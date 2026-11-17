@@ -19,9 +19,7 @@
 
 #include "axom/slic/core/SimpleLogger.hpp"
 
-#include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/BasicTypes.hpp"
-#include "tribol/common/LoopExec.hpp"
 #include "tribol/common/MdArray.hpp"
 #include "tribol/integ/BasisFunction.hpp"
 

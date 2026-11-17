@@ -11,7 +11,6 @@
 #include "tribol/config.hpp"
 #include "tribol/enforcement/PenaltyEnergy.hpp"
 #include "tribol/geom/OpposingNormalGap.hpp"
-#include "tribol/integ/PairQuadratureRuleGenerator.hpp"
 #include "tribol/physics/PairIntegrals.hpp"
 #include "tribol/integ/BasisFunction.hpp"
 

@@ -8,12 +8,9 @@
 #include "tribol/utils/TestUtils.hpp"
 #include "tribol/utils/Math.hpp"
 #include "tribol/common/Parameters.hpp"
-#include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/physics/CommonPlane.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/geom/CompGeom.hpp"
 
 #ifdef TRIBOL_USE_UMPIRE
@@ -22,17 +19,14 @@
 #endif
 
 // Axom includes
-#include "axom/slic.hpp"
+#include "axom/slic/core/SimpleLogger.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 
 // gtest includes
 #include "gtest/gtest.h"
 
 // c++ includes
 #include <cmath>  // std::abs, std::cos, std::sin
-#include <iostream>
-#include <sstream>
-#include <iomanip>
-#include <fstream>
 
 using RealT = tribol::RealT;
 

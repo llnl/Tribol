@@ -14,7 +14,6 @@
 
 // Tribol includes
 #include "tribol/common/Parameters.hpp"
-#include "tribol/integ/FE.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/MfemData.hpp"

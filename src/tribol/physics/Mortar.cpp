@@ -6,7 +6,6 @@
 #include "Mortar.hpp"
 
 #include "tribol/mesh/MethodCouplingData.hpp"
-#include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/geom/CompGeom.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
@@ -19,7 +18,7 @@
 #include "tribol/utils/Math.hpp"
 
 // Axom includes
-#include "axom/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 
 namespace tribol {
 

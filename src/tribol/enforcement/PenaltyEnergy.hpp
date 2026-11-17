@@ -12,7 +12,6 @@
 
 #include <cmath>
 #include "tribol/common/BasicTypes.hpp"
-#include "tribol/common/Enzyme.hpp"
 
 namespace tribol {
 

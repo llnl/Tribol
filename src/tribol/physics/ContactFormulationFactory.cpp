@@ -18,8 +18,8 @@
 #include <utility>
 #include <cmath>
 #include <stdexcept>
+#include "tribol/geom/OffsetGap.hpp"
 #include "tribol/physics/CommonPlaneFormulation.hpp"
-#include "tribol/assembly/PairEvaluationAssembly.hpp"
 #include "tribol/enforcement/PenaltyStiffness.hpp"
 
 namespace tribol {

@@ -13,14 +13,15 @@
 #include "mfem.hpp"
 
 // Axom includes
-#include "axom/slic.hpp"
+#include "axom/slic/core/MessageLevel.hpp"
+#include "axom/slic/interface/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 
 // Tribol includes
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/Atomics.hpp"
 #include "tribol/geom/ElementNormal.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/utils/ContactPlaneOutput.hpp"

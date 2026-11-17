@@ -7,7 +7,6 @@
 #define SRC_TRIBOL_COMMON_LOOPEXEC_HPP_
 
 // C++ includes
-#include <type_traits>
 #include <stdexcept>
 #include <utility>
 
@@ -15,13 +14,18 @@
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/ExecModel.hpp"
 
+#if defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP )
+#include <type_traits>
+#endif
+
 // Axom includes
-#include "axom/core/execution/execution_space.hpp"
-#include "axom/slic.hpp"
+// Public execution headers provide the policies for each enabled backend.
+#include "axom/core/execution/execution_space.hpp"  // IWYU pragma: keep
+#include "axom/slic/interface/slic_macros.hpp"
 
 // RAJA includes
 #ifdef TRIBOL_USE_RAJA
-#include "RAJA/RAJA.hpp"
+#include "RAJA/RAJA.hpp"  // IWYU pragma: keep
 #endif
 
 namespace tribol {

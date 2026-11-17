@@ -8,9 +8,10 @@
 
 #include <cmath>
 
-#include "axom/primal.hpp"
-#include "axom/slic.hpp"
-#include "axom/spin.hpp"
+#include "axom/primal/geometry/BoundingBox.hpp"
+#include "axom/primal/geometry/Point.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
+#include "axom/spin/ImplicitGrid.hpp"
 
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"

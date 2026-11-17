@@ -6,7 +6,7 @@
 #ifndef SRC_TRIBOL_GEOM_COMPGEOM_HPP_
 #define SRC_TRIBOL_GEOM_COMPGEOM_HPP_
 
-#include "axom/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/mesh/MeshData.hpp"

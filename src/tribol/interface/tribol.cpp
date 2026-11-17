@@ -15,24 +15,17 @@
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 
-// #include "tribol/geom/CompGeom.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
-
 #include "tribol/physics/Physics.hpp"
 
 #include "tribol/search/InterfacePairFinder.hpp"
 
-#include "tribol/utils/Math.hpp"
-
 // Axom includes
-#include "axom/core.hpp"
-#include "axom/slic.hpp"
+#include "axom/core/utilities/FileUtilities.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 
 // C/C++ includes
 
 #include <string>
-#include <unordered_map>
-#include <fstream>
 
 //------------------------------------------------------------------------------
 // Interface Implementation

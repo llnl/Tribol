@@ -8,7 +8,7 @@
 #include <memory>
 #include <utility>
 
-#include "axom/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 
 #include "tribol/common/Atomics.hpp"
 #include "tribol/common/ExecModel.hpp"

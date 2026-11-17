@@ -10,13 +10,15 @@
 #include <iostream>
 
 // Axom includes
-#include "axom/slic.hpp"
-#include "axom/fmt.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
+#include "axom/fmt/format.h"
+#include "axom/fmt/ranges.h"
 
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/Atomics.hpp"
-#include "tribol/geom/ElementNormal.hpp"
+// Required by the explicit computeFaceData instantiations.
+#include "tribol/geom/ElementNormal.hpp"  // IWYU pragma: keep
 #include "tribol/integ/BasisFunction.hpp"
 #include "tribol/utils/Math.hpp"
 

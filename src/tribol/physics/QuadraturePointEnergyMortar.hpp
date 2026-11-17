@@ -9,7 +9,6 @@
 
 #include "tribol/config.hpp"
 #include "tribol/geom/OpposingNormalGap.hpp"
-#include "tribol/integ/PairQuadratureRuleGenerator.hpp"
 #include "tribol/physics/PairIntegrals.hpp"
 
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )

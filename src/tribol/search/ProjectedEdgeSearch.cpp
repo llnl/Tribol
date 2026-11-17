@@ -10,7 +10,7 @@
 
 #include "tribol/search/ProjectedEdgeSearch.hpp"
 
-#include "axom/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 #include "tribol/common/Atomics.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/search/InterfacePairChecks.hpp"

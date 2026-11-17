@@ -11,7 +11,7 @@
 
 #include <iostream>
 
-#include "tribol/config.hpp"
+#include "tribol/config.hpp"  // IWYU pragma: keep
 #include "tribol/common/BasicTypes.hpp"
 
 #include "gtest/gtest.h"

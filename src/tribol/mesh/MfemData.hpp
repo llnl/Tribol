@@ -12,26 +12,30 @@
 #ifdef BUILD_REDECOMP
 
 // C++ includes
+#include <functional>
+#include <memory>
 #include <set>
-#include <utility>
 #include <vector>
 
 // MFEM includes
 #include "mfem.hpp"
 
 // Axom includes
-#include "axom/core.hpp"
+#include "axom/core/ArrayView.hpp"
 
 // Shared includes
 #include "shared/math/ParSparseMat.hpp"
 
 // Redecomp includes
-#include "redecomp/redecomp.hpp"
+#include "redecomp/RedecompMesh.hpp"
+#include "redecomp/RedecompTransfer.hpp"
+#include "redecomp/transfer/MatrixTransfer.hpp"
 
 // Tribol includes
+#include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/BasicTypes.hpp"
+#include "tribol/common/ExecModel.hpp"
 #include "tribol/common/Parameters.hpp"
-#include "tribol/mesh/MethodCouplingData.hpp"
 
 namespace tribol {
 

@@ -16,7 +16,6 @@
 #include "tribol/assembly/MfemMatrixAssembler.hpp"
 #include "tribol/physics/ContactFormulation.hpp"
 #include "tribol/common/GlobalScalarAssembler.hpp"
-#include "tribol/assembly/PairContribution.hpp"
 #include "tribol/assembly/PairKernel.hpp"
 #include "tribol/integ/QuadratureCommon.hpp"
 
