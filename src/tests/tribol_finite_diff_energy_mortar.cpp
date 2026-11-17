@@ -16,7 +16,7 @@
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
 #include "tribol/integ/PairQuadratureRuleGenerator.hpp"
-#include "tribol/assembly/PairEvaluation.hpp"
+#include "tribol/assembly/EnzymePairDerivative.hpp"
 
 namespace {
 using namespace tribol;

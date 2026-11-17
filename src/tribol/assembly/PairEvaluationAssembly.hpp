@@ -16,7 +16,7 @@
 #include "tribol/assembly/MfemMatrixAssembler.hpp"
 #include "tribol/physics/ContactFormulation.hpp"
 #include "tribol/common/GlobalScalarAssembler.hpp"
-#include "tribol/assembly/PairKernel.hpp"
+#include "tribol/assembly/PairEvaluationKernels.hpp"
 #include "tribol/integ/QuadratureCommon.hpp"
 
 namespace tribol {
@@ -105,11 +105,10 @@ std::array<AssembledField, NumFields> assembleNodalValuesAndJacobians(
  * @throws std::length_error Required storage exceeds the supported index range; no result is returned.
  */
 template <ExecutionMode Exec, IndexT SizeCoords, typename ForceReader, typename JacobianReader>
-ContactFormulationResult assemblePairResidualStiffness( const ArrayT<InterfacePair>& pairs,
-                                                        MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                                                        const MfemMeshData& mesh_data,
-                                                        const MfemJacobianData& jacobian_data,
-                                                        ForceReader read_force, JacobianReader read_jacobian )
+ContactFormulationResult assemblePairResidualStiffness( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
+                                                        MeshData::Viewer mesh2, const MfemMeshData& mesh_data,
+                                                        const MfemJacobianData& jacobian_data, ForceReader read_force,
+                                                        JacobianReader read_jacobian )
 {
   static_assert( SizeCoords % 2 == 0 );
   constexpr IndexT size_geom_coords = SizeCoords / 2;
@@ -212,9 +211,11 @@ ContactFormulationResult evaluateAndAssemblePairResidualStiffness( const ArrayT<
  * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
-ContactFormulationResult evaluateAndAssemblePairEnergyResidualStiffness(
-    const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-    const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data, const PairFunction& pair_function )
+ContactFormulationResult evaluateAndAssemblePairEnergyResidualStiffness( const ArrayT<InterfacePair>& pairs,
+                                                                         MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                                                         const MfemMeshData& mesh_data,
+                                                                         const MfemJacobianData& jacobian_data,
+                                                                         const PairFunction& pair_function )
 {
   static_assert( PairFunction::size_values == 1, "Pair energies must have one scalar output." );
   auto all_pair_values = evaluatePairValuesJacobiansAndHessians<Exec>( pairs, mesh1, mesh2, pair_function );

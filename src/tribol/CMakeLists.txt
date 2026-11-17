@@ -11,12 +11,14 @@ endif()
 ## list of headers
 set(tribol_headers
 
+    assembly/ElementBlockStorage.hpp
+    assembly/EnzymePairDerivative.hpp
     assembly/MfemMatrixAssembler.hpp
     assembly/MfemVectorAssembler.hpp
-    assembly/PairContribution.hpp
-    assembly/PairEvaluation.hpp
     assembly/PairEvaluationAssembly.hpp
-    assembly/PairKernel.hpp
+    assembly/PairEvaluationBuffers.hpp
+    assembly/PairEvaluationKernels.hpp
+    assembly/PairFunctionData.hpp
 
     common/ArrayTypes.hpp
     common/Atomics.hpp

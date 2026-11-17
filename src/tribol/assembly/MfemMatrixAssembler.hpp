@@ -14,7 +14,7 @@
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/MdArray.hpp"
 #include "tribol/mesh/MfemData.hpp"
-#include "tribol/assembly/PairContribution.hpp"
+#include "tribol/assembly/ElementBlockStorage.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
 

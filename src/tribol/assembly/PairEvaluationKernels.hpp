@@ -11,16 +11,17 @@
  * arrays are active inputs for differentiation. Jacobian columns and Hessian rows/columns follow geometry1
  * node, then value-index order, followed by geometry2 order.
  */
-#ifndef SRC_TRIBOL_ASSEMBLY_PAIRKERNEL_HPP_
-#define SRC_TRIBOL_ASSEMBLY_PAIRKERNEL_HPP_
+#ifndef SRC_TRIBOL_ASSEMBLY_PAIREVALUATIONKERNELS_HPP_
+#define SRC_TRIBOL_ASSEMBLY_PAIREVALUATIONKERNELS_HPP_
 
+#include "tribol/assembly/EnzymePairDerivative.hpp"
+#include "tribol/assembly/PairEvaluationBuffers.hpp"
+#include "tribol/assembly/PairFunctionData.hpp"
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/integ/QuadratureCommon.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/assembly/PairContribution.hpp"
-#include "tribol/assembly/PairEvaluation.hpp"
 
 namespace tribol {
 /**
@@ -246,4 +247,4 @@ PairValueJacobianHessianBuffer<PairFunction::size_coords> evaluatePairValuesJaco
 
 }  // namespace tribol
 
-#endif  // SRC_TRIBOL_ASSEMBLY_PAIRKERNEL_HPP_
+#endif  // SRC_TRIBOL_ASSEMBLY_PAIREVALUATIONKERNELS_HPP_

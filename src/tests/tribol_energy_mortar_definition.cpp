@@ -34,9 +34,11 @@
 #include "tribol/geom/OffsetGap.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
 #include "tribol/integ/PairQuadratureRuleGenerator.hpp"
-#include "tribol/assembly/PairContribution.hpp"
-#include "tribol/assembly/PairEvaluation.hpp"
-#include "tribol/assembly/PairKernel.hpp"
+#include "tribol/assembly/ElementBlockStorage.hpp"
+#include "tribol/assembly/EnzymePairDerivative.hpp"
+#include "tribol/assembly/PairEvaluationBuffers.hpp"
+#include "tribol/assembly/PairEvaluationKernels.hpp"
+#include "tribol/assembly/PairFunctionData.hpp"
 
 namespace {
 using namespace tribol;
@@ -174,7 +176,7 @@ static_assert( !PairEnergyFunction<OpposingNormalGap, ProjectedEdgeRuleGenerator
 // Energy and nodal-integral functions accept two coordinate views with fixed sizes.
 static_assert( PairFunctionType<PairEnergyIntegral<ProjectedEdgeRuleGenerator, PenaltyEnergy>> );
 static_assert( PairFunctionType<PairNodalGapIntegral<ProjectedEdgeRuleGenerator, OpposingNormalGap,
-                                                      BasisFunction<EDGE, LINEAR_LAGRANGE>>> );
+                                                     BasisFunction<EDGE, LINEAR_LAGRANGE>>> );
 
 /** @brief One-coordinate geometry caching a nonlinear coordinate expression. */
 struct SquaredCoordinateGeometry {
