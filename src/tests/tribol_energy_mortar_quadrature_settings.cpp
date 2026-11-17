@@ -326,65 +326,6 @@ TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
   }
 }
 
-// Scalar force-only evaluation must match the energy/Jacobian path while leaving matrix outputs absent.
-TEST_P( EnergyMortarQuadratureSettingsTest, quadrature_force_only_matches_energy_and_force )
-{
-  using namespace tribol;
-  if ( std::get<0>( GetParam() ) != EnforcementLocation::QuadraturePoint ) {
-    GTEST_SKIP() << "This check requires quadrature-point energy.";
-  }
-  updateMfemParallelDecomposition( 1, true );
-  auto& cs = CouplingSchemeManager::getInstance().at( 0 );
-  const auto mesh1 = cs.getMesh1().getView();
-  const auto mesh2 = cs.getMesh2().getView();
-  const auto baseline = cs.getContactFormulation()->computeNodalForces( mesh1, mesh2 );
-  ASSERT_TRUE( baseline.energy.has_value() );
-  ASSERT_GT( *baseline.energy, 0.0 );
-  struct ForceOnlyResults {
-    ContactFormulationResult empty;   ///< Result for an empty accepted-pair list.
-    ContactFormulationResult active;  ///< Result for the searched contact pairs.
-  };
-  for ( const auto mode : { ExecutionMode::Sequential
-#ifdef TRIBOL_USE_OPENMP
-                            ,
-                            ExecutionMode::OpenMP
-#endif
-        } ) {
-    SCOPED_TRACE( static_cast<int>( mode ) );
-    auto results = dispatchExecutionMode( mode, [&]<ExecutionMode Exec>() {
-      return createWithQuadratureRuleGenerator(
-          quadratureOrder(), SmoothedProjectedEdgeMapping{}, [&]( auto rule_generator ) -> ForceOnlyResults {
-            PairEnergyIntegral<decltype( rule_generator ), PenaltyEnergyDensity<OffsetGap<OpposingNormalGap>>>
-                pair_integral{ std::move( rule_generator ), { 100.0, OffsetGap{ OpposingNormalGap{}, 0.0 } } };
-            const ArrayT<InterfacePair> empty_pairs( 0, 0, cs.getMesh1().getAllocatorId() );
-            auto empty =
-                evaluateAndAssemblePairEnergy<Exec>( empty_pairs, mesh1, mesh2, *cs.getMfemMeshData(), pair_integral );
-            auto coarse = createCoarseSearch( cs.spatialDim(), cs.getBinningMethod(), mode,
-                                              cs.getEffectiveBinningProximityScale(), 0.0 );
-            auto refined = std::make_unique<ProjectedEdgeSearch>( mode, false );
-            const auto pairs = PairListBuilder{ std::move( coarse ), std::move( refined ) }.build( mesh1, mesh2 );
-            auto active =
-                evaluateAndAssemblePairEnergy<Exec>( pairs, mesh1, mesh2, *cs.getMfemMeshData(), pair_integral );
-            return { std::move( empty ), std::move( active ) };
-          } );
-    } );
-    ASSERT_NE( results.empty.force, nullptr );
-    ASSERT_TRUE( results.empty.energy.has_value() );
-    EXPECT_EQ( *results.empty.energy, 0.0 );
-    EXPECT_EQ( results.empty.force->Norml2(), 0.0 );
-    EXPECT_EQ( results.empty.df_dx, nullptr );
-    auto& result = results.active;
-    ASSERT_NE( result.force, nullptr );
-    ASSERT_TRUE( result.energy.has_value() );
-    EXPECT_NEAR( *result.energy, *baseline.energy, 1.0e-11 );
-    result.force->Add( -1.0, *baseline.force );
-    EXPECT_LT( result.force->Norml2(), 1.0e-11 );
-    EXPECT_EQ( result.df_dx, nullptr );
-    EXPECT_EQ( result.gap, nullptr );
-    EXPECT_EQ( result.pressure, nullptr );
-  }
-}
-
 // Unsupported locations must leave the selected formulation and its transfer fields unchanged.
 TEST_P( EnergyMortarQuadratureSettingsTest, rejects_invalid_location_without_rebuilding )
 {
