@@ -7,6 +7,8 @@
 #ifndef SRC_TRIBOL_PHYSICS_COMMONPLANEFORMULATION_HPP_
 #define SRC_TRIBOL_PHYSICS_COMMONPLANEFORMULATION_HPP_
 
+#include <utility>
+
 #include "tribol/config.hpp"
 #include "tribol/geom/CommonPlaneEdgeMapping.hpp"
 #include "tribol/geom/CommonPlaneGap.hpp"
@@ -15,7 +17,6 @@
 #include "tribol/physics/integrals/PairIntegrals.hpp"
 #include "tribol/physics/ContactFormulation.hpp"
 #include "tribol/search/PairListBuilder.hpp"
-#include <utility>
 
 namespace tribol {
 
@@ -24,7 +25,7 @@ namespace tribol {
  */
 template <typename GapDefinition = CommonPlaneGap>
 struct CommonPlanePenaltyTraction {
-  RealT penalty;        ///< Fixed effective penalty stiffness.
+  RealT penalty;        ///< Fixed penalty stiffness per area.
   GapDefinition gap{};  ///< Owned gap configuration.
 
   /** @brief Compute the common line once for the current pair.
@@ -79,7 +80,7 @@ template <ExecutionMode Exec, typename PairRuleGenerator, typename GapDefinition
 class CommonPlaneResidualFormulation final : public ContactFormulation {
  public:
   /**
-   * @brief Construct the penalty traction integral, own the pair search, and reference displacement transfer data.
+   * @brief Construct the penalty traction integral, own the pair search, and displacement transfer data.
    * @param mesh_data Displacement transfer data; must outlive this formulation.
    * @param rule_generator Configured pair quadrature generator, retained by value.
    * @param penalty Fixed effective penalty stiffness.
