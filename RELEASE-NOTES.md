@@ -73,9 +73,42 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Numerical coordinates, fields, matrix entries, and parameters consistently use `RealT` across Tribol, shared helpers,
+  Redecomp, examples, and tests. Public C++ declarations retain their existing types because `RealT` aliases `double`;
+  generated C/Fortran interfaces retain their concrete types. Single precision remains unsupported.
+- `ContactFormulation` is now stateless: `computeNodalGaps()` and `computeNodalForces()` return a caller-owned
+  `ContactFormulationResult` instead of updating internal state read through `getMfemForce()`, `getMfemGap()`,
+  `getMfemPressure()`, `getMfemDfDx()`, `getMfemDgDx()`, `getMfemDfDp()`, `getEnergy()`, and `computeTimeStep()`.
+  `EnergyMortar` and `EnergyMortarAdapter` are replaced by `NodalPenaltyEnergyMortar`,
+  `NodalLagrangeMultiplierEnergyMortar`, and `QuadraturePointEnergyMortar`.
+- `ENERGY_MORTAR` penalty enforcement is selected by `PENALTY` enforcement, not by setting kinematic penalty options on
+  a Lagrange multiplier scheme. A penalty scheme has no formulation until `setMfemKinematicConstantPenalty()` supplies
+  both constants; `update()` throws `std::logic_error` until then. Pressure/gap fields are created only for nodal
+  enforcement, and quadrature-point `ENERGY_MORTAR` requires penalty enforcement.
+- `getMfemDfDx()`, `getMfemDfDp()`, `getMfemWeightedGapJacobian()`, and `getMfemBlockJacobian()` return deep copies of
+  the latest formulation result. `getMfemGap()` throws `std::logic_error` for schemes with a `ContactFormulation`; use
+  `getMfemContactGap()` instead.
+- Renamed `getMfemDgDx()` to `getMfemWeightedGapJacobian()`. For penalty enforcement it returns the weighted-gap
+  Jacobian with opening rows zeroed, not the derivative of the normalized gap.
+- Renamed `spatialDimension()` to `spatialDim()` on `MeshData`, `MeshData::Viewer`, `CouplingScheme`, and
+  `CouplingScheme::Viewer`.
+- `PairQuadratureRule` and `createWithQuadratureRule()` are renamed to `PairQuadratureRuleGenerator` and
+  `createWithQuadratureRuleGenerator()` in `QuadratureRuleGeneratorFactory.hpp`. Pair quadrature is generated locally
+  for each pair calculation; frozen integration-surface quadrature is no longer supported.
+- Geometry and basis traits use `parametric_dim`, `spatial_dim`, `num_vertices`, and `num_nodes`. Basis functions add
+  `size_basis`; `ParentCoords` is renamed to `ParametricCoords`, `getParentNodeCoords()` to
+  `getParametricNodeCoords()`, `evalParentDerivatives()` to `evalParametricDerivatives()`, and `getFaceNodeCount()` to
+  `numberOfFaceNodes()`.
+- Configuring Enzyme with NVCC is now a CMake error; Enzyme with CUDA requires Clang-CUDA.
 - `tribol::registerMesh()` now requires a `tribol::FaceOrderType` argument after `element_type`. Existing callers must
   pass `tribol::LINEAR_LAGRANGE` to retain the previous linear-face behavior.
 - Tribol now requires C++20 or newer.
+- Renamed the public element values `LINEAR_EDGE`, `LINEAR_TRIANGLE`, `LINEAR_QUAD`, `LINEAR_TET`, and `LINEAR_HEX` to
+  `EDGE`, `TRIANGLE`, `QUAD`, `TET`, and `HEX`; element shape and finite element order are now selected separately.
+- Renamed `FaceOrderType::LINEAR` to `FaceOrderType::LINEAR_LAGRANGE` and `ContactModel::COULOMB` to
+  `ContactModel::FRICTION_COULOMB`.
+- Renamed `LoggingLevel` values from all-uppercase names to `Undefined`, `Debug`, `Info`, `Warning`, `Error`, and
+  `NumLoggingLevels`.
 - MFEM coupling schemes now reuse their Redecomp mesh until a configurable displacement threshold is exceeded. Use
   `setMfemRedecompTriggerDisplacement()` to change the threshold or force a rebuild when updating the decomposition.
 - MFEM element thickness calculations now use registered reference coordinates when available.
