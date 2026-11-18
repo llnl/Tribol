@@ -250,6 +250,28 @@ TEST_P( MfemCommonPlaneTest, matches_nonmatching_constant_traction_patch )
                 std::logic_error );
 }
 
+// Jacobian getters return independent copies, so repeated calls must not consume the cached result.
+TEST_P( MfemCommonPlaneTest, jacobian_getters_preserve_cached_result )
+{
+  enable();
+  evaluate();
+  const auto first = getMfemDfDx( 0 );
+  const auto second = getMfemDfDx( 0 );
+  ASSERT_NE( first, nullptr );
+  ASSERT_NE( second, nullptr );
+  ASSERT_NE( scheme().getContactFormulationResult().df_dx, nullptr );
+  EXPECT_NE( first.get(), second.get() );
+  EXPECT_NE( first.get(), scheme().getContactFormulationResult().df_dx.get() );
+  mfem::Vector direction( first->Width() ), first_action( first->Height() ), second_action( second->Height() );
+  for ( int dof = 0; dof < direction.Size(); ++dof ) {
+    direction[dof] = 1.0 + 0.1 * dof;
+  }
+  first->Mult( direction, first_action );
+  second->Mult( direction, second_action );
+  second_action -= first_action;
+  EXPECT_EQ( norm( second_action ), 0.0 );
+}
+
 // Arithmetic averaging must scale forces and Jacobians on each host backend, for each Gauss count.
 TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
 {
@@ -476,7 +498,7 @@ TEST_P( MfemCommonPlaneTest, assembled_jacobian_matches_finite_difference )
   const auto upper_nodes = upperBodyNodes();
   for ( int node = 0; node < upper_nodes.Size(); ++node ) {
     if ( upper_nodes[node] ) {
-      ( *coords_ )[node] += 0.13;
+      ( *coords_ )[fes_->DofToVDof( node, 0 )] += 0.13;
     }
   }
   enable();

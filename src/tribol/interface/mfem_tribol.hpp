@@ -310,6 +310,9 @@ mfem::HypreParVector getMfemContactForce( IndexT cs_id );
  * Jacobian blocks that have empty rows of dg/du and empty columns of df/dp and ones on the diagonal of the dg/dp block
  * for all mortar node placeholders.
  *
+ * For coupling schemes with a ContactFormulation, the blocks are deep copies of the latest result, which the coupling
+ * scheme keeps; this call does not affect getMfemDfDx(), getMfemDfDp(), or getMfemWeightedGapJacobian().
+ *
  * @param cs_id Coupling scheme id with a registered MFEM mesh
  * @return Jacobian contributions as an mfem::BlockOperator
  */
@@ -318,7 +321,8 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id );
 /**
  * @brief Get the derivative of the force with respect to displacement
  *
- * Transfers the latest result out of the coupling scheme. Returns null if it was not calculated or already taken.
+ * Returns a deep copy of the latest result; the coupling scheme keeps its copy, so repeated calls and calls to the
+ * other Jacobian getters return the same values. Returns null if it was not calculated.
  *
  * @param cs_id Coupling scheme id with a registered MFEM mesh
  * @return Unique pointer to MFEM HypreParMatrix
@@ -328,7 +332,8 @@ std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx( IndexT cs_id );
 /**
  * @brief Get the derivative of the force with respect to pressure
  *
- * Transfers the latest result out of the coupling scheme. Returns null if it was not calculated or already taken.
+ * Returns a deep copy of the latest result; the coupling scheme keeps its copy, so repeated calls and calls to the
+ * other Jacobian getters return the same values. Returns null if it was not calculated.
  *
  * @param cs_id Coupling scheme id with a registered MFEM mesh
  * @return Unique pointer to MFEM HypreParMatrix
@@ -338,8 +343,9 @@ std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp( IndexT cs_id );
 /**
  * @brief Get the weighted-gap coordinate Jacobian
  *
- * Penalty enforcement zeros opening rows; this is not the derivative of the normalized gap output. Transfers the latest
- * result out of the coupling scheme and returns null if it was not calculated or already taken.
+ * Penalty enforcement zeros opening rows; this is not the derivative of the normalized gap output. Returns a deep copy
+ * of the latest result; the coupling scheme keeps its copy, so repeated calls and calls to the other Jacobian getters
+ * return the same values. Returns null if it was not calculated.
  *
  * @param cs_id Coupling scheme id with a registered MFEM mesh
  * @return Unique pointer to MFEM HypreParMatrix
