@@ -284,9 +284,11 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
 #endif
   }
   // create transfer operators from parent mesh to redecomp mesh
-  auto mfem_data =
-      std::make_unique<MfemMeshData>( mesh_id_1, mesh_id_2, mesh, current_coords, std::move( b_attributes_1 ),
-                                      std::move( b_attributes_2 ), exec_mode, mem_space );
+  constexpr bool transfers_fields_through_lor = true;
+  const bool assembles_lor_jacobian_transfer = contact_method != COMMON_PLANE;
+  auto mfem_data = std::make_unique<MfemMeshData>(
+      mesh_id_1, mesh_id_2, mesh, current_coords, std::move( b_attributes_1 ), std::move( b_attributes_2 ), exec_mode,
+      mem_space, transfers_fields_through_lor, assembles_lor_jacobian_transfer );
   // register empty meshes so the coupling scheme is valid
   registerMesh( mesh_id_1, 0, 0, nullptr, EDGE, LINEAR_LAGRANGE, nullptr, nullptr, nullptr, mem_space );
   registerMesh( mesh_id_2, 0, 0, nullptr, EDGE, LINEAR_LAGRANGE, nullptr, nullptr, nullptr, mem_space );
@@ -365,6 +367,9 @@ void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_
   if ( cs->getParameters().use_common_plane_formulation &&
        cs->getParameters().common_plane_compute_jacobian == compute_jacobian ) {
     return;
+  }
+  if ( compute_jacobian ) {
+    cs->getMfemMeshData()->EnableLORJacobianTransfer();
   }
   auto jacobian = compute_jacobian ? std::make_unique<MfemJacobianData>( *cs->getMfemMeshData() ) : nullptr;
   cs->setContactFormulation( nullptr );

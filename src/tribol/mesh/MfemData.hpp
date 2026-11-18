@@ -54,6 +54,8 @@ namespace tribol {
  * through the GetLORGridFn() method.
  */
 class SubmeshLORTransfer {
+  friend class MfemMeshData;
+
  public:
   /**
    * @brief Construct a new SubmeshLORTransfer object
@@ -62,8 +64,17 @@ class SubmeshLORTransfer {
    * boundary submesh
    * @param lor_mesh LOR mesh
    * @param use_ea Whether to use device-friendly element assembly for the transfer (default: false)
+   * @param retains_jacobian_transfer Whether to assemble and retain the matching HO-to-LOR Jacobian matrix.
    */
-  SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh, bool use_ea = false );
+  SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh, bool use_ea = false,
+                      bool retains_jacobian_transfer = true );
+
+  /**
+   * @brief Assemble and retain the HO-to-LOR matrix needed by Jacobian transfer.
+   *
+   * Calling this repeatedly leaves the existing matrix unchanged.
+   */
+  void AssembleJacobianTransfer();
 
   /**
    * @brief Transfers data from a higher-order grid function on a parent-linked
@@ -131,6 +142,9 @@ class SubmeshLORTransfer {
   const shared::ParSparseMat* GetTransferMatrix() const { return transfer_mat_.get(); }
 
  private:
+  /** @brief Higher-order finite element space used by both transfer representations. */
+  mfem::ParFiniteElementSpace& submesh_fes_;
+
   /**
    * @brief Create low-order grid function on the LOR mesh
    *
@@ -628,10 +642,13 @@ class MfemMeshData {
    * @param transfers_fields_through_lor When true, higher-order fields transfer through a low-order refined mesh. When
    * false, the redecomp mesh uses the higher-order boundary submesh directly and redecomp fields retain the source
    * finite element order.
+   * @param retains_lor_jacobian_transfer Whether higher-order construction should retain an assembled Jacobian
+   * transfer matrix.
    */
   MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParMesh& parent_mesh,
                 const mfem::ParGridFunction& current_coords, std::set<int>&& attributes_1, std::set<int>&& attributes_2,
-                ExecutionMode exec_mode, MemorySpace mem_space, bool transfers_fields_through_lor = true );
+                ExecutionMode exec_mode, MemorySpace mem_space, bool transfers_fields_through_lor = true,
+                bool retains_lor_jacobian_transfer = true );
 
   /**
    * @brief Get coordinate grid function on the parent mesh
@@ -1081,6 +1098,14 @@ class MfemMeshData {
   bool HasRedecompMesh() const { return update_data_ != nullptr; }
 
   /**
+   * @brief Enable the assembled HO-to-LOR matrix required by higher-order Jacobians.
+   *
+   * When decomposition has changed the live LOR coordinates, the matrix is assembled on a temporary freshly refined
+   * mesh so the current decomposition remains valid.
+   */
+  void EnableLORJacobianTransfer();
+
+  /**
    * @brief Get the redecomp mesh containing redecomposed contact surfaces
    *
    * @return redecomp::RedecompMesh&
@@ -1360,6 +1385,9 @@ class MfemMeshData {
    * use matching element and DOF lists.
    */
   const bool transfers_fields_through_lor_;
+
+  /** @brief Whether new LOR transfer objects also retain an assembled Jacobian matrix. */
+  bool retains_lor_jacobian_transfer_;
 
   /**
    * @brief Refinement factor for refined mesh
