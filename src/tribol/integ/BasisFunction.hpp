@@ -291,9 +291,8 @@ concept FiniteElementBasis =
       typename std::integral_constant<int, Basis::parametric_dim>;
       typename std::integral_constant<int, Basis::size_basis>;
       requires( Basis::parametric_dim > 0 && Basis::size_basis > 0 );
-    } &&
-    requires( MdSpan<const RealT, Basis::parametric_dim> parametric_coords,
-              MdSpan<RealT, Basis::size_basis> basis_values ) {
+    } && requires( MdSpan<const RealT, Basis::parametric_dim> parametric_coords,
+                   MdSpan<RealT, Basis::size_basis> basis_values ) {
       { Basis::eval( parametric_coords, basis_values ) } -> std::same_as<void>;
     };
 
