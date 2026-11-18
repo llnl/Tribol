@@ -85,6 +85,7 @@ struct CommonPlaneEdgeMapping {
 
     // The gap is affine along straight edges. Opposite endpoint signs locate an intersection inside both edges.
     // Clip at the geometric zero gap before applying any residual-gap offset in the pressure calculation.
+    // 1. Project lower and upper points back to geom1 and geom2
     const MdArray<RealT, 2> geom1_parametric_bounds{ 2.0 * ( lower - a0 ) / ( a1 - a0 ) - 1.0,
                                                      2.0 * ( upper - a0 ) / ( a1 - a0 ) - 1.0 };
     const MdArray<RealT, 2> geom2_parametric_bounds{ 2.0 * ( lower - b0 ) / ( b1 - b0 ) - 1.0,
@@ -93,8 +94,10 @@ struct CommonPlaneEdgeMapping {
     const auto point2_lower = edge2.position( { &geom2_parametric_bounds[0], 1 } );
     const auto point1_upper = edge1.position( { &geom1_parametric_bounds[1], 1 } );
     const auto point2_upper = edge2.position( { &geom2_parametric_bounds[1], 1 } );
+    // 2. Compute gap at the lower and upper points
     const RealT lower_gap = Vector( point2_lower, point1_lower ).dot( line.normal );
     const RealT upper_gap = Vector( point2_upper, point1_upper ).dot( line.normal );
+    // 3. If the gap sign changes, compute the intersection and update upper/lower as appropriate
     if ( lower_gap < 0.0 && upper_gap > 0.0 ) {
       upper = lower + ( upper - lower ) * lower_gap / ( lower_gap - upper_gap );
     } else if ( lower_gap > 0.0 && upper_gap < 0.0 ) {
@@ -104,7 +107,10 @@ struct CommonPlaneEdgeMapping {
   }
 
   /**
-   * @brief Project common-line points onto both edges without another physical-measure factor.
+   * @brief Project common-line quadrature points onto both edges.
+   *
+   * The common line is parameterized by physical distance along its unit tangent. The input weights therefore already
+   * include the physical line measure, so this mapping copies them without applying either edge's Jacobian.
    * @param edge1 First current edge.
    * @param edge2 Second current edge.
    * @param reference Physical tangent coordinates and line weights.
