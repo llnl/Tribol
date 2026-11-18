@@ -86,10 +86,11 @@ void validateCommonPlaneFormulation( CouplingScheme& cs, bool compute_jacobian )
         "Common Plane requires MFEM frictionless common-plane constant-penalty quadrature-point contact." );
   }
   const auto& data = *cs.getMfemMeshData();
+  const int order = data.GetParentCoords().ParFESpace()->FEColl()->GetOrder();
   if ( data.GetParentCoords().ParFESpace()->GetParMesh()->SpaceDimension() != 2 ||
-       data.GetParentCoords().ParFESpace()->FEColl()->GetOrder() != 1 ||
-       data.GetParentCoords().ParFESpace()->GetVDim() != 2 || data.GetLORMesh() != nullptr ) {
-    throw std::invalid_argument( "Common Plane supports only linear 2D coordinates without LOR subdivision." );
+       data.GetParentCoords().ParFESpace()->GetVDim() != 2 || order < 1 ||
+       ( order > 1 && data.GetLORMesh() == nullptr ) ) {
+    throw std::invalid_argument( "Common Plane supports only 2D linear or LOR-subdivided coordinates." );
   }
   const auto* penalty1 = data.GetMesh1KinematicConstantPenalty();
   const auto* penalty2 = data.GetMesh2KinematicConstantPenalty();

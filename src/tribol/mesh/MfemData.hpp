@@ -123,6 +123,13 @@ class SubmeshLORTransfer {
    */
   const mfem::Vector& GetLORVector() const { return *lor_gridfn_; }
 
+  /**
+   * @brief Access the assembled HO->LOR DOF transfer matrix captured at construction time.
+   *
+   * @return const shared::ParSparseMat*
+   */
+  const shared::ParSparseMat* GetTransferMatrix() const { return transfer_mat_.get(); }
+
  private:
   /**
    * @brief Create low-order grid function on the LOR mesh
@@ -144,6 +151,11 @@ class SubmeshLORTransfer {
    * @brief Low-order refined <-> higher-order coarse transfer object
    */
   mutable mfem::L2ProjectionGridTransfer lor_xfer_;
+
+  /**
+   * @brief Cached HO->LOR DOF transfer matrix matching lor_xfer_ at construction time.
+   */
+  std::unique_ptr<shared::ParSparseMat> transfer_mat_;
 };
 
 /**
@@ -1112,6 +1124,11 @@ class MfemMeshData {
   }
 
   /**
+   * @brief Get the submesh to LOR transfer object, or nullptr if LOR is inactive.
+   */
+  const SubmeshLORTransfer* GetSubmeshLORTransfer() const { return submesh_lor_xfer_.get(); }
+
+  /**
    * @brief Get the LOR factor
    *
    * @note The LOR factor corresponds to the number of LOR elements per HO element applied to each dimension on the LOR
@@ -1678,6 +1695,11 @@ class MfemSubmeshData {
   {
     return submesh_lor_xfer_ ? submesh_lor_xfer_->GetLORGridFn().ParFESpace() : nullptr;
   }
+
+  /**
+   * @brief Get the submesh to LOR transfer object, or nullptr if LOR is inactive.
+   */
+  const SubmeshLORTransfer* GetSubmeshLORTransfer() const { return submesh_lor_xfer_.get(); }
 
  private:
   /**

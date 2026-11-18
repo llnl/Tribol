@@ -16,6 +16,8 @@
  * Force-only selection and mode changes run without Enzyme as well, checking that no Jacobian transfers or outputs
  * are created. Nonmatching legacy forces provide an independent reference for force-only assembly.
  * Formulation updates leave legacy face geometry and method storage unallocated.
+ * Higher-order 2D meshes with LOR subdivision check force agreement with legacy Common Plane and finite-difference
+ * Jacobian accuracy across LOR transfers, while higher-order 2D meshes without LOR and 3D parents remain rejected.
  */
 #include <cmath>
 #include <limits>
@@ -526,7 +528,9 @@ TEST_P( MfemCommonPlaneTest, rebuilds_and_restores_legacy_response )
   error.Add( -2.0, initial );
   EXPECT_LT( norm( error ), 1.0e-11 );
   EXPECT_THROW( setEnforcementLocation( 0, EnforcementLocation::Nodal ), std::invalid_argument );
-  EXPECT_THROW( setMfemLORFactor( 0, 2 ), std::invalid_argument );
+  setMfemLORFactor( 0, 2 );
+  EXPECT_EQ( scheme().getMfemMeshData()->GetLORMesh(), nullptr );
+  EXPECT_TRUE( scheme().getParameters().use_common_plane_formulation );
   EXPECT_EQ( scheme().getParameters().enforcement_location, EnforcementLocation::QuadraturePoint );
   setMfemUseCommonPlaneFormulation( 0, false );
   EXPECT_FALSE( scheme().hasContactFormulation() );
@@ -650,8 +654,8 @@ TEST( CommonPlaneSelection, rejects_unsupported_methods_models_and_cases )
   }
 }
 
-// Curved coordinate spaces, actual LOR subdivision, and three-dimensional parents are rejected before any selection.
-TEST( CommonPlaneSelection, rejects_higher_order_and_three_dimensional_geometry )
+// Curved 2D coordinate spaces without LOR subdivision and three-dimensional parents are rejected before any selection.
+TEST( CommonPlaneSelection, rejects_higher_order_without_lor_and_three_dimensional_geometry )
 {
   for ( const int dim : { 2, 3 } ) {
     const int order = dim == 2 ? 2 : 1;
@@ -664,16 +668,115 @@ TEST( CommonPlaneSelection, rejects_higher_order_and_three_dimensional_geometry 
     registerMfemCouplingScheme( 0, 0, 1, mesh, coordinates, { 1 }, { 3 }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE,
                                 FRICTIONLESS, PENALTY, BINNING_GRID, ExecutionMode::Sequential );
     setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
-    EXPECT_THROW( setMfemUseCommonPlaneFormulation( 0, true, false ), std::invalid_argument );
     auto& cs = CouplingSchemeManager::getInstance().at( 0 );
+    if ( dim == 2 ) {
+      // Disable LOR transfer on the quadratic 2D mesh so Common Plane sees an unrefined higher-order surface.
+      cs.setMfemMeshData( std::make_unique<MfemMeshData>( 0, 1, mesh, coordinates, std::set<int>{ 1 },
+                                                          std::set<int>{ 3 }, ExecutionMode::Sequential,
+                                                          MemorySpace::Host, false ) );
+    }
+    EXPECT_THROW( setMfemUseCommonPlaneFormulation( 0, true, false ), std::invalid_argument );
     EXPECT_FALSE( cs.hasContactFormulation() );
     EXPECT_FALSE( cs.hasMfemJacobianData() );
-    if ( dim == 2 ) {
-      setMfemLORFactor( 0, 2 );
-      EXPECT_THROW( setMfemUseCommonPlaneFormulation( 0, true, false ), std::invalid_argument );
-    }
     finalize();
   }
+}
+
+// Higher-order 2D coordinates with LOR subdivision match legacy 1-point forces and finite-difference parent Jacobians.
+TEST( CommonPlaneSelection, evaluates_forces_and_jacobians_with_lor_subdivision )
+{
+  // Shift the upper nonmatching body horizontally so projection endpoints do not coincide under coordinate
+  // perturbations.
+  mfem::ParMesh mesh = shared::ParMeshBuilder(
+      MPI_COMM_WORLD,
+      shared::MeshBuilder::Unify( { shared::MeshBuilder::SquareMesh( 2, 1 ), shared::MeshBuilder::SquareMesh( 3, 1 )
+                                                                                 .translate( { 0.13, 0.99 } )
+                                                                                 .updateBdrAttrib( 1, 5 )
+                                                                                 .updateBdrAttrib( 3, 6 )
+                                                                                 .updateAttrib( 1, 2 ) } ) );
+  constexpr int order = 2;
+  mesh.SetCurvature( order, /*discont=*/false, /*space_dim=*/2, mfem::Ordering::byVDIM );
+  auto* mesh_nodes = dynamic_cast<mfem::ParGridFunction*>( mesh.GetNodes() );
+  ASSERT_NE( mesh_nodes, nullptr );
+  auto& fes = *mesh_nodes->ParFESpace();
+  mfem::ParGridFunction coordinates( &fes );
+  coordinates = *mesh_nodes;
+
+  registerMfemCouplingScheme( 0, 0, 1, mesh, coordinates, { 3 }, { 5 }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE,
+                              FRICTIONLESS, PENALTY, BINNING_GRID, ExecutionMode::Sequential );
+  setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
+
+  const auto& cs = CouplingSchemeManager::getInstance().at( 0 );
+  ASSERT_NE( cs.getMfemMeshData()->GetLORMesh(), nullptr );
+  EXPECT_EQ( cs.getMfemMeshData()->GetLORFactor(), order );
+
+  const auto norm = []( const mfem::Vector& v ) { return std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, v, v ) ); };
+  const auto evaluate = [&]() {
+    updateMfemParallelDecomposition( 1, true );
+    RealT dt = 1.0;
+    ASSERT_EQ( update( 0, 0.0, dt ), 0 );
+  };
+
+  evaluate();
+  mfem::Vector legacy( fes.GetVSize() );
+  legacy = 0.0;
+  getMfemResponse( 0, legacy );
+  mfem::Vector true_legacy( fes.GetTrueVSize() );
+  fes.GetProlongationMatrix()->MultTranspose( legacy, true_legacy );
+  ASSERT_GT( norm( true_legacy ), 0.0 );
+
+  setMfemUseCommonPlaneFormulation( 0, true, false );
+  setQuadratureOrder( 0, 1 );
+  evaluate();
+  EXPECT_EQ( getMfemDfDx( 0 ), nullptr );
+  auto force_error = getMfemContactForce( 0 );
+  force_error += true_legacy;
+  EXPECT_LT( norm( force_error ), 1.0e-11 );
+
+#ifdef TRIBOL_USE_ENZYME
+  // Enable the Jacobian, then override the LOR factor while the formulation is active and verify the parent-space
+  // Jacobian via finite differences.
+  setMfemUseCommonPlaneFormulation( 0, true, true );
+  setMfemLORFactor( 0, 3 );
+  EXPECT_TRUE( cs.hasContactFormulation() );
+  EXPECT_TRUE( cs.hasMfemJacobianData() );
+  EXPECT_EQ( cs.getMfemMeshData()->GetLORFactor(), 3 );
+  evaluate();
+  auto jacobian = getMfemDfDx( 0 );
+  ASSERT_NE( jacobian, nullptr );
+
+  const mfem::ParGridFunction original( coordinates );
+  mfem::VectorFunctionCoefficient coefficient( 2, []( const mfem::Vector& x, mfem::Vector& v ) {
+    v.SetSize( 2 );
+    v[0] = 0.03 * x[0] + 0.01 * x[1];
+    v[1] = 0.02 * x[0] - 0.04 * x[1];
+  } );
+  mfem::ParGridFunction direction( &fes );
+  direction.ProjectCoefficient( coefficient );
+  mfem::Vector true_direction;
+  direction.GetTrueDofs( true_direction );
+  mfem::Vector predicted( true_direction.Size() );
+  jacobian->Mult( true_direction, predicted );
+  ASSERT_GT( norm( predicted ), 0.0 );
+  const RealT predicted_norm = norm( predicted );
+
+  constexpr RealT step = 1.0e-6;
+  coordinates = original;
+  coordinates.Add( step, direction );
+  evaluate();
+  const auto plus = getMfemContactForce( 0 );
+  coordinates = original;
+  coordinates.Add( -step, direction );
+  evaluate();
+  auto difference = getMfemContactForce( 0 );
+  difference.Neg();
+  difference += plus;
+  difference /= 2.0 * step;
+  difference -= predicted;
+  EXPECT_LT( norm( difference ), 1.0e-7 * ( 1.0 + predicted_norm ) );
+#endif
+
+  finalize();
 }
 
 INSTANTIATE_TEST_SUITE_P( quadrature, MfemCommonPlaneTest, testing::Values( 1, 3, 5 ) );

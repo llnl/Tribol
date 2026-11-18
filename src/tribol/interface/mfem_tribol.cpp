@@ -394,9 +394,6 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the LOR factor." );
-  if ( cs->getParameters().use_common_plane_formulation && lor_factor > 1 ) {
-    throw std::invalid_argument( "Common Plane does not support LOR subdivision." );
-  }
   const bool rebuild_formulation = cs->hasContactFormulation();
   const auto* previous_lor = cs->getMfemMeshData()->GetLORMesh();
   cs->getMfemMeshData()->SetLORFactor( lor_factor );

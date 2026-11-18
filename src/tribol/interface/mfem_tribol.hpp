@@ -72,10 +72,10 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
  * @throws std::invalid_argument Unsupported method, geometry, penalty, or execution settings; selection is unchanged.
  * @throws std::runtime_error Jacobian calculation was requested without Enzyme support; selection is unchanged.
  *
- * Supports linear 2D MFEM frictionless penalty contact without LOR subdivision. Use getMfemContactForce()
- * and, when requested, getMfemDfDx() after update(), rather than getMfemResponse(). The returned vector is a contact
- * residual; its negative is the physical force returned by legacy Common Plane. Nodal gaps, energy, and timestep output
- * are unsupported.
+ * Supports 2D MFEM frictionless penalty contact on linear coordinates or higher-order coordinates with LOR subdivision.
+ * Use getMfemContactForce() and, when requested, getMfemDfDx() after update(), rather than getMfemResponse(). The
+ * returned vector is a contact residual; its negative is the physical force returned by legacy Common Plane. Nodal
+ * gaps, energy, and timestep output are unsupported.
  */
 void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_jacobian = true );
 
