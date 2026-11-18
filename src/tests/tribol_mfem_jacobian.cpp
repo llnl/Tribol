@@ -952,47 +952,51 @@ TEST_P( MfemLorTransferParamTest, lor_transfer_matches_mfem )
     tribol::setMfemLORFactor( cs_id, p.lor_factor );
   }
 
-  tribol::updateMfemParallelDecomposition( n_ranks, true );
-
   auto* submesh_data = cs->getMfemSubmeshData();
   ASSERT_NE( submesh_data, nullptr );
+
+  const mfem::ParFiniteElementSpace* ho_fes = nullptr;
+  const mfem::ParFiniteElementSpace* lor_fes = nullptr;
+  if ( p.field == FieldKind::Displacement ) {
+    ho_fes = &mesh_data->GetSubmeshFESpace();
+    lor_fes = mesh_data->GetLORMeshFESpace();
+  } else {
+    ho_fes = &submesh_data->GetSubmeshFESpace();
+    lor_fes = submesh_data->GetLORMeshFESpace();
+  }
+  ASSERT_NE( ho_fes, nullptr );
+  ASSERT_NE( lor_fes, nullptr );
+
+  // Capture MFEM's reference operator before updateMfemParallelDecomposition() overwrites the LOR nodal grid
+  // function with projected coordinates, matching the geometry used by SubmeshLORTransfer and MfemJacobianData.
+  auto& ho_fes_nc = const_cast<mfem::ParFiniteElementSpace&>( *ho_fes );
+  auto& lor_fes_nc = const_cast<mfem::ParFiniteElementSpace&>( *lor_fes );
+  mfem::L2ProjectionGridTransfer mfem_xfer( ho_fes_nc, lor_fes_nc );
+  mfem_xfer.UseEA( false );
+  const mfem::Operator& F = mfem_xfer.ForwardOperator();
+
+  tribol::updateMfemParallelDecomposition( n_ranks, true );
 
   cs->setMfemJacobianData( std::make_unique<tribol::MfemJacobianData>( *mesh_data, *submesh_data ) );
   auto* jac_data = cs->getMfemJacobianData();
   ASSERT_NE( jac_data, nullptr );
   jac_data->UpdateJacobianXfer();
 
-  const mfem::ParFiniteElementSpace* ho_fes = nullptr;
-  const mfem::ParFiniteElementSpace* lor_fes = nullptr;
   const shared::ParSparseMat* T = nullptr;
 
   if ( p.field == FieldKind::Displacement ) {
-    ho_fes = &mesh_data->GetSubmeshFESpace();
-    lor_fes = mesh_data->GetLORMeshFESpace();
-    ASSERT_NE( lor_fes, nullptr );
     ASSERT_EQ( jac_data->ParentPath().surface_fes, lor_fes );
     // ParentPath(): [P_parent, parent->submesh, submesh->lor]
     ASSERT_GE( jac_data->ParentPath().owned_ops.size(), 2u );
     T = jac_data->ParentPath().owned_ops.back().get();
   } else {
-    ho_fes = &submesh_data->GetSubmeshFESpace();
-    lor_fes = submesh_data->GetLORMeshFESpace();
-    ASSERT_NE( lor_fes, nullptr );
     ASSERT_EQ( jac_data->SubmeshPath().surface_fes, lor_fes );
     // SubmeshPath(): [P_dual, submesh->lor]
     ASSERT_GE( jac_data->SubmeshPath().owned_ops.size(), 1u );
     T = jac_data->SubmeshPath().owned_ops.back().get();
   }
 
-  ASSERT_NE( ho_fes, nullptr );
-  ASSERT_NE( lor_fes, nullptr );
   ASSERT_NE( T, nullptr );
-
-  auto& ho_fes_nc = const_cast<mfem::ParFiniteElementSpace&>( *ho_fes );
-  auto& lor_fes_nc = const_cast<mfem::ParFiniteElementSpace&>( *lor_fes );
-  mfem::L2ProjectionGridTransfer mfem_xfer( ho_fes_nc, lor_fes_nc );
-  mfem_xfer.UseEA( false );
-  const mfem::Operator& F = mfem_xfer.ForwardOperator();
 
   CompareHoToLorTransfers( F, T->get(), *ho_fes, *lor_fes );
 }
