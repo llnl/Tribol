@@ -54,9 +54,10 @@ blt_install_tpl_setups(DESTINATION ${TRIBOL_INSTALL_CMAKE_MODULE_DIR})
 
 # Install config files
 install(
-  FILES 
+  FILES
     ${CMAKE_CURRENT_BINARY_DIR}/tribol-config.cmake
     ${CMAKE_CURRENT_BINARY_DIR}/tribol-config-version.cmake
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/TribolEnzymeFlags.cmake
   DESTINATION
     ${TRIBOL_INSTALL_CMAKE_MODULE_DIR}
 )

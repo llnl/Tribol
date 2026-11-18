@@ -41,20 +41,8 @@ if (ENZYME_DIR)
       "code and leaves the derivative intrinsics unresolved during device linking.")
   endif()
 
-  if(TRIBOL_USE_CUDA)
-    # Clang-CUDA creates PHI nodes without enough pointer type information in every translation unit that calls Enzyme,
-    # including tests and the nodal-normal calculation. Loose type analysis lets Enzyme recover those valid types.
-    set_property(TARGET ClangEnzymeFlags APPEND PROPERTY INTERFACE_COMPILE_OPTIONS
-      "$<$<COMPILE_LANG_AND_ID:CUDA,Clang>:-mllvm>"
-      "$<$<COMPILE_LANG_AND_ID:CUDA,Clang>:-enzyme-loose-types>")
-  elseif(TRIBOL_USE_HIP)
-    # Enzyme also needs loose type analysis for floating-point PHI nodes in AMD GPU contact derivatives.
-    # BLT marks device sources as HIP, including files with a .cpp extension.
-    # Send this option only to Clang's frontend; HIP forwards driver-level -mllvm options to the device linker,
-    # which does not load the Enzyme plugin. SHELL preserves both -Xclang arguments during option deduplication.
-    set_property(TARGET ClangEnzymeFlags APPEND PROPERTY INTERFACE_COMPILE_OPTIONS
-      "$<$<COMPILE_LANG_AND_ID:HIP,Clang>:SHELL:-Xclang -mllvm -Xclang -enzyme-loose-types>")
-  endif()
+  include(${CMAKE_CURRENT_LIST_DIR}/TribolEnzymeFlags.cmake)
+  tribol_add_enzyme_gpu_flags(USE_CUDA "${TRIBOL_USE_CUDA}" USE_HIP "${TRIBOL_USE_HIP}")
 
   set(TRIBOL_USE_ENZYME TRUE)
 else()

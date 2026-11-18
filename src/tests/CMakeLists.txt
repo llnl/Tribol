@@ -79,8 +79,9 @@ foreach( test ${tribol_tests} )
 endforeach()
 
 if(TRIBOL_USE_ENZYME)
-  # Enzyme rejects the aggregate-heavy edge geometry IR produced at -O0.
+  # Enzyme rejects the aggregate-heavy edge geometry IR produced at -O0. Both tests differentiate pair functions.
   target_compile_options(tribol_energy_mortar_definition_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
+  target_compile_options(tribol_common_plane_formulation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
 endif()
 
 #------------------------------------------------------------------------------
@@ -159,7 +160,6 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
     endforeach()
 
     if (ENABLE_CUDA)
-      set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
       target_compile_options(${test_name}_test PRIVATE
         $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>>:-G>
       )
@@ -223,9 +223,6 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 
   blt_add_test(NAME tribol_mfem_common_plane_formulation
       COMMAND tribol_mfem_common_plane_formulation_test NUM_MPI_TASKS 1)
-  if (ENABLE_CUDA)
-    set_target_properties(tribol_mfem_common_plane_formulation_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
-  endif()
 
 endif()
 
@@ -262,10 +259,6 @@ if( TRIBOL_USE_ENZYME )
     blt_add_test( NAME ${test_name}
                   COMMAND ${test_name}_test )
 
-    if (ENABLE_CUDA)
-      set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
-    endif()
-    
     if (ENABLE_HIP)
       target_compile_options(${test_name}_test PRIVATE
           $<$<CONFIG:Debug>:
@@ -303,8 +296,10 @@ endif()
 
 if( TRIBOL_USE_ENZYME )
 
-  blt_add_test(NAME tribol_energy_mortar_quadrature_settings_2rank
-      COMMAND tribol_energy_mortar_quadrature_settings_test NUM_MPI_TASKS 2)
+  if( TRIBOL_USE_MPI )
+    blt_add_test(NAME tribol_energy_mortar_quadrature_settings_2rank
+        COMMAND tribol_energy_mortar_quadrature_settings_test NUM_MPI_TASKS 2)
+  endif()
 
   set(enzyme_smoke_depends ClangEnzymeFlags gtest)
   blt_add_executable(
