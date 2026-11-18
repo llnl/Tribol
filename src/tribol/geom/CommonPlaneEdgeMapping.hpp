@@ -71,6 +71,7 @@ struct CommonPlaneEdgeMapping {
     }
     const auto line = computeCommonPlaneLine( edge1, edge2 );
     const MdArray<RealT, 1> endpoint_coords{ 1.0 };
+    // Project vertices from each edge onto the common plane in terms of the common plane origin and unit tangent
     const RealT a0 = Vector( line.origin, edge1.origin() ).dot( line.tangent );
     const RealT a1 = Vector( line.origin, edge1.position( endpoint_coords.view() ) ).dot( line.tangent );
     const RealT b0 = Vector( line.origin, edge2.origin() ).dot( line.tangent );
