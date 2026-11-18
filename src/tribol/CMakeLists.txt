@@ -18,6 +18,7 @@ set(tribol_headers
     assembly/MfemMatrixAssembler.hpp
     assembly/MfemVectorAssembler.hpp
     assembly/PairBuffers.hpp
+    assembly/PairDerivativeData.hpp
     assembly/PairFunctionData.hpp
 
     common/ArrayTypes.hpp

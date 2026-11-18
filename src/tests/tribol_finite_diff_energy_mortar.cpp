@@ -53,18 +53,20 @@ void checkFiniteDifferences( const Function& function, const MdArray<RealT, Func
     const auto negative = EnzymePairDerivative<Function>::valuesAndJacobian(
         { negative_coordinates.data(), Function::size_geom1_coords },
         { negative_coordinates.data() + Function::size_geom1_coords, Function::size_geom2_coords }, function );
+    const auto positive_values = positive.pair_value.values();
+    const auto negative_values = negative.pair_value.values();
 
     for ( IndexT value = 0; value < Function::size_values; ++value ) {
-      EXPECT_NEAR( base.jacobian( value, column ),
-                   ( positive.values[value] - negative.values[value] ) / ( 2.0 * finite_difference_step ),
+      EXPECT_NEAR( base.derivatives.jacobian( value, column ),
+                   ( positive_values[value] - negative_values[value] ) / ( 2.0 * finite_difference_step ),
                    jacobian_tolerance );
     }
     for ( IndexT row = 0; row < Function::size_coords; ++row ) {
       RealT positive_gradient = 0.0;
       RealT negative_gradient = 0.0;
       for ( IndexT value = 0; value < Function::size_values; ++value ) {
-        positive_gradient += weights[value] * positive.jacobian( value, row );
-        negative_gradient += weights[value] * negative.jacobian( value, row );
+        positive_gradient += weights[value] * positive.derivatives.jacobian( value, row );
+        negative_gradient += weights[value] * negative.derivatives.jacobian( value, row );
       }
       EXPECT_NEAR( weighted.hessian( row, column ),
                    ( positive_gradient - negative_gradient ) / ( 2.0 * finite_difference_step ), hessian_tolerance );

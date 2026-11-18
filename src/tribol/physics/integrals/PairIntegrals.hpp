@@ -31,6 +31,15 @@
 
 namespace tribol {
 
+/** @brief One quadrature-point quantity and whether its values or derivatives must be integrated.
+ * @tparam T Scalar energy density or fixed-size vector traction.
+ */
+template <typename T>
+struct QuadraturePointValue {
+  T value{};            ///< Unweighted quantity; the integral applies the physical quadrature weight.
+  bool active = false;  ///< Whether to retain this point, including a zero value with a nonzero tangent.
+};
+
 namespace detail {
 
 /** Pair geometry data prepared once and reused at every quadrature point. */
@@ -282,73 +291,6 @@ class PairEnergyIntegral {
  private:
   RuleGenerator rule_generator_;    ///< Owned quadrature generator.
   EnergyFunction energy_function_;  ///< Owned point energy density and activation calculation.
-};
-
-/** @brief Nodal weighted gaps and tributary areas with activation and quadrature status.
- * @tparam NumNodes Number of FE nodes carrying the nodal integrals. */
-template <IndexT NumNodes>
-class PairNodalGapValue {
-  static_assert( NumNodes > 0 );
-
- public:
-  static constexpr IndexT num_nodes = NumNodes;        ///< Number of FE nodes.
-  static constexpr IndexT size_values = 2 * NumNodes;  ///< Weighted gaps followed by tributary areas.
-  /** @brief Fields stored for each geometry1 node. */
-  enum class Field : IndexT
-  {
-    WeightedGap,    ///< Basis-weighted gap integral.
-    TributaryArea,  ///< Basis-weighted area integral.
-  };
-
-  static constexpr IndexT num_fields = 2;  ///< Number of nodal integral fields.
-
-  /** @brief Construct zero nodal integrals with default quadrature state and no active points. */
-  TRIBOL_HOST_DEVICE PairNodalGapValue() = default;
-
-  /**
-   * @brief Return a field's flattened value index.
-   * @param field Nodal integral field.
-   * @param node Geometry1 element-local node.
-   * @return Index into values().
-   */
-  TRIBOL_HOST_DEVICE static constexpr IndexT valueIndex( Field field, IndexT node )
-  {
-    return static_cast<IndexT>( field ) * num_nodes + node;
-  }
-
-  /** @brief Return a weighted-gap index. @param node Geometry1 local node. @return Index into values(). */
-  TRIBOL_HOST_DEVICE static constexpr IndexT weightedGapIndex( IndexT node )
-  {
-    return valueIndex( Field::WeightedGap, node );
-  }
-
-  /** @brief Return a tributary-area index. @param node Geometry1 local node. @return Index into values(). */
-  TRIBOL_HOST_DEVICE static constexpr IndexT tributaryAreaIndex( IndexT node )
-  {
-    return valueIndex( Field::TributaryArea, node );
-  }
-
-  /** @brief Access a weighted gap. @param node Geometry1 local node. @return Mutable nodal integral. */
-  TRIBOL_HOST_DEVICE RealT& weightedGap( IndexT node ) { return values_[weightedGapIndex( node )]; }
-
-  /** @brief Access a weighted gap. @param node Geometry1 local node. @return Read-only nodal integral. */
-  TRIBOL_HOST_DEVICE const RealT& weightedGap( IndexT node ) const { return values_[weightedGapIndex( node )]; }
-
-  /** @brief Access a tributary area. @param node Geometry1 local node. @return Mutable nodal integral. */
-  TRIBOL_HOST_DEVICE RealT& tributaryArea( IndexT node ) { return values_[tributaryAreaIndex( node )]; }
-
-  /** @brief Access a tributary area. @param node Geometry1 local node. @return Read-only nodal integral. */
-  TRIBOL_HOST_DEVICE const RealT& tributaryArea( IndexT node ) const { return values_[tributaryAreaIndex( node )]; }
-
-  /** @brief Return the function value vector. @return Weighted gaps followed by tributary areas in node order. */
-  TRIBOL_HOST_DEVICE MdArray<RealT, size_values> values() const { return values_; }
-
-  /// Whether successful quadrature is nonempty, including opening gaps; this does not indicate contact activation.
-  bool has_active_points = false;
-  QuadratureMetadata quadrature_metadata{};  ///< Failed output must not be consumed.
-
- private:
-  MdArray<RealT, size_values> values_{};  ///< Weighted gaps followed by tributary areas in local-node order.
 };
 
 /**

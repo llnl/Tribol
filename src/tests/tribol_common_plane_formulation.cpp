@@ -649,11 +649,12 @@ void checkJacobian()
     const auto result =
         EnzymePairDerivative<Function>::valuesAndJacobian( cases1[geometry].view(), cases2[geometry].view(), function );
     const auto expected_values = expected.values();
-    ASSERT_EQ( result.quadrature_metadata.status, QuadratureStatus::Success );
-    EXPECT_EQ( result.quadrature_metadata.num_required_points, NumPoints );
-    EXPECT_EQ( result.has_active_points, expected.has_active_points );
+    ASSERT_EQ( result.pair_value.quadrature_metadata.status, QuadratureStatus::Success );
+    EXPECT_EQ( result.pair_value.quadrature_metadata.num_required_points, NumPoints );
+    EXPECT_EQ( result.pair_value.has_active_points, expected.has_active_points );
+    const auto result_values = result.pair_value.values();
     for ( IndexT row = 0; row < Function::size_values; ++row ) {
-      EXPECT_DOUBLE_EQ( result.values[row], expected_values[row] );
+      EXPECT_DOUBLE_EQ( result_values[row], expected_values[row] );
     }
     for ( int column = 0; column < Function::size_coords; ++column ) {
       auto plus_coordinates = coordinates;
@@ -671,7 +672,8 @@ void checkJacobian()
       const auto plus_values = plus.values();
       const auto minus_values = minus.values();
       for ( int row = 0; row < Function::size_values; ++row ) {
-        EXPECT_NEAR( result.jacobian( row, column ), ( plus_values[row] - minus_values[row] ) / ( 2.0 * step ), 2.0e-7 )
+        EXPECT_NEAR( result.derivatives.jacobian( row, column ),
+                     ( plus_values[row] - minus_values[row] ) / ( 2.0 * step ), 2.0e-7 )
             << "points=" << NumPoints << ", geometry=" << geometry << ", row=" << row << ", column=" << column;
       }
     }
@@ -686,21 +688,23 @@ void checkJacobian()
   EXPECT_TRUE( zero.has_active_points );
   const auto derivatives =
       EnzymePairDerivative<UnshiftedFunction>::valuesAndJacobian( edge1.view(), edge2.view(), unshifted );
-  EXPECT_TRUE( derivatives.has_active_points );
+  EXPECT_TRUE( derivatives.pair_value.has_active_points );
+  const auto derivative_values = derivatives.pair_value.values();
   for ( IndexT row = 0; row < UnshiftedFunction::size_values; ++row ) {
-    EXPECT_EQ( derivatives.values[row], 0.0 );
+    EXPECT_EQ( derivative_values[row], 0.0 );
   }
-  EXPECT_GT( derivatives.jacobian( 1, 1 ), 0.0 );
+  EXPECT_GT( derivatives.derivatives.jacobian( 1, 1 ), 0.0 );
   const Coordinates invalid{};
   const auto failure =
       EnzymePairDerivative<UnshiftedFunction>::valuesAndJacobian( invalid.view(), edge2.view(), unshifted );
-  EXPECT_EQ( failure.quadrature_metadata.status, QuadratureStatus::InvalidGeometry );
-  EXPECT_EQ( failure.quadrature_metadata.num_required_points, 0 );
-  EXPECT_FALSE( failure.has_active_points );
-  for ( int row = 0; row < failure.values.size(); ++row ) {
-    EXPECT_EQ( failure.values[row], 0.0 );
+  EXPECT_EQ( failure.pair_value.quadrature_metadata.status, QuadratureStatus::InvalidGeometry );
+  EXPECT_EQ( failure.pair_value.quadrature_metadata.num_required_points, 0 );
+  EXPECT_FALSE( failure.pair_value.has_active_points );
+  const auto failure_values = failure.pair_value.values();
+  for ( int row = 0; row < failure_values.size(); ++row ) {
+    EXPECT_EQ( failure_values[row], 0.0 );
     for ( IndexT column = 0; column < UnshiftedFunction::size_coords; ++column ) {
-      EXPECT_EQ( failure.jacobian( row, column ), 0.0 );
+      EXPECT_EQ( failure.derivatives.jacobian( row, column ), 0.0 );
     }
   }
 }

@@ -22,7 +22,7 @@ namespace tribol {
 
 /** @brief Device-copyable pair values and quadrature state without derivatives. @tparam SizeValues Values per pair. */
 template <IndexT SizeValues>
-struct PairValueView {
+struct PairValueBufferView {
   RealT* values{ nullptr };                            ///< Values in `[value][pair]` order.
   QuadratureMetadata* quadrature_metadata{ nullptr };  ///< Pair quadrature status and point count.
   IndexT num_pairs{ 0 };                               ///< Number of writable pair slots.
@@ -50,7 +50,7 @@ class PairValueBuffer {
   }
   /** @brief Return a writable view. @return View into this buffer's arrays; the buffer must remain alive while the view
    * is used. */
-  PairValueView<SizeValues> view() { return { values_.data(), quadrature_metadata_.data(), num_pairs_ }; }
+  PairValueBufferView<SizeValues> view() { return { values_.data(), quadrature_metadata_.data(), num_pairs_ }; }
   /** @brief Return pair slots. @return Number of pairs allocated. */
   IndexT numberOfPairs() const { return num_pairs_; }
   /** @brief Return the owning values. @return Values in `[value][pair]` order. */
@@ -74,7 +74,7 @@ class PairValueBuffer {
  * @tparam SizeCoords Number of active pair coordinates.
  */
 template <IndexT SizeValues, IndexT SizeCoords>
-struct PairValueJacobianView {
+struct PairValueJacobianBufferView {
   RealT* values{ nullptr };                            ///< Values in `[value][pair]` order.
   RealT* jacobians{ nullptr };                         ///< Derivatives in `[value][coordinate][pair]` order.
   QuadratureMetadata* quadrature_metadata{ nullptr };  ///< Pair quadrature status and point count.
@@ -137,7 +137,7 @@ class PairValueJacobianBuffer {
   }
 
   /** @brief Return a device-copyable writable view. @return View retaining no ownership. */
-  PairValueJacobianView<SizeValues, SizeCoords> view()
+  PairValueJacobianBufferView<SizeValues, SizeCoords> view()
   {
     return { values_.data(), jacobians_.data(), quadrature_metadata_.data(), num_pairs_ };
   }
@@ -166,7 +166,7 @@ class PairValueJacobianBuffer {
  * @tparam SizeCoords Number of active pair coordinates.
  */
 template <IndexT SizeCoords>
-struct PairJacobianHessianView {
+struct PairJacobianHessianBufferView {
   RealT* jacobians{ nullptr };  ///< Coordinate Jacobians in `[coordinate][pair]` order.
   RealT* hessians{ nullptr };   ///< Coordinate Hessians in `[row][column][pair]` order.
   IndexT num_pairs{ 0 };        ///< Number of writable pair slots.
@@ -216,7 +216,7 @@ class PairJacobianHessianBuffer {
   }
 
   /** @brief Return a device-copyable writable view. @return View retaining no ownership. */
-  PairJacobianHessianView<SizeCoords> view() { return { jacobians_.data(), hessians_.data(), num_pairs_ }; }
+  PairJacobianHessianBufferView<SizeCoords> view() { return { jacobians_.data(), hessians_.data(), num_pairs_ }; }
 
   /** @brief Return the number of pair slots. @return Pair count. */
   IndexT numberOfPairs() const { return num_pairs_; }
@@ -236,10 +236,10 @@ class PairJacobianHessianBuffer {
 /** @brief Device-copyable pair values, quadrature metadata, Jacobians, and Hessians. @tparam SizeCoords Coordinates.
  */
 template <IndexT SizeCoords>
-struct PairValueJacobianHessianView {
-  RealT* values{ nullptr };                            ///< One scalar value per pair.
-  QuadratureMetadata* quadrature_metadata{ nullptr };  ///< One quadrature metadata entry per pair.
-  PairJacobianHessianView<SizeCoords> derivatives{};   ///< Coordinate Jacobians and Hessians.
+struct PairValueJacobianHessianBufferView {
+  RealT* values{ nullptr };                                 ///< One scalar value per pair.
+  QuadratureMetadata* quadrature_metadata{ nullptr };       ///< One quadrature metadata entry per pair.
+  PairJacobianHessianBufferView<SizeCoords> derivatives{};  ///< Coordinate Jacobians and Hessians.
 
   /** @brief Read the scalar value. @param pair Pair slot. @return Function value. */
   TRIBOL_HOST_DEVICE RealT value( IndexT pair ) const { return values[pair]; }
@@ -272,7 +272,7 @@ class PairValueJacobianHessianBuffer {
   }
 
   /** @brief Return a device-copyable writable view. @return View retaining no ownership. */
-  PairValueJacobianHessianView<SizeCoords> view()
+  PairValueJacobianHessianBufferView<SizeCoords> view()
   {
     return { values_.data(), quadrature_metadata_.data(), derivatives_.view() };
   }

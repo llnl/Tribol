@@ -110,13 +110,13 @@ PairValueJacobianBuffer<PairFunction::size_values, PairFunction::size_coords> ev
     const auto coords2 = mesh2.getFaceCoords<typename PairFunction::Coords2>( pair.element_id2_ );
     const auto pair_values_struct =
         EnzymePairDerivative<PairFunction>::valuesAndJacobian( coords1.view(), coords2.view(), pair_function );
-    all_pair_values_view.quadrature_metadata[pair_index] = pair_values_struct.quadrature_metadata;
-    const auto& pair_values = pair_values_struct.values;
+    all_pair_values_view.quadrature_metadata[pair_index] = pair_values_struct.pair_value.quadrature_metadata;
+    const auto pair_values = pair_values_struct.pair_value.values();
     for ( IndexT value_index{ 0 }; value_index < PairFunction::size_values; ++value_index ) {
       all_pair_values_view.setValue( pair_index, value_index, pair_values[value_index] );
       for ( IndexT coordinate{ 0 }; coordinate < PairFunction::size_coords; ++coordinate ) {
         all_pair_values_view.setJacobian( pair_index, value_index, coordinate,
-                                          pair_values_struct.jacobian( value_index, coordinate ) );
+                                          pair_values_struct.derivatives.jacobian( value_index, coordinate ) );
       }
     }
   } );
@@ -230,14 +230,15 @@ PairValueJacobianHessianBuffer<PairFunction::size_coords> evaluatePairValuesJaco
     const auto coords2 = mesh2.getFaceCoords<typename PairFunction::Coords2>( pair.element_id2_ );
     const auto pair_values_struct =
         EnzymePairDerivative<PairFunction>::valueJacobianAndHessian( coords1.view(), coords2.view(), pair_function );
-    all_pair_values_view.values[pair_index] = pair_values_struct.value;
-    all_pair_values_view.quadrature_metadata[pair_index] = pair_values_struct.quadrature_metadata;
+    all_pair_values_view.values[pair_index] = pair_values_struct.pair_value.values()[0];
+    all_pair_values_view.quadrature_metadata[pair_index] = pair_values_struct.pair_value.quadrature_metadata;
     for ( IndexT coordinate_row{ 0 }; coordinate_row < PairFunction::size_coords; ++coordinate_row ) {
       all_pair_values_view.derivatives.setJacobian( pair_index, coordinate_row,
-                                                    pair_values_struct.jacobian[coordinate_row] );
+                                                    pair_values_struct.derivatives.jacobian[coordinate_row] );
       for ( IndexT coordinate_column{ 0 }; coordinate_column < PairFunction::size_coords; ++coordinate_column ) {
-        all_pair_values_view.derivatives.setHessian( pair_index, coordinate_row, coordinate_column,
-                                                     pair_values_struct.hessian( coordinate_row, coordinate_column ) );
+        all_pair_values_view.derivatives.setHessian(
+            pair_index, coordinate_row, coordinate_column,
+            pair_values_struct.derivatives.hessian( coordinate_row, coordinate_column ) );
       }
     }
   } );
