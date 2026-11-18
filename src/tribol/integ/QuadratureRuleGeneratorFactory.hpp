@@ -20,8 +20,8 @@
 namespace tribol {
 
 /**
- * @brief Create a pair quadrature rule generator with the edge generator selected by polynomial order.
- * @throws std::invalid_argument The order is negative or unsupported by the available edge rules.
+ * @brief Create a pair quadrature rule generator with the rule generator selected by polynomial order.
+ * @throws std::invalid_argument The order is negative or unsupported by the available rules.
  * @tparam Mapping Forward and reverse mapping retained by the pair rule generator.
  * @tparam Create Callable accepting the composed pair rule generator by value.
  * @param order Requested nonnegative polynomial degree.

@@ -5,7 +5,7 @@
 
 /**
  * @file
- * @brief Evaluate the alignment-corrected geometric gap used by Energy Mortar. */
+ * @brief Evaluate the Energy Mortar normal gap, scaled by how strongly the two surface normals oppose each other. */
 #ifndef SRC_TRIBOL_GEOM_OPPOSINGNORMALGAP_HPP_
 #define SRC_TRIBOL_GEOM_OPPOSINGNORMALGAP_HPP_
 
@@ -32,7 +32,7 @@ struct OpposingNormalGap {
   }
 
   /**
-   * @brief Calculate geometric separation using the current pair's unit normals.
+   * @brief Calculate the gap using the current pair's unit normals.
    * @param point1 Current point on geometry1, the non-mortar side.
    * @param point2 Current point on geometry2, the mortar side.
    * @param normals Unit normals of those geometries.

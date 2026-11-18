@@ -372,6 +372,8 @@ void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_
     cs->getMfemMeshData()->EnableLORJacobianTransfer();
   }
   auto jacobian = compute_jacobian ? std::make_unique<MfemJacobianData>( *cs->getMfemMeshData() ) : nullptr;
+  // A Jacobian-enabled formulation retains MfemJacobianData by reference, so destroy the formulation before replacing
+  // its transfer data.
   cs->setContactFormulation( nullptr );
   cs->setMfemJacobianData( std::move( jacobian ) );
   cs->getParameters().use_common_plane_formulation = true;
@@ -444,6 +446,8 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the penalty." );
+  // Energy Mortar may not have a formulation until this call supplies its penalties. Other methods rebuild only when
+  // a formulation is already active.
   const bool rebuild_formulation = cs->getContactMethod() == ENERGY_MORTAR || cs->hasContactFormulation();
   if ( rebuild_formulation ) {
     const RealT checked_mesh1_penalty = detail::checkedPenaltyStiffness( mesh1_penalty );
