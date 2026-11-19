@@ -53,13 +53,13 @@ struct CommonPlanePenaltyTraction {
               MdSpan<const RealT, LinearEdgeGeometry::parametric_dim> TRIBOL_UNUSED_PARAM( parametric_coords2 ),
               const CommonPlaneEdgeMapping::CommonPlaneLine& line ) const
   {
-    const RealT separation = gap( point1, point2, line );
-    if ( separation > 0.0 ) {
+    const RealT scalar_gap = gap( point1, point2, line );
+    if ( scalar_gap > 0.0 ) {
       return {};
     }
     QuadraturePointValue<MdArray<RealT, LinearEdgeGeometry::spatial_dim>> result;
     result.active = true;
-    const RealT pressure = penalty * separation;
+    const RealT pressure = penalty * scalar_gap;
     for ( IndexT spatial_dim = 0; spatial_dim < LinearEdgeGeometry::spatial_dim; ++spatial_dim ) {
       result.value[spatial_dim] = pressure * line.normal[spatial_dim];
     }
@@ -115,7 +115,7 @@ class CommonPlaneFormulation final : public ContactFormulation {
   const PairTractionIntegral<PairRuleGenerator, CommonPlanePenaltyTraction<GapDefinition>,
                              BasisFunction<EDGE, LINEAR_LAGRANGE>>
       pair_integral_;  ///< Integrates the fixed Common Plane penalty traction with linear edge bases.
-  const ResidualOutputs residual_outputs_;  ///< Owns the selected assembly behavior and references its transfer data.
+  const ResidualOutputs residual_outputs_;  ///< Owns the selected assembly behavior -- residual or residual + jacobian
   PairListBuilder pair_builder_;            ///< Owned search composition.
 };
 #endif
