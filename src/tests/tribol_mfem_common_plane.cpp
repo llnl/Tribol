@@ -4,6 +4,8 @@
 // SPDX-License-Identifier: (MIT)
 
 #include <set>
+#include <string>
+#include <utility>
 
 #include <gtest/gtest.h>
 
@@ -34,23 +36,54 @@
 #include "axom/slic.hpp"
 
 /**
- * @brief This tests the Tribol MFEM interface running a small common plane explicit contact example using a central
- * difference explicit time integration scheme.
+ * @brief Test legacy and ContactFormulation-based Common Plane in a small explicit contact calculation.
  *
- * Both the element penalty and a constant penalty are tested, with the constant penalty tuned to match the element
- * penalty for this case.  As a result, the test comparisons are the same for both penalty types.
- *
+ * The legacy cases retain the original 3D block problem and also run the same 2D constant-penalty cases as the
+ * formulation. CommonPlaneFormulation supports the 2D cases but not the 3D or element-penalty cases.
  */
-class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol::KinematicPenaltyCalculation>> {
+enum class CommonPlaneImplementation
+{
+  Legacy,
+  ContactFormulation
+};
+
+enum class CommonPlaneProblem
+{
+  Blocks2D,
+  Blocks3D
+};
+
+struct MfemCommonPlaneParameters {
+  int order;
+  tribol::KinematicPenaltyCalculation penalty_calculation;
+  CommonPlaneImplementation implementation;
+  CommonPlaneProblem problem;
+};
+
+std::string commonPlaneParameterName( const testing::TestParamInfo<MfemCommonPlaneParameters>& parameter_info )
+{
+  const auto& parameters = parameter_info.param;
+  const std::string penalty_name =
+      parameters.penalty_calculation == tribol::KINEMATIC_CONSTANT ? "Constant" : "Element";
+  const std::string implementation_name =
+      parameters.implementation == CommonPlaneImplementation::Legacy ? "Legacy" : "Formulation";
+  const std::string problem_name = parameters.problem == CommonPlaneProblem::Blocks2D ? "2D" : "3D";
+  return "Order" + std::to_string( parameters.order ) + penalty_name + implementation_name + problem_name;
+}
+
+class MfemCommonPlaneTest : public testing::TestWithParam<MfemCommonPlaneParameters> {
  protected:
-  tribol::RealT max_disp_;
+  tribol::RealT max_displacement_ = 0.0;
   void SetUp() override
   {
+    const auto& parameters = GetParam();
+    const bool uses_contact_formulation = parameters.implementation == CommonPlaneImplementation::ContactFormulation;
+    const bool uses_two_dimensional_problem = parameters.problem == CommonPlaneProblem::Blocks2D;
     // number of times to uniformly refine the serial mesh before constructing the
     // parallel mesh
     int ref_levels = 2;
     // polynomial order of the finite element discretization
-    int order = std::get<0>( GetParam() );
+    int order = parameters.order;
     // initial separation between the two blocks
     tribol::RealT initial_sep = -0.001;
     // initial velocity
@@ -69,12 +102,9 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol
     // which is bulk-modulus over element thickness.
     tribol::RealT p_kine = ( lambda + 2.0 / 3.0 * mu ) / ( 1.0 / std::pow( 2.0, ref_levels ) );
 
-    // fixed options
-    // boundary element attributes of contact surface 1
-    auto contact_surf_1 = std::set<int>( { 6 } );
-    // boundary element attributes of contact surface 2
-    auto contact_surf_2 = std::set<int>( { 7 } );
-    // boundary element attributes of fixed surface (points on z = 0, all t)
+    auto contact_surf_1 = uses_two_dimensional_problem ? std::set<int>{ 3 } : std::set<int>{ 6 };
+    auto contact_surf_2 = uses_two_dimensional_problem ? std::set<int>{ 5 } : std::set<int>{ 7 };
+    // Fix the lower body's bottom boundary for both the 2D and 3D problems.
     auto fixed_attrs = std::set<int>( { 1 } );
     // element attribute corresponding to volume elements where an initial
     // velocity will be applied
@@ -88,18 +118,28 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol
     tribol::ExecutionMode exec_mode = tribol::ExecutionMode::Sequential;
 #endif
 
-    // read mesh
-    // clang-format off
-    mfem::ParMesh mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::Unify( {
-      shared::MeshBuilder::CubeMesh( 1, 1, 1 ),
-      shared::MeshBuilder::CubeMesh( 1, 1, 1 )
-        .translate( { 0.0, 0.0, 1.0 + initial_sep } )
-        .updateAttrib( 1, 2 )    // changes attribute in all volume elements from 1 to 2 so it doesn't clash with the 
-                                 // first (bottom) mesh
-        .updateBdrAttrib( 1, 7 ) // set the bottom surface to boundary attribute 7
-        .updateBdrAttrib( 6, 8 ) // set the top surface to boundary attribute 8
-    } ).refine( ref_levels ) );
-    // clang-format on
+    auto mesh_builder = [&]() {
+      if ( uses_two_dimensional_problem ) {
+        // The lower square occupies [0, 1]^2. The upper square starts at y=0.999, so its bottom edge penetrates the
+        // lower square's top edge by 0.001. Attributes 5 and 6 distinguish the upper contact and exterior edges after
+        // unifying.
+        return shared::MeshBuilder::Unify(
+                   { shared::MeshBuilder::SquareMesh( 1, 1 ), shared::MeshBuilder::SquareMesh( 1, 1 )
+                                                                  .translate( { 0.0, 1.0 + initial_sep } )
+                                                                  .updateAttrib( 1, 2 )
+                                                                  .updateBdrAttrib( 1, 5 )
+                                                                  .updateBdrAttrib( 3, 6 ) } )
+            .refine( ref_levels );
+      }
+      return shared::MeshBuilder::Unify(
+                 { shared::MeshBuilder::CubeMesh( 1, 1, 1 ), shared::MeshBuilder::CubeMesh( 1, 1, 1 )
+                                                                 .translate( { 0.0, 0.0, 1.0 + initial_sep } )
+                                                                 .updateAttrib( 1, 2 )
+                                                                 .updateBdrAttrib( 1, 7 )
+                                                                 .updateBdrAttrib( 6, 8 ) } )
+          .refine( ref_levels );
+    }();
+    mfem::ParMesh mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, std::move( mesh_builder ) );
 
     // grid function for higher-order nodes
     auto fe_coll = mfem::H1_FECollection( order, mesh.SpaceDimension() );
@@ -122,7 +162,9 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol
     velocity = 0.0;
 
     // set initial velocity
-    mfem::Vector init_velocity_vector( { 0.0, 0.0, -std::abs( initial_v ) } );
+    mfem::Vector init_velocity_vector( mesh.SpaceDimension() );
+    init_velocity_vector = 0.0;
+    init_velocity_vector[mesh.SpaceDimension() - 1] = -std::abs( initial_v );
     mfem::VectorConstantCoefficient init_velocity_coeff( init_velocity_vector );
     mfem::Array<int> moving_attrs_array;
     mfem::Array<mfem::VectorCoefficient*> init_velocity_coeff_array;
@@ -166,14 +208,22 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol
                                         contact_surf_2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
                                         tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY,
                                         tribol::BINNING_BVH, exec_mode );
-    tribol::registerMfemVelocity( 0, velocity );
-    if ( std::get<1>( GetParam() ) == tribol::KINEMATIC_CONSTANT ) {
+    tribol::registerMfemVelocity( coupling_scheme_id, velocity );
+    if ( parameters.penalty_calculation == tribol::KINEMATIC_CONSTANT ) {
       tribol::setMfemKinematicConstantPenalty( coupling_scheme_id, p_kine, p_kine );
     } else {
       mfem::Vector bulk_moduli_by_bdry_attrib( mesh.bdr_attributes.Max() );
       bulk_moduli_by_bdry_attrib = lambda + 2.0 / 3.0 * mu;
       mfem::PWConstCoefficient mat_coeff( bulk_moduli_by_bdry_attrib );
       tribol::setMfemKinematicElementPenalty( coupling_scheme_id, mat_coeff );
+    }
+    if ( uses_contact_formulation ) {
+      constexpr bool enable_formulation = true;
+      constexpr bool compute_jacobian = false;
+      tribol::setMfemUseCommonPlaneFormulation( coupling_scheme_id, enable_formulation, compute_jacobian );
+      // One point matches the legacy constant-traction integration for this flat overlap.
+      constexpr int one_point_quadrature_order = 1;
+      tribol::setQuadratureOrder( coupling_scheme_id, one_point_quadrature_order );
     }
 
     int cycle{ 0 };
@@ -183,7 +233,14 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol
       tribol::updateMfemParallelDecomposition();
       tribol::update( cycle, t, dt );
       op.f_ext = 0.0;
-      tribol::getMfemResponse( 0, op.f_ext );
+      if ( uses_contact_formulation ) {
+        auto contact_residual = tribol::getMfemContactResidual( coupling_scheme_id );
+        par_fe_space.GetProlongationMatrix()->Mult( contact_residual, op.f_ext );
+        // The formulation returns a residual contribution, while ExplicitMechanics expects the physical contact force.
+        op.f_ext *= -1.0;
+      } else {
+        tribol::getMfemResponse( coupling_scheme_id, op.f_ext );
+      }
 
       op.SetTime( t );
       solver.Step( displacement, velocity, t, dt );
@@ -198,8 +255,8 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol
       ++cycle;
     }
 
-    max_disp_ = displacement.Max();
-    MPI_Allreduce( MPI_IN_PLACE, &max_disp_, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD );
+    max_displacement_ = displacement.Max();
+    MPI_Allreduce( MPI_IN_PLACE, &max_displacement_, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD );
 
     tribol::finalize();
   }
@@ -208,16 +265,32 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol
 TEST_P( MfemCommonPlaneTest, common_plane )
 {
   // make sure there is some contact response after 10 cycles
-  EXPECT_GT( max_disp_, 1.0e-4 );
+  EXPECT_GT( max_displacement_, 1.0e-4 );
 
   MPI_Barrier( MPI_COMM_WORLD );
 }
 
-INSTANTIATE_TEST_SUITE_P( tribol, MfemCommonPlaneTest,
-                          testing::Values( std::make_tuple( 1, tribol::KINEMATIC_CONSTANT ),
-                                           std::make_tuple( 1, tribol::KINEMATIC_ELEMENT ),
-                                           std::make_tuple( 2, tribol::KINEMATIC_CONSTANT ),
-                                           std::make_tuple( 2, tribol::KINEMATIC_ELEMENT ) ) );
+INSTANTIATE_TEST_SUITE_P(
+    tribol, MfemCommonPlaneTest,
+    testing::Values( MfemCommonPlaneParameters{ 1, tribol::KINEMATIC_CONSTANT, CommonPlaneImplementation::Legacy,
+                                                CommonPlaneProblem::Blocks3D },
+                     MfemCommonPlaneParameters{ 1, tribol::KINEMATIC_ELEMENT, CommonPlaneImplementation::Legacy,
+                                                CommonPlaneProblem::Blocks3D },
+                     MfemCommonPlaneParameters{ 2, tribol::KINEMATIC_CONSTANT, CommonPlaneImplementation::Legacy,
+                                                CommonPlaneProblem::Blocks3D },
+                     MfemCommonPlaneParameters{ 2, tribol::KINEMATIC_ELEMENT, CommonPlaneImplementation::Legacy,
+                                                CommonPlaneProblem::Blocks3D },
+                     MfemCommonPlaneParameters{ 1, tribol::KINEMATIC_CONSTANT, CommonPlaneImplementation::Legacy,
+                                                CommonPlaneProblem::Blocks2D },
+                     MfemCommonPlaneParameters{ 1, tribol::KINEMATIC_CONSTANT,
+                                                CommonPlaneImplementation::ContactFormulation,
+                                                CommonPlaneProblem::Blocks2D },
+                     MfemCommonPlaneParameters{ 2, tribol::KINEMATIC_CONSTANT, CommonPlaneImplementation::Legacy,
+                                                CommonPlaneProblem::Blocks2D },
+                     MfemCommonPlaneParameters{ 2, tribol::KINEMATIC_CONSTANT,
+                                                CommonPlaneImplementation::ContactFormulation,
+                                                CommonPlaneProblem::Blocks2D } ),
+    commonPlaneParameterName );
 
 //------------------------------------------------------------------------------
 int main( int argc, char* argv[] )
