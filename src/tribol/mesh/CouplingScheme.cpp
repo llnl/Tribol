@@ -1241,25 +1241,11 @@ void CouplingScheme::updateEnergyMortarTransferData()
     jacobian_data->UpdateJacobianXfer();
   }
 
-  // Release outputs and formulations before the transfer spaces and fields they reference.
+  // Release outputs and formulations before the transfer spaces they reference.
   setContactFormulation( nullptr );
   setMfemJacobianData( nullptr );
-  for ( auto* mesh : { &getMesh1(), &getMesh2() } ) {
-    auto& fields = mesh->getNodalFields();
-    fields.m_node_gap = {};
-    fields.m_node_pressure = {};
-    fields.m_is_node_gap_set = false;
-    fields.m_is_node_pressure_set = false;
-  }
   setMfemSubmeshData( std::move( dual_data ) );
   setMfemJacobianData( std::move( jacobian_data ) );
-  if ( nodal && mesh_data.HasRedecompMesh() ) {
-    auto& fields = getMesh1().getNodalFields();
-    fields.m_node_gap = { getMfemSubmeshData()->GetRedecompGapPtrs()[0], getMesh1().numberOfNodes() };
-    fields.m_node_pressure = { getMfemSubmeshData()->GetRedecompPressurePtrs()[0], getMesh1().numberOfNodes() };
-    fields.m_is_node_gap_set = true;
-    fields.m_is_node_pressure_set = true;
-  }
   updateContactMultiplier();
 }
 #endif

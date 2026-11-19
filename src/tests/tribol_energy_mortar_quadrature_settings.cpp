@@ -508,8 +508,7 @@ TEST_P( EnergyMortarRegistrationTest, constructs_formulation_on_existing_decompo
   ASSERT_FALSE( cs.hasContactFormulation() );
   ASSERT_TRUE( cs.init() );
   ASSERT_TRUE( cs.hasContactFormulation() );
-  const bool nodal = std::get<0>( GetParam() ) == tribol::EnforcementLocation::Nodal;
-  EXPECT_EQ( cs.getMesh1().getNodalFields().m_is_node_gap_set, nodal );
+  EXPECT_FALSE( cs.getMesh1().getNodalFields().m_is_node_gap_set );
   EXPECT_FALSE( cs.getMesh2().getNodalFields().m_is_node_gap_set );
   const auto result =
       cs.getContactFormulation()->computeNodalResiduals( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
@@ -660,7 +659,7 @@ INSTANTIATE_TEST_SUITE_P( enforcement, EnergyMortarRegistrationTest,
                                                              tribol::EnforcementLocation::QuadraturePoint ),
                                             testing::Values( 1, 3, 5 ) ) );
 
-// Parent-only pair enforcement must never allocate or register pressure/gap fields, including after decomposition.
+// Energy Mortar uses scalar transfer data for nodal assembly but returns gap and pressure through its result.
 TEST_P( EnergyMortarQuadratureSettingsTest, creates_only_the_required_transfer_fields )
 {
   auto& cs = tribol::CouplingSchemeManager::getInstance().at( coupling_scheme_id );
@@ -670,8 +669,8 @@ TEST_P( EnergyMortarQuadratureSettingsTest, creates_only_the_required_transfer_f
   tribol::updateMfemParallelDecomposition( contact_rank_count, true );
   EXPECT_EQ( cs.hasMfemSubmeshData(), nodal );
   EXPECT_EQ( cs.getMfemJacobianData()->ParentPath().final_fes, fes_.get() );
-  EXPECT_EQ( cs.getMesh1().getNodalFields().m_is_node_gap_set, nodal );
-  EXPECT_EQ( cs.getMesh1().getNodalFields().m_is_node_pressure_set, nodal );
+  EXPECT_FALSE( cs.getMesh1().getNodalFields().m_is_node_gap_set );
+  EXPECT_FALSE( cs.getMesh1().getNodalFields().m_is_node_pressure_set );
   EXPECT_FALSE( cs.getMesh2().getNodalFields().m_is_node_gap_set );
   EXPECT_FALSE( cs.getMesh2().getNodalFields().m_is_node_pressure_set );
 }
@@ -697,8 +696,8 @@ TEST_P( EnergyMortarQuadratureSettingsTest, switches_locations_without_rebuildin
     ASSERT_TRUE( cs.init() );
     EXPECT_EQ( cs.hasMfemSubmeshData(), nodal );
     EXPECT_EQ( cs.getContactFormulationResult().residual, nullptr );
-    EXPECT_EQ( cs.getMesh1().getNodalFields().m_is_node_gap_set, nodal );
-    EXPECT_EQ( cs.getMesh1().getNodalFields().m_is_node_pressure_set, nodal );
+    EXPECT_FALSE( cs.getMesh1().getNodalFields().m_is_node_gap_set );
+    EXPECT_FALSE( cs.getMesh1().getNodalFields().m_is_node_pressure_set );
     auto result =
         cs.getContactFormulation()->computeNodalResiduals( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
     ASSERT_NE( result.residual, nullptr );

@@ -34,6 +34,8 @@ namespace tribol {
  *
  * Mortar methods implemented through ContactFormulation use the first mesh as the non-mortar integration surface
  * and the second as the mortar projection surface. Legacy SINGLE_MORTAR uses the opposite surface order.
+ * @note Registering COMMON_PLANE selects the legacy implementation by default. Call
+ * setMfemUseCommonPlaneFormulation() with enabled=true before update() to use CommonPlaneFormulation.
  *
  * @param [in] cs_id Index to use for the coupling scheme
  * @param [in] mesh_id_1 The first ID of the contact surface mesh
@@ -50,10 +52,10 @@ namespace tribol {
  * @param [in] binning_method
  * @param [in] exec_mode Execution mode for the coupling scheme (Sequential by default)
  *
- * Quadrature-point ENERGY_MORTAR uses parent-only Jacobian transfer and creates no pressure/gap fields. Nodal
- * enforcement creates those fields when first accessed or when update() initializes the formulation. Configuration
- * setters invalidate an existing formulation, and the next update() rebuilds it once from the completed configuration.
- * Nodal LM callers can access the multiplier input before that first update().
+ * Quadrature-point ENERGY_MORTAR uses parent-only Jacobian transfer. Nodal enforcement also creates a scalar submesh
+ * space and transfer operators for nodal assembly. Setters that change formulation construction invalidate the current
+ * formulation, and the next update() rebuilds it from the completed configuration. Nodal LM callers can prepare and
+ * access the multiplier input before that first update().
  */
 void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, const mfem::ParMesh& mesh,
                                  const mfem::ParGridFunction& current_coords, std::set<int> b_attributes_1,

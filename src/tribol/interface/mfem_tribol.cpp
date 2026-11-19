@@ -940,12 +940,15 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         // updates submesh-native grid functions and transfer operators on
         // the new redecomp mesh
         submesh_data->UpdateMfemSubmeshData( mfem_data->GetRedecompMesh(), new_redecomp );
-        // ContactFormulation uses mesh 1 as non-mortar; legacy mortar methods use mesh 2.
-        const auto nonmortar_mesh_id = mesh_ids[cs.usesContactFormulation() ? 0 : 1];
-        auto g_ptrs = submesh_data->GetRedecompGapPtrs();
-        registerMortarGaps( nonmortar_mesh_id, g_ptrs[0] );
-        auto p_ptrs = submesh_data->GetRedecompPressurePtrs();
-        registerMortarPressures( nonmortar_mesh_id, p_ptrs[0] );
+        if ( cs.getContactMethod() == SINGLE_MORTAR ) {
+          // Legacy single mortar reads gap and pressure through MeshData. Contact formulations return their outputs
+          // directly and do not write these redecomposed fields.
+          const auto nonmortar_mesh_id = mesh_ids[1];
+          auto g_ptrs = submesh_data->GetRedecompGapPtrs();
+          registerMortarGaps( nonmortar_mesh_id, g_ptrs[0] );
+          auto p_ptrs = submesh_data->GetRedecompPressurePtrs();
+          registerMortarPressures( nonmortar_mesh_id, p_ptrs[0] );
+        }
       }
       if ( cs.hasMfemJacobianData() && new_redecomp ) {
         cs.getMfemJacobianData()->UpdateJacobianXfer();
