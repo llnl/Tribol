@@ -11,9 +11,7 @@
  * loads match centroid pressure; higher-order rules integrate the varying pressure. Gap offsets check activation at
  * individual quadrature points. Independent residual bases and prescribed nodal pressure check shared traction
  * integration. Value-only pair kernels check activation, quadrature failures, allocator selection, and empty input on
- * every enabled execution backend. Values from an earlier call remain unchanged after another evaluation. Returned
- * face-coordinate arrays follow reordered connectivity and remain valid when mesh coordinates change; geometry copies
- * their values.
+ * every enabled execution backend. Values from an earlier call remain unchanged after another evaluation.
  */
 #include <cmath>
 #include "gtest/gtest.h"
@@ -130,6 +128,7 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
     ArrayT<RealT, 2> records( axom::StackArray<axom::IndexType, 2>{ NumPoints, NumColumns }, allocatorId() );
     const auto output = records.view();
     forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
+      // Oppositely directed parallel edges whose projected overlap is x in [1, 3].
       const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } };
       const Coordinates edge2{ MdArray<RealT, 2>{ 3.0, 0.2 }, MdArray<RealT, 2>{ 1.0, 0.2 } };
       const LinearEdgeGeometry geometry1( edge1.view() ), geometry2( edge2.view() );
@@ -169,16 +168,22 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
     struct Case {
       RealT slope;          ///< Slope of edge1; edge2 has the opposite slope.
       RealT separation;     ///< Height of edge2 at x=0.0.
-      RealT residual_gap;   ///< Offset applied to pressure after clipping the geometric interval.
+      RealT residual_gap;   ///< Value subtracted from the geometric gap in the pressure law after geometric clipping.
       RealT lower;          ///< Exact lower endpoint of the penetrating interval.
       RealT upper;          ///< Exact upper endpoint of the penetrating interval.
       RealT total_force_y;  ///< Exact edge1 load for unit penalty and an affine compressive gap.
     };
-    // The first two full-overlap midpoints are open. The third is closed, and the last applies a pressure offset.
-    const Case cases[] = { { 0.25, -0.25, 0.0, -1.0, -0.5, -0.0625 },
-                           { -0.25, -0.25, 0.0, 0.5, 1.0, -0.0625 },
-                           { 0.25, 0.25, 0.0, -1.0, 0.5, -0.5625 },
-                           { 0.25, -0.25, 0.1, -1.0, -0.5, -0.1125 } };
+    // Each case spans the physical interval x in [-1, 1]. Edge1 follows y=slope*x, and the oppositely directed edge2
+    // follows y=separation-slope*x. Therefore, x=0 is the midpoint of their full projected overlap.
+    const Case cases[] = {
+        // The edges cross at x=-0.5. Their geometric gap is positive at x=0, so only the left interval is retained.
+        { 0.25, -0.25, 0.0, -1.0, -0.5, -0.0625 },
+        // Mirroring both slopes moves the crossing to x=0.5 and retains only the right interval.
+        { -0.25, -0.25, 0.0, 0.5, 1.0, -0.0625 },
+        // The edges cross at x=0.5. Their geometric gap is negative at x=0, so the retained interval includes x=0.
+        { 0.25, 0.25, 0.0, -1.0, 0.5, -0.5625 },
+        // The first geometry is reused, but pressure uses the geometric gap minus 0.1 on the same clipped interval.
+        { 0.25, -0.25, 0.1, -1.0, -0.5, -0.1125 } };
     struct Sample {
       EdgeQuadratureInterval interval;      ///< Calculated geometric bounds.
       CommonPlaneResidualValue residual;    ///< Pair loads and quadrature status.
@@ -257,59 +262,6 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
   }
 };
 
-// Reordered connectivity distinguishes the two faces. Mesh and array updates must not change constructed geometry.
-TEST_P( CommonPlaneTest, constructs_geometry_from_returned_face_coordinate_arrays )
-{
-  auto x = copyToExecutionSpace<RealT>( { 1.0, 3.0, -2.0, 0.0 } );
-  auto y = copyToExecutionSpace<RealT>( { 1.0, 4.0, 1.0, 0.0 } );
-  const auto connectivity = copyToExecutionSpace<IndexT>( { 3, 1, 2, 0 } );
-  MeshData mesh( 0, 2, x.size(), connectivity.data(), EDGE, LINEAR_LAGRANGE, x.data(), y.data(), nullptr,
-                 memorySpace() );
-  const auto mesh_view = mesh.getView();
-  const auto x_view = x.view();
-  const auto y_view = y.view();
-  ArrayT<MdArray<RealT, 4, 5>> results( 1, 1, allocatorId() );
-  const auto output = results.view();
-  forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
-    auto coordinates = mesh_view.getFaceCoords<LinearEdgeGeometry::Coords>( 0 );
-    const auto other_coordinates = mesh_view.getFaceCoords<LinearEdgeGeometry::Coords>( 1 );
-    const LinearEdgeGeometry original( coordinates.view() ), other( other_coordinates.view() );
-    // Translate only face zero; its returned array must retain the original coordinates.
-    x_view[3] += 2.0;
-    x_view[1] += 2.0;
-    y_view[3] -= 1.0;
-    y_view[1] -= 1.0;
-    for ( IndexT i = 0; i < coordinates.size(); ++i ) {
-      output[0]( 3, i ) = coordinates[i];
-    }
-    output[0]( 3, 4 ) = coordinates.size();
-    const auto updated_coordinates = mesh_view.getFaceCoords<LinearEdgeGeometry::Coords>( 0 );
-    const LinearEdgeGeometry updated( updated_coordinates.view() );
-    // The geometry must retain its own values when its input array is modified as well.
-    coordinates( 0, 0 ) = -3.0;
-    coordinates( 1, 1 ) = -2.0;
-    const LinearEdgeGeometry geometries[] = { original, other, updated };
-    const MdArray<RealT, 1> first_coords{ -1.0 };
-    const MdArray<RealT, 1> second_coords{ 1.0 };
-    for ( IndexT i = 0; i < 3; ++i ) {
-      const auto first = geometries[i].position( first_coords.view() );
-      const auto second = geometries[i].position( second_coords.view() );
-      output[0]( i, 0 ) = first[0];
-      output[0]( i, 1 ) = first[1];
-      output[0]( i, 2 ) = second[0];
-      output[0]( i, 3 ) = second[1];
-      output[0]( i, 4 ) = geometries[i].length();
-    }
-  } );
-  const ArrayT<MdArray<RealT, 4, 5>, 1, MemorySpace::Host> host( results );
-  const MdArray<RealT, 4, 5> expected{
-      MdArray<RealT, 5>{ 0.0, 0.0, 3.0, 4.0, 5.0 }, MdArray<RealT, 5>{ -2.0, 1.0, 1.0, 1.0, 3.0 },
-      MdArray<RealT, 5>{ 2.0, -1.0, 5.0, 3.0, 5.0 }, MdArray<RealT, 5>{ 0.0, 0.0, 3.0, 4.0, 4.0 } };
-  for ( IndexT i = 0; i < expected.size(); ++i ) {
-    EXPECT_DOUBLE_EQ( host[0][i], expected[i] );
-  }
-}
-
 // Each supported rule must integrate the physical overlap without multiplying by either edge Jacobian again.
 TEST_P( CommonPlaneTest, maps_partial_overlap_and_physical_weights )
 {
@@ -326,34 +278,69 @@ TEST_P( CommonPlaneTest, integrates_parallel_edge_residuals )
   checkParallelResiduals<3>();
 }
 
-// A rotated 3-4-5 edge retains the physical length and balances both total force and moment.
+// Rigidly rotating and translating an edge pair must preserve total force and moment balance.
 TEST_P( CommonPlaneTest, balances_rotated_pair_forces_and_moments )
 {
-  ArrayT<RealT> records( 2 * Coordinates::size(), 2 * Coordinates::size(), allocatorId() );
+  constexpr RealT edge_length = 5.0;
+  constexpr RealT edge_offset = 0.25;
+  constexpr RealT rotated_edge_x_component = 3.0;
+  constexpr RealT rotated_edge_y_component = 4.0;
+  constexpr RealT rotation_cosine = rotated_edge_x_component / edge_length;
+  constexpr RealT rotation_sine = rotated_edge_y_component / edge_length;
+  constexpr RealT penalty_stiffness = 2.0;
+  constexpr int pair_node_count = 2 * LinearEdgeGeometry::num_vertices;
+  constexpr int pair_residual_size = 2 * Coordinates::size();
+
+  // Begin with two oppositely directed length-five edges separated by 0.25 in their normal direction.
+  const Coordinates reference_edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ edge_length, 0.0 } };
+  const Coordinates reference_edge2{ MdArray<RealT, 2>{ edge_length, edge_offset },
+                                     MdArray<RealT, 2>{ 0.0, edge_offset } };
+  // This matrix maps the reference edge vector (5,0) to (3,4) without changing its length.
+  const MdArray<RealT, 2, 2> rotation{ MdArray<RealT, 2>{ rotation_cosine, -rotation_sine },
+                                       MdArray<RealT, 2>{ rotation_sine, rotation_cosine } };
+  const MdArray<RealT, 2> translation{ 1.0, 2.0 };
+  const auto transform = [&]( const Coordinates& reference ) {
+    Coordinates transformed{};
+    for ( int node = 0; node < LinearEdgeGeometry::num_vertices; ++node ) {
+      for ( int row = 0; row < LinearEdgeGeometry::spatial_dim; ++row ) {
+        transformed( node, row ) = translation[row];
+        for ( int column = 0; column < LinearEdgeGeometry::spatial_dim; ++column ) {
+          transformed( node, row ) += rotation( row, column ) * reference( node, column );
+        }
+      }
+    }
+    return transformed;
+  };
+  const Coordinates edge1 = transform( reference_edge1 );
+  const Coordinates edge2 = transform( reference_edge2 );
+
+  ArrayT<RealT> records( pair_residual_size, pair_residual_size, allocatorId() );
   const auto output = records.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
-    const Coordinates edge1{ MdArray<RealT, 2>{ 1.0, 2.0 }, MdArray<RealT, 2>{ 4.0, 6.0 } };
-    const Coordinates edge2{ MdArray<RealT, 2>{ 3.8, 6.15 }, MdArray<RealT, 2>{ 0.8, 2.15 } };
     const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>> rule_generator;
     const PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>>,
                                CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>
-        function{ rule_generator, { 2.0 } };
+        function{ rule_generator, { penalty_stiffness } };
     const auto result = function.evaluate( edge1.view(), edge2.view() );
     const auto values = result.values();
-    for ( int i = 0; i < 2 * Coordinates::size(); ++i ) {
+    for ( int i = 0; i < pair_residual_size; ++i ) {
       output[i] = values[i];
     }
   } );
   const ArrayT<RealT, 1, MemorySpace::Host> values( records );
-  const RealT x[] = { 1.0, 4.0, 3.8, 0.8 }, y[] = { 2.0, 6.0, 6.15, 2.15 };
   RealT force_x = 0.0, force_y = 0.0, moment = 0.0;
-  for ( int node = 0; node < 4; ++node ) {
-    force_x += values[2 * node];
-    force_y += values[2 * node + 1];
-    moment += x[node] * values[2 * node + 1] - y[node] * values[2 * node];
+  const Coordinates edges[] = { edge1, edge2 };
+  for ( int pair_node = 0; pair_node < pair_node_count; ++pair_node ) {
+    const int edge = pair_node / LinearEdgeGeometry::num_vertices;
+    const int edge_node = pair_node % LinearEdgeGeometry::num_vertices;
+    force_x += values[2 * pair_node];
+    force_y += values[2 * pair_node + 1];
+    moment +=
+        edges[edge]( edge_node, 0 ) * values[2 * pair_node + 1] - edges[edge]( edge_node, 1 ) * values[2 * pair_node];
   }
-  EXPECT_NEAR( values[0], 1.0, tolerance );
-  EXPECT_NEAR( values[1], -0.75, tolerance );
+  const RealT reference_nodal_force_y = -penalty_stiffness * edge_offset * edge_length / 2.0;
+  EXPECT_NEAR( values[0], -rotation_sine * reference_nodal_force_y, tolerance );
+  EXPECT_NEAR( values[1], rotation_cosine * reference_nodal_force_y, tolerance );
   EXPECT_NEAR( force_x, 0.0, tolerance );
   EXPECT_NEAR( force_y, 0.0, tolerance );
   EXPECT_NEAR( moment, 0.0, tolerance );

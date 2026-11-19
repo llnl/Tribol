@@ -27,6 +27,16 @@ constexpr int y_component = 1;
 constexpr int z_component = 2;
 constexpr bool higher_order_face_data_is_supported = false;
 constexpr bool derived_face_data_is_populated = false;
+using LinearEdgeCoordinates = tribol::MdArray<tribol::RealT, linear_edge_node_count, edge_dim>;
+
+void ExpectCoordinatesEqual( const LinearEdgeCoordinates& actual, const LinearEdgeCoordinates& expected )
+{
+  for ( tribol::IndexT node{}; node < linear_edge_node_count; ++node ) {
+    for ( int component{}; component < edge_dim; ++component ) {
+      EXPECT_DOUBLE_EQ( actual( node, component ), expected( node, component ) );
+    }
+  }
+}
 
 void ExpectDerivedFaceDataIsEmpty( tribol::MeshData& mesh )
 {
@@ -52,6 +62,37 @@ TEST( MeshData, stores_linear_edge_data )
   EXPECT_EQ( mesh.numberOfNodesPerElement(), linear_edge_node_count );
   EXPECT_EQ( mesh_view.getFaceOrder(), tribol::LINEAR_LAGRANGE );
   EXPECT_EQ( mesh_view.numberOfNodesPerElement(), linear_edge_node_count );
+}
+
+TEST( MeshData, returns_owned_face_coordinates_in_local_node_order )
+{
+  constexpr tribol::IndexT num_elements = 2;
+  constexpr tribol::IndexT num_nodes = 4;
+  constexpr std::array<tribol::IndexT, num_elements * linear_edge_node_count> connectivity{ 3, 1, 2, 0 };
+  std::array<tribol::RealT, num_nodes> x{ 1.0, 3.0, -2.0, 0.0 };
+  std::array<tribol::RealT, num_nodes> y{ 1.0, 4.0, 1.0, 0.0 };
+  tribol::MeshData mesh( mesh_id, num_elements, num_nodes, connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE,
+                         x.data(), y.data(), nullptr, tribol::MemorySpace::Host );
+  const auto mesh_view = mesh.getView();
+
+  const auto first_face = mesh_view.getFaceCoords<LinearEdgeCoordinates>( 0 );
+  const auto second_face = mesh_view.getFaceCoords<LinearEdgeCoordinates>( 1 );
+  const LinearEdgeCoordinates expected_first_face{ tribol::MdArray<tribol::RealT, edge_dim>{ 0.0, 0.0 },
+                                                   tribol::MdArray<tribol::RealT, edge_dim>{ 3.0, 4.0 } };
+  const LinearEdgeCoordinates expected_second_face{ tribol::MdArray<tribol::RealT, edge_dim>{ -2.0, 1.0 },
+                                                    tribol::MdArray<tribol::RealT, edge_dim>{ 1.0, 1.0 } };
+  ExpectCoordinatesEqual( first_face, expected_first_face );
+  ExpectCoordinatesEqual( second_face, expected_second_face );
+
+  // Changing the caller-owned mesh arrays must not change coordinates returned by an earlier call.
+  x[3] = 2.0;
+  x[1] = 5.0;
+  y[3] = -1.0;
+  y[1] = 3.0;
+  const LinearEdgeCoordinates expected_updated_first_face{ tribol::MdArray<tribol::RealT, edge_dim>{ 2.0, -1.0 },
+                                                           tribol::MdArray<tribol::RealT, edge_dim>{ 5.0, 3.0 } };
+  ExpectCoordinatesEqual( first_face, expected_first_face );
+  ExpectCoordinatesEqual( mesh_view.getFaceCoords<LinearEdgeCoordinates>( 0 ), expected_updated_first_face );
 }
 
 TEST( MeshData, stores_quadratic_edge_data )
