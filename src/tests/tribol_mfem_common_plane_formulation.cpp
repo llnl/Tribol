@@ -67,6 +67,10 @@ class MfemCommonPlaneTest : public testing::TestWithParam<int> {
     constexpr int upper_contact_boundary_attribute = 5;
     constexpr int upper_noncontact_boundary_attribute = 6;
     constexpr int upper_body_attribute = 2;
+    // The lower unit square has two elements across its top contact boundary. The upper unit square has three elements
+    // across its bottom boundary and starts at y=0.99, so it penetrates the lower body's top at y=1.0 by 0.01. Renaming
+    // the upper boundary and volume attributes keeps its contact edge, noncontact top edge, and body distinct after the
+    // two meshes are unified.
     parent_mesh_ = std::make_unique<mfem::ParMesh>( static_cast<const mfem::ParMesh&>( shared::ParMeshBuilder(
         MPI_COMM_WORLD, shared::MeshBuilder::Unify(
                             { shared::MeshBuilder::SquareMesh( lower_boundary_edge_count, vertical_element_count ),
