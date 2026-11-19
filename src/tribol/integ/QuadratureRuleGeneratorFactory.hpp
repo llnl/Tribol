@@ -20,6 +20,10 @@
 
 namespace tribol {
 
+inline constexpr int minimum_supported_quadrature_order = 0;  ///< Smallest accepted polynomial order.
+inline constexpr int maximum_supported_quadrature_order =
+    EdgeQuadratureRuleGenerator<3>::polynomial_order;  ///< Largest order supported by the available edge rules.
+
 /**
  * @brief Create a pair quadrature rule generator with the rule generator selected by polynomial order.
  * @note Reports a SLIC error if the order is negative or unsupported by the available rules. Execution continues past
@@ -40,14 +44,14 @@ decltype( auto ) createWithQuadratureRuleGenerator( int order, const Mapping& ma
   using ThreePointRuleGenerator = PairQuadratureRuleGenerator<Mapping, EdgeQuadratureRuleGenerator<3>>;
 
   // Execution continues past an unsupported-order error only when SLIC aborts are disabled; the nearest rule is used.
-  SLIC_ERROR_IF( order < 0, "Quadrature order must be nonnegative." );
+  SLIC_ERROR_IF( order < minimum_supported_quadrature_order, "Quadrature order must be nonnegative." );
   if ( order <= OnePointRuleGenerator::polynomial_order ) {
     return std::forward<Create>( create )( OnePointRuleGenerator{ mapping } );
   }
   if ( order <= TwoPointRuleGenerator::polynomial_order ) {
     return std::forward<Create>( create )( TwoPointRuleGenerator{ mapping } );
   }
-  SLIC_ERROR_IF( order > ThreePointRuleGenerator::polynomial_order,
+  SLIC_ERROR_IF( order > maximum_supported_quadrature_order,
                  "Requested quadrature order exceeds the supported quadrature rules." );
   return std::forward<Create>( create )( ThreePointRuleGenerator{ mapping } );
 }

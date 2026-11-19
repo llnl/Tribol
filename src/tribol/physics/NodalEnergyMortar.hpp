@@ -29,9 +29,6 @@ namespace tribol {
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
 
 namespace detail {
-inline constexpr RealT nodal_area_tolerance =
-    1.0e-14;  ///< Minimum supported tributary-area magnitude for penalty contact.
-
 /** @brief Energy Mortar's assembled weighted gaps and tributary areas, before activation. */
 struct EnergyMortarNodalQuantities {
   AssembledField weighted_gap;    ///< Weighted gaps and their coordinate Jacobian.
@@ -209,8 +206,8 @@ struct NodalPenaltyEnforcement {
     auto* nodal_energy_data = nodal_energy.data();
     const RealT penalty_stiffness = penalty;
     forAllExec<Exec>( gap_weights.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) {
-      const auto partials = EnergyMortarNodalPenaltyPartials::evaluate(
-          weighted_gap[node], area[node], penalty_stiffness, detail::nodal_area_tolerance );
+      const auto partials =
+          EnergyMortarNodalPenaltyPartials::evaluate( weighted_gap[node], area[node], penalty_stiffness );
       nodal_energy_data[node] = partials.energy;
       gap_weight[node] = partials.denergy_dweighted_gap;
       area_weight[node] = partials.denergy_dtributary_area;

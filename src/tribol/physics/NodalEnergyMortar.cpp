@@ -5,15 +5,13 @@
 
 #include "tribol/physics/NodalEnergyMortar.hpp"
 
-#include <cmath>
-
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
 namespace tribol {
 
 ContactFormulationResult NodalPenaltyEnforcement::computeGaps( detail::EnergyMortarNodalQuantities& quantities ) const
 {
-  // Penalty gaps are zero where contact is open and, matching the penalty energy, where the tributary area is too small
-  // to support contact. ParVector::divide() would leave the weighted gap unchanged at those nodes.
+  // Penalty gaps are zero where contact is open and, matching the penalty energy, where no tributary area exists.
+  // ParVector::divide() would leave the weighted gap unchanged at zero-area nodes.
   // The vectors may be valid only in device memory. Synchronize before the host loop, and mark the host copy of the
   // normalized gap as the valid one so later device reads see the result.
   shared::ParVector normalized_gap( quantities.weighted_gap.values.get() );
@@ -26,7 +24,7 @@ ContactFormulationResult NodalPenaltyEnforcement::computeGaps( detail::EnergyMor
     if ( weighted_gap[node] > 0.0 ) {
       normalized_gap_data[node] = 0.0;
       open_nodes.Append( node );
-    } else if ( std::abs( area[node] ) <= detail::nodal_area_tolerance ) {
+    } else if ( area[node] == 0.0 ) {
       normalized_gap_data[node] = 0.0;
     } else {
       normalized_gap_data[node] = weighted_gap[node] / area[node];

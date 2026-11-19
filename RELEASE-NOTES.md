@@ -153,6 +153,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - Fixed MFEM submesh-to-parent dual transfers so shared response and gap degrees of freedom are assembled correctly.
+- Fixed nodal Energy Mortar normalization so valid small edges are not discarded based on an absolute area measured in
+  the mesh's coordinate units.
 - Improved 2D polygon intersection robustness by using consistent length scales and centroid-angle vertex ordering.
 - Fixed Energy Mortar smoothing derivatives and memory leaks in Enzyme differentiation paths.
 - Fixed parallel Redecomp partitioning hangs when ranks contain empty element sets.

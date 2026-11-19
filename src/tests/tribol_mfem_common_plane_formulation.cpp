@@ -40,6 +40,26 @@
 
 namespace {
 using namespace tribol;
+
+constexpr int one_point_polynomial_order = EdgeQuadratureRuleGenerator<1>::polynomial_order;
+constexpr int two_point_polynomial_order = EdgeQuadratureRuleGenerator<2>::polynomial_order;
+constexpr int three_point_polynomial_order = EdgeQuadratureRuleGenerator<3>::polynomial_order;
+
+/**
+ * @brief Check whether a factory result contains the requested Common Plane Gauss rule.
+ * @tparam NumPoints Number of Gauss points in the expected concrete formulation.
+ * @param formulation Factory-created formulation.
+ * @return True when the concrete formulation contains the expected rule generator.
+ */
+template <int NumPoints>
+bool usesCommonPlaneRule( const ContactFormulation* formulation )
+{
+  using RuleGenerator = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>;
+  using Expected =
+      CommonPlaneFormulation<ExecutionMode::Sequential, RuleGenerator, CommonPlaneGap, ResidualAndJacobian>;
+  return dynamic_cast<const Expected*>( formulation ) != nullptr;
+}
+
 /** @brief Register a two-versus-three-element contact patch for each supported rule. */
 class MfemCommonPlaneTest : public testing::TestWithParam<int> {
  protected:
@@ -469,6 +489,28 @@ TEST_P( MfemCommonPlaneTest, rejects_invalid_scales_at_construction )
   evaluate();
 }
 
+// The factory must instantiate the exact Gauss rule requested by each supported representative polynomial order.
+TEST_P( MfemCommonPlaneTest, factory_selects_configured_rule_generator )
+{
+  enable();
+  ASSERT_TRUE( scheme().init() );
+  const auto* formulation = scheme().getContactFormulation();
+  ASSERT_NE( formulation, nullptr );
+  switch ( GetParam() ) {
+    case one_point_polynomial_order:
+      EXPECT_TRUE( usesCommonPlaneRule<1>( formulation ) );
+      break;
+    case two_point_polynomial_order:
+      EXPECT_TRUE( usesCommonPlaneRule<2>( formulation ) );
+      break;
+    case three_point_polynomial_order:
+      EXPECT_TRUE( usesCommonPlaneRule<3>( formulation ) );
+      break;
+    default:
+      FAIL() << "Unexpected quadrature order " << GetParam();
+  }
+}
+
 // Crossing nonmatching surfaces match legacy centroid pressure with one point. Higher-order rules integrate varying
 // pressure on the same penetrating interval and must produce a different nodal load distribution.
 TEST_P( MfemCommonPlaneTest, uses_configured_pressure_rule_for_interpenetrating_overlap )
@@ -492,7 +534,7 @@ TEST_P( MfemCommonPlaneTest, uses_configured_pressure_rule_for_interpenetrating_
   evaluate();
   auto error = getMfemContactResidual( 0 );
   error += true_legacy;
-  if ( GetParam() == 1 ) {
+  if ( GetParam() == one_point_polynomial_order ) {
     EXPECT_LT( norm( error ), 1.0e-11 );
   } else {
     EXPECT_GT( norm( error ), 1.0e-11 );
@@ -676,15 +718,15 @@ TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
   setResidualGap( 0, 0.0 );
   EXPECT_SLIC_ERROR( setQuadratureOrder( 0, 3 ) );
   enable( false );
-  for ( int order = 0; order <= 5; ++order ) {
+  for ( int order = minimum_supported_quadrature_order; order <= maximum_supported_quadrature_order; ++order ) {
     setQuadratureOrder( 0, order );
     EXPECT_FALSE( scheme().hasContactFormulation() );
     EXPECT_EQ( scheme().getParameters().quadrature_order, order );
     ASSERT_TRUE( scheme().init() );
     EXPECT_TRUE( scheme().hasContactFormulation() );
   }
-  EXPECT_SLIC_ERROR( setQuadratureOrder( 0, 6 ) );
-  EXPECT_EQ( scheme().getParameters().quadrature_order, 5 );
+  EXPECT_SLIC_ERROR( setQuadratureOrder( 0, maximum_supported_quadrature_order + 1 ) );
+  EXPECT_EQ( scheme().getParameters().quadrature_order, maximum_supported_quadrature_order );
 }
 // The opt-in setter must reject unsupported contact models, enforcement, and tied cases before constructing resources.
 TEST( CommonPlaneSelection, rejects_unsupported_methods_models_and_cases )
@@ -842,7 +884,9 @@ TEST( CommonPlaneSelection, evaluates_residuals_and_jacobians_with_lor_subdivisi
   finalize();
 }
 
-INSTANTIATE_TEST_SUITE_P( quadrature, MfemCommonPlaneTest, testing::Values( 1, 3, 5 ) );
+INSTANTIATE_TEST_SUITE_P( quadrature, MfemCommonPlaneTest,
+                          testing::Values( one_point_polynomial_order, two_point_polynomial_order,
+                                           three_point_polynomial_order ) );
 }  // namespace
 
 /** @brief Run MFEM integration tests with MPI and SLIC initialized. @param argc Argument count. @param argv Arguments.

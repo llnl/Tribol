@@ -10,7 +10,6 @@
 #ifndef SRC_TRIBOL_ENFORCEMENT_PENALTYENERGY_HPP_
 #define SRC_TRIBOL_ENFORCEMENT_PENALTYENERGY_HPP_
 
-#include <cmath>
 #include "tribol/common/BasicTypes.hpp"
 
 namespace tribol {
@@ -28,14 +27,13 @@ struct EnergyMortarNodalPenaltyPartials {
    * @param weighted_gap Assembled gap integral before activation.
    * @param tributary_area Assembled tributary area.
    * @param penalty Fixed effective stiffness.
-   * @param area_tolerance Maximum unsupported absolute area.
-   * @return Zero values and derivatives for unsupported area or open contact. At zero gap the compressive tangent
-   * remains active. Division is performed only after checking area support.
+   * @return Zero values and derivatives for zero area or open contact. At zero gap the compressive tangent remains
+   * active. Division is performed only after checking for zero area.
    */
   TRIBOL_HOST_DEVICE static EnergyMortarNodalPenaltyPartials evaluate( RealT weighted_gap, RealT tributary_area,
-                                                                       RealT penalty, RealT area_tolerance )
+                                                                       RealT penalty )
   {
-    if ( std::abs( tributary_area ) <= area_tolerance || weighted_gap > 0.0 ) {
+    if ( tributary_area == 0.0 || weighted_gap > 0.0 ) {
       return {};
     }
     const RealT inverse_area = 1.0 / tributary_area;

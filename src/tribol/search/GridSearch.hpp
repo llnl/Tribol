@@ -155,7 +155,7 @@ class GridSearch : public CoarseSearch {
     return bounding_box;
   }
 
-  /** @brief Expand a box by the configured fraction of its longest dim and the residual gap */
+  /** @brief Expand a box by the configured fraction of its longest dimension and the residual gap. */
   void inflateBoundingBox( SpatialBoundingBox& bounding_box ) const
   {
     const int longest_dim = bounding_box.getLongestDimension();

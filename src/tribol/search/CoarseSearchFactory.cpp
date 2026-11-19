@@ -13,7 +13,7 @@ namespace tribol {
 
 namespace {
 
-/** @brief Select a coarse-search specialization for a compile-time spatial dim */
+/** @brief Select a coarse-search specialization for a compile-time spatial dimension. */
 template <int SpatialDim>
 std::unique_ptr<CoarseSearch> createCoarseSearchForDim( BinningMethod binning_method, ExecutionMode execution_mode,
                                                         RealT binning_proximity_scale, RealT residual_gap )
@@ -69,7 +69,7 @@ std::unique_ptr<CoarseSearch> createCoarseSearch( int spatial_dim, BinningMethod
     case 3:
       return createCoarseSearchForDim<3>( binning_method, execution_mode, binning_proximity_scale, residual_gap );
     default:
-      SLIC_ERROR_ROOT( "Invalid coarse-search spatial dim: " << spatial_dim );
+      SLIC_ERROR_ROOT( "Invalid coarse-search spatial dimension: " << spatial_dim );
       return nullptr;
   }
 }

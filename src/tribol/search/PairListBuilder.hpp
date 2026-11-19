@@ -8,6 +8,7 @@
 #define SRC_TRIBOL_SEARCH_PAIRLISTBUILDER_HPP_
 
 #include <memory>
+#include <utility>
 #include "axom/slic/interface/slic.hpp"
 #include "axom/slic/interface/slic_macros.hpp"
 #include "tribol/search/CoarseSearch.hpp"

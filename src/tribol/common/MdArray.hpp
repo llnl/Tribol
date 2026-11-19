@@ -131,14 +131,14 @@ class MdArray {
   /** @brief Access the contiguous storage with one read-only flat index */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE const T& operator[]( IndexT index ) const noexcept { return view()[index]; }
 
-  /** @brief Access one value using a row-major index for every dim */
+  /** @brief Access one value using a row-major index for every dimension. */
   template <typename... Indices>
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE T& operator()( Indices... indices ) noexcept
   {
     return view()( indices... );
   }
 
-  /** @brief Access one read-only value using a row-major index for every dim */
+  /** @brief Access one read-only value using a row-major index for every dimension. */
   template <typename... Indices>
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE const T& operator()( Indices... indices ) const noexcept
   {

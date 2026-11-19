@@ -147,7 +147,7 @@ class MdSpan {
   template <typename... Indices>
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE T& operator()( Indices... indices ) const noexcept
   {
-    static_assert( sizeof...( Indices ) == sizeof...( Extents ), "MdSpan requires one index per dim." );
+    static_assert( sizeof...( Indices ) == sizeof...( Extents ), "MdSpan requires one index per dimension." );
     static_assert( ( std::is_integral<Indices>::value && ... ), "MdSpan indices must be integral." );
     return data_[ComputeOffset<0>( static_cast<IndexT>( indices )... )];
   }

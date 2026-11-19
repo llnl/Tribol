@@ -101,10 +101,11 @@ bool validateCommonPlaneFormulation( CouplingScheme& cs, bool compute_jacobian )
   const auto* penalty1 = data.GetMesh1KinematicConstantPenalty();
   const auto* penalty2 = data.GetMesh2KinematicConstantPenalty();
   if ( !penalty1 || !penalty2 || !std::isfinite( *penalty1 ) || !std::isfinite( *penalty2 ) || *penalty1 <= 0.0 ||
-       *penalty2 <= 0.0 || cs.getParameters().residual_gap != 0.0 || cs.getParameters().quadrature_order < 0 ||
-       cs.getParameters().quadrature_order > 5 ) {
-    SLIC_ERROR_ROOT(
-        "Common Plane requires positive finite mesh penalties, zero residual gap, and quadrature order 0-5." );
+       *penalty2 <= 0.0 || cs.getParameters().residual_gap != 0.0 ||
+       cs.getParameters().quadrature_order < minimum_supported_quadrature_order ||
+       cs.getParameters().quadrature_order > maximum_supported_quadrature_order ) {
+    SLIC_ERROR_ROOT( "Common Plane requires positive finite mesh penalties, zero residual gap, and quadrature order "
+                     << minimum_supported_quadrature_order << "-" << maximum_supported_quadrature_order << "." );
     return false;
   }
   return true;

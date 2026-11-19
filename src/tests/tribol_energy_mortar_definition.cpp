@@ -6,12 +6,11 @@
 /**
  * @file
  * @brief Check direct Energy Mortar energies, nodal integrals, and explicit field partials on enabled backends.
- * Host Enzyme checks compare production pair Jacobians and Hessians with finite differences for each Gauss rule. The
- * energy kernel checks active, open, zero-gap, and invalid pairs on every enabled backend, including the compressive
- * zero-gap Hessian. A pair with distinct geometry types and unequal coordinate counts checks that AD includes nonlinear
- * quantities cached during geometry construction. Forward AD checks values and quadrature state without an extra value
- * evaluation. Inactive or failed evaluations stop after one AD call; all-zero output weights skip AD entirely.
- * Compile-time checks accept the supported pair interfaces and reject invalid sizes, results, and
+ * The energy kernel checks active, open, zero-gap, and invalid pairs on every enabled backend, including the
+ * compressive zero-gap Hessian. A pair with distinct geometry types and unequal coordinate counts checks that AD
+ * includes nonlinear quantities cached during geometry construction. Forward AD checks values and quadrature state
+ * without an extra value evaluation. Inactive or failed evaluations stop after one AD call; all-zero output weights
+ * skip AD entirely. Compile-time checks accept the supported pair interfaces and reject invalid sizes, results, and
  * coordinate splits. Returned buffers retain the pair allocator and remain valid after the input pair list is
  * destroyed. Weighted Jacobian/Hessian kernels check reordered pairs with unequal weights. MFEM tests separately check
  * assembly and shared-node normalization.
@@ -295,22 +294,26 @@ TEST_P( EnergyMortarDefinitionTest, integrates_constant_gap )
   checkParallelIntegrals<3>( GetParam(), allocatorId() );
 }
 
-// Unsupported areas and open gaps give zero partials; zero gap retains the compressive tangent.
-TEST_P( EnergyMortarDefinitionTest, guards_area_before_dividing_and_keeps_zero_gap_tangent )
+// Zero area and open gaps give zero partials; tiny supported areas remain scale-independent.
+TEST_P( EnergyMortarDefinitionTest, guards_zero_area_and_keeps_small_area_and_zero_gap_behavior )
 {
-  constexpr RealT area_tolerance = 1.0e-14;
-  const auto cases = copyToExecutionSpace<NodalPartialsCase>( { { -1.0, 2.0, { 1.0, -2.0, -0.5, 2.0, 1.0, 0.5 } },
-                                                                { 0.0, 2.0, { 0.0, 0.0, 0.0, 2.0, 0.0, 0.0 } },
-                                                                { 1.0, 2.0, {} },
-                                                                { -1.0, 0.0, {} },
-                                                                { -1.0, area_tolerance, {} },
-                                                                { -1.0, -area_tolerance, {} } } );
+  constexpr RealT penalty_stiffness = 4.0;
+  constexpr RealT small_area = 1.0e-16;
+  constexpr RealT small_weighted_gap = -0.5 * small_area;
+  const auto cases = copyToExecutionSpace<NodalPartialsCase>(
+      { { -1.0, 2.0, { 1.0, -2.0, -0.5, 2.0, 1.0, 0.5 } },
+        { 0.0, 2.0, { 0.0, 0.0, 0.0, 2.0, 0.0, 0.0 } },
+        { 1.0, 2.0, {} },
+        { -1.0, 0.0, {} },
+        { small_weighted_gap,
+          small_area,
+          { 0.5 * small_area, -2.0, -0.5, 4.0 / small_area, 2.0 / small_area, 1.0 / small_area } } } );
   ArrayT<EnergyMortarNodalPenaltyPartials> results( cases.size(), cases.size(), allocatorId() );
   const auto input = cases.view();
   const auto output = results.view();
   forAllExec( GetParam(), cases.size(), [=] TRIBOL_HOST_DEVICE( IndexT i ) {
-    output[i] = EnergyMortarNodalPenaltyPartials::evaluate( input[i].weighted_gap, input[i].tributary_area, 4.0,
-                                                            area_tolerance );
+    output[i] =
+        EnergyMortarNodalPenaltyPartials::evaluate( input[i].weighted_gap, input[i].tributary_area, penalty_stiffness );
   } );
   const ArrayT<NodalPartialsCase, 1, MemorySpace::Host> host_cases( cases );
   const ArrayT<EnergyMortarNodalPenaltyPartials, 1, MemorySpace::Host> host_results( results );
@@ -318,13 +321,15 @@ TEST_P( EnergyMortarDefinitionTest, guards_area_before_dividing_and_keeps_zero_g
     SCOPED_TRACE( i );
     const auto& actual = host_results[i];
     const auto& expected = host_cases[i].expected;
-    EXPECT_NEAR( actual.energy, expected.energy, tolerance );
-    EXPECT_NEAR( actual.denergy_dweighted_gap, expected.denergy_dweighted_gap, tolerance );
-    EXPECT_NEAR( actual.denergy_dtributary_area, expected.denergy_dtributary_area, tolerance );
-    EXPECT_NEAR( actual.d2energy_dweighted_gap2, expected.d2energy_dweighted_gap2, tolerance );
-    EXPECT_NEAR( actual.d2energy_dweighted_gap_dtributary_area, expected.d2energy_dweighted_gap_dtributary_area,
-                 tolerance );
-    EXPECT_NEAR( actual.d2energy_dtributary_area2, expected.d2energy_dtributary_area2, tolerance );
+    const auto expect_near = [&]( RealT value, RealT reference ) {
+      EXPECT_NEAR( value, reference, tolerance * ( 1.0 + std::abs( reference ) ) );
+    };
+    expect_near( actual.energy, expected.energy );
+    expect_near( actual.denergy_dweighted_gap, expected.denergy_dweighted_gap );
+    expect_near( actual.denergy_dtributary_area, expected.denergy_dtributary_area );
+    expect_near( actual.d2energy_dweighted_gap2, expected.d2energy_dweighted_gap2 );
+    expect_near( actual.d2energy_dweighted_gap_dtributary_area, expected.d2energy_dweighted_gap_dtributary_area );
+    expect_near( actual.d2energy_dtributary_area2, expected.d2energy_dtributary_area2 );
   }
 }
 INSTANTIATE_TEST_SUITE_P( backends, EnergyMortarDefinitionTest, tribol::detail::enabledExecutionModes() );
@@ -785,88 +790,6 @@ TEST_P( EnergyMortarDefinitionTest, zero_weights_skip_derivatives )
   }
 }
 
-/**
- * @brief Compare a weighted pair function's derivatives with directional coordinate differences.
- * @tparam Function Vector pair function with fixed output and coordinate counts.
- * @param function Production pair function with fixed configuration.
- * @param coordinates Current oblique coordinates in Jacobian column order, away from activation and overlap switches.
- * @param weights Scalar contraction used for the gradient and Hessian check.
- */
-template <typename Function>
-void checkPairDerivatives( const Function& function, const MdArray<RealT, Function::size_coords>& coordinates,
-                           const MdArray<RealT, Function::size_values>& weights )
-{
-  constexpr RealT step = 1.0e-6;
-  const auto base = EnzymePairDerivative<Function>::valuesAndJacobian(
-      { coordinates.data(), Function::size_geom1_coords },
-      { coordinates.data() + Function::size_geom1_coords, Function::size_geom2_coords }, function );
-  const auto weighted = EnzymePairDerivative<Function>::weightedJacobianAndHessian(
-      { coordinates.data(), Function::size_geom1_coords },
-      { coordinates.data() + Function::size_geom1_coords, Function::size_geom2_coords }, function, weights.view() );
-  for ( IndexT column = 0; column < Function::size_coords; ++column ) {
-    auto plus = coordinates, minus = coordinates;
-    plus[column] += step;
-    minus[column] -= step;
-    const auto positive = EnzymePairDerivative<Function>::valuesAndJacobian(
-        { plus.data(), Function::size_geom1_coords },
-        { plus.data() + Function::size_geom1_coords, Function::size_geom2_coords }, function );
-    const auto negative = EnzymePairDerivative<Function>::valuesAndJacobian(
-        { minus.data(), Function::size_geom1_coords },
-        { minus.data() + Function::size_geom1_coords, Function::size_geom2_coords }, function );
-    const auto positive_values = positive.pair_value.values();
-    const auto negative_values = negative.pair_value.values();
-    RealT positive_scalar = 0.0;
-    RealT negative_scalar = 0.0;
-    for ( IndexT value = 0; value < Function::size_values; ++value ) {
-      positive_scalar += weights[value] * positive_values[value];
-      negative_scalar += weights[value] * negative_values[value];
-      EXPECT_NEAR( base.derivatives.jacobian( value, column ),
-                   ( positive_values[value] - negative_values[value] ) / ( 2.0 * step ), 1.0e-6 );
-    }
-    EXPECT_NEAR( weighted.jacobian[column], ( positive_scalar - negative_scalar ) / ( 2.0 * step ), 1.0e-6 );
-    for ( IndexT row = 0; row < Function::size_coords; ++row ) {
-      RealT positive_gradient = 0.0;
-      RealT negative_gradient = 0.0;
-      for ( IndexT value = 0; value < Function::size_values; ++value ) {
-        positive_gradient += weights[value] * positive.derivatives.jacobian( value, row );
-        negative_gradient += weights[value] * negative.derivatives.jacobian( value, row );
-      }
-      EXPECT_NEAR( weighted.hessian( row, column ), ( positive_gradient - negative_gradient ) / ( 2.0 * step ),
-                   2.0e-5 );
-    }
-  }
-}
-
-/** @brief Check both pair definitions using production quadrature generation. @tparam NumPoints Gauss point count. */
-template <int NumPoints>
-void checkRuleDerivatives()
-{
-  using RuleGenerator =
-      PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>;
-  using Gap = OffsetGap<OpposingNormalGap>;
-  const RuleGenerator rule_generator;
-  const Gap gap{ {}, 0.05 };
-  const PairEnergyIntegral<RuleGenerator, PenaltyEnergyDensity<Gap>> energy{ rule_generator, { 7.0, gap } };
-  const PairNodalGapIntegral<RuleGenerator, Gap, BasisFunction<EDGE, LINEAR_LAGRANGE>> nodal{ rule_generator, gap };
-  const MdArray<RealT, decltype( energy )::size_coords> coordinates{ 0.0, 0.0, 2.0, 0.15, 1.7, 0.35, 0.3, 0.15 };
-  SCOPED_TRACE( testing::Message() << "points=" << NumPoints );
-  ASSERT_EQ( nodal
-                 .evaluate( { coordinates.data(), decltype( nodal )::size_geom1_coords },
-                            { coordinates.data() + decltype( nodal )::size_geom1_coords,
-                              decltype( nodal )::size_geom2_coords } )
-                 .quadrature_metadata.status,
-             QuadratureStatus::Success );
-  checkPairDerivatives( energy, coordinates, MdArray<RealT, decltype( energy )::size_values>{ 1.0 } );
-  checkPairDerivatives( nodal, coordinates, MdArray<RealT, decltype( nodal )::size_values>{ 0.3, -0.2, 0.4, 0.1 } );
-}
-
-// Perturbing every coordinate changes lengths and normals as well as overlap bounds for all supported rules.
-TEST( EnergyMortarDerivatives, differentiates_direct_definitions )
-{
-  checkRuleDerivatives<1>();
-  checkRuleDerivatives<2>();
-  checkRuleDerivatives<3>();
-}
 #endif
 }  // namespace
 

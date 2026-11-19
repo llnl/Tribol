@@ -183,7 +183,7 @@ class EnzymePairDerivative {
    * coords2.view(), f
    * );
    * // Record pair_values.pair_value.quadrature_metadata for checking before assembly.
-   * const RealT energy = pair_values.pair_value.energy;
+   * const RealT energy = pair_values.pair_value.values()[0];
    * const RealT residual_entry = pair_values.derivatives.jacobian[0];
    * const RealT residual_jacobian_entry = pair_values.derivatives.hessian( 0, 0 );
    * @endcode

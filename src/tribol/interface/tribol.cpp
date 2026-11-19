@@ -16,6 +16,7 @@
 #include "tribol/mesh/InterfacePairs.hpp"
 
 #include "tribol/physics/Physics.hpp"
+#include "tribol/integ/QuadratureRuleGeneratorFactory.hpp"
 
 #include "tribol/search/InterfacePairFinder.hpp"
 
@@ -214,9 +215,10 @@ void setQuadratureOrder( IndexT cs_id, int order )
   if ( !cs ||
        ( cs->getContactMethod() != ENERGY_MORTAR &&
          !( cs->getContactMethod() == COMMON_PLANE && cs->getParameters().use_common_plane_formulation ) ) ||
-       order < 0 || order > 5 ) {
-    SLIC_ERROR_ROOT(
-        "setQuadratureOrder requires ENERGY_MORTAR or opted-in COMMON_PLANE and an order from 0 through 5." );
+       order < minimum_supported_quadrature_order || order > maximum_supported_quadrature_order ) {
+    SLIC_ERROR_ROOT( "setQuadratureOrder requires ENERGY_MORTAR or opted-in COMMON_PLANE and an order from "
+                     << minimum_supported_quadrature_order << " through " << maximum_supported_quadrature_order
+                     << "." );
     return;
   }
   if ( cs->getParameters().quadrature_order != order ) {
