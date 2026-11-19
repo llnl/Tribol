@@ -44,6 +44,19 @@ struct ContactFormulationResult {
 };
 
 /**
+ * @brief Caller-supplied field values for one contact calculation.
+ *
+ * Formulations read these values during the call and retain none of them. A formulation ignores inputs it does not use.
+ */
+struct ContactFormulationInputs {
+#ifdef BUILD_REDECOMP
+  /// Lagrange multiplier values on dual true DOFs. Required by Lagrange multiplier formulations; must remain alive for
+  /// the duration of the call.
+  const mfem::HypreParVector* multiplier = nullptr;
+#endif
+};
+
+/**
  * @brief Calculate contact outputs without retaining geometry, intermediate data, or results between calls.
  *
  * Implementations retain method and search configuration and reference mesh/field transfer data. The transfer data
@@ -74,9 +87,11 @@ class ContactFormulation {
    * @brief Calculate nodal contact residuals and any related outputs provided by the method.
    * @param mesh1 Current first mesh in coupling-scheme order; not retained.
    * @param mesh2 Current second mesh in coupling-scheme order; not retained.
+   * @param inputs Caller-supplied field values used by this calculation; not retained.
    * @return Caller-owned outputs; uncalculated quantities are absent.
    */
-  virtual ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const = 0;
+  virtual ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                                       const ContactFormulationInputs& inputs ) const = 0;
 };
 
 }  // namespace tribol

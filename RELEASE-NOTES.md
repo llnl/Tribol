@@ -81,6 +81,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   `getMfemPressure()`, `getMfemDfDx()`, `getMfemDgDx()`, `getMfemDfDp()`, `getEnergy()`, and `computeTimeStep()`.
   `EnergyMortar` and `EnergyMortarAdapter` are replaced by `NodalPenaltyEnergyMortar`,
   `NodalLagrangeMultiplierEnergyMortar`, and `QuadraturePointEnergyMortar`.
+- `computeNodalForces()` takes a `ContactFormulationInputs` argument carrying caller-supplied fields. Lagrange
+  multiplier Energy Mortar reads its multiplier from these inputs; `update()` passes the values set through
+  `getMfemContactPressure()`. The `getMfemPressure()` grid function is no longer read or updated by nodal Lagrange
+  multiplier Energy Mortar.
 - `ENERGY_MORTAR` penalty enforcement is selected by `PENALTY` enforcement, not by setting kinematic penalty options on
   a Lagrange multiplier scheme. A penalty scheme has no formulation until `setMfemKinematicConstantPenalty()` supplies
   both constants; `update()` reports a SLIC error until then. Pressure/gap fields are created only for nodal

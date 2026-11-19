@@ -99,9 +99,11 @@ class CommonPlaneResidualFormulation final : public ContactFormulation {
    * @brief Compute the Common Plane force without calculating a Jacobian.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
+   * @param inputs Unused; this formulation reads no caller-supplied fields.
    * @return Owned force; df_dx and other outputs are absent.
    */
-  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
+  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                               [[maybe_unused]] const ContactFormulationInputs& inputs ) const override
   {
     const auto pairs = pair_builder_.build( mesh1, mesh2 );
     return evaluateAndAssemblePairResidual<Exec>( pairs, mesh1, mesh2, mesh_data_, pair_integral_ );
@@ -150,9 +152,11 @@ class CommonPlaneResidualJacobianFormulation final : public ContactFormulation {
    * @brief Compute the Common Plane force and its coordinate Jacobian.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
+   * @param inputs Unused; this formulation reads no caller-supplied fields.
    * @return Owned force and df_dx; other outputs are absent.
    */
-  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
+  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                               [[maybe_unused]] const ContactFormulationInputs& inputs ) const override
   {
     const auto pairs = pair_builder_.build( mesh1, mesh2 );
     return evaluateAndAssemblePairResidualStiffness<Exec>( pairs, mesh1, mesh2, mesh_data_, jacobian_data_,

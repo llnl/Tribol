@@ -105,9 +105,11 @@ class QuadraturePointEnergyMortar final : public ContactFormulation {
    * @brief Evaluate pair energies and assemble energy, force, and coordinate Jacobian.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
+   * @param inputs Unused; this formulation reads no caller-supplied fields.
    * @return Owned energy, force, and df_dx; other outputs are absent.
    */
-  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
+  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                               [[maybe_unused]] const ContactFormulationInputs& inputs ) const override
   {
     const auto pairs = pair_builder_.build( mesh1, mesh2 );
     return evaluateAndAssemblePairEnergyResidualStiffness<Exec>( pairs, mesh1, mesh2, mesh_data_, jacobian_data_,

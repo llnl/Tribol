@@ -1050,12 +1050,11 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
       return 1;
     }
     // The formulation performs the search and gap calculations needed to compute forces from the current mesh data.
+    ContactFormulationInputs inputs;
 #ifdef BUILD_REDECOMP
-    if ( m_contact_multiplier ) {
-      getMfemSubmeshData()->GetSubmeshPressure().SetFromTrueDofs( *m_contact_multiplier );
-    }
+    inputs.multiplier = m_contact_multiplier.get();
 #endif
-    m_formulation_result = m_formulation->computeNodalForces( getMesh1().getView(), getMesh2().getView() );
+    m_formulation_result = m_formulation->computeNodalForces( getMesh1().getView(), getMesh2().getView(), inputs );
     if ( m_formulation_result.time_step ) {
       dt = *m_formulation_result.time_step;
     }

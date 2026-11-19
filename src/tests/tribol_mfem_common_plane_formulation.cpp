@@ -304,7 +304,7 @@ TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
                 PairListBuilder{ std::move( coarse ), std::move( refined ) } );
           } );
     } );
-    auto result = alternate->computeNodalForces( scheme().getMesh1().getView(), scheme().getMesh2().getView() );
+    auto result = alternate->computeNodalForces( scheme().getMesh1().getView(), scheme().getMesh2().getView(), {} );
     ASSERT_NE( result.force, nullptr );
     ASSERT_NE( result.df_dx, nullptr );
     EXPECT_FALSE( result.energy.has_value() );
@@ -326,7 +326,7 @@ TEST_P( MfemCommonPlaneTest, returns_owned_outputs_without_retaining_results )
   updateMfemParallelDecomposition( 1, true );
   ASSERT_TRUE( scheme().init() );
   const auto& formulation = *scheme().getContactFormulation();
-  auto first = formulation.computeNodalForces( scheme().getMesh1().getView(), scheme().getMesh2().getView() );
+  auto first = formulation.computeNodalForces( scheme().getMesh1().getView(), scheme().getMesh2().getView(), {} );
   ASSERT_NE( first.force, nullptr );
   ASSERT_NE( first.df_dx, nullptr );
   EXPECT_FALSE( first.energy.has_value() );
@@ -340,7 +340,7 @@ TEST_P( MfemCommonPlaneTest, returns_owned_outputs_without_retaining_results )
   ASSERT_GT( norm( original ), 0.0 );
 
   auto second = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
-                                                                      scheme().getMesh2().getView() );
+                                                                      scheme().getMesh2().getView(), {} );
   auto error = *second.force;
   error -= original;
   EXPECT_LT( norm( error ), 1.0e-11 );
@@ -368,14 +368,14 @@ TEST_P( MfemCommonPlaneTest, keeps_penalty_fixed_until_formulation_is_rebuilt )
   setPenaltyScale( 0, 2.0 );
   setPenaltyScale( 1, 2.0 );
   auto unchanged = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
-                                                                         scheme().getMesh2().getView() );
+                                                                         scheme().getMesh2().getView(), {} );
   unchanged.force->Add( -1.0, initial );
   EXPECT_LT( norm( *unchanged.force ), 1.0e-11 );
 
   scheme().invalidateContactFormulation();
   ASSERT_TRUE( scheme().init() );
   auto rebuilt = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
-                                                                       scheme().getMesh2().getView() );
+                                                                       scheme().getMesh2().getView(), {} );
   rebuilt.force->Add( -4.0, initial );
   EXPECT_LT( norm( *rebuilt.force ), 1.0e-11 );
 }
@@ -390,14 +390,14 @@ TEST_P( MfemCommonPlaneTest, uses_changed_constants_without_decomposition_refres
   EXPECT_FALSE( scheme().hasContactFormulation() );
   ASSERT_TRUE( scheme().init() );
   auto changed_constants = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
-                                                                                 scheme().getMesh2().getView() );
+                                                                                 scheme().getMesh2().getView(), {} );
   changed_constants.force->Add( -2.0, initial );
   EXPECT_LT( norm( *changed_constants.force ), 1.0e-11 );
   setMfemKinematicPenaltyScale( 0, 2.0, 2.0 );
   EXPECT_FALSE( scheme().hasContactFormulation() );
   ASSERT_TRUE( scheme().init() );
   auto direct = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
-                                                                      scheme().getMesh2().getView() );
+                                                                      scheme().getMesh2().getView(), {} );
   // Doubling both constants and both scales multiplies the effective series stiffness by four.
   direct.force->Add( -4.0, initial );
   EXPECT_LT( norm( *direct.force ), 1.0e-11 );
@@ -452,7 +452,7 @@ TEST_P( MfemCommonPlaneTest, constructs_with_scales_before_decomposition )
   EXPECT_FALSE( scheme().hasContactFormulation() );
   ASSERT_TRUE( scheme().init() );
   auto unscaled = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
-                                                                        scheme().getMesh2().getView() );
+                                                                        scheme().getMesh2().getView(), {} );
   // Scaled constants 4 and 18 give stiffness 36/11; unscaled constants 2 and 6 give stiffness 1.5.
   unscaled.force->Add( -11.0 / 24.0, scaled );
   EXPECT_LT( norm( *unscaled.force ), 1.0e-11 );

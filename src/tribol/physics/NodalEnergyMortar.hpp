@@ -301,24 +301,26 @@ ContactFormulationResult evaluateAndAssembleNodalLagrangeMultiplierGaps(
  * @param submesh_data Pressure and gap transfer data used for assembly.
  * @param jacobian_data Parent and scalar-field Jacobian transfer data used for assembly.
  * @param pair_function Configured nodal-integral pair_function.
+ * @param multiplier LM values on dual true DOFs; read during the call and copied into the returned pressure.
  * @return Owned gaps, pressure, energy, force, weighted_gap_jacobian, df_dx, and df_dp. Empty pairs contribute zero
  * force and energy; pressure contains the supplied LM values.
+ * @note Reports a SLIC error, returning no outputs, if the multiplier size does not match the dual true DOFs.
  * @note Reports a SLIC error if geometry, assembly dimensions, or nodal field dimensions are invalid.
  * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
 ContactFormulationResult evaluateAndAssembleNodalLagrangeMultiplier(
     const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2, const MfemMeshData& mesh_data,
-    const MfemSubmeshData& submesh_data, const MfemJacobianData& jacobian_data, const PairFunction& pair_function )
+    const MfemSubmeshData& submesh_data, const MfemJacobianData& jacobian_data, const PairFunction& pair_function,
+    const mfem::HypreParVector& multiplier )
 {
-  auto quantities = detail::evaluateAndAssembleNodalQuantities<Exec>( pairs, mesh1, mesh2, pair_function, mesh_data,
-                                                                      submesh_data, jacobian_data );
-  shared::ParVector pressure( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data.GetSubmeshFESpace() ) );
-  submesh_data.GetSubmeshPressure().GetTrueDofs( pressure.get() );
-  if ( pressure.size() != quantities.weighted_gap.values.size() ) {
+  if ( multiplier.Size() != submesh_data.GetSubmeshFESpace().GetTrueVSize() ) {
     SLIC_ERROR( "LM values must match dual true DOFs." );
     return {};
   }
+  auto quantities = detail::evaluateAndAssembleNodalQuantities<Exec>( pairs, mesh1, mesh2, pair_function, mesh_data,
+                                                                      submesh_data, jacobian_data );
+  shared::ParVector pressure( multiplier );
   const RealT energy = pressure.dot( quantities.weighted_gap.values );
   auto force = pressure * quantities.weighted_gap.jacobian;
   const auto redecomp_pressure = submesh_data.TransferTrueDofsToRedecomp( pressure.get() );
@@ -388,9 +390,11 @@ class NodalPenaltyEnergyMortar final : public ContactFormulation {
    * @brief Calculate nodal penalty energy, gaps, pressure, forces, and coordinate derivatives.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
+   * @param inputs Unused; this formulation reads no caller-supplied fields.
    * @return Owned energy, gap, pressure, force, weighted_gap_jacobian, and df_dx; df_dp is absent.
    */
-  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
+  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                               [[maybe_unused]] const ContactFormulationInputs& inputs ) const override
   {
     const auto pairs = pair_builder_.build( mesh1, mesh2 );
     return evaluateAndAssembleNodalPenalty<Exec>( pairs, mesh1, mesh2, mesh_data_, submesh_data_, jacobian_data_,
@@ -455,13 +459,20 @@ class NodalLagrangeMultiplierEnergyMortar final : public ContactFormulation {
    * @brief Calculate nodal LM energy, gaps, pressure, forces, and mixed derivatives.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
+   * @param inputs Supplies the LM values on dual true DOFs, which are required.
    * @return Owned energy, gap, pressure, force, weighted_gap_jacobian, df_dx, and df_dp.
+   * @note Reports a SLIC error, returning no outputs, if inputs.multiplier is null.
    */
-  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
+  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                               const ContactFormulationInputs& inputs ) const override
   {
+    if ( !inputs.multiplier ) {
+      SLIC_ERROR( "Lagrange multiplier Energy Mortar requires LM values in ContactFormulationInputs." );
+      return {};
+    }
     const auto pairs = pair_builder_.build( mesh1, mesh2 );
     return evaluateAndAssembleNodalLagrangeMultiplier<Exec>( pairs, mesh1, mesh2, mesh_data_, submesh_data_,
-                                                             jacobian_data_, pair_integral_ );
+                                                             jacobian_data_, pair_integral_, *inputs.multiplier );
   }
 
  private:
