@@ -619,6 +619,34 @@ TEST_P( MfemCommonPlaneTest, execution_modes_preserve_forces_and_jacobian_select
   }
 }
 
+// A rejected switch must keep the active formulation, its Jacobian setting, and its transfer data unchanged.
+TEST_P( MfemCommonPlaneTest, rejected_switch_keeps_active_formulation )
+{
+  enable( false );
+  evaluate();
+  const auto reference = getMfemContactForce( 0 );
+  const auto* formulation = scheme().getContactFormulation();
+  ASSERT_NE( formulation, nullptr );
+
+  // An unsupported rate penalty makes any new selection invalid, including a switch to Jacobian calculation.
+  auto& penalty = scheme().getEnforcementOptions().penalty_options;
+  penalty.rate_calc_set = true;
+  penalty.rate_calculation = RATE_CONSTANT;
+  EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( 0, true, true ) );
+  EXPECT_TRUE( scheme().getParameters().use_common_plane_formulation );
+  EXPECT_FALSE( scheme().getParameters().common_plane_compute_jacobian );
+  EXPECT_EQ( scheme().getContactFormulation(), formulation );
+  EXPECT_FALSE( scheme().hasMfemJacobianData() );
+
+  // Restoring the configuration must reuse the retained formulation and reproduce the earlier force.
+  penalty.rate_calc_set = false;
+  evaluate();
+  EXPECT_EQ( scheme().getContactFormulation(), formulation );
+  auto force = getMfemContactForce( 0 );
+  force -= reference;
+  EXPECT_LT( norm( force ), 1.0e-11 );
+}
+
 // Rejected configuration must leave the legacy selection and its resources intact.
 TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
 {
