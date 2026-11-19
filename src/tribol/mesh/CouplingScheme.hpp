@@ -771,8 +771,6 @@ class CouplingScheme {
    */
   ContactFormulation* getContactFormulation() const { return m_formulation.get(); }
 
-  /** @brief Access outputs from the latest update(). @return Outputs owned by this coupling scheme. */
-  ContactFormulationResult& getContactFormulationResult() { return m_formulation_result; }
   /** @brief Read outputs from the latest update(). @return Outputs owned by this coupling scheme. */
   const ContactFormulationResult& getContactFormulationResult() const { return m_formulation_result; }
 
