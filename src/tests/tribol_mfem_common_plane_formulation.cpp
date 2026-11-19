@@ -9,15 +9,16 @@
  * The same tests run on one and two ranks; decomposition onto rank zero exercises a rank without surface elements.
  * Direct calls check output availability and validity after destroying the formulation.
  * Fixed penalties and MFEM setters that invalidate formulations are checked without refreshing the decomposition.
- * Direct force and Jacobian scaling checks use Sequential and OpenMP when enabled, with host mesh storage.
- * Tilted nonmatching surfaces check legacy force agreement with one point and a different load distribution with
+ * Direct residual and Jacobian scaling checks use Sequential and OpenMP when enabled, with host mesh storage.
+ * Tilted nonmatching surfaces check agreement with legacy forces for one point and a different load distribution with
  * higher-order rules on the clipped overlap.
  * Local quadrature and full pair derivatives are checked in tribol_common_plane_formulation.
- * Force-only selection and mode changes run without Enzyme as well, checking that no Jacobian transfers or outputs
- * are created. Nonmatching legacy forces provide an independent reference for force-only assembly.
+ * Residual-only selection and mode changes run without Enzyme as well, checking that no Jacobian transfers or outputs
+ * are created. Nonmatching legacy forces provide an independent reference for residual-only assembly.
  * Formulation updates leave legacy face geometry and method storage unallocated.
- * Higher-order 2D meshes with LOR subdivision check force agreement with legacy Common Plane and finite-difference
- * Jacobian accuracy across LOR transfers, while higher-order 2D meshes without LOR and 3D parents remain rejected.
+ * Higher-order 2D meshes with LOR subdivision check residual agreement with legacy Common Plane forces and
+ * finite-difference Jacobian accuracy across LOR transfers. Higher-order 2D meshes without LOR and 3D parents remain
+ * rejected.
  */
 #include <cmath>
 #include <limits>
@@ -69,7 +70,7 @@ class MfemCommonPlaneTest : public testing::TestWithParam<int> {
   /** @brief Release coupling data before destroying the parent mesh and coordinate field it references. */
   void TearDown() override { finalize(); }
   /** @brief Enable the formulation and select the requested reference degree.
-   * @param compute_jacobian Whether to calculate df_dx as well as forces. */
+   * @param compute_jacobian Whether to calculate df_dx as well as the residual. */
   void enable( bool compute_jacobian = true )
   {
     setMfemUseCommonPlaneFormulation( 0, true, compute_jacobian );
@@ -124,8 +125,8 @@ TEST_P( MfemCommonPlaneTest, update_does_not_allocate_legacy_geometry )
   }
 }
 
-// Force-only assembly must preserve nonmatching nodal loads and MPI transfers without any Jacobian resources.
-TEST_P( MfemCommonPlaneTest, force_only_matches_legacy_without_matrix_transfers )
+// Residual-only assembly must preserve nonmatching nodal loads and MPI transfers without Jacobian resources.
+TEST_P( MfemCommonPlaneTest, residual_only_matches_legacy_without_matrix_transfers )
 {
   evaluate();
   mfem::Vector legacy( fes_->GetVSize() );
@@ -137,35 +138,35 @@ TEST_P( MfemCommonPlaneTest, force_only_matches_legacy_without_matrix_transfers 
   enable( false );
   EXPECT_FALSE( scheme().hasMfemJacobianData() );
   evaluate();
-  ASSERT_NE( scheme().getContactFormulationResult().force, nullptr );
+  ASSERT_NE( scheme().getContactFormulationResult().residual, nullptr );
   EXPECT_EQ( scheme().getContactFormulationResult().df_dx, nullptr );
   EXPECT_EQ( getMfemDfDx( 0 ), nullptr );
-  auto force = getMfemContactForce( 0 );
-  EXPECT_GT( norm( force ), 0.0 );
-  force += reference;
-  EXPECT_LT( norm( force ), 1.0e-11 );
+  auto residual = getMfemContactResidual( 0 );
+  EXPECT_GT( norm( residual ), 0.0 );
+  residual += reference;
+  EXPECT_LT( norm( residual ), 1.0e-11 );
 
   setMfemKinematicPenaltyScale( 0, 2.0, 2.0 );
   evaluate();
   EXPECT_FALSE( scheme().hasMfemJacobianData() );
-  auto scaled = getMfemContactForce( 0 );
+  auto scaled = getMfemContactResidual( 0 );
   scaled.Add( 2.0, reference );
   EXPECT_LT( norm( scaled ), 1.0e-11 );
 }
 
 // Changing evaluation mode must rebuild the formulation and release matrix data; unavailable Enzyme must be rejected
-// before changing an active force-only formulation or clearing its outputs.
-TEST_P( MfemCommonPlaneTest, changes_jacobian_mode_without_changing_forces )
+// before changing an active residual-only formulation or clearing its outputs.
+TEST_P( MfemCommonPlaneTest, changes_jacobian_mode_without_changing_residuals )
 {
   enable( false );
   evaluate();
-  const auto reference = getMfemContactForce( 0 );
+  const auto reference = getMfemContactResidual( 0 );
 #ifdef TRIBOL_USE_ENZYME
   setMfemUseCommonPlaneFormulation( 0, true );
   EXPECT_TRUE( scheme().hasMfemJacobianData() );
   evaluate();
   ASSERT_NE( scheme().getContactFormulationResult().df_dx, nullptr );
-  auto difference = getMfemContactForce( 0 );
+  auto difference = getMfemContactResidual( 0 );
   difference -= reference;
   EXPECT_LT( norm( difference ), 1.0e-11 );
   setMfemUseCommonPlaneFormulation( 0, true, false );
@@ -178,7 +179,7 @@ TEST_P( MfemCommonPlaneTest, changes_jacobian_mode_without_changing_forces )
   EXPECT_FALSE( scheme().hasMfemJacobianData() );
   evaluate();
   EXPECT_EQ( scheme().getContactFormulationResult().df_dx, nullptr );
-  auto unchanged = getMfemContactForce( 0 );
+  auto unchanged = getMfemContactResidual( 0 );
   unchanged -= reference;
   EXPECT_LT( norm( unchanged ), 1.0e-11 );
   setMfemUseCommonPlaneFormulation( 0, false );
@@ -186,8 +187,8 @@ TEST_P( MfemCommonPlaneTest, changes_jacobian_mode_without_changing_forces )
   EXPECT_FALSE( scheme().hasMfemJacobianData() );
 }
 
-// Open contact must return an allocated zero force with no matrix, including ranks without any surface elements.
-TEST_P( MfemCommonPlaneTest, force_only_returns_zero_for_open_contact )
+// Open contact must return an allocated zero residual with no matrix, including ranks without surface elements.
+TEST_P( MfemCommonPlaneTest, residual_only_returns_zero_for_open_contact )
 {
   enable( false );
   evaluate();
@@ -198,10 +199,10 @@ TEST_P( MfemCommonPlaneTest, force_only_returns_zero_for_open_contact )
     }
   }
   evaluate();
-  ASSERT_NE( scheme().getContactFormulationResult().force, nullptr );
+  ASSERT_NE( scheme().getContactFormulationResult().residual, nullptr );
   EXPECT_EQ( scheme().getContactFormulationResult().df_dx, nullptr );
   EXPECT_FALSE( scheme().hasMfemJacobianData() );
-  EXPECT_LT( norm( getMfemContactForce( 0 ) ), 1.0e-11 );
+  EXPECT_LT( norm( getMfemContactResidual( 0 ) ), 1.0e-11 );
 }
 
 #ifdef TRIBOL_USE_ENZYME
@@ -218,7 +219,7 @@ TEST_P( MfemCommonPlaneTest, matches_nonmatching_constant_traction_patch )
     EXPECT_FALSE( mesh->getNodalFields().m_is_node_gap_set );
     EXPECT_FALSE( mesh->getNodalFields().m_is_node_pressure_set );
   }
-  const auto residual = getMfemContactForce( 0 );
+  const auto residual = getMfemContactResidual( 0 );
   mfem::Vector traction1( 2 ), traction2( 2 );
   traction1 = 0.0;
   traction2 = 0.0;
@@ -272,12 +273,12 @@ TEST_P( MfemCommonPlaneTest, jacobian_getters_preserve_cached_result )
   EXPECT_EQ( norm( second_action ), 0.0 );
 }
 
-// Arithmetic averaging must scale forces and Jacobians on each host backend, for each Gauss count.
+// Arithmetic averaging must scale residuals and Jacobians on each host backend for each Gauss count.
 TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
 {
   enable();
   evaluate();
-  const auto baseline = getMfemContactForce( 0 );
+  const auto baseline = getMfemContactResidual( 0 );
   const auto jacobian = getMfemDfDx( 0 );
   mfem::Vector direction( jacobian->Width() ), reference_action( jacobian->Height() );
   for ( int dof = 0; dof < direction.Size(); ++dof ) {
@@ -304,14 +305,14 @@ TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
                 PairListBuilder{ std::move( coarse ), std::move( refined ) } );
           } );
     } );
-    auto result = alternate->computeNodalForces( scheme().getMesh1().getView(), scheme().getMesh2().getView(), {} );
-    ASSERT_NE( result.force, nullptr );
+    auto result = alternate->computeNodalResiduals( scheme().getMesh1().getView(), scheme().getMesh2().getView(), {} );
+    ASSERT_NE( result.residual, nullptr );
     ASSERT_NE( result.df_dx, nullptr );
     EXPECT_FALSE( result.energy.has_value() );
     // The configured stiffnesses 2 and 6 have arithmetic mean 4 and series stiffness 1.5.
     constexpr RealT stiffness_ratio = 4.0 / 1.5;
-    result.force->Add( -stiffness_ratio, baseline );
-    EXPECT_LT( norm( *result.force ), 1.0e-11 );
+    result.residual->Add( -stiffness_ratio, baseline );
+    EXPECT_LT( norm( *result.residual ), 1.0e-11 );
     mfem::Vector action( result.df_dx->Height() );
     result.df_dx->Mult( direction, action );
     action.Add( -stiffness_ratio, reference_action );
@@ -319,15 +320,15 @@ TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
   }
 }
 
-// Each direct call returns its own force and matrix, without changing earlier results or the coupling-scheme cache.
+// Each direct call returns its own residual and matrix without changing earlier results or the coupling-scheme cache.
 TEST_P( MfemCommonPlaneTest, returns_owned_outputs_without_retaining_results )
 {
   enable();
   updateMfemParallelDecomposition( 1, true );
   ASSERT_TRUE( scheme().init() );
   const auto& formulation = *scheme().getContactFormulation();
-  auto first = formulation.computeNodalForces( scheme().getMesh1().getView(), scheme().getMesh2().getView(), {} );
-  ASSERT_NE( first.force, nullptr );
+  auto first = formulation.computeNodalResiduals( scheme().getMesh1().getView(), scheme().getMesh2().getView(), {} );
+  ASSERT_NE( first.residual, nullptr );
   ASSERT_NE( first.df_dx, nullptr );
   EXPECT_FALSE( first.energy.has_value() );
   EXPECT_FALSE( first.time_step.has_value() );
@@ -335,17 +336,17 @@ TEST_P( MfemCommonPlaneTest, returns_owned_outputs_without_retaining_results )
   EXPECT_EQ( first.pressure, nullptr );
   EXPECT_EQ( first.weighted_gap_jacobian, nullptr );
   EXPECT_EQ( first.df_dp, nullptr );
-  EXPECT_EQ( scheme().getContactFormulationResult().force, nullptr );
-  const mfem::HypreParVector original( *first.force );
+  EXPECT_EQ( scheme().getContactFormulationResult().residual, nullptr );
+  const mfem::HypreParVector original( *first.residual );
   ASSERT_GT( norm( original ), 0.0 );
 
-  auto second = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
-                                                                      scheme().getMesh2().getView(), {} );
-  auto error = *second.force;
+  auto second = scheme().getContactFormulation()->computeNodalResiduals( scheme().getMesh1().getView(),
+                                                                         scheme().getMesh2().getView(), {} );
+  auto error = *second.residual;
   error -= original;
   EXPECT_LT( norm( error ), 1.0e-11 );
   scheme().setContactFormulation( nullptr );
-  error = *first.force;
+  error = *first.residual;
   error -= original;
   EXPECT_EQ( norm( error ), 0.0 );
   mfem::Vector direction( first.df_dx->Width() ), action( first.df_dx->Height() );
@@ -359,7 +360,7 @@ TEST_P( MfemCommonPlaneTest, keeps_penalty_fixed_until_formulation_is_rebuilt )
 {
   enable();
   evaluate();
-  const auto initial = getMfemContactForce( 0 );
+  const auto initial = getMfemContactResidual( 0 );
   auto& data = *scheme().getMfemMeshData();
   data.SetMesh1KinematicConstantPenalty( 4.0 );
   data.SetMesh2KinematicConstantPenalty( 12.0 );
@@ -367,17 +368,17 @@ TEST_P( MfemCommonPlaneTest, keeps_penalty_fixed_until_formulation_is_rebuilt )
   data.SetMesh2KinematicPenaltyScale( 2.0 );
   setPenaltyScale( 0, 2.0 );
   setPenaltyScale( 1, 2.0 );
-  auto unchanged = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
-                                                                         scheme().getMesh2().getView(), {} );
-  unchanged.force->Add( -1.0, initial );
-  EXPECT_LT( norm( *unchanged.force ), 1.0e-11 );
+  auto unchanged = scheme().getContactFormulation()->computeNodalResiduals( scheme().getMesh1().getView(),
+                                                                            scheme().getMesh2().getView(), {} );
+  unchanged.residual->Add( -1.0, initial );
+  EXPECT_LT( norm( *unchanged.residual ), 1.0e-11 );
 
   scheme().invalidateContactFormulation();
   ASSERT_TRUE( scheme().init() );
-  auto rebuilt = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
-                                                                       scheme().getMesh2().getView(), {} );
-  rebuilt.force->Add( -4.0, initial );
-  EXPECT_LT( norm( *rebuilt.force ), 1.0e-11 );
+  auto rebuilt = scheme().getContactFormulation()->computeNodalResiduals( scheme().getMesh1().getView(),
+                                                                          scheme().getMesh2().getView(), {} );
+  rebuilt.residual->Add( -4.0, initial );
+  EXPECT_LT( norm( *rebuilt.residual ), 1.0e-11 );
 }
 
 // Constants and scales set through the MFEM interface rebuild the formulation without changing the decomposition.
@@ -385,25 +386,25 @@ TEST_P( MfemCommonPlaneTest, uses_changed_constants_without_decomposition_refres
 {
   enable();
   evaluate();
-  const auto initial = getMfemContactForce( 0 );
+  const auto initial = getMfemContactResidual( 0 );
   setMfemKinematicConstantPenalty( 0, 4.0, 12.0 );
   EXPECT_FALSE( scheme().hasContactFormulation() );
   ASSERT_TRUE( scheme().init() );
-  auto changed_constants = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
-                                                                                 scheme().getMesh2().getView(), {} );
-  changed_constants.force->Add( -2.0, initial );
-  EXPECT_LT( norm( *changed_constants.force ), 1.0e-11 );
+  auto changed_constants = scheme().getContactFormulation()->computeNodalResiduals( scheme().getMesh1().getView(),
+                                                                                    scheme().getMesh2().getView(), {} );
+  changed_constants.residual->Add( -2.0, initial );
+  EXPECT_LT( norm( *changed_constants.residual ), 1.0e-11 );
   setMfemKinematicPenaltyScale( 0, 2.0, 2.0 );
   EXPECT_FALSE( scheme().hasContactFormulation() );
   ASSERT_TRUE( scheme().init() );
-  auto direct = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
-                                                                      scheme().getMesh2().getView(), {} );
+  auto direct = scheme().getContactFormulation()->computeNodalResiduals( scheme().getMesh1().getView(),
+                                                                         scheme().getMesh2().getView(), {} );
   // Doubling both constants and both scales multiplies the effective series stiffness by four.
-  direct.force->Add( -4.0, initial );
-  EXPECT_LT( norm( *direct.force ), 1.0e-11 );
+  direct.residual->Add( -4.0, initial );
+  EXPECT_LT( norm( *direct.residual ), 1.0e-11 );
   RealT dt = 1.0;
   ASSERT_EQ( update( 0, 0.0, dt ), 0 );
-  auto updated = getMfemContactForce( 0 );
+  auto updated = getMfemContactResidual( 0 );
   updated.Add( -4.0, initial );
   EXPECT_LT( norm( updated ), 1.0e-11 );
 }
@@ -446,16 +447,16 @@ TEST_P( MfemCommonPlaneTest, constructs_with_scales_before_decomposition )
   setMfemKinematicPenaltyScale( 0, 2.0, 3.0 );
   enable();
   evaluate();
-  const auto scaled = getMfemContactForce( 0 );
+  const auto scaled = getMfemContactResidual( 0 );
   // Resetting constants clears registered scales even while the decomposed meshes still contain earlier scales.
   setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
   EXPECT_FALSE( scheme().hasContactFormulation() );
   ASSERT_TRUE( scheme().init() );
-  auto unscaled = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
-                                                                        scheme().getMesh2().getView(), {} );
+  auto unscaled = scheme().getContactFormulation()->computeNodalResiduals( scheme().getMesh1().getView(),
+                                                                           scheme().getMesh2().getView(), {} );
   // Scaled constants 4 and 18 give stiffness 36/11; unscaled constants 2 and 6 give stiffness 1.5.
-  unscaled.force->Add( -11.0 / 24.0, scaled );
-  EXPECT_LT( norm( *unscaled.force ), 1.0e-11 );
+  unscaled.residual->Add( -11.0 / 24.0, scaled );
+  EXPECT_LT( norm( *unscaled.residual ), 1.0e-11 );
 }
 
 // Each scaled mesh penalty must be positive and finite before a new formulation can be constructed.
@@ -490,7 +491,7 @@ TEST_P( MfemCommonPlaneTest, uses_configured_pressure_rule_for_interpenetrating_
   ASSERT_GT( norm( true_legacy ), 0.0 );
   enable();
   evaluate();
-  auto error = getMfemContactForce( 0 );
+  auto error = getMfemContactResidual( 0 );
   error += true_legacy;
   if ( GetParam() == 1 ) {
     EXPECT_LT( norm( error ), 1.0e-11 );
@@ -530,11 +531,11 @@ TEST_P( MfemCommonPlaneTest, assembled_jacobian_matches_finite_difference )
   *coords_ = original;
   coords_->Add( step, direction );
   evaluate();
-  const auto plus = getMfemContactForce( 0 );
+  const auto plus = getMfemContactResidual( 0 );
   *coords_ = original;
   coords_->Add( -step, direction );
   evaluate();
-  auto difference = getMfemContactForce( 0 );
+  auto difference = getMfemContactResidual( 0 );
   difference.Neg();
   difference += plus;
   difference /= 2.0 * step;
@@ -551,10 +552,10 @@ TEST_P( MfemCommonPlaneTest, rebuilds_and_restores_legacy_response )
 
   enable();
   evaluate();
-  const auto initial = getMfemContactForce( 0 );
+  const auto initial = getMfemContactResidual( 0 );
   setMfemKinematicConstantPenalty( 0, 4.0, 12.0 );
   evaluate();
-  auto scaled = getMfemContactForce( 0 );
+  auto scaled = getMfemContactResidual( 0 );
   auto error = scaled;
   error.Add( -2.0, initial );
   EXPECT_LT( norm( error ), 1.0e-11 );
@@ -578,13 +579,13 @@ TEST_P( MfemCommonPlaneTest, rebuilds_and_restores_legacy_response )
   EXPECT_LT( norm( scaled ), 1.0e-11 );
   setMfemUseCommonPlaneFormulation( 0, true );
   evaluate();
-  EXPECT_GT( norm( getMfemContactForce( 0 ) ), 0.0 );
+  EXPECT_GT( norm( getMfemContactResidual( 0 ) ), 0.0 );
 }
 
 #endif  // TRIBOL_USE_ENZYME
 
-// Factory-selected execution modes must preserve forces, and evaluator selection must control matrix availability.
-TEST_P( MfemCommonPlaneTest, execution_modes_preserve_forces_and_jacobian_selection )
+// Factory-selected execution modes must preserve residuals, and evaluator selection must control matrix availability.
+TEST_P( MfemCommonPlaneTest, execution_modes_preserve_residuals_and_jacobian_selection )
 {
   mfem::Vector reference;
   for ( const auto mode : { ExecutionMode::Sequential
@@ -601,20 +602,20 @@ TEST_P( MfemCommonPlaneTest, execution_modes_preserve_forces_and_jacobian_select
     ASSERT_TRUE( scheme().hasContactFormulation() );
     EXPECT_FALSE( scheme().hasMfemJacobianData() );
     EXPECT_EQ( scheme().getContactFormulationResult().df_dx, nullptr );
-    auto forces = getMfemContactForce( 0 );
+    auto residual = getMfemContactResidual( 0 );
     if ( mode == ExecutionMode::Sequential ) {
-      reference.SetSize( forces.Size() );
-      reference = forces;
+      reference.SetSize( residual.Size() );
+      reference = residual;
     }
-    forces -= reference;
-    EXPECT_LT( norm( forces ), 1.0e-11 );
+    residual -= reference;
+    EXPECT_LT( norm( residual ), 1.0e-11 );
 #ifdef TRIBOL_USE_ENZYME
     enable();
     evaluate();
     ASSERT_NE( scheme().getContactFormulationResult().df_dx, nullptr );
-    forces = getMfemContactForce( 0 );
-    forces -= reference;
-    EXPECT_LT( norm( forces ), 1.0e-11 );
+    residual = getMfemContactResidual( 0 );
+    residual -= reference;
+    EXPECT_LT( norm( residual ), 1.0e-11 );
 #endif
   }
 }
@@ -624,7 +625,7 @@ TEST_P( MfemCommonPlaneTest, rejected_switch_keeps_active_formulation )
 {
   enable( false );
   evaluate();
-  const auto reference = getMfemContactForce( 0 );
+  const auto reference = getMfemContactResidual( 0 );
   const auto* formulation = scheme().getContactFormulation();
   ASSERT_NE( formulation, nullptr );
 
@@ -638,13 +639,13 @@ TEST_P( MfemCommonPlaneTest, rejected_switch_keeps_active_formulation )
   EXPECT_EQ( scheme().getContactFormulation(), formulation );
   EXPECT_FALSE( scheme().hasMfemJacobianData() );
 
-  // Restoring the configuration must reuse the retained formulation and reproduce the earlier force.
+  // Restoring the configuration must reuse the retained formulation and reproduce the earlier residual.
   penalty.rate_calc_set = false;
   evaluate();
   EXPECT_EQ( scheme().getContactFormulation(), formulation );
-  auto force = getMfemContactForce( 0 );
-  force -= reference;
-  EXPECT_LT( norm( force ), 1.0e-11 );
+  auto residual = getMfemContactResidual( 0 );
+  residual -= reference;
+  EXPECT_LT( norm( residual ), 1.0e-11 );
 }
 
 // Rejected configuration must leave the legacy selection and its resources intact.
@@ -742,8 +743,8 @@ TEST( CommonPlaneSelection, rejects_higher_order_without_lor_and_three_dimension
   }
 }
 
-// Higher-order 2D coordinates with LOR subdivision match legacy 1-point forces and finite-difference parent Jacobians.
-TEST( CommonPlaneSelection, evaluates_forces_and_jacobians_with_lor_subdivision )
+// Higher-order 2D coordinates with LOR subdivision match legacy 1-point forces and parent Jacobian differences.
+TEST( CommonPlaneSelection, evaluates_residuals_and_jacobians_with_lor_subdivision )
 {
   // Shift the upper nonmatching body horizontally so projection endpoints do not coincide under coordinate
   // perturbations.
@@ -789,9 +790,9 @@ TEST( CommonPlaneSelection, evaluates_forces_and_jacobians_with_lor_subdivision 
   setQuadratureOrder( 0, 1 );
   evaluate();
   EXPECT_EQ( getMfemDfDx( 0 ), nullptr );
-  auto force_error = getMfemContactForce( 0 );
-  force_error += true_legacy;
-  EXPECT_LT( norm( force_error ), 1.0e-11 );
+  auto residual_error = getMfemContactResidual( 0 );
+  residual_error += true_legacy;
+  EXPECT_LT( norm( residual_error ), 1.0e-11 );
 
 #ifdef TRIBOL_USE_ENZYME
   // Enable the Jacobian, then override the LOR factor while the formulation is active and verify the parent-space
@@ -824,11 +825,11 @@ TEST( CommonPlaneSelection, evaluates_forces_and_jacobians_with_lor_subdivision 
   coordinates = original;
   coordinates.Add( step, direction );
   evaluate();
-  const auto plus = getMfemContactForce( 0 );
+  const auto plus = getMfemContactResidual( 0 );
   coordinates = original;
   coordinates.Add( -step, direction );
   evaluate();
-  auto difference = getMfemContactForce( 0 );
+  auto difference = getMfemContactResidual( 0 );
   difference.Neg();
   difference += plus;
   difference /= 2.0 * step;

@@ -30,7 +30,7 @@ namespace tribol {
  * Each pair is evaluated once. This kernel requires no derivative provider or Enzyme support. Failed or inactive
  * evaluations store zero values; callers must check quadrature before assembly.
  * For example, Common Plane explicit contact could obtain a PairValueBuffer from evaluatePairValues(), check its
- * quadratureMetadata(), and assemble its active residual values as nodal forces.
+ * quadratureMetadata(), and assemble its active values as a nodal residual.
  * @tparam PairFunction Function evaluating two rank-two node-by-spatial-dimension coordinate views.
  * @tparam Exec Concrete execution mode for pair evaluation.
  * @param pairs Supplied element pairs in execution-accessible memory.
@@ -76,13 +76,13 @@ PairValueBuffer<PairFunction::size_values> evaluatePairValues( const ArrayT<Inte
  * and Jacobians.
  *
  * For example, suppose function is a configured PairTractionIntegral of type PairFunction, pairs is an
- * accepted pair list, and mesh1 and mesh2 are current mesh views. A caller could evaluate its local nodal forces and
+ * accepted pair list, and mesh1 and mesh2 are current mesh views. A caller could evaluate its local nodal residuals and
  * their Jacobians:
  * @code
  * auto results = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function );
  * checkPairQuadratureMetadata<Exec>( results.quadratureMetadata() );
  * @endcode
- * After the check succeeds, the caller could assemble the values into a force vector and the Jacobians into a matrix.
+ * After the check succeeds, the caller could assemble the values into a residual and the Jacobians into df_dx.
  * This kernel stores each pair's contribution separately, including when pairs share nodes.
  *
  * @tparam PairFunction Pair function whose evaluate() result supplies the fixed-size vector f(x) and quadrature state.
@@ -144,7 +144,7 @@ PairValueJacobianBuffer<PairFunction::size_values, PairFunction::size_coords> ev
  *     } );
  * @endcode
  * Each pair receives 2.0*J_G0 + 3.0*J_G1 and 2.0*H_G0 + 3.0*H_G1. An LM formulation could assemble the latter into
- * its coordinate force Jacobian. This example uses the same multipliers for every pair; a production reader can
+ * its residual Jacobian. This example uses the same multipliers for every pair; a production reader can
  * obtain different multipliers for each pair from the nodal field.
  *
  * @tparam PairFunction Pair function whose evaluate() result supplies the fixed-size vector f(x) and quadrature state.
@@ -201,9 +201,9 @@ PairJacobianHessianBuffer<PairFunction::size_coords> evaluatePairWeightedJacobia
  * auto results = evaluatePairValuesJacobiansAndHessians<Exec>( pairs, mesh1, mesh2, pair_function );
  * checkPairQuadratureMetadata<Exec>( results.quadratureMetadata() );
  * @endcode
- * After the check succeeds, the caller could sum E across pairs and MPI ranks, assemble J_E as the force vector,
- * and assemble H_E as its coordinate Jacobian. The first derivatives are those of the input energy E, not of the
- * resulting force vector.
+ * After the check succeeds, the caller could sum E across pairs and MPI ranks, assemble J_E as the residual, and
+ * assemble H_E as its residual Jacobian. The first derivatives are those of the input energy E, not of the assembled
+ * residual function.
  *
  * @tparam PairFunction Scalar pair function whose evaluate() result supplies values(), activation, and quadrature
  * status.

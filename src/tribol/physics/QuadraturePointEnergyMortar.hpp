@@ -42,7 +42,7 @@ struct PenaltyEnergyDensity {
     return gap.computePairGeometryData( geometry1, geometry2 );
   }
 
-  /** @brief Compute 0.5*penalty*gap^2; zero gap retains the compressive tangent.
+  /** @brief Compute 0.5*penalty*gap^2; zero gap retains the compressive-side derivative.
    * @tparam Point1 Geometry1 physical point type.
    * @tparam Point2 Geometry2 physical point type.
    * @tparam ParametricCoords1 Geometry1 parametric coordinate view type.
@@ -72,9 +72,9 @@ struct PenaltyEnergyDensity {
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
 
 /**
- * @brief Quadrature-point Energy Mortar with energy, force, and force-Jacobian assembly.
+ * @brief Quadrature-point Energy Mortar with energy, residual, and residual-Jacobian assembly.
  *
- * Uses PairEnergyIntegral with PenaltyEnergyDensity; forces and their coordinate Jacobian are energy derivatives.
+ * Uses PairEnergyIntegral with PenaltyEnergyDensity; the residual and its coordinate Jacobian are energy derivatives.
  * @tparam Exec Concrete execution mode for search, evaluation, and assembly kernels.
  * @tparam PairRuleGenerator Generates quadrature points and physical weights for the current edge pair.
  * @tparam GapDefinition Geometric or offset alignment-corrected gap.
@@ -102,18 +102,18 @@ class QuadraturePointEnergyMortar final : public ContactFormulation {
   }
 
   /**
-   * @brief Evaluate pair energies and assemble energy, force, and coordinate Jacobian.
+   * @brief Evaluate pair energies and assemble energy, residual, and coordinate Jacobian.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
    * @param inputs Unused; this formulation reads no caller-supplied fields.
-   * @return Owned energy, force, and df_dx; other outputs are absent.
+   * @return Owned energy, residual, and df_dx; other outputs are absent.
    */
-  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                                               [[maybe_unused]] const ContactFormulationInputs& inputs ) const override
+  ContactFormulationResult computeNodalResiduals(
+      MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+      [[maybe_unused]] const ContactFormulationInputs& inputs ) const override
   {
     const auto pairs = pair_builder_.build( mesh1, mesh2 );
-    return evaluateAndAssemblePairEnergyResidualStiffness<Exec>( pairs, mesh1, mesh2, mesh_data_, jacobian_data_,
-                                                                 pair_integral_ );
+    return assembleEnergyResidualAndJacobian<Exec>( pairs, mesh1, mesh2, mesh_data_, jacobian_data_, pair_integral_ );
   }
 
  private:

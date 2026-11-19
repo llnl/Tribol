@@ -51,18 +51,19 @@ shared::ParVector MfemVectorAssembler::assemble() const
 }
 
 namespace detail {
-MfemVectorAssembler makeForceVectorAssembler( const MfemMeshData& data, MeshData::Viewer mesh1, MeshData::Viewer mesh2 )
+MfemVectorAssembler makeResidualVectorAssembler( const MfemMeshData& data, MeshData::Viewer mesh1,
+                                                 MeshData::Viewer mesh2 )
 {
   const auto& redecomp_fes = *data.GetRedecompResponse().FESpace();
   const int num_values_per_node = redecomp_fes.GetVDim();
   if ( num_values_per_node <= 0 || mesh1.spatialDim() != num_values_per_node ||
        mesh2.spatialDim() != num_values_per_node || mesh1.numberOfNodesPerElement() <= 0 ||
        mesh2.numberOfNodesPerElement() <= 0 ) {
-    SLIC_ERROR( "Force vector assembly requires matching geometry and FE-space dimensions." );
+    SLIC_ERROR( "Residual vector assembly requires matching geometry and FE-space dimensions." );
   }
   const IndexT num_geom1_nodes = mesh1.numberOfNodesPerElement();
   if ( num_geom1_nodes > std::numeric_limits<IndexT>::max() / num_values_per_node ) {
-    SLIC_ERROR( "Force vector input extent exceeds the supported index range." );
+    SLIC_ERROR( "Residual vector input extent exceeds the supported index range." );
   }
   return {
       { *data.GetParentCoords().ParFESpace(), redecomp_fes,

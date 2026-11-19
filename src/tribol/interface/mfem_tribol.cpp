@@ -631,14 +631,14 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r )
                               cs_id ) );
   SLIC_ERROR_ROOT_IF(
       cs->usesContactFormulation(),
-      "Coupling scheme has a contact formulation. Forces are returned using getMfemContactForce() instead." );
+      "Coupling scheme has a contact formulation. Residuals are returned using getMfemContactResidual() instead." );
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to return a response vector." );
   cs->getMfemMeshData()->GetParentResponse( r );
 }
 
-mfem::HypreParVector getMfemContactForce( IndexT cs_id )
+mfem::HypreParVector getMfemContactResidual( IndexT cs_id )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(
@@ -647,13 +647,14 @@ mfem::HypreParVector getMfemContactForce( IndexT cs_id )
                               cs_id ) );
   SLIC_ERROR_ROOT_IF(
       !cs->hasContactFormulation(),
-      "Coupling scheme does not contain a contact formulation. Forces are returned using getMfemResponse() instead." );
-  const auto& force = cs->getContactFormulationResult().force;
-  if ( !force ) {
-    SLIC_ERROR_ROOT( "No contact force is available; call update() first." );
+      "Coupling scheme does not contain a contact formulation. Physical forces are returned using getMfemResponse() "
+      "instead." );
+  const auto& residual = cs->getContactFormulationResult().residual;
+  if ( !residual ) {
+    SLIC_ERROR_ROOT( "No contact residual is available; call update() first." );
     return {};
   }
-  return *force;
+  return *residual;
 }
 
 namespace {
@@ -693,7 +694,7 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
     // Determine sizes
     mfem::Array<int> offsets( 3 );
     offsets[0] = 0;
-    offsets[1] = DfDx->Height();                                                     // Force rows (displacement dofs)
+    offsets[1] = DfDx->Height();  // Residual rows (displacement dofs)
     offsets[2] = offsets[1] + ( DfDp ? DfDp->Width() : DgDx ? DgDx->Height() : 0 );  // Pressure cols (pressure dofs)
 
     auto blockOp = std::make_unique<mfem::BlockOperator>( offsets );

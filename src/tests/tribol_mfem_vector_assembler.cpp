@@ -9,7 +9,7 @@
  * Jacobians, without contact physics. Nonmatching two- and three-edge surfaces exercise shared nodes, scalar submesh
  * transfers, three independent fields with signed values, and all matrix blocks. Tests run on one and two ranks, with
  * contact data on rank zero. Assembly tests run on Sequential and OpenMP backends. Physics and Enzyme derivatives are
- * checked by the formulation tests. Separate force and matrix assemblers check shared-node accumulation and combine
+ * checked by the formulation tests. Separate residual and matrix assemblers check shared-node accumulation and combine
  * their views in one kernel.
  * Independent scalar/coordinate matrix assemblers check both rectangular orientations, execution-space packing,
  * invalid layouts, and empty pair lists on the same nonmatching surfaces.
@@ -192,9 +192,9 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
   const auto pair_list = pairs();
   ContactFormulationResult result;
   {
-    auto assembler = tribol::detail::makeForceVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
-    auto matrix = tribol::detail::makeForceJacobianAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1,
-                                                              mesh2, pair_list.size(), pair_list.getAllocatorID() );
+    auto assembler = tribol::detail::makeResidualVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
+    auto matrix = tribol::detail::makeResidualJacobianAssembler(
+        *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1, mesh2, pair_list.size(), pair_list.getAllocatorID() );
     ArrayT<RealT> residuals( pair_list.size() * pair_dofs, pair_list.size() * pair_dofs, pair_list.getAllocatorID() );
     ArrayT<RealT> jacobians( pair_list.size() * pair_dofs * pair_dofs, pair_list.size() * pair_dofs * pair_dofs,
                              pair_list.getAllocatorID() );
@@ -231,10 +231,10 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
         pair_list, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
           return jacobians_view[( pair * pair_dofs + row ) * pair_dofs + column];
         } );
-    result.force.reset( assembler.assemble().release() );
+    result.residual.reset( assembler.assemble().release() );
     result.df_dx.reset( matrix.assemble().release() );
   }
-  ASSERT_NE( result.force, nullptr );
+  ASSERT_NE( result.residual, nullptr );
   ASSERT_NE( result.df_dx, nullptr );
   EXPECT_FALSE( result.energy.has_value() );
   EXPECT_FALSE( result.time_step.has_value() );
@@ -242,7 +242,7 @@ TEST_F( MfemVectorAssemblerTest, assembles_prescribed_residual_and_nonsymmetric_
   EXPECT_EQ( result.pressure, nullptr );
   EXPECT_EQ( result.weighted_gap_jacobian, nullptr );
   EXPECT_EQ( result.df_dp, nullptr );
-  auto error = *result.force;
+  auto error = *result.residual;
   error -= *residual_reference;
   EXPECT_LT( norm( error ), tolerance );
   mfem::Vector action( fes_->GetTrueVSize() );
@@ -262,18 +262,18 @@ TEST_F( MfemVectorAssemblerTest, returns_zero_outputs_for_empty_or_rejected_inpu
 {
   auto& cs = scheme();
   const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
-  auto assembler = tribol::detail::makeForceVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
-  auto matrix = tribol::detail::makeForceJacobianAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1,
-                                                            mesh2, 0, mesh1.getAllocatorId() );
+  auto assembler = tribol::detail::makeResidualVectorAssembler( *cs.getMfemMeshData(), mesh1, mesh2 );
+  auto matrix = tribol::detail::makeResidualJacobianAssembler( *cs.getMfemMeshData(), *cs.getMfemJacobianData(), mesh1,
+                                                               mesh2, 0, mesh1.getAllocatorId() );
   const ArrayT<InterfacePair> empty( 0, 0, mesh1.getAllocatorId() );
-  const auto zero_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };
-  EXPECT_SLIC_ERROR( ( assembler.addPairs<ExecutionMode::Sequential, pair_dofs - 1, 2>( empty, zero_force ) ) );
+  const auto zero_residual = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };
+  EXPECT_SLIC_ERROR( ( assembler.addPairs<ExecutionMode::Sequential, pair_dofs - 1, 2>( empty, zero_residual ) ) );
   constexpr IndexT size_geom_coords = pair_dofs / 2;
   EXPECT_SLIC_ERROR( ( matrix.view<size_geom_coords - 1, size_geom_coords, 4>() ) );
-  const auto force = assembler.assemble();
+  const auto residual = assembler.assemble();
   const auto df_dx = matrix.assemble();
-  EXPECT_EQ( force.size(), fes_->GetTrueVSize() );
-  EXPECT_EQ( norm( force.get() ), 0.0 );
+  EXPECT_EQ( residual.size(), fes_->GetTrueVSize() );
+  EXPECT_EQ( norm( residual.get() ), 0.0 );
   mfem::Vector direction( fes_->GetTrueVSize() ), action( fes_->GetTrueVSize() );
   direction = 1.0;
   df_dx->Mult( direction, action );
@@ -426,20 +426,20 @@ TEST_P( MfemMatrixAssemblerTest, assembles_rectangular_matrices_in_both_orientat
     actual_forward->Mult( coordinate_direction, scalar_action );
     scalar_action -= expected_scalar;
     EXPECT_LT( norm( scalar_action ), tolerance );
-    mfem::Vector scalar_direction( actual_reverse->Width() ), actual_force( actual_reverse->Height() ),
-        expected_force( actual_reverse->Height() );
+    mfem::Vector scalar_direction( actual_reverse->Width() ), actual_coordinate_action( actual_reverse->Height() ),
+        expected_coordinate_action( actual_reverse->Height() );
     for ( int dof = 0; dof < scalar_direction.Size(); ++dof ) {
       scalar_direction[dof] = 1.0 + 0.2 * dof;
     }
-    expected_reverse->Mult( scalar_direction, expected_force );
-    actual_reverse->Mult( scalar_direction, actual_force );
-    EXPECT_GT( norm( expected_force ), 0.0 );
-    actual_force -= expected_force;
-    EXPECT_LT( norm( actual_force ), tolerance );
+    expected_reverse->Mult( scalar_direction, expected_coordinate_action );
+    actual_reverse->Mult( scalar_direction, actual_coordinate_action );
+    EXPECT_GT( norm( expected_coordinate_action ), 0.0 );
+    actual_coordinate_action -= expected_coordinate_action;
+    EXPECT_LT( norm( actual_coordinate_action ), tolerance );
   } );
 }
 
-// Separate and composed kernels must preserve all four matrix blocks and shared-node force accumulation.
+// Separate and composed kernels must preserve all four matrix blocks and shared-node residual accumulation.
 TEST_P( MfemMatrixAssemblerTest, composes_residual_and_jacobian_assembly_views )
 {
   dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
@@ -448,42 +448,42 @@ TEST_P( MfemMatrixAssemblerTest, composes_residual_and_jacobian_assembly_views )
     const auto& transfers = *cs.getMfemJacobianData();
     const auto mesh1 = cs.getMesh1().getView(), mesh2 = cs.getMesh2().getView();
     const auto pair_list = pairs();
-    auto reference = tribol::detail::makeForceVectorAssembler( data, mesh1, mesh2 );
-    auto composed = tribol::detail::makeForceVectorAssembler( data, mesh1, mesh2 );
-    auto force_only = tribol::detail::makeForceVectorAssembler( data, mesh1, mesh2 );
+    auto reference = tribol::detail::makeResidualVectorAssembler( data, mesh1, mesh2 );
+    auto composed = tribol::detail::makeResidualVectorAssembler( data, mesh1, mesh2 );
+    auto residual_only = tribol::detail::makeResidualVectorAssembler( data, mesh1, mesh2 );
     const int allocator_id = pair_list.getAllocatorID();
     auto reference_matrix =
-        tribol::detail::makeForceJacobianAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
+        tribol::detail::makeResidualJacobianAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
     auto composed_matrix =
-        tribol::detail::makeForceJacobianAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
+        tribol::detail::makeResidualJacobianAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
     auto matrix_only =
-        tribol::detail::makeForceJacobianAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
-    const auto initial_force = force_only.assemble();
-    EXPECT_EQ( norm( initial_force.get() ), 0.0 );
-    const auto zero_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };
-    EXPECT_SLIC_ERROR( ( force_only.addPairs<Exec, pair_dofs - 1, 2>( pair_list, zero_force ) ) );
+        tribol::detail::makeResidualJacobianAssembler( data, transfers, mesh1, mesh2, pair_list.size(), allocator_id );
+    const auto initial_residual = residual_only.assemble();
+    EXPECT_EQ( norm( initial_residual.get() ), 0.0 );
+    const auto zero_residual = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };
+    EXPECT_SLIC_ERROR( ( residual_only.addPairs<Exec, pair_dofs - 1, 2>( pair_list, zero_residual ) ) );
     constexpr IndexT size_geom_coords = pair_dofs / 2;
-    const auto read_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT row ) { return row + 1.0; };
+    const auto read_residual = [] TRIBOL_HOST_DEVICE( IndexT, IndexT row ) { return row + 1.0; };
     const auto read_jacobian = [] TRIBOL_HOST_DEVICE( IndexT, IndexT row, IndexT column ) {
       return ( row + 1.0 ) * ( column + 2.0 );
     };
-    reference.addPairs<ExecutionMode::Sequential, pair_dofs, 2>( pair_list, read_force );
+    reference.addPairs<ExecutionMode::Sequential, pair_dofs, 2>( pair_list, read_residual );
     reference_matrix.addPairs<ExecutionMode::Sequential, size_geom_coords, size_geom_coords, 4>( pair_list,
                                                                                                  read_jacobian );
-    force_only.addPairs<Exec, pair_dofs, 2>( pair_list, read_force );
+    residual_only.addPairs<Exec, pair_dofs, 2>( pair_list, read_residual );
     matrix_only.addPairs<Exec, size_geom_coords, size_geom_coords, 4>( pair_list, read_jacobian );
     const auto matrix_view = composed_matrix.view<size_geom_coords, size_geom_coords, 4>();
-    const auto force_view = composed.view<Exec, 2>();
+    const auto residual_view = composed.view<Exec, 2>();
     const auto pairs_view = pair_list.view();
     forAllExec<Exec>( pair_list.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
-      force_view.scatterAddPair( pair, pairs_view[pair], read_force );
+      residual_view.scatterAddPair( pair, pairs_view[pair], read_residual );
       matrix_view.packPair( pair, pairs_view[pair], read_jacobian );
     } );
     const auto expected = reference.assemble();
-    auto force_result = force_only.assemble();
-    force_result.get().Add( -1.0, expected.get() );
-    EXPECT_LT( norm( force_result.get() ), tolerance );
-    EXPECT_EQ( norm( initial_force.get() ), 0.0 );
+    auto residual_result = residual_only.assemble();
+    residual_result.get().Add( -1.0, expected.get() );
+    EXPECT_LT( norm( residual_result.get() ), tolerance );
+    EXPECT_EQ( norm( initial_residual.get() ), 0.0 );
     EXPECT_GT( norm( expected.get() ), 0.0 );
     auto result = composed.assemble();
     result.get().Add( -1.0, expected.get() );

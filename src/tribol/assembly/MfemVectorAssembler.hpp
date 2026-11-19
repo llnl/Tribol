@@ -171,11 +171,11 @@ namespace detail {
 /** @brief Configure contact residual assembly, dual to displacement, on parent true DOFs.
  * @param data Displacement data for the current decomposition; must outlive the returned assembler.
  * @param mesh1 First geometry. @param mesh2 Second geometry.
- * @return Force vector assembler referencing both geometries' connectivities and parent transfer data.
+ * @return Residual vector assembler referencing both geometries' connectivities and parent transfer data.
  * @note Reports a SLIC error if geometry dimensions do not match the displacement space.
  * @note Reports a SLIC error if input extents exceed the supported index range. */
-MfemVectorAssembler makeForceVectorAssembler( const MfemMeshData& data, MeshData::Viewer mesh1,
-                                              MeshData::Viewer mesh2 );
+MfemVectorAssembler makeResidualVectorAssembler( const MfemMeshData& data, MeshData::Viewer mesh1,
+                                                 MeshData::Viewer mesh2 );
 
 /** @brief Configure scalar nodal field contributions from geometry1 on submesh true DOFs.
  * @param data Scalar field data for the current decomposition; must outlive the returned assembler.

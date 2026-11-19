@@ -39,7 +39,7 @@ struct CommonPlanePenaltyTraction {
     return gap.computePairGeometryData( geometry1, geometry2 );
   }
 
-  /** @brief Compute penalty traction at one quadrature point; zero gap retains its compressive tangent.
+  /** @brief Compute penalty traction at one quadrature point; zero gap retains the compressive-side derivative.
    * @param point1 Physical point on geometry1.
    * @param point2 Physical point on geometry2.
    * @param parametric_coords1 Geometry1 parametric point, unused by this penalty law.
@@ -69,7 +69,7 @@ struct CommonPlanePenaltyTraction {
 
 #ifdef BUILD_REDECOMP
 /**
- * @brief Common Plane pair search followed by residual-only evaluation and force assembly.
+ * @brief Common Plane pair search followed by residual-only evaluation and assembly.
  *
  * Uses PairTractionIntegral with CommonPlanePenaltyTraction and linear Lagrange residual bases on both edges.
  * @tparam Exec Concrete execution mode for search, evaluation, and assembly kernels.
@@ -96,17 +96,18 @@ class CommonPlaneResidualFormulation final : public ContactFormulation {
   }
 
   /**
-   * @brief Compute the Common Plane force without calculating a Jacobian.
+   * @brief Compute the Common Plane residual without calculating its Jacobian.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
    * @param inputs Unused; this formulation reads no caller-supplied fields.
-   * @return Owned force; df_dx and other outputs are absent.
+   * @return Owned residual; df_dx and other outputs are absent.
    */
-  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                                               [[maybe_unused]] const ContactFormulationInputs& inputs ) const override
+  ContactFormulationResult computeNodalResiduals(
+      MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+      [[maybe_unused]] const ContactFormulationInputs& inputs ) const override
   {
     const auto pairs = pair_builder_.build( mesh1, mesh2 );
-    return evaluateAndAssemblePairResidual<Exec>( pairs, mesh1, mesh2, mesh_data_, pair_integral_ );
+    return assembleResidual<Exec>( pairs, mesh1, mesh2, mesh_data_, pair_integral_ );
   }
 
  private:
@@ -149,18 +150,18 @@ class CommonPlaneResidualJacobianFormulation final : public ContactFormulation {
   }
 
   /**
-   * @brief Compute the Common Plane force and its coordinate Jacobian.
+   * @brief Compute the Common Plane residual and its coordinate Jacobian.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
    * @param inputs Unused; this formulation reads no caller-supplied fields.
-   * @return Owned force and df_dx; other outputs are absent.
+   * @return Owned residual and df_dx; other outputs are absent.
    */
-  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                                               [[maybe_unused]] const ContactFormulationInputs& inputs ) const override
+  ContactFormulationResult computeNodalResiduals(
+      MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+      [[maybe_unused]] const ContactFormulationInputs& inputs ) const override
   {
     const auto pairs = pair_builder_.build( mesh1, mesh2 );
-    return evaluateAndAssemblePairResidualStiffness<Exec>( pairs, mesh1, mesh2, mesh_data_, jacobian_data_,
-                                                           pair_integral_ );
+    return assembleResidualAndJacobian<Exec>( pairs, mesh1, mesh2, mesh_data_, jacobian_data_, pair_integral_ );
   }
 
  private:

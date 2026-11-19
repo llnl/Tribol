@@ -122,8 +122,8 @@ shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& 
         return weights;
       } );
   const auto hessian_view = hessians.view();
-  auto assembler =
-      detail::makeForceJacobianAssembler( mesh_data, jacobian_data, mesh1, mesh2, num_pairs, pairs.getAllocatorID() );
+  auto assembler = detail::makeResidualJacobianAssembler( mesh_data, jacobian_data, mesh1, mesh2, num_pairs,
+                                                          pairs.getAllocatorID() );
   assembler.addPairs<Exec, PairFunction::size_coords / 2, PairFunction::size_coords / 2, 4>(
       pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
         return hessian_view.hessian( pair, row, column );
@@ -173,7 +173,7 @@ ContactFormulationResult evaluateAndAssembleNodalPenaltyGaps(
 }
 
 /**
- * @brief Assemble nodal integrals, apply penalty enforcement, and calculate forces and derivatives.
+ * @brief Assemble nodal integrals, apply penalty enforcement, and calculate residuals and derivatives.
  * @tparam Exec Concrete execution mode for evaluation and assembly kernels.
  * @tparam PairFunction Pair function returning weighted-gap integrals followed by tributary areas.
  * @param pairs Accepted element pairs; not retained.
@@ -184,8 +184,8 @@ ContactFormulationResult evaluateAndAssembleNodalPenaltyGaps(
  * @param jacobian_data Parent and scalar-field Jacobian transfer data used for assembly.
  * @param pair_function Configured nodal-integral pair_function.
  * @param penalty Fixed positive, finite penalty stiffness, validated when constructing the formulation.
- * @return Owned gaps, pressure, energy, force, weighted_gap_jacobian, and df_dx; df_dp is absent. Empty pairs
- * contribute zero force and energy; unsupported nodal areas give zero penalty pressure.
+ * @return Owned gaps, pressure, energy, residual, weighted_gap_jacobian, and df_dx; df_dp is absent. Empty pairs
+ * contribute zero residual and energy; unsupported nodal areas give zero penalty pressure.
  * @note Reports a SLIC error if geometry, assembly dimensions, or nodal field dimensions are invalid.
  * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
  */
@@ -232,8 +232,8 @@ ContactFormulationResult evaluateAndAssembleNodalPenalty( const ArrayT<Interface
   const RealT energy = GlobalScalarAssembler::sum<Exec>(
       gap_weights.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) { return nodal_energy_data[node]; },
       gap_weights.get().GetComm() );
-  auto force = gap_weights * quantities.weighted_gap.jacobian;
-  force += area_weights * quantities.tributary_area.jacobian;
+  auto residual = gap_weights * quantities.weighted_gap.jacobian;
+  residual += area_weights * quantities.tributary_area.jacobian;
 
   const auto redecomp_gap_weights = submesh_data.TransferTrueDofsToRedecomp( gap_weights.get() );
   const auto redecomp_area_weights = submesh_data.TransferTrueDofsToRedecomp( area_weights.get() );
@@ -259,7 +259,7 @@ ContactFormulationResult evaluateAndAssembleNodalPenalty( const ArrayT<Interface
 
   auto result = detail::makeNodalPenaltyGapResult( quantities );
   result.energy = energy;
-  result.force.reset( force.release() );
+  result.residual.reset( residual.release() );
   result.df_dx.reset( jacobian.release() );
   result.pressure.reset( gap_weights.release() );
   return result;
@@ -291,7 +291,7 @@ ContactFormulationResult evaluateAndAssembleNodalLagrangeMultiplierGaps(
 }
 
 /**
- * @brief Assemble nodal integrals, apply Lagrange multiplier enforcement, and calculate forces and derivatives.
+ * @brief Assemble nodal integrals, apply Lagrange multiplier enforcement, and calculate residuals and derivatives.
  * @tparam Exec Concrete execution mode for evaluation and assembly kernels.
  * @tparam PairFunction Pair function returning weighted-gap integrals followed by tributary areas.
  * @param pairs Accepted element pairs; not retained.
@@ -302,8 +302,8 @@ ContactFormulationResult evaluateAndAssembleNodalLagrangeMultiplierGaps(
  * @param jacobian_data Parent and scalar-field Jacobian transfer data used for assembly.
  * @param pair_function Configured nodal-integral pair_function.
  * @param multiplier LM values on dual true DOFs; read during the call and copied into the returned pressure.
- * @return Owned gaps, pressure, energy, force, weighted_gap_jacobian, df_dx, and df_dp. Empty pairs contribute zero
- * force and energy; pressure contains the supplied LM values.
+ * @return Owned gaps, pressure, energy, residual, weighted_gap_jacobian, df_dx, and df_dp. Empty pairs contribute zero
+ * residual and energy; pressure contains the supplied LM values.
  * @note Reports a SLIC error, returning no outputs, if the multiplier size does not match the dual true DOFs.
  * @note Reports a SLIC error if geometry, assembly dimensions, or nodal field dimensions are invalid.
  * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
@@ -322,7 +322,7 @@ ContactFormulationResult evaluateAndAssembleNodalLagrangeMultiplier(
                                                                       submesh_data, jacobian_data );
   shared::ParVector pressure( multiplier );
   const RealT energy = pressure.dot( quantities.weighted_gap.values );
-  auto force = pressure * quantities.weighted_gap.jacobian;
+  auto residual = pressure * quantities.weighted_gap.jacobian;
   const auto redecomp_pressure = submesh_data.TransferTrueDofsToRedecomp( pressure.get() );
   const auto* pressure_data = redecomp_pressure.Read( isOnDevice( Exec ) );
   auto jacobian = detail::assembleWeightedNodalHessian<Exec>(
@@ -332,7 +332,7 @@ ContactFormulationResult evaluateAndAssembleNodalLagrangeMultiplier(
 
   auto result = detail::makeNodalLagrangeMultiplierGapResult( quantities );
   result.energy = energy;
-  result.force.reset( force.release() );
+  result.residual.reset( residual.release() );
   result.df_dx.reset( jacobian.release() );
   result.df_dp.reset( df_dp.release() );
   result.pressure.reset( pressure.release() );
@@ -340,7 +340,7 @@ ContactFormulationResult evaluateAndAssembleNodalLagrangeMultiplier(
 }
 
 /**
- * @brief Nodal penalty Energy Mortar with normalized compressive gaps and penalty forces.
+ * @brief Nodal penalty Energy Mortar with normalized compressive gaps and a contact residual.
  *
  * Uses PairNodalGapIntegral with a linear Lagrange basis on geometry1; enforcement follows nodal assembly.
  * @tparam Exec Concrete execution mode for search, evaluation, and assembly kernels.
@@ -387,14 +387,15 @@ class NodalPenaltyEnergyMortar final : public ContactFormulation {
   }
 
   /**
-   * @brief Calculate nodal penalty energy, gaps, pressure, forces, and coordinate derivatives.
+   * @brief Calculate nodal penalty energy, gaps, pressure, residual, and coordinate derivatives.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
    * @param inputs Unused; this formulation reads no caller-supplied fields.
-   * @return Owned energy, gap, pressure, force, weighted_gap_jacobian, and df_dx; df_dp is absent.
+   * @return Owned energy, gap, pressure, residual, weighted_gap_jacobian, and df_dx; df_dp is absent.
    */
-  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                                               [[maybe_unused]] const ContactFormulationInputs& inputs ) const override
+  ContactFormulationResult computeNodalResiduals(
+      MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+      [[maybe_unused]] const ContactFormulationInputs& inputs ) const override
   {
     const auto pairs = pair_builder_.build( mesh1, mesh2 );
     return evaluateAndAssembleNodalPenalty<Exec>( pairs, mesh1, mesh2, mesh_data_, submesh_data_, jacobian_data_,
@@ -456,15 +457,15 @@ class NodalLagrangeMultiplierEnergyMortar final : public ContactFormulation {
   }
 
   /**
-   * @brief Calculate nodal LM energy, gaps, pressure, forces, and mixed derivatives.
+   * @brief Calculate nodal LM energy, gaps, pressure, residual, and mixed derivatives.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
    * @param inputs Supplies the LM values on dual true DOFs, which are required.
-   * @return Owned energy, gap, pressure, force, weighted_gap_jacobian, df_dx, and df_dp.
+   * @return Owned energy, gap, pressure, residual, weighted_gap_jacobian, df_dx, and df_dp.
    * @note Reports a SLIC error, returning no outputs, if inputs.multiplier is null.
    */
-  ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                                               const ContactFormulationInputs& inputs ) const override
+  ContactFormulationResult computeNodalResiduals( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                                  const ContactFormulationInputs& inputs ) const override
   {
     if ( !inputs.multiplier ) {
       SLIC_ERROR( "Lagrange multiplier Energy Mortar requires LM values in ContactFormulationInputs." );

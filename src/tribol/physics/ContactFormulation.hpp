@@ -33,7 +33,7 @@ struct ContactFormulationResult {
   std::optional<RealT> energy;     ///< Globally summed contact energy, when the method defines one.
   std::optional<RealT> time_step;  ///< Maximum allowable timestep, when calculated.
 #ifdef BUILD_REDECOMP
-  std::unique_ptr<mfem::HypreParVector> force;     ///< Contact residual on parent displacement true DOFs.
+  std::unique_ptr<mfem::HypreParVector> residual;  ///< Contact residual on parent displacement true DOFs.
   std::unique_ptr<mfem::HypreParVector> gap;       ///< Normalized penalty gaps or weighted LM gaps on dual true DOFs.
   std::unique_ptr<mfem::HypreParVector> pressure;  ///< Calculated penalty pressure or the LM values used in assembly.
   std::unique_ptr<mfem::HypreParMatrix> df_dx;     ///< Derivative of the contact residual with respect to coordinates.
@@ -90,8 +90,8 @@ class ContactFormulation {
    * @param inputs Caller-supplied field values used by this calculation; not retained.
    * @return Caller-owned outputs; uncalculated quantities are absent.
    */
-  virtual ContactFormulationResult computeNodalForces( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                                                       const ContactFormulationInputs& inputs ) const = 0;
+  virtual ContactFormulationResult computeNodalResiduals( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                                                          const ContactFormulationInputs& inputs ) const = 0;
 };
 
 }  // namespace tribol

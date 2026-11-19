@@ -71,10 +71,10 @@ class EnzymePairDerivative {
    * const auto pair_values_struct =
    *     EnzymePairDerivative<PairFunction>::valuesAndJacobian( coords1.view(), coords2.view(), f );
    * // Record pair_values_struct.pair_value.quadrature_metadata before assembly.
-   * const RealT force_entry = pair_values_struct.pair_value.values()[0];
-   * const RealT force_jacobian_entry = pair_values_struct.derivatives.jacobian( 0, 0 );
+   * const RealT residual_entry = pair_values_struct.pair_value.values()[0];
+   * const RealT residual_jacobian_entry = pair_values_struct.derivatives.jacobian( 0, 0 );
    * @endcode
-   * Here f is the pair force vector. The caller could store its values and Jacobian for later assembly. The same
+   * Here f is the pair residual vector. The caller could store its values and Jacobian for later assembly. The same
    * operation on an PairNodalGapIntegral would return gap/area values and their coordinate Jacobian.
    *
    * @param coords1 Current geometry1 coordinates.
@@ -128,9 +128,8 @@ class EnzymePairDerivative {
    *     coords1.view(), coords2.view(), f, weights.view() );
    * @endcode
    * pair_derivatives_struct.jacobian is 2.0*J_G0 + 3.0*J_G1 and pair_derivatives_struct.hessian is
-   * 2.0*H_G0 + 3.0*H_G1. The Hessian could contribute to the coordinate Jacobian of the LM force. For a scalar
-   * PairEnergyIntegral E, a single weight of 1.0 returns J_E and H_E, which could supply the force and its
-   * coordinate Jacobian.
+   * 2.0*H_G0 + 3.0*H_G1. The Hessian could contribute to the LM residual Jacobian. For a scalar PairEnergyIntegral E,
+   * a single weight of 1.0 returns J_E and H_E, which could supply the residual and its coordinate Jacobian.
    *
    * @param coords1 Current geometry1 coordinates.
    * @param coords2 Current geometry2 coordinates.
@@ -185,11 +184,11 @@ class EnzymePairDerivative {
    * );
    * // Record pair_values.pair_value.quadrature_metadata for checking before assembly.
    * const RealT energy = pair_values.pair_value.energy;
-   * const RealT force_entry = pair_values.derivatives.jacobian[0];
-   * const RealT force_jacobian_entry = pair_values.derivatives.hessian( 0, 0 );
+   * const RealT residual_entry = pair_values.derivatives.jacobian[0];
+   * const RealT residual_jacobian_entry = pair_values.derivatives.hessian( 0, 0 );
    * @endcode
-   * After checking quadrature, the caller could sum the energy and assemble the Jacobian as force and the Hessian
-   * as the force's coordinate Jacobian.
+   * After checking quadrature, the caller could sum the energy and assemble the Jacobian as the residual and the
+   * Hessian as the residual Jacobian.
    *
    * @param coords1 Current geometry1 coordinates.
    * @param coords2 Current geometry2 coordinates.

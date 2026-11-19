@@ -210,20 +210,20 @@ class MfemMatrixAssembler {
 
 namespace detail {
 /**
- * @brief Configure all four force-Jacobian blocks with parent force rows and parent coordinate columns.
+ * @brief Configure all four residual-Jacobian blocks with parent residual rows and parent coordinate columns.
  * @param mesh_data Displacement spaces and element maps for the current decomposition; must outlive the assembler.
  * @param jacobian_data Initialized parent-coordinate transfer path; must outlive the returned assembler.
  * @param mesh1 First geometry's nodal layout.
  * @param mesh2 Second geometry's nodal layout.
  * @param num_pairs Number of contributing pairs.
  * @param allocator_id Execution-accessible allocator for element blocks.
- * @return Force-Jacobian assembler referencing the supplied displacement FE spaces, element maps, and transfer path.
+ * @return Residual-Jacobian assembler referencing the displacement FE spaces, element maps, and transfer path.
  * @note Reports a SLIC error if geometry dimensions or node counts do not match the displacement layout.
  * @note Reports a SLIC error if required storage exceeds the supported index range.
  */
-MfemMatrixAssembler makeForceJacobianAssembler( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
-                                                MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT num_pairs,
-                                                int allocator_id );
+MfemMatrixAssembler makeResidualJacobianAssembler( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
+                                                   MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT num_pairs,
+                                                   int allocator_id );
 /** @brief Configure a scalar nodal field's coordinate Jacobian with submesh field rows and parent coordinate columns.
  * @param mesh_data Displacement spaces and element maps; must outlive the returned assembler.
  * @param submesh_data Scalar field spaces for the current decomposition; must outlive the returned assembler.

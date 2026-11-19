@@ -1090,24 +1090,25 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
     }
   }
 
-  // Changing penalties after the first force calculation must scale forces at unchanged coordinates.
+  // Changing penalties after the first residual calculation must scale residuals at unchanged coordinates.
   // Use unequal mesh penalties to check that their average supplies the stiffness.
   constexpr tribol::RealT updated_mesh1_penalty = 2.0;
   constexpr tribol::RealT updated_mesh2_penalty = 4.0;
   constexpr tribol::RealT stiffness_ratio = 0.5 * ( updated_mesh1_penalty + updated_mesh2_penalty ) / initial_penalty;
-  constexpr tribol::RealT relative_force_tolerance = 1.0e-10;
-  const auto initial_force = tribol::getMfemContactForce( cs_id );
-  const tribol::RealT initial_force_norm =
-      std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, initial_force, initial_force ) );
-  ASSERT_GT( initial_force_norm, 0.0 );
+  constexpr tribol::RealT relative_residual_tolerance = 1.0e-10;
+  const auto initial_residual = tribol::getMfemContactResidual( cs_id );
+  const tribol::RealT initial_residual_norm =
+      std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, initial_residual, initial_residual ) );
+  ASSERT_GT( initial_residual_norm, 0.0 );
 
   tribol::setMfemKinematicConstantPenalty( cs_id, updated_mesh1_penalty, updated_mesh2_penalty );
   tribol::update( 2, 2.0, dt );
 
-  auto force_error = tribol::getMfemContactForce( cs_id );
-  force_error.Add( -stiffness_ratio, initial_force );
-  const tribol::RealT force_error_norm = std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, force_error, force_error ) );
-  EXPECT_LE( force_error_norm, relative_force_tolerance * stiffness_ratio * initial_force_norm );
+  auto residual_error = tribol::getMfemContactResidual( cs_id );
+  residual_error.Add( -stiffness_ratio, initial_residual );
+  const tribol::RealT residual_error_norm =
+      std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, residual_error, residual_error ) );
+  EXPECT_LE( residual_error_norm, relative_residual_tolerance * stiffness_ratio * initial_residual_norm );
 }
 
 #endif

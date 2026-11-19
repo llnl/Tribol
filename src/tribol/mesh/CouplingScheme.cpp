@@ -1049,12 +1049,12 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
          !detail::validateCommonPlaneFormulation( *this, m_parameters.common_plane_compute_jacobian ) ) {
       return 1;
     }
-    // The formulation performs the search and gap calculations needed to compute forces from the current mesh data.
+    // The formulation performs the search and gap calculations needed to compute the residual from the current mesh.
     ContactFormulationInputs inputs;
 #ifdef BUILD_REDECOMP
     inputs.multiplier = m_contact_multiplier.get();
 #endif
-    m_formulation_result = m_formulation->computeNodalForces( getMesh1().getView(), getMesh2().getView(), inputs );
+    m_formulation_result = m_formulation->computeNodalResiduals( getMesh1().getView(), getMesh2().getView(), inputs );
     if ( m_formulation_result.time_step ) {
       dt = *m_formulation_result.time_step;
     }

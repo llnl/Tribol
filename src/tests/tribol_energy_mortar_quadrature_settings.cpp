@@ -6,17 +6,18 @@
 /**
  * @file
  * @brief Tests factory selection and changes to Energy Mortar quadrature order for both enforcement locations.
- * Direct gap and force calls check returned outputs and repeated calculations without a decomposition refresh.
+ * Direct gap and residual calls check returned outputs and repeated calculations without a decomposition refresh.
  * One- and two-rank runs also check parent-only storage, switching locations, and changed penalties; decomposition
  * onto one rank covers a contact rank with no elements. Directional differences check global energy and coordinate
  * derivatives. Signed nodal gaps check penalty activation separately from scalar field assembly. Local quadrature
- * accuracy is checked in tribol_pair_quadrature; gap and force derivatives have separate tests. Registration may
+ * accuracy is checked in tribol_pair_quadrature; gap and residual derivatives have separate tests. Registration may
  * precede penalty configuration; update() constructs one formulation after the settings are complete. Each formulation
  * retains its construction stiffness until invalidated.
- * Direct force, Jacobian, and energy scaling checks use Sequential and OpenMP when enabled, with host mesh storage.
- * Scalar force-only helpers check active and empty pair lists without computing or returning a force Jacobian.
+ * Direct residual, Jacobian, and energy scaling checks use Sequential and OpenMP when enabled, with host mesh storage.
+ * Residual-only helpers check active and empty pair lists without computing or returning a residual Jacobian.
  * Public registration checks host execution modes and verifies that updates leave legacy face data unallocated.
- * Touching nonmatching surfaces retain the penalty tangent at zero gap, including zero nodal Hessian weights.
+ * Touching nonmatching surfaces retain the compressive-side derivative at zero gap, including zero nodal Hessian
+ * weights.
  */
 #include <gtest/gtest.h>
 #include "SlicErrorTest.hpp"
@@ -131,7 +132,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, public_registration_supports_host_ex
     RealT dt = 1.0;
     ASSERT_EQ( update( 0, 0.0, dt ), 0 );
     const auto& result = cs.getContactFormulationResult();
-    ASSERT_NE( result.force, nullptr );
+    ASSERT_NE( result.residual, nullptr );
     ASSERT_NE( result.df_dx, nullptr );
     ASSERT_TRUE( result.energy.has_value() );
     EXPECT_GT( *result.energy, 0.0 );
@@ -149,8 +150,8 @@ TEST_P( EnergyMortarQuadratureSettingsTest, public_registration_supports_host_ex
   }
 }
 
-// Coincident nonmatching boundaries have zero force and zero Hessian weights, but a nonzero compressive tangent.
-TEST_P( EnergyMortarQuadratureSettingsTest, zero_gap_keeps_penalty_tangent )
+// Coincident nonmatching boundaries have zero residual and Hessian weights but a nonzero compressive-side derivative.
+TEST_P( EnergyMortarQuadratureSettingsTest, zero_gap_keeps_compressive_derivative )
 {
   using namespace tribol;
   finalize();
@@ -170,10 +171,10 @@ TEST_P( EnergyMortarQuadratureSettingsTest, zero_gap_keeps_penalty_tangent )
   ASSERT_EQ( update( 0, 0.0, dt ), 0 );
   const auto& result = CouplingSchemeManager::getInstance().at( 0 ).getContactFormulationResult();
   ASSERT_TRUE( result.energy.has_value() );
-  ASSERT_NE( result.force, nullptr );
+  ASSERT_NE( result.residual, nullptr );
   ASSERT_NE( result.df_dx, nullptr );
   EXPECT_NEAR( *result.energy, 0.0, 1.0e-12 );
-  EXPECT_NEAR( mfem::InnerProduct( MPI_COMM_WORLD, *result.force, *result.force ), 0.0, 1.0e-12 );
+  EXPECT_NEAR( mfem::InnerProduct( MPI_COMM_WORLD, *result.residual, *result.residual ), 0.0, 1.0e-12 );
   mfem::Vector direction( result.df_dx->Width() ), action( result.df_dx->Height() );
   for ( int dof = 0; dof < direction.Size(); ++dof ) {
     direction[dof] = dof + 1.0;
@@ -221,7 +222,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, configures_and_defers_formulation_re
   EXPECT_EQ( cs->getParameters().enforcement_location, location );
 }
 
-// Gap and force calls must work independently, initialize only their outputs, and leave earlier results unchanged.
+// Gap and residual calls must work independently, initialize only their outputs, and leave earlier results unchanged.
 TEST_P( EnergyMortarQuadratureSettingsTest, returns_owned_outputs_for_each_calculation )
 {
   tribol::updateMfemParallelDecomposition();
@@ -235,7 +236,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, returns_owned_outputs_for_each_calcu
     auto gaps = formulation.computeNodalGaps( mesh1, mesh2 );
     ASSERT_NE( gaps.gap, nullptr );
     ASSERT_NE( gaps.weighted_gap_jacobian, nullptr );
-    EXPECT_EQ( gaps.force, nullptr );
+    EXPECT_EQ( gaps.residual, nullptr );
     EXPECT_EQ( gaps.pressure, nullptr );
     EXPECT_EQ( gaps.df_dx, nullptr );
     EXPECT_EQ( gaps.df_dp, nullptr );
@@ -250,8 +251,8 @@ TEST_P( EnergyMortarQuadratureSettingsTest, returns_owned_outputs_for_each_calcu
     EXPECT_SLIC_ERROR( formulation.computeNodalGaps( mesh1, mesh2 ) );
   }
 
-  auto first = formulation.computeNodalForces( mesh1, mesh2, {} );
-  ASSERT_NE( first.force, nullptr );
+  auto first = formulation.computeNodalResiduals( mesh1, mesh2, {} );
+  ASSERT_NE( first.residual, nullptr );
   ASSERT_NE( first.df_dx, nullptr );
   ASSERT_TRUE( first.energy.has_value() );
   EXPECT_FALSE( first.time_step.has_value() );
@@ -260,15 +261,15 @@ TEST_P( EnergyMortarQuadratureSettingsTest, returns_owned_outputs_for_each_calcu
   EXPECT_EQ( first.gap != nullptr, nodal );
   EXPECT_EQ( first.pressure != nullptr, nodal );
   EXPECT_EQ( first.weighted_gap_jacobian != nullptr, nodal );
-  const mfem::HypreParVector original( *first.force );
+  const mfem::HypreParVector original( *first.residual );
   ASSERT_GT( original.Norml2(), 0.0 );
-  auto second = formulation.computeNodalForces( mesh1, mesh2, {} );
-  second.force->Add( -1.0, original );
-  EXPECT_LT( second.force->Norml2(), 1.0e-12 );
+  auto second = formulation.computeNodalResiduals( mesh1, mesh2, {} );
+  second.residual->Add( -1.0, original );
+  EXPECT_LT( second.residual->Norml2(), 1.0e-12 );
   EXPECT_NEAR( *second.energy, *first.energy, 1.0e-12 );
-  EXPECT_EQ( cs.getContactFormulationResult().force, nullptr );
+  EXPECT_EQ( cs.getContactFormulationResult().residual, nullptr );
   cs.setContactFormulation( nullptr );
-  auto difference = *first.force;
+  auto difference = *first.residual;
   difference -= original;
   EXPECT_EQ( difference.Norml2(), 0.0 );
   mfem::Vector direction( first.df_dx->Width() ), action( first.df_dx->Height() );
@@ -277,7 +278,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, returns_owned_outputs_for_each_calcu
   EXPECT_TRUE( std::isfinite( action.Norml2() ) );
 }
 
-// Springs in series must scale force, Jacobian, and energy on each host backend for either location and Gauss count.
+// Springs in series must scale the residual, Jacobian, and energy for either location and each host Gauss rule.
 TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
 {
   using namespace tribol;
@@ -286,7 +287,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
   auto& cs = CouplingSchemeManager::getInstance().at( 0 );
   ASSERT_TRUE( cs.init() );
   const auto baseline =
-      cs.getContactFormulation()->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
+      cs.getContactFormulation()->computeNodalResiduals( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
   mfem::Vector direction( baseline.df_dx->Width() ), reference_action( baseline.df_dx->Height() );
   for ( int dof = 0; dof < direction.Size(); ++dof ) {
     direction[dof] = 1.0 + 0.1 * dof;
@@ -321,14 +322,14 @@ TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
                 std::move( pair_builder ) );
           } );
     } );
-    auto result = alternate->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
-    ASSERT_NE( result.force, nullptr );
+    auto result = alternate->computeNodalResiduals( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
+    ASSERT_NE( result.residual, nullptr );
     ASSERT_NE( result.df_dx, nullptr );
     ASSERT_TRUE( result.energy.has_value() );
     // The stiffnesses 2 and 6 give series stiffness 1.5 instead of the default arithmetic mean 4.
     constexpr RealT stiffness_ratio = 1.5 / 4.0;
-    result.force->Add( -stiffness_ratio, *baseline.force );
-    EXPECT_LT( result.force->Norml2(), 1.0e-11 );
+    result.residual->Add( -stiffness_ratio, *baseline.residual );
+    EXPECT_LT( result.residual->Norml2(), 1.0e-11 );
     EXPECT_NEAR( *result.energy, stiffness_ratio * *baseline.energy, 1.0e-11 );
     mfem::Vector action( result.df_dx->Height() );
     result.df_dx->Mult( direction, action );
@@ -351,7 +352,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, rejects_invalid_location_without_reb
   EXPECT_EQ( cs.getMfemSubmeshData(), fields );
 }
 
-// An unconfigured penalty must report an error before a pair formulation can calculate forces.
+// An unconfigured penalty must report an error before a pair formulation can calculate a residual.
 TEST_P( EnergyMortarQuadratureSettingsTest, rejects_unconfigured_pair_penalty )
 {
   tribol::setEnforcementLocation( 0, tribol::EnforcementLocation::QuadraturePoint );
@@ -372,13 +373,13 @@ TEST_P( EnergyMortarQuadratureSettingsTest, keeps_penalty_fixed_until_formulatio
   auto& cs = tribol::CouplingSchemeManager::getInstance().at( 0 );
   auto& mesh_data = *cs.getMfemMeshData();
   const auto calculate = [&] {
-    return cs.getContactFormulation()->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
+    return cs.getContactFormulation()->computeNodalResiduals( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
   };
   const auto initial = calculate();
   const auto check_unchanged = [&] {
     auto result = calculate();
-    result.force->Add( -1.0, *initial.force );
-    EXPECT_LT( result.force->Norml2(), 1.0e-12 );
+    result.residual->Add( -1.0, *initial.residual );
+    EXPECT_LT( result.residual->Norml2(), 1.0e-12 );
     EXPECT_EQ( result.energy, initial.energy );
   };
   mesh_data.ClearAllPenaltyData();
@@ -398,8 +399,8 @@ TEST_P( EnergyMortarQuadratureSettingsTest, keeps_penalty_fixed_until_formulatio
   EXPECT_FALSE( cs.hasContactFormulation() );
   ASSERT_TRUE( cs.init() );
   auto rebuilt = calculate();
-  rebuilt.force->Add( -2.0, *initial.force );
-  EXPECT_LT( rebuilt.force->Norml2(), 1.0e-12 );
+  rebuilt.residual->Add( -2.0, *initial.residual );
+  EXPECT_LT( rebuilt.residual->Norml2(), 1.0e-12 );
   EXPECT_NEAR( *rebuilt.energy, 2.0 * *initial.energy, 1.0e-12 );
 }
 
@@ -428,7 +429,7 @@ TEST_P( EnergyMortarRegistrationTest, constructs_formulation_during_update )
   tribol::updateMfemParallelDecomposition( 1, true );
   ASSERT_EQ( tribol::update( 0, 0.0, dt ), 0 );
   ASSERT_TRUE( cs.hasContactFormulation() );
-  EXPECT_GT( tribol::getMfemContactForce( 0 ).Norml2(), 0.0 );
+  EXPECT_GT( tribol::getMfemContactResidual( 0 ).Norml2(), 0.0 );
 }
 
 // init() can construct the formulation and its field rows on an existing decomposition without refreshing geometry.
@@ -447,10 +448,10 @@ TEST_P( EnergyMortarRegistrationTest, constructs_formulation_on_existing_decompo
   EXPECT_EQ( cs.getMesh1().getNodalFields().m_is_node_gap_set, nodal );
   EXPECT_FALSE( cs.getMesh2().getNodalFields().m_is_node_gap_set );
   const auto result =
-      cs.getContactFormulation()->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
-  ASSERT_NE( result.force, nullptr );
+      cs.getContactFormulation()->computeNodalResiduals( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
+  ASSERT_NE( result.residual, nullptr );
   ASSERT_TRUE( result.energy.has_value() );
-  EXPECT_GT( result.force->Norml2(), 0.0 );
+  EXPECT_GT( result.residual->Norml2(), 0.0 );
 }
 
 // Rejected mesh stiffnesses must leave both the installed formulation and its registered inputs unchanged.
@@ -540,8 +541,8 @@ TEST( EnergyMortarConfiguration, rejects_quadrature_point_lm_without_releasing_n
   EXPECT_EQ( &tribol::getMfemContactPressure( 0 ), multiplier );
 }
 
-// LM forces must read the multiplier passed in ContactFormulationInputs, not the submesh pressure field.
-TEST( EnergyMortarConfiguration, lm_forces_use_supplied_multiplier )
+// LM residuals must read the multiplier passed in ContactFormulationInputs, not the submesh pressure field.
+TEST( EnergyMortarConfiguration, lm_residuals_use_supplied_multiplier )
 {
   struct FinalizeAfterTest {
     ~FinalizeAfterTest() { tribol::finalize(); }
@@ -564,7 +565,7 @@ TEST( EnergyMortarConfiguration, lm_forces_use_supplied_multiplier )
   const auto* formulation = cs.getContactFormulation();
   ASSERT_NE( formulation, nullptr );
 
-  EXPECT_SLIC_ERROR( formulation->computeNodalForces( mesh1, mesh2, {} ) );
+  EXPECT_SLIC_ERROR( formulation->computeNodalResiduals( mesh1, mesh2, {} ) );
 
   constexpr tribol::RealT multiplier_value = 2.0;
   // A different value in the submesh pressure field must not affect the calculation.
@@ -574,7 +575,7 @@ TEST( EnergyMortarConfiguration, lm_forces_use_supplied_multiplier )
   tribol::getMfemPressure( 0 ) = ignored_pressure_value;
   tribol::ContactFormulationInputs inputs;
   inputs.multiplier = &multiplier;
-  const auto result = formulation->computeNodalForces( mesh1, mesh2, inputs );
+  const auto result = formulation->computeNodalResiduals( mesh1, mesh2, inputs );
   ASSERT_NE( result.pressure, nullptr );
   ASSERT_NE( result.gap, nullptr );
   ASSERT_TRUE( result.energy.has_value() );
@@ -612,7 +613,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, switches_locations_without_rebuildin
 {
   tribol::updateMfemParallelDecomposition( 1, true );
   auto& cs = tribol::CouplingSchemeManager::getInstance().at( 0 );
-  std::array<std::unique_ptr<mfem::HypreParVector>, 2> previous_forces;
+  std::array<std::unique_ptr<mfem::HypreParVector>, 2> previous_residuals;
   std::array<std::optional<tribol::RealT>, 2> previous_energies;
   for ( const auto location : { tribol::EnforcementLocation::Nodal, tribol::EnforcementLocation::QuadraturePoint,
                                 tribol::EnforcementLocation::Nodal, tribol::EnforcementLocation::QuadraturePoint } ) {
@@ -627,25 +628,25 @@ TEST_P( EnergyMortarQuadratureSettingsTest, switches_locations_without_rebuildin
     }
     ASSERT_TRUE( cs.init() );
     EXPECT_EQ( cs.hasMfemSubmeshData(), nodal );
-    EXPECT_EQ( cs.getContactFormulationResult().force, nullptr );
+    EXPECT_EQ( cs.getContactFormulationResult().residual, nullptr );
     EXPECT_EQ( cs.getMesh1().getNodalFields().m_is_node_gap_set, nodal );
     EXPECT_EQ( cs.getMesh1().getNodalFields().m_is_node_pressure_set, nodal );
     auto result =
-        cs.getContactFormulation()->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
-    ASSERT_NE( result.force, nullptr );
+        cs.getContactFormulation()->computeNodalResiduals( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
+    ASSERT_NE( result.residual, nullptr );
     ASSERT_NE( result.df_dx, nullptr );
     ASSERT_TRUE( result.energy.has_value() );
     EXPECT_EQ( result.gap != nullptr, nodal );
     EXPECT_EQ( result.pressure != nullptr, nodal );
     EXPECT_EQ( result.weighted_gap_jacobian != nullptr, nodal );
     const int index = nodal ? 0 : 1;
-    if ( previous_forces[index] ) {
-      auto difference = *result.force;
-      difference -= *previous_forces[index];
+    if ( previous_residuals[index] ) {
+      auto difference = *result.residual;
+      difference -= *previous_residuals[index];
       EXPECT_LT( difference.Norml2(), 1.0e-12 );
       EXPECT_NEAR( *result.energy, *previous_energies[index], 1.0e-12 );
     } else {
-      previous_forces[index] = std::make_unique<mfem::HypreParVector>( *result.force );
+      previous_residuals[index] = std::make_unique<mfem::HypreParVector>( *result.residual );
       previous_energies[index] = result.energy;
     }
     mfem::Vector direction( result.df_dx->Width() ), action( result.df_dx->Height() );
@@ -660,17 +661,19 @@ TEST_P( EnergyMortarQuadratureSettingsTest, uses_updated_penalties_without_redec
 {
   tribol::updateMfemParallelDecomposition( 1, true );
   auto& cs = tribol::CouplingSchemeManager::getInstance().at( 0 );
-  auto initial = cs.getContactFormulation()->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
+  auto initial =
+      cs.getContactFormulation()->computeNodalResiduals( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
   // Retain only parent-space outputs while rebuilding the formulation.
-  const auto force = *initial.force;
+  const auto residual = *initial.residual;
   const auto energy = *initial.energy;
   initial = {};
   tribol::setMfemKinematicConstantPenalty( 0, 100.0, 300.0 );
   EXPECT_FALSE( cs.hasContactFormulation() );
   ASSERT_TRUE( cs.init() );
-  auto updated = cs.getContactFormulation()->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
-  updated.force->Add( -2.0, force );
-  EXPECT_LT( updated.force->Norml2(), 1.0e-11 );
+  auto updated =
+      cs.getContactFormulation()->computeNodalResiduals( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
+  updated.residual->Add( -2.0, residual );
+  EXPECT_LT( updated.residual->Norml2(), 1.0e-11 );
   EXPECT_NEAR( *updated.energy, 2.0 * energy, 1.0e-11 );
 }
 
@@ -731,7 +734,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, nodal_activation_preserves_only_comp
 }
 
 // Assembled gradients and Hessians must match finite differences as gap, area, and edge length vary.
-TEST_P( EnergyMortarQuadratureSettingsTest, assembled_force_and_jacobian_match_directional_finite_difference )
+TEST_P( EnergyMortarQuadratureSettingsTest, assembled_residual_and_jacobian_match_directional_finite_difference )
 {
   tribol::setResidualGap( 0, 1.2 );
   auto& cs = tribol::CouplingSchemeManager::getInstance().at( 0 );
@@ -752,7 +755,8 @@ TEST_P( EnergyMortarQuadratureSettingsTest, assembled_force_and_jacobian_match_d
     *coords_ = base_coords;
     coords_->Add( eps, direction_gf );
     tribol::updateMfemParallelDecomposition( 1, true );
-    auto out = cs.getContactFormulation()->computeNodalForces( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
+    auto out =
+        cs.getContactFormulation()->computeNodalResiduals( cs.getMesh1().getView(), cs.getMesh2().getView(), {} );
     return out;
   };
 
@@ -761,16 +765,16 @@ TEST_P( EnergyMortarQuadratureSettingsTest, assembled_force_and_jacobian_match_d
   const auto plus = evaluate_at( step );
   const auto minus = evaluate_at( -step );
 
-  const tribol::RealT directional_force = mfem::InnerProduct( MPI_COMM_WORLD, *base.force, direction_true );
+  const tribol::RealT directional_residual = mfem::InnerProduct( MPI_COMM_WORLD, *base.residual, direction_true );
   const tribol::RealT fd_energy = ( *plus.energy - *minus.energy ) / ( 2.0 * step );
-  EXPECT_NEAR( directional_force, fd_energy, 1.0e-5 );
+  EXPECT_NEAR( directional_residual, fd_energy, 1.0e-5 );
 
   mfem::Vector jv( fes_.get()->GetTrueVSize() );
   base.df_dx->Mult( direction_true, jv );
-  mfem::Vector fd_force( *plus.force );
-  fd_force -= *minus.force;
-  fd_force *= 1.0 / ( 2.0 * step );
-  jv -= fd_force;
+  mfem::Vector fd_residual( *plus.residual );
+  fd_residual -= *minus.residual;
+  fd_residual *= 1.0 / ( 2.0 * step );
+  jv -= fd_residual;
   const tribol::RealT jv_err = std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, jv, jv ) );
   EXPECT_LT( jv_err, 2.0e-4 );
 }

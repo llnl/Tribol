@@ -119,10 +119,10 @@ separate conditions.
 
 ## Values, derivatives, assembly, and results
 
-For a pair function f_i(x), **values** are its scalar outputs, the **Jacobian** is `J_ij = df_i/dx_j`, and each output's
-**Hessian** is `H_ijk = d2f_i/(dx_j dx_k)`. Here x contains current spatial coordinates in geometry1-then-geometry2
-order.
-The outputs may be energy, residual entries, or gap/area integrals. Settings are held fixed during differentiation.
+At the pair-function level, for a function f_i(x), **values** are its scalar outputs, the **Jacobian** is
+`J_ij = df_i/dx_j`, and each output's **Hessian** is `H_ijk = d2f_i/(dx_j dx_k)`. Here x contains current spatial
+coordinates in geometry1-then-geometry2 order. The outputs may be energy, residual entries, or gap/area integrals.
+Settings are held fixed during differentiation.
 
 **Output-weighted derivatives** contract these arrays with fixed output weights w_i: `sum_i w_i J_ij` and
 `sum_i w_i H_ijk`. These weights differ from the quadrature weights already included in f. All-zero output weights
@@ -132,19 +132,27 @@ energy derivatives with respect to spatial coordinates.
 A **pair contribution** contains one pair's numerical outputs before global assembly. A **pair kernel** evaluates a pair
 list into execution-accessible buffers. **Assembly** sums vector entries at shared DOFs, packs matrix blocks, transfers
 between mesh levels, and accumulates results on true DOFs. An **assembled field** contains scalar field values and their
-coordinate `jacobian`. A **contact residual**, exposed as `force`, is the vector of contact contributions to the
-discrete equations. Its sign convention is defined by the formulation.
+coordinate `jacobian`.
+
+At the assembly and formulation level, a **residual** is the vector of contact contributions to the nonlinear discrete
+equations. Its negative is the physical contact force returned by the legacy `getMfemResponse()` path. A **residual
+Jacobian** is the coordinate derivative of that residual. A residual formulation obtains it from the pair Jacobian; an
+energy formulation obtains the residual from the pair energy Jacobian and the residual Jacobian from the pair energy
+Hessian. The names *stiffness* and *tangent* are not used for this matrix: stiffness denotes the penalty coefficient,
+and tangent can denote a tangential contact direction. In `df_dx`, `df_dp`, `getMfemDfDx()`, and `getMfemDfDp()`, f is
+the residual function in f(x) = 0.
 
 | Result | Meaning |
 | --- | --- |
-| `df_dx` | Coordinate derivative of the contact residual. For an energy formulation it is the coordinate Hessian of the energy. |
+| `residual` | Contact contributions to the nonlinear residual on parent displacement true DOFs. |
+| `df_dx` | Residual Jacobian with respect to coordinates. For an energy formulation it is the coordinate Hessian of the energy. |
 | `df_dp` | Derivative of the contact residual with respect to LM pressure values. |
 | `weighted_gap_jacobian` | Coordinate Jacobian of the weighted-gap constraint, including any contact activation. It is distinct from a normalized-gap Jacobian. |
 | `has_active_points` | Whether a successfully evaluated pair has active points whose values or derivatives must be retained. For nodal integrals, nonempty integration is active even for opening gaps, before contact activation. |
 
 A function value can be zero while its derivatives are nonzero. Activation flags therefore account for derivative
-outputs as well as function values, including tangents at zero gap. Kernels returning quadrature status use these flags
-to zero inactive outputs before storing numerical values and derivatives; the buffers retain quadrature status
+outputs as well as function values, including derivatives at zero gap. Kernels returning quadrature status use these
+flags to zero inactive outputs before storing numerical values and derivatives; the buffers retain quadrature status
 separately.
 
 An empty optional or null output pointer means that quantity was not calculated or has been taken from the result.

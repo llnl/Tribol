@@ -64,16 +64,16 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
                                  ExecutionMode exec_mode = ExecutionMode::Sequential );
 
 /**
- * @brief Select Common Plane forces with an optional coordinate Jacobian, or restore legacy Common Plane.
+ * @brief Select Common Plane residuals with an optional coordinate Jacobian, or restore legacy Common Plane.
  * @param cs_id MFEM COMMON_PLANE coupling scheme with positive constant penalties already configured.
  * @param enabled True selects the formulation; false restores the legacy response path.
- * @param compute_jacobian Whether to calculate df_dx. Defaults to true to preserve force-and-Jacobian evaluation.
- * False calculates forces without Enzyme, Jacobian buffers, or matrix transfers. Ignored when enabled is false.
+ * @param compute_jacobian Whether to calculate df_dx. Defaults to true to preserve residual-and-Jacobian evaluation.
+ * False calculates residuals without Enzyme, Jacobian buffers, or matrix transfers. Ignored when enabled is false.
  * @note Reports a SLIC error, leaving the selection unchanged, if the method, geometry, penalty, or execution settings
  * are unsupported, or if Jacobian calculation was requested without Enzyme support.
  *
  * Supports 2D MFEM frictionless penalty contact on linear coordinates or higher-order coordinates with LOR subdivision.
- * Use getMfemContactForce() and, when requested, getMfemDfDx() after update(), rather than getMfemResponse(). The
+ * Use getMfemContactResidual() and, when requested, getMfemDfDx() after update(), rather than getMfemResponse(). The
  * returned vector is a contact residual; its negative is the physical force returned by legacy Common Plane. Nodal
  * gaps, energy, and timestep output are unsupported.
  */
@@ -284,9 +284,9 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r );
  * @pre Tribol data must be up to date for current geometry by calling update()
  *
  * @param [in] cs_id The ID of the coupling scheme with the MFEM mesh
- * @return mfem::HypreParVector True-dof contact force vector (returned by value) on the parent mesh
+ * @return mfem::HypreParVector True-dof contact residual vector (returned by value) on the parent mesh
  */
-mfem::HypreParVector getMfemContactForce( IndexT cs_id );
+mfem::HypreParVector getMfemContactResidual( IndexT cs_id );
 
 /**
  * @brief Get assembled contact contributions for the Jacobian matrix
@@ -298,7 +298,7 @@ mfem::HypreParVector getMfemContactForce( IndexT cs_id );
  * This method requires registration of an mfem::ParMesh with the coupling scheme. The Jacobian contributions are split
  * into a 2x2 block structure. The first row (or column) block is associated with the coordinate grid function degrees
  * of freedom and the second row (or column) block is associated with the Lagrange multiplier (pressure) degrees of
- * freedom. Specifically, the blocks are as follows (f = force, u = displacement, g = gap, p = pressure):
+ * freedom. Here, f is the residual function in f(x) = 0, u is displacement, g is gap, and p is pressure:
  *
  *   df/du | df/dp
  *  ---------------
@@ -320,7 +320,7 @@ mfem::HypreParVector getMfemContactForce( IndexT cs_id );
 std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id );
 
 /**
- * @brief Get the derivative of the force with respect to displacement
+ * @brief Get the derivative of the residual with respect to displacement
  *
  * Returns a deep copy of the latest result; the coupling scheme keeps its copy, so repeated calls and calls to the
  * other Jacobian getters return the same values. Returns null if it was not calculated.
@@ -331,7 +331,7 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id );
 std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx( IndexT cs_id );
 
 /**
- * @brief Get the derivative of the force with respect to pressure
+ * @brief Get the derivative of the residual with respect to pressure
  *
  * Returns a deep copy of the latest result; the coupling scheme keeps its copy, so repeated calls and calls to the
  * other Jacobian getters return the same values. Returns null if it was not calculated.

@@ -14,9 +14,9 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Added mixed-field assembly with independent row and column FE spaces for rectangular matrices, including
   displacement-pressure coupling in Lagrange multiplier methods.
 - Added opt-in linear 2D frictionless constant-penalty Common Plane contact through
-  `setMfemUseCommonPlaneFormulation()`. Force-only evaluation works without Enzyme; coordinate Jacobians require
-  Enzyme. Read results through `getMfemContactForce()` and `getMfemDfDx()`; the force getter returns a contact residual,
-  opposite in sign to the physical force from the legacy `getMfemResponse()` path.
+  `setMfemUseCommonPlaneFormulation()`. Residual-only evaluation works without Enzyme; coordinate Jacobians require
+  Enzyme. Read results through `getMfemContactResidual()` and `getMfemDfDx()`; the residual is opposite in sign to the
+  physical force from the legacy `getMfemResponse()` path.
 - Added `ProjectedEdgeSearch` to reject self-pairs, optionally reject shared-node pairs, and require opposing edge
   normals. Projected overlap is determined during quadrature generation rather than refined search; zero-width
   integration intervals produce no active penalty quadrature points.
@@ -34,8 +34,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   arguments to `updateMfemParallelDecomposition()`.
 - Added GPU execution support to the MFEM interface and GPU-aware Redecomp field and matrix transfers.
 - Added support for builds that configure `axom::IndexType` as a 64-bit integer across Tribol and Redecomp.
-- Added MFEM APIs for true-DOF contact force, gap, and pressure vectors, and Jacobian blocks through `getMfemDfDx()`,
-  `getMfemDfDp()`, and `getMfemWeightedGapJacobian()`.
+- Added MFEM APIs for true-DOF contact residual, gap, and pressure vectors, and Jacobian blocks through
+  `getMfemContactResidual()`, `getMfemDfDx()`, `getMfemDfDp()`, and `getMfemWeightedGapJacobian()`.
 - Added higher-order contact infrastructure for quadratic Lagrange edges and 9-node quadrilaterals, including
   GPU-capable fixed-extent `MdSpan` and `MdArray` containers, basis and mapping utilities, and quadratic `MeshData`
   storage. Existing contact methods do not yet consume quadratic faces.
@@ -73,15 +73,15 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- Renamed `getMfemContactForce()` to `getMfemContactResidual()` to distinguish the contact residual from physical force.
 - Numerical coordinates, fields, matrix entries, and parameters consistently use `RealT` across Tribol, shared helpers,
   Redecomp, examples, and tests. Public C++ declarations retain their existing types because `RealT` aliases `double`;
   generated C/Fortran interfaces retain their concrete types. Single precision remains unsupported.
-- `ContactFormulation` is now stateless: `computeNodalGaps()` and `computeNodalForces()` return a caller-owned
-  `ContactFormulationResult` instead of updating internal state read through `getMfemForce()`, `getMfemGap()`,
-  `getMfemPressure()`, `getMfemDfDx()`, `getMfemDgDx()`, `getMfemDfDp()`, `getEnergy()`, and `computeTimeStep()`.
+- `ContactFormulation` is now stateless: `computeNodalGaps()` and `computeNodalResiduals()` return a caller-owned
+  `ContactFormulationResult` instead of retaining outputs behind formulation-specific getters.
   `EnergyMortar` and `EnergyMortarAdapter` are replaced by `NodalPenaltyEnergyMortar`,
   `NodalLagrangeMultiplierEnergyMortar`, and `QuadraturePointEnergyMortar`.
-- `computeNodalForces()` takes a `ContactFormulationInputs` argument carrying caller-supplied fields. Lagrange
+- `computeNodalResiduals()` takes a `ContactFormulationInputs` argument carrying caller-supplied fields. Lagrange
   multiplier Energy Mortar reads its multiplier from these inputs; `update()` passes the values set through
   `getMfemContactPressure()`. The `getMfemPressure()` grid function is no longer read or updated by nodal Lagrange
   multiplier Energy Mortar.

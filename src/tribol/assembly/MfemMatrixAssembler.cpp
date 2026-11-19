@@ -62,15 +62,15 @@ shared::ParSparseMat MfemMatrixAssembler::assemble() const
 }
 
 namespace detail {
-MfemMatrixAssembler makeForceJacobianAssembler( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
-                                                MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT num_pairs,
-                                                int allocator_id )
+MfemMatrixAssembler makeResidualJacobianAssembler( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
+                                                   MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT num_pairs,
+                                                   int allocator_id )
 {
   const int dim = mesh1.spatialDim();
   const MdArray<IndexT, 2> nodes{ mesh1.numberOfNodesPerElement(), mesh2.numberOfNodesPerElement() };
   const auto& coordinate_space = *mesh_data.GetRedecompResponse().FESpace();
   if ( dim <= 0 || mesh2.spatialDim() != dim || coordinate_space.GetVDim() != dim || nodes[0] <= 0 || nodes[1] <= 0 ) {
-    SLIC_ERROR( "Force Jacobian assembly requires matching dimensions and positive node counts." );
+    SLIC_ERROR( "Residual Jacobian assembly requires matching dimensions and positive node counts." );
   }
   const MdArray<IndexT, 2> offsets{ 0, checkedMatrixSize( nodes[0], dim ) };
   const std::array<const Array1D<int>*, 2> maps{ &mesh_data.GetElemMap1(), &mesh_data.GetElemMap2() };
