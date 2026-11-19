@@ -8,11 +8,10 @@
  * @brief Verify Energy Mortar pair integrals and automatic derivatives independently of MFEM assembly.
  *
  * Direct backend tests cover energy and nodal-gap values, quadrature state, contact activation, derivative evaluation,
- * and pair-buffer ownership. Compile-time checks also verify the interfaces required by the derivative kernels.
+ * and pair-buffer ownership. Compile-time checks also verify the interfaces required by derivative evaluation.
  */
 
 #include <cmath>
-#include <stdexcept>
 
 #include "gtest/gtest.h"
 #include "SlicErrorTest.hpp"
@@ -38,7 +37,7 @@
 namespace {
 using namespace tribol;
 constexpr RealT tolerance = 1.0e-12;  ///< Roundoff allowance for primal integrals and exact partials.
-using EnergyMortarPairKernelsTest = tribol::detail::ExecutionTest;
+using EnergyMortarPairEvaluationTest = tribol::detail::ExecutionTest;
 
 /** @brief Generic fixed-size values and pair state for checking the pair-function interface. @tparam SizeValues Size.
  */
@@ -283,15 +282,80 @@ void checkParallelIntegrals( ExecutionMode mode, int allocator )
 }
 
 // Direct nodal and quadrature-point calculations must use physical weights exactly once for every Gauss count.
-TEST_P( EnergyMortarPairKernelsTest, integrates_constant_gap )
+TEST_P( EnergyMortarPairEvaluationTest, integrates_constant_gap )
 {
   checkParallelIntegrals<1>( GetParam(), allocatorId() );
   checkParallelIntegrals<2>( GetParam(), allocatorId() );
   checkParallelIntegrals<3>( GetParam(), allocatorId() );
 }
 
+// A residual gap changes the gap value and contact activation without changing the integration surface.
+TEST( EnergyMortarPairValues, residual_gap_shifts_nodal_integrals_and_activates_energy )
+{
+  using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>;
+  using Gap = OffsetGap<OpposingNormalGap>;
+  using Nodal = PairNodalGapIntegral<RuleGenerator, Gap, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
+  using Energy = PairEnergyIntegral<RuleGenerator, PenaltyEnergyDensity<Gap>>;
+  constexpr RealT separation = 0.1;
+  constexpr RealT residual_gap = 0.15;
+  constexpr RealT penalty = 3.0;
+  constexpr RealT comparison_tolerance = 1.0e-14;
+  // Oppositely directed horizontal edges overlap from x=0.2 to x=0.8 and are separated by 0.1. The 0.15 residual gap
+  // therefore changes the open geometric gap into an active penalty gap without changing the overlap interval.
+  const MdArray<RealT, Nodal::size_coords> coordinates{ 1.0, 0.0, 0.0, 0.0, 0.2, separation, 0.8, separation };
+  const typename Nodal::Coords1 coords1{ coordinates.data(), Nodal::size_geom1_coords };
+  const typename Nodal::Coords2 coords2{ coordinates.data() + Nodal::size_geom1_coords, Nodal::size_geom2_coords };
+  const RuleGenerator rule_generator{ SmoothedProjectedEdgeMapping{ 0.0 } };
+  const Nodal without_offset{ rule_generator, Gap{ OpposingNormalGap{}, 0.0 } };
+  const Nodal with_offset{ rule_generator, Gap{ OpposingNormalGap{}, residual_gap } };
+  const auto baseline = without_offset.evaluate( coords1, coords2 );
+  const auto shifted = with_offset.evaluate( coords1, coords2 );
+  ASSERT_EQ( baseline.quadrature_metadata.status, QuadratureStatus::Success );
+  ASSERT_EQ( shifted.quadrature_metadata.status, QuadratureStatus::Success );
+  ASSERT_TRUE( baseline.has_active_points );
+  ASSERT_TRUE( shifted.has_active_points );
+  for ( IndexT node = 0; node < Nodal::num_nodes; ++node ) {
+    EXPECT_NEAR( shifted.tributaryArea( node ), baseline.tributaryArea( node ), comparison_tolerance );
+    EXPECT_NEAR( shifted.weightedGap( node ),
+                 baseline.weightedGap( node ) - residual_gap * baseline.tributaryArea( node ), comparison_tolerance );
+  }
+
+  const Energy open_energy{ rule_generator, { penalty, Gap{ OpposingNormalGap{}, 0.0 } } };
+  const Energy active_energy{ rule_generator, { penalty, Gap{ OpposingNormalGap{}, residual_gap } } };
+  const auto open = open_energy.evaluate( coords1, coords2 );
+  const auto active = active_energy.evaluate( coords1, coords2 );
+  ASSERT_EQ( open.quadrature_metadata.status, QuadratureStatus::Success );
+  ASSERT_EQ( active.quadrature_metadata.status, QuadratureStatus::Success );
+  EXPECT_FALSE( open.has_active_points );
+  EXPECT_EQ( open.values()[0], 0.0 );
+  EXPECT_TRUE( active.has_active_points );
+  EXPECT_GT( active.values()[0], 0.0 );
+}
+
+// A short nonzero edge has a small area, but its normalized gap still equals its physical normal separation.
+TEST( EnergyMortarPairValues, preserves_normal_gap_for_very_short_valid_edge )
+{
+  using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>;
+  using Nodal = PairNodalGapIntegral<RuleGenerator, OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
+  constexpr RealT edge_length = 1.0e-13;
+  constexpr RealT separation = 0.25;
+  constexpr RealT comparison_tolerance = 1.0e-12;
+  // Two oppositely directed horizontal edges have the same very short length and a fixed normal separation.
+  const MdArray<RealT, Nodal::size_coords> coordinates{ 0.0,         0.0,        edge_length, 0.0,
+                                                        edge_length, separation, 0.0,         separation };
+  const Nodal nodal{ RuleGenerator{ SmoothedProjectedEdgeMapping{ 0.0 } } };
+  const auto result = nodal.evaluate( { coordinates.data(), Nodal::size_geom1_coords },
+                                      { coordinates.data() + Nodal::size_geom1_coords, Nodal::size_geom2_coords } );
+  ASSERT_EQ( result.quadrature_metadata.status, QuadratureStatus::Success );
+  ASSERT_TRUE( result.has_active_points );
+  for ( IndexT node = 0; node < Nodal::num_nodes; ++node ) {
+    ASSERT_GT( result.tributaryArea( node ), 0.0 );
+    EXPECT_NEAR( result.weightedGap( node ) / result.tributaryArea( node ), -separation, comparison_tolerance );
+  }
+}
+
 // Zero area and open gaps give zero partials; tiny supported areas remain scale-independent.
-TEST_P( EnergyMortarPairKernelsTest, guards_zero_area_and_keeps_small_area_and_zero_gap_behavior )
+TEST_P( EnergyMortarPairEvaluationTest, guards_zero_area_and_keeps_small_area_and_zero_gap_behavior )
 {
   constexpr RealT penalty_stiffness = 4.0;
   constexpr RealT small_area = 1.0e-16;
@@ -331,7 +395,7 @@ TEST_P( EnergyMortarPairKernelsTest, guards_zero_area_and_keeps_small_area_and_z
 
 // This test ensures pair values, Jacobians, element IDs, and matrix blocks retain their documented structure-of-arrays
 // layout in every enabled memory space.
-TEST_P( EnergyMortarPairKernelsTest, contribution_buffers_use_backend_accessible_structure_of_arrays )
+TEST_P( EnergyMortarPairEvaluationTest, contribution_buffers_use_backend_accessible_structure_of_arrays )
 {
   constexpr IndexT num_pairs = 3;
   PairValueJacobianBuffer<2, 2> values( num_pairs, allocatorId() );
@@ -378,8 +442,109 @@ TEST_P( EnergyMortarPairKernelsTest, contribution_buffers_use_backend_accessible
 }
 
 #ifdef TRIBOL_USE_ENZYME
+
+/**
+ * @brief Check one pair function and weighted contraction against coordinate differences.
+ * @tparam Function Fixed-size Energy Mortar pair function.
+ * @param function Production pair function with geometry-dependent quadrature.
+ * @param coordinates Current pair coordinates in Jacobian column order, away from overlap and activation transitions.
+ * @param weights Output weights used for the Hessian contraction.
+ */
+template <typename Function>
+void checkFiniteDifferences( const Function& function, const MdArray<RealT, Function::size_coords>& coordinates,
+                             const MdArray<RealT, Function::size_values>& weights )
+{
+  constexpr RealT finite_difference_step = 1.0e-6;
+  constexpr RealT jacobian_tolerance = 1.0e-6;
+  constexpr RealT hessian_tolerance = 2.0e-5;
+  const auto base = EnzymePairDerivative<Function>::valuesAndJacobian(
+      { coordinates.data(), Function::size_geom1_coords },
+      { coordinates.data() + Function::size_geom1_coords, Function::size_geom2_coords }, function );
+  const auto weighted = EnzymePairDerivative<Function>::weightedJacobianAndHessian(
+      { coordinates.data(), Function::size_geom1_coords },
+      { coordinates.data() + Function::size_geom1_coords, Function::size_geom2_coords }, function, weights.view() );
+  ASSERT_EQ( base.pair_value.quadrature_metadata.status, QuadratureStatus::Success );
+  ASSERT_TRUE( base.pair_value.has_active_points );
+  bool has_nonzero_jacobian = false;
+  bool has_nonzero_hessian = false;
+  for ( IndexT row = 0; row < Function::size_values; ++row ) {
+    for ( IndexT column = 0; column < Function::size_coords; ++column ) {
+      has_nonzero_jacobian = has_nonzero_jacobian || base.derivatives.jacobian( row, column ) != 0.0;
+    }
+  }
+  for ( IndexT row = 0; row < Function::size_coords; ++row ) {
+    for ( IndexT column = 0; column < Function::size_coords; ++column ) {
+      has_nonzero_hessian = has_nonzero_hessian || weighted.hessian( row, column ) != 0.0;
+    }
+  }
+  ASSERT_TRUE( has_nonzero_jacobian );
+  ASSERT_TRUE( has_nonzero_hessian );
+  for ( IndexT column = 0; column < Function::size_coords; ++column ) {
+    auto positive_coordinates = coordinates;
+    auto negative_coordinates = coordinates;
+    positive_coordinates[column] += finite_difference_step;
+    negative_coordinates[column] -= finite_difference_step;
+    const auto positive = EnzymePairDerivative<Function>::valuesAndJacobian(
+        { positive_coordinates.data(), Function::size_geom1_coords },
+        { positive_coordinates.data() + Function::size_geom1_coords, Function::size_geom2_coords }, function );
+    const auto negative = EnzymePairDerivative<Function>::valuesAndJacobian(
+        { negative_coordinates.data(), Function::size_geom1_coords },
+        { negative_coordinates.data() + Function::size_geom1_coords, Function::size_geom2_coords }, function );
+    ASSERT_EQ( positive.pair_value.quadrature_metadata.status, QuadratureStatus::Success );
+    ASSERT_TRUE( positive.pair_value.has_active_points );
+    ASSERT_EQ( negative.pair_value.quadrature_metadata.status, QuadratureStatus::Success );
+    ASSERT_TRUE( negative.pair_value.has_active_points );
+    const auto positive_values = positive.pair_value.values();
+    const auto negative_values = negative.pair_value.values();
+
+    for ( IndexT value = 0; value < Function::size_values; ++value ) {
+      EXPECT_NEAR( base.derivatives.jacobian( value, column ),
+                   ( positive_values[value] - negative_values[value] ) / ( 2.0 * finite_difference_step ),
+                   jacobian_tolerance );
+    }
+    for ( IndexT row = 0; row < Function::size_coords; ++row ) {
+      RealT positive_gradient = 0.0;
+      RealT negative_gradient = 0.0;
+      for ( IndexT value = 0; value < Function::size_values; ++value ) {
+        positive_gradient += weights[value] * positive.derivatives.jacobian( value, row );
+        negative_gradient += weights[value] * negative.derivatives.jacobian( value, row );
+      }
+      EXPECT_NEAR( weighted.hessian( row, column ),
+                   ( positive_gradient - negative_gradient ) / ( 2.0 * finite_difference_step ), hessian_tolerance );
+    }
+  }
+}
+
+/** @brief Check derivatives using production quadrature generation. @tparam NumPoints Gauss point count. */
+template <int NumPoints>
+void checkRuleGeneratorFiniteDifferences()
+{
+  using RuleGenerator =
+      PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>;
+  using Gap = OffsetGap<OpposingNormalGap>;
+  constexpr RealT smoothing_fraction = 0.2;
+  const RuleGenerator rule_generator{ SmoothedProjectedEdgeMapping{ smoothing_fraction } };
+  const Gap gap{ {}, 0.05 };
+  const PairEnergyIntegral<RuleGenerator, PenaltyEnergyDensity<Gap>> energy{ rule_generator, { 7.0, gap } };
+  const PairNodalGapIntegral<RuleGenerator, Gap, BasisFunction<EDGE, LINEAR_LAGRANGE>> nodal{ rule_generator, gap };
+  // The two oblique, oppositely directed edges overlap only through their interiors, placing both projected endpoints
+  // inside the smoothing regions rather than on an exact endpoint branch.
+  const MdArray<RealT, decltype( energy )::size_coords> coordinates{ 0.0, 0.0, 1.7, 0.1, 1.6, 0.25, 0.25, 0.15 };
+  SCOPED_TRACE( testing::Message() << "Gauss points: " << NumPoints );
+  checkFiniteDifferences( energy, coordinates, MdArray<RealT, decltype( energy )::size_values>{ 1.0 } );
+  checkFiniteDifferences( nodal, coordinates, MdArray<RealT, decltype( nodal )::size_values>{ 0.3, -0.2, 0.4, 0.1 } );
+}
+
+// Each production Gauss rule must differentiate energy and nodal integrals through the smoothed overlap mapping.
+TEST( EnergyMortarPairFiniteDifference, smoothing_branch_with_production_quadrature )
+{
+  checkRuleGeneratorFiniteDifferences<1>();
+  checkRuleGeneratorFiniteDifferences<2>();
+  checkRuleGeneratorFiniteDifferences<3>();
+}
+
 // Different geometry types must retain all cached coordinate dependencies through both orders of AD.
-TEST_P( EnergyMortarPairKernelsTest, differentiates_geometry_construction_with_unequal_coordinate_counts )
+TEST_P( EnergyMortarPairEvaluationTest, differentiates_geometry_construction_with_unequal_coordinate_counts )
 {
   using Function = CachedGeometryPairFunction;
   using DerivativeResult = PairValueJacobianHessian<PairFunctionValue<Function>, Function::size_coords>;
@@ -411,24 +576,25 @@ TEST_P( EnergyMortarPairKernelsTest, differentiates_geometry_construction_with_u
   }
 }
 
-/** @brief Check whether a mesh kernel accepts a scalar pair function. @tparam Function Candidate pair function. */
+/** @brief Check whether mesh pair evaluation accepts a scalar pair function. @tparam Function Candidate pair function.
+ */
 template <typename Function>
-concept CanEvaluateScalarPairKernel =
+concept CanEvaluateScalarPairs =
     requires { &evaluatePairValuesJacobiansAndHessians<ExecutionMode::Sequential, Function>; };
 
-// The scalar kernel accepts energy outputs and rejects vector nodal integrals at its interface.
+// Scalar pair evaluation accepts energy outputs and rejects vector nodal integrals at its interface.
 static_assert(
-    CanEvaluateScalarPairKernel<
+    CanEvaluateScalarPairs<
         PairEnergyIntegral<PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>,
                            PenaltyEnergyDensity<OpposingNormalGap>>> );
 static_assert(
-    !CanEvaluateScalarPairKernel<
+    !CanEvaluateScalarPairs<
         PairNodalGapIntegral<PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>,
                              OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>> );
 
-// Both kernels must return values and quadrature status for active, open, zero-gap, and invalid pairs. A rigid vertical
-// edge translation has analytic derivatives; zero gap retains activation and the compressive Hessian.
-TEST_P( EnergyMortarPairKernelsTest, energy_kernels_return_values_jacobians_and_hessians )
+// Both evaluations must return values and quadrature status for active, open, zero-gap, and invalid pairs. A rigid
+// vertical edge translation has analytic derivatives; zero gap retains activation and the compressive Hessian.
+TEST_P( EnergyMortarPairEvaluationTest, energy_evaluation_returns_values_jacobians_and_hessians )
 {
   using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
   using Function = PairEnergyIntegral<RuleGenerator, PenaltyEnergyDensity<OpposingNormalGap>>;
@@ -580,7 +746,7 @@ struct PolynomialDerivativeResult {
 };
 
 // Jacobian and Hessian AD calls must also supply their primal outputs without separate evaluations.
-TEST_P( EnergyMortarPairKernelsTest, enzyme_pair_derivatives_execute_on_backend )
+TEST_P( EnergyMortarPairEvaluationTest, enzyme_pair_derivatives_execute_on_backend )
 {
   Array1D<PolynomialDerivativeResult> derivative_results( 1, 1, allocatorId() );
   auto derivative_result_view = derivative_results.view();
@@ -645,7 +811,7 @@ struct ScalarPolynomialPairFunction {
 };
 
 // Both derivative operations must retain quadrature state, stop on failure or inactivity, and keep active zero values.
-TEST_P( EnergyMortarPairKernelsTest, derivatives_reuse_ad_values_and_state )
+TEST_P( EnergyMortarPairEvaluationTest, derivatives_reuse_ad_values_and_state )
 {
   using Function = ScalarPolynomialPairFunction;
   /** @brief Polynomial inputs and reported quadrature state for one backend test case. */
@@ -741,7 +907,7 @@ struct VectorPolynomialPairFunction : ScalarPolynomialPairFunction {
 };
 
 // Open nodal contact still needs signed gaps, areas, and their derivatives before enforcement is applied.
-TEST_P( EnergyMortarPairKernelsTest, open_nodal_integrals_keep_values_and_jacobians )
+TEST_P( EnergyMortarPairEvaluationTest, open_nodal_integrals_keep_values_and_jacobians )
 {
   using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
   using Function = PairNodalGapIntegral<RuleGenerator, OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
@@ -776,7 +942,7 @@ TEST_P( EnergyMortarPairKernelsTest, open_nodal_integrals_keep_values_and_jacobi
 }
 
 // Only all-zero weights skip AD; a nonzero weight in either output must retain the contracted Jacobian and Hessian.
-TEST_P( EnergyMortarPairKernelsTest, zero_weights_skip_derivatives )
+TEST_P( EnergyMortarPairEvaluationTest, zero_weights_skip_derivatives )
 {
   using Function = VectorPolynomialPairFunction;
   const auto weights = copyToExecutionSpace<MdArray<RealT, Function::size_values>>(
@@ -816,7 +982,7 @@ TEST_P( EnergyMortarPairKernelsTest, zero_weights_skip_derivatives )
   }
 }
 
-INSTANTIATE_TEST_SUITE_P( backends, EnergyMortarPairKernelsTest, tribol::detail::enabledExecutionModes() );
+INSTANTIATE_TEST_SUITE_P( backends, EnergyMortarPairEvaluationTest, tribol::detail::enabledExecutionModes() );
 
 #endif
 }  // namespace

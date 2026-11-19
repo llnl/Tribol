@@ -523,7 +523,7 @@ TEST_P( CommonPlaneTest, activates_each_quadrature_point_after_gap_offset )
   }
 }
 
-/** @brief Supply a nonzero entry even for inactive or invalid pairs to check kernel output masking. */
+/** @brief Supply a nonzero entry even for inactive or invalid pairs to check pair-output masking. */
 struct UnmaskedResidualPairFunction
     : PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>,
                            CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>> {
@@ -545,8 +545,8 @@ struct UnmaskedResidualPairFunction
   }
 };
 
-// A force-only kernel must keep pair slots distinct and preserve active zero-gap and invalid-geometry state.
-TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_derivatives )
+// Force-only evaluation must keep pair slots distinct and preserve active zero-gap and invalid-geometry state.
+TEST_P( CommonPlaneTest, value_evaluation_returns_forces_and_quadrature_without_derivatives )
 {
   using PairIntegral =
       PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>,
@@ -597,7 +597,7 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
     EXPECT_EQ( host_preserved_pair_values[i], host_pair_values[i] );
     EXPECT_NEAR( host_doubled_stiffness_values[i], 2.0 * host_pair_values[i], tolerance );
   }
-  // The kernel must zero inactive or failed outputs even when evaluate() supplies nonzero numerical entries.
+  // Pair evaluation must zero inactive or failed outputs even when evaluate() supplies nonzero numerical entries.
   auto masked_pair_value_buffer = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
     return evaluatePairValues<Exec>( pair_list, mesh1.getView(), mesh2.getView(),
                                      UnmaskedResidualPairFunction{ {}, { 1.0 } } );

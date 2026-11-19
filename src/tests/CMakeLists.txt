@@ -9,10 +9,10 @@
 # Add single source tests
 #------------------------------------------------------------------------------
 set( tribol_tests
-     tribol_energy_mortar_pair_kernels.cpp
+     tribol_energy_mortar_pair_evaluation.cpp
      tribol_basis_function.cpp
      tribol_check_tpl.cpp
-     tribol_common_plane_formulation.cpp
+     tribol_common_plane_pair_evaluation.cpp
      tribol_common_plane_penalty.cpp
      tribol_common_plane_gap_rate.cpp
      tribol_common_plane_gpu.cpp
@@ -80,8 +80,8 @@ endforeach()
 
 if(TRIBOL_USE_ENZYME)
   # Enzyme rejects the aggregate-heavy edge geometry IR produced at -O0. Both tests differentiate pair functions.
-  target_compile_options(tribol_energy_mortar_pair_kernels_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
-  target_compile_options(tribol_common_plane_formulation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
+  target_compile_options(tribol_energy_mortar_pair_evaluation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
+  target_compile_options(tribol_common_plane_pair_evaluation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
 endif()
 
 #------------------------------------------------------------------------------
@@ -241,7 +241,6 @@ if( TRIBOL_USE_ENZYME )
       tribol_mfem_energy_mortar_formulation.cpp
       tribol_energy_mortar_patch.cpp
       tribol_energy_mortar_patch_LM.cpp
-      tribol_finite_diff_energy_mortar.cpp
       )
 
   set(combined_test_depends tribol gtest)
@@ -271,7 +270,6 @@ if( TRIBOL_USE_ENZYME )
   endforeach()
 
   # Enzyme rejects the aggregate-heavy edge geometry IR produced at -O0.
-  target_compile_options(tribol_finite_diff_energy_mortar_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
   target_compile_options(tribol_mfem_energy_mortar_formulation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
 
 endif()
