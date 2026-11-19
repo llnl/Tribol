@@ -8,8 +8,9 @@
 #define SRC_TRIBOL_ASSEMBLY_MFEMMATRIXASSEMBLER_HPP_
 
 #include "tribol/config.hpp"
+#include "axom/slic/interface/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 #ifdef BUILD_REDECOMP
-#include <stdexcept>
 #include <vector>
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/MdArray.hpp"
@@ -136,8 +137,8 @@ class MfemMatrixAssembler {
    * @param blocks Nonempty list of rectangular blocks; no storage is allocated for unlisted geometry combinations.
    * @param num_pairs Number of pair contributions.
    * @param allocator_id Execution-accessible allocator for element blocks.
-   * @throws std::invalid_argument Pair count, node counts, geometry selectors, or offsets are invalid.
-   * @throws std::length_error Required storage exceeds the supported index range.
+   * @note Reports a SLIC error if pair count, node counts, geometry selectors, or offsets are invalid.
+   * @note Reports a SLIC error if required storage exceeds the supported index range.
    */
   MfemMatrixAssembler( MfemMatrixSpace rows, MfemMatrixSpace columns, std::vector<MfemMatrixBlock> blocks,
                        IndexT num_pairs, int allocator_id );
@@ -147,21 +148,23 @@ class MfemMatrixAssembler {
    * @tparam SizeRows Rows per block. @tparam SizeColumns Columns per block. @tparam NumBlocks Blocks per pair.
    * @return Non-owning view that can pack matrices alongside other per-pair operations.
    * Keep the assembler alive and in place while kernels use the view.
-   * @throws std::invalid_argument Template dimensions or count do not match the configuration.
+   * @note Reports a SLIC error if template dimensions or count do not match the configuration.
    */
   template <IndexT SizeRows, IndexT SizeColumns, IndexT NumBlocks>
   MfemMatrixAssemblyView<SizeRows, SizeColumns, NumBlocks> view()
   {
     static_assert( SizeRows > 0 && SizeColumns > 0 && NumBlocks > 0 );
     if ( layouts_.size() != static_cast<std::size_t>( NumBlocks ) ) {
-      throw std::invalid_argument( "Matrix view block count does not match its configuration." );
+      SLIC_ERROR( "Matrix view block count does not match its configuration." );
+      return {};
     }
     MfemMatrixAssemblyView<SizeRows, SizeColumns, NumBlocks> result{};
     for ( IndexT block = 0; block < NumBlocks; ++block ) {
       result.layouts[block] = layouts_[block];
       if ( result.layouts[block].num_row_nodes * result.layouts[block].num_row_values_per_node != SizeRows ||
            result.layouts[block].num_column_nodes * result.layouts[block].num_column_values_per_node != SizeColumns ) {
-        throw std::invalid_argument( "Matrix view dimensions do not match its configured blocks." );
+        SLIC_ERROR( "Matrix view dimensions do not match its configured blocks." );
+        return {};
       }
       result.blocks[block] = block_storage_[block].view<SizeRows, SizeColumns>();
     }
@@ -175,13 +178,14 @@ class MfemMatrixAssembler {
    * @tparam Exec Concrete execution mode.
    * @param pairs Supplied execution-accessible pairs.
    * @param read_matrix Matrix reader in node, then value-index order.
-   * @throws std::invalid_argument Pair count or matrix dimensions do not match the configuration.
+   * @note Reports a SLIC error if pair count or matrix dimensions do not match the configuration.
    */
   template <ExecutionMode Exec, IndexT SizeRows, IndexT SizeColumns, IndexT NumBlocks, typename MatrixReader>
   void addPairs( const ArrayT<InterfacePair>& pairs, MatrixReader read_matrix )
   {
     if ( pairs.size() != num_pairs_ ) {
-      throw std::invalid_argument( "Matrix pair count does not match its allocated storage." );
+      SLIC_ERROR( "Matrix pair count does not match its allocated storage." );
+      return;
     }
     const auto matrix_view = view<SizeRows, SizeColumns, NumBlocks>();
     const auto pairs_view = pairs.view();
@@ -214,8 +218,8 @@ namespace detail {
  * @param num_pairs Number of contributing pairs.
  * @param allocator_id Execution-accessible allocator for element blocks.
  * @return Force-Jacobian assembler referencing the supplied displacement FE spaces, element maps, and transfer path.
- * @throws std::invalid_argument Geometry dimensions or node counts do not match the displacement layout.
- * @throws std::length_error Required storage exceeds the supported index range.
+ * @note Reports a SLIC error if geometry dimensions or node counts do not match the displacement layout.
+ * @note Reports a SLIC error if required storage exceeds the supported index range.
  */
 MfemMatrixAssembler makeForceJacobianAssembler( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
                                                 MeshData::Viewer mesh1, MeshData::Viewer mesh2, IndexT num_pairs,
@@ -228,8 +232,8 @@ MfemMatrixAssembler makeForceJacobianAssembler( const MfemMeshData& mesh_data, c
  * @param num_pairs Number of contributing pairs.
  * @param allocator_id Execution-accessible allocator for element blocks.
  * @return Matrix assembler with scalar submesh rows and parent displacement columns.
- * @throws std::invalid_argument Field spaces are not scalar or geometry dimensions do not match the coordinate space.
- * @throws std::length_error Required storage exceeds the supported index range. */
+ * @note Reports a SLIC error if field spaces are not scalar or geometry dimensions do not match the coordinate space.
+ * @note Reports a SLIC error if required storage exceeds the supported index range. */
 MfemMatrixAssembler makeScalarFieldJacobianAssembler( const MfemMeshData& mesh_data,
                                                       const MfemSubmeshData& submesh_data,
                                                       const MfemJacobianData& jacobian_data, MeshData::Viewer mesh1,

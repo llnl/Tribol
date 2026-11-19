@@ -83,10 +83,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   `NodalLagrangeMultiplierEnergyMortar`, and `QuadraturePointEnergyMortar`.
 - `ENERGY_MORTAR` penalty enforcement is selected by `PENALTY` enforcement, not by setting kinematic penalty options on
   a Lagrange multiplier scheme. A penalty scheme has no formulation until `setMfemKinematicConstantPenalty()` supplies
-  both constants; `update()` throws `std::logic_error` until then. Pressure/gap fields are created only for nodal
+  both constants; `update()` reports a SLIC error until then. Pressure/gap fields are created only for nodal
   enforcement, and quadrature-point `ENERGY_MORTAR` requires penalty enforcement.
 - `getMfemDfDx()`, `getMfemDfDp()`, `getMfemWeightedGapJacobian()`, and `getMfemBlockJacobian()` return deep copies of
-  the latest formulation result. `getMfemGap()` throws `std::logic_error` for schemes with a `ContactFormulation`; use
+  the latest formulation result. `getMfemGap()` reports a SLIC error for schemes with a `ContactFormulation`; use
   `getMfemContactGap()` instead.
 - Renamed `getMfemDgDx()` to `getMfemWeightedGapJacobian()`. For penalty enforcement it returns the weighted-gap
   Jacobian with opening rows zeroed, not the derivative of the normalized gap.

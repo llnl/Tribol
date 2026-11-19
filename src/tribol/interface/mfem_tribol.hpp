@@ -69,8 +69,8 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
  * @param enabled True selects the formulation; false restores the legacy response path.
  * @param compute_jacobian Whether to calculate df_dx. Defaults to true to preserve force-and-Jacobian evaluation.
  * False calculates forces without Enzyme, Jacobian buffers, or matrix transfers. Ignored when enabled is false.
- * @throws std::invalid_argument Unsupported method, geometry, penalty, or execution settings; selection is unchanged.
- * @throws std::runtime_error Jacobian calculation was requested without Enzyme support; selection is unchanged.
+ * @note Reports a SLIC error, leaving the selection unchanged, if the method, geometry, penalty, or execution settings
+ * are unsupported, or if Jacobian calculation was requested without Enzyme support.
  *
  * Supports 2D MFEM frictionless penalty contact on linear coordinates or higher-order coordinates with LOR subdivision.
  * Use getMfemContactForce() and, when requested, getMfemDfDx() after update(), rather than getMfemResponse(). The
@@ -129,8 +129,8 @@ void setMfemRedecompTriggerDisplacement( IndexT cs_id, RealT val );
  * penalty scales are cleared; call setMfemKinematicPenaltyScale() after this setter to apply scales to the new
  * constants. Multiple configuration setters before update() cause one formulation construction. Call
  * updateMfemParallelDecomposition() with current coordinates before calculating contact.
- * @throws std::invalid_argument A composed formulation's mesh or effective penalty is nonpositive or nonfinite; its
- * existing penalty data and formulation are unchanged.
+ * @note Reports a SLIC error, leaving the existing penalty data and formulation unchanged, if a composed
+ * formulation's mesh or effective penalty is nonpositive or nonfinite.
  */
 void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT mesh2_penalty );
 
@@ -189,7 +189,8 @@ void setMfemRatePercentPenalty( IndexT cs_id, RealT mesh1_ratio, RealT mesh2_rat
  *
  * Replaces an enabled Common Plane formulation using the scaled mesh constants, without a decomposition refresh.
  * Its effective stiffness stays fixed until the formulation is replaced. Energy Mortar does not apply these scales.
- * @throws std::invalid_argument A Common Plane scaled mesh penalty is nonpositive or nonfinite.
+ * @note Reports a SLIC error, leaving the existing scales unchanged, if a Common Plane scaled mesh penalty is
+ * nonpositive or nonfinite.
  */
 void setMfemKinematicPenaltyScale( IndexT cs_id, RealT mesh1_scale, RealT mesh2_scale );
 
@@ -355,7 +356,7 @@ std::unique_ptr<mfem::HypreParMatrix> getMfemWeightedGapJacobian( IndexT cs_id )
 /**
  * @brief Returns a legacy-method gap vector to a given mfem::Vector
  *
- * @throws std::logic_error The scheme uses ContactFormulation; use getMfemContactGap() instead.
+ * @note Reports a SLIC error if the scheme uses ContactFormulation; use getMfemContactGap() instead.
  *
  * @note This is stored as an MFEM dual vector, meaning the shared DOFs expect to be summed over all ranks to obtain
  * their value.
@@ -374,7 +375,7 @@ void getMfemGap( IndexT cs_id, mfem::Vector& g );
  *
  * @note Values on shared DOFs are already consistent across ranks. Nodal Energy Mortar returns normalized gaps for
  * penalty enforcement and weighted gaps for LM enforcement. Quadrature-point methods have no nodal gap output.
- * @throws std::logic_error The latest calculation did not provide nodal gaps.
+ * @note Reports a SLIC error if the latest calculation did not provide nodal gaps.
  *
  * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
  * @pre Redecomp mesh must be created and up to date by calling updateMfemParallelDecomposition()
@@ -404,7 +405,7 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id );
  * first access prepares and returns the caller-supplied multiplier input for the next update(). Formulations retain
  * neither this input nor computed pressure. Quadrature-point methods have no nodal pressure.
  *
- * @throws std::logic_error No nodal pressure output or multiplier input is available.
+ * @note Reports a SLIC error if no nodal pressure output or multiplier input is available.
  *
  * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
  *

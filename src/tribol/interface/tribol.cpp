@@ -6,7 +6,7 @@
 #include "tribol.hpp"
 
 #include <cmath>
-#include <stdexcept>
+#include "axom/slic/interface/slic.hpp"
 
 // Tribol includes
 #include "tribol/common/Parameters.hpp"
@@ -187,14 +187,17 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location )
                                << "prior to calling this routine." );
 
   if ( cs->getParameters().use_common_plane_formulation && location != EnforcementLocation::QuadraturePoint ) {
-    throw std::invalid_argument( "Common Plane requires quadrature-point enforcement." );
+    SLIC_ERROR_ROOT( "Common Plane requires quadrature-point enforcement." );
+    return;
   }
   if ( location != EnforcementLocation::Nodal && location != EnforcementLocation::QuadraturePoint ) {
-    throw std::invalid_argument( "Unsupported enforcement location." );
+    SLIC_ERROR_ROOT( "Unsupported enforcement location." );
+    return;
   }
   if ( cs->getContactMethod() == ENERGY_MORTAR && location == EnforcementLocation::QuadraturePoint &&
        cs->getEnforcementMethod() != PENALTY ) {
-    throw std::invalid_argument( "Quadrature-point Energy Mortar requires penalty enforcement." );
+    SLIC_ERROR_ROOT( "Quadrature-point Energy Mortar requires penalty enforcement." );
+    return;
   }
   if ( cs->getParameters().enforcement_location != location ) {
     cs->getParameters().enforcement_location = location;
@@ -212,8 +215,9 @@ void setQuadratureOrder( IndexT cs_id, int order )
        ( cs->getContactMethod() != ENERGY_MORTAR &&
          !( cs->getContactMethod() == COMMON_PLANE && cs->getParameters().use_common_plane_formulation ) ) ||
        order < 0 || order > 5 ) {
-    throw std::invalid_argument(
+    SLIC_ERROR_ROOT(
         "setQuadratureOrder requires ENERGY_MORTAR or opted-in COMMON_PLANE and an order from 0 through 5." );
+    return;
   }
   if ( cs->getParameters().quadrature_order != order ) {
     cs->getParameters().quadrature_order = order;
@@ -402,7 +406,8 @@ void setResidualGap( IndexT cs_id, RealT residual_gap )
   SLIC_ERROR_ROOT_IF(
       !cs, "tribol::setResidualGap(): call tribol::registerCouplingScheme() " << "prior to calling this routine." );
   if ( !std::isfinite( residual_gap ) || residual_gap < 0.0 ) {
-    throw std::invalid_argument( "tribol::setResidualGap(): residual gap must be nonnegative and finite." );
+    SLIC_ERROR_ROOT( "tribol::setResidualGap(): residual gap must be nonnegative and finite." );
+    return;
   }
 
   if ( cs->getParameters().residual_gap != residual_gap ) {

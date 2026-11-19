@@ -8,6 +8,8 @@
 #define SRC_TRIBOL_ASSEMBLY_ASSEMBLEPAIRS_HPP_
 
 #include "tribol/config.hpp"
+#include "axom/slic/interface/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 
 #ifdef BUILD_REDECOMP
 #include <array>
@@ -42,8 +44,8 @@ namespace detail {
  * @param jacobian_data Scalar-to-coordinate matrix transfer data.
  * @param read_values Scalar values. @param read_jacobian Coordinate Jacobian entries.
  * @return Independent scalar fields and their coordinate Jacobians. Empty pairs produce allocated zero outputs.
- * @throws std::invalid_argument Assembly layouts disagree; no result is returned.
- * @throws std::length_error Required storage exceeds the supported index range.
+ * @note Reports a SLIC error if assembly layouts disagree.
+ * @note Reports a SLIC error if required storage exceeds the supported index range.
  * Scratch remains alive until all kernel operations finish and their matrix blocks have been copied.
  */
 template <ExecutionMode Exec, IndexT NumFields, IndexT NumNodes, IndexT SizeCoords, typename ValueReader,
@@ -68,7 +70,7 @@ std::array<AssembledField, NumFields> assembleNodalValuesAndJacobians(
   MdArray<MfemMatrixAssemblyView<NumNodes, size_geom_coords, 2>, NumFields> matrix_views{};
   for ( IndexT field = 0; field < NumFields; ++field ) {
     if ( vectors[field].numberOfValues() != NumNodes ) {
-      throw std::invalid_argument( "Nodal vector input extent does not match the scalar row count." );
+      SLIC_ERROR( "Nodal vector input extent does not match the scalar row count." );
     }
     value_views[field] = vectors[field].view<Exec, 1>();
     matrix_views[field] = matrices[field].view<NumNodes, size_geom_coords, 2>();
@@ -101,8 +103,8 @@ std::array<AssembledField, NumFields> assembleNodalValuesAndJacobians(
  * @param read_jacobian Pair Jacobians in that same row and column order.
  * @return Owned force and df_dx; empty pairs produce allocated zero outputs. Other outputs are absent.
  * Scratch remains alive until the combined kernel and matrix packing finish.
- * @throws std::invalid_argument Layouts are invalid; no result is returned.
- * @throws std::length_error Required storage exceeds the supported index range; no result is returned.
+ * @note Reports a SLIC error if layouts are invalid.
+ * @note Reports a SLIC error if required storage exceeds the supported index range.
  */
 template <ExecutionMode Exec, IndexT SizeCoords, typename ForceReader, typename JacobianReader>
 ContactFormulationResult assemblePairResidualStiffness( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
@@ -141,8 +143,8 @@ ContactFormulationResult assemblePairResidualStiffness( const ArrayT<InterfacePa
  * @param mesh_data Displacement transfer data used for assembly.
  * @param pair_function Configured residual function.
  * @return Owned force; df_dx and other outputs are absent. Empty or inactive pairs produce zero force.
- * @throws std::invalid_argument Pair geometry or assembly dimensions are invalid.
- * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded.
+ * @note Reports a SLIC error if pair geometry or assembly dimensions are invalid.
+ * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
 ContactFormulationResult evaluateAndAssemblePairResidual( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
@@ -174,8 +176,8 @@ ContactFormulationResult evaluateAndAssemblePairResidual( const ArrayT<Interface
  * @param jacobian_data Coordinate-matrix transfer data used for matrix assembly.
  * @param pair_function Configured residual function.
  * @return Owned force and df_dx; other outputs are absent. Empty or inactive pairs produce allocated zero outputs.
- * @throws std::invalid_argument Pair geometry or assembly dimensions are invalid.
- * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded.
+ * @note Reports a SLIC error if pair geometry or assembly dimensions are invalid.
+ * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
 ContactFormulationResult evaluateAndAssemblePairResidualStiffness( const ArrayT<InterfacePair>& pairs,
@@ -207,8 +209,8 @@ ContactFormulationResult evaluateAndAssemblePairResidualStiffness( const ArrayT<
  * @param jacobian_data Coordinate-matrix transfer data used for matrix assembly.
  * @param pair_function Configured scalar-energy function.
  * @return Owned energy, force, and df_dx; other outputs are absent. Empty or inactive pairs contribute zero.
- * @throws std::invalid_argument Pair geometry or assembly dimensions are invalid.
- * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded.
+ * @note Reports a SLIC error if pair geometry or assembly dimensions are invalid.
+ * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
 ContactFormulationResult evaluateAndAssemblePairEnergyResidualStiffness( const ArrayT<InterfacePair>& pairs,

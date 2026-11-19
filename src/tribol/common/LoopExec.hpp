@@ -7,11 +7,11 @@
 #define SRC_TRIBOL_COMMON_LOOPEXEC_HPP_
 
 // C++ includes
-#include <stdexcept>
 #include <utility>
 
 // Tribol includes
 #include "tribol/common/BasicTypes.hpp"
+#include "axom/slic/interface/slic.hpp"
 #include "tribol/common/ExecModel.hpp"
 
 #if defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP )
@@ -41,7 +41,8 @@ namespace tribol {
  * @param execution_mode Concrete execution mode to select.
  * @param function Operation called exactly once for the selected mode; not retained.
  * @return The selected operation's result, preserving references and ownership.
- * @throws std::invalid_argument Mode is Dynamic or unsupported by this build; function is not called.
+ * @note Reports a SLIC error if the mode is Dynamic or unsupported by this build. Execution continues past the error
+ * only when SLIC aborts are disabled; function is then called with ExecutionMode::Sequential.
  */
 template <typename Function>
 decltype( auto ) dispatchExecutionMode( ExecutionMode execution_mode, Function&& function )
@@ -62,7 +63,9 @@ decltype( auto ) dispatchExecutionMode( ExecutionMode execution_mode, Function&&
       return std::forward<Function>( function ).template operator()<ExecutionMode::Hip>();
 #endif
     default:
-      throw std::invalid_argument( "Execution mode must be concrete and enabled in this build." );
+      // Execution continues past the error only when SLIC aborts are disabled; fall back to host execution then.
+      SLIC_ERROR( "Execution mode must be concrete and enabled in this build." );
+      return std::forward<Function>( function ).template operator()<ExecutionMode::Sequential>();
   }
 }
 

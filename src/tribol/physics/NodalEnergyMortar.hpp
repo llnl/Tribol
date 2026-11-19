@@ -9,6 +9,8 @@
 #define SRC_TRIBOL_PHYSICS_NODALENERGYMORTAR_HPP_
 
 #include "tribol/config.hpp"
+#include "axom/slic/interface/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 #include "tribol/enforcement/PenaltyEnergy.hpp"
 #include "tribol/geom/OpposingNormalGap.hpp"
 #include "tribol/physics/integrals/PairIntegrals.hpp"
@@ -48,8 +50,8 @@ struct EnergyMortarNodalQuantities {
  * @param submesh_data Scalar field transfer data.
  * @param jacobian_data Parent and scalar-field Jacobian transfer data.
  * @return Unmodified weighted gaps, areas, and their coordinate Jacobians, including allocated zeros for empty pairs.
- * @throws std::invalid_argument Geometry or assembly dimensions are invalid; no result is returned.
- * @throws std::length_error Quadrature capacity or the assembly index range is exceeded; no result is returned.
+ * @note Reports a SLIC error if geometry or assembly dimensions are invalid.
+ * @note Reports a SLIC error if quadrature capacity or the assembly index range is exceeded.
  */
 template <ExecutionMode Exec, typename PairFunction>
 EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<InterfacePair>& pairs,
@@ -93,8 +95,8 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<Int
  * @param jacobian_data Current Jacobian transfer data.
  * @param read_weights Reader indexed by scalar submesh node.
  * @return Coordinate Hessian assembled on parent true DOFs.
- * @throws std::invalid_argument Geometry or assembly dimensions are invalid.
- * @throws std::length_error Pair buffers or matrix storage exceed the supported index range.
+ * @note Reports a SLIC error if geometry or assembly dimensions are invalid.
+ * @note Reports a SLIC error if pair buffers or matrix storage exceed the supported index range.
  */
 template <ExecutionMode Exec, typename PairFunction, typename WeightReader>
 shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
@@ -157,8 +159,8 @@ ContactFormulationResult makeNodalLagrangeMultiplierGapResult( EnergyMortarNodal
  * @param jacobian_data Parent and scalar-field Jacobian transfer data used for assembly.
  * @param pair_function Configured nodal-integral pair_function.
  * @return Owned gaps and their coordinate Jacobian; other outputs are absent. Empty pairs give zero gaps.
- * @throws std::invalid_argument Pair geometry or assembly dimensions are invalid.
- * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded.
+ * @note Reports a SLIC error if pair geometry or assembly dimensions are invalid.
+ * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
 ContactFormulationResult evaluateAndAssembleNodalPenaltyGaps(
@@ -184,8 +186,8 @@ ContactFormulationResult evaluateAndAssembleNodalPenaltyGaps(
  * @param penalty Fixed positive, finite penalty stiffness, validated when constructing the formulation.
  * @return Owned gaps, pressure, energy, force, weighted_gap_jacobian, and df_dx; df_dp is absent. Empty pairs
  * contribute zero force and energy; unsupported nodal areas give zero penalty pressure.
- * @throws std::invalid_argument Geometry, assembly dimensions, or nodal field dimensions are invalid.
- * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded.
+ * @note Reports a SLIC error if geometry, assembly dimensions, or nodal field dimensions are invalid.
+ * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
 ContactFormulationResult evaluateAndAssembleNodalPenalty( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
@@ -275,8 +277,8 @@ ContactFormulationResult evaluateAndAssembleNodalPenalty( const ArrayT<Interface
  * @param jacobian_data Parent and scalar-field Jacobian transfer data used for assembly.
  * @param pair_function Configured nodal-integral pair_function.
  * @return Owned gaps and their coordinate Jacobian; other outputs are absent. Empty pairs give zero gaps.
- * @throws std::invalid_argument Pair geometry or assembly dimensions are invalid.
- * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded.
+ * @note Reports a SLIC error if pair geometry or assembly dimensions are invalid.
+ * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
 ContactFormulationResult evaluateAndAssembleNodalLagrangeMultiplierGaps(
@@ -301,8 +303,8 @@ ContactFormulationResult evaluateAndAssembleNodalLagrangeMultiplierGaps(
  * @param pair_function Configured nodal-integral pair_function.
  * @return Owned gaps, pressure, energy, force, weighted_gap_jacobian, df_dx, and df_dp. Empty pairs contribute zero
  * force and energy; pressure contains the supplied LM values.
- * @throws std::invalid_argument Geometry, assembly dimensions, or nodal field dimensions are invalid.
- * @throws std::length_error Quadrature capacity or the supported assembly index range is exceeded.
+ * @note Reports a SLIC error if geometry, assembly dimensions, or nodal field dimensions are invalid.
+ * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
 ContactFormulationResult evaluateAndAssembleNodalLagrangeMultiplier(
@@ -314,7 +316,8 @@ ContactFormulationResult evaluateAndAssembleNodalLagrangeMultiplier(
   shared::ParVector pressure( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data.GetSubmeshFESpace() ) );
   submesh_data.GetSubmeshPressure().GetTrueDofs( pressure.get() );
   if ( pressure.size() != quantities.weighted_gap.values.size() ) {
-    throw std::invalid_argument( "LM values must match dual true DOFs." );
+    SLIC_ERROR( "LM values must match dual true DOFs." );
+    return {};
   }
   const RealT energy = pressure.dot( quantities.weighted_gap.values );
   auto force = pressure * quantities.weighted_gap.jacobian;
@@ -354,7 +357,7 @@ class NodalPenaltyEnergyMortar final : public ContactFormulation {
    * @param penalty Fixed positive, finite penalty stiffness.
    * @param gap Configured alignment-corrected gap, retained by value.
    * @param pair_builder Owned pair search.
-   * @throws std::invalid_argument Penalty stiffness is nonpositive or nonfinite.
+   * @note Reports a SLIC error if penalty stiffness is nonpositive or nonfinite.
    */
   NodalPenaltyEnergyMortar( const MfemMeshData& mesh_data, const MfemSubmeshData& submesh_data,
                             const MfemJacobianData& jacobian_data, PairRuleGenerator rule_generator, RealT penalty,

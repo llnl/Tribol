@@ -1686,8 +1686,8 @@ class MfemSubmeshData {
    * @param true_dofs Field on this submesh's scalar true DOFs.
    * @return Owned Redecomp grid function with values at all local field DOFs; the associated spaces must remain alive.
    * @pre UpdateMfemSubmeshData() has initialized the current transfer and Redecomp space.
-   * @throws std::invalid_argument The field space is nonscalar or the vector length does not match; no field is
-   * returned.
+   * @note Reports a SLIC error if the field space is nonscalar or the vector length does not match, then returns a
+   * zero field.
    */
   mfem::GridFunction TransferTrueDofsToRedecomp( const mfem::Vector& true_dofs ) const;
 

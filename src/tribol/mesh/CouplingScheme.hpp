@@ -604,7 +604,7 @@ class CouplingScheme {
    * @brief Initializes the coupling scheme
    *
    * @return true if the coupling scheme was successfully initialized
-   * @throws std::logic_error Energy Mortar has no configured formulation.
+   * @note Reports a SLIC error if Energy Mortar has no configured formulation.
    */
   bool init();
 
@@ -626,7 +626,7 @@ class CouplingScheme {
    * @param [in/out] dt the simulation dt at the given cycle sent back as Tribol timestep vote
    *
    * @return 0 if successful apply
-   * @throws std::logic_error Energy Mortar has no configured formulation.
+   * @note Reports a SLIC error if Energy Mortar has no configured formulation.
    */
   int apply( int cycle, RealT t, RealT& dt );
 
@@ -780,7 +780,7 @@ class CouplingScheme {
   /**
    * @brief Access caller-supplied true-DOF Lagrange multipliers.
    * @return Mutable input for the next contact calculation.
-   * @throws std::logic_error The scheme does not support a nodal LM input or its MFEM data is invalid.
+   * @note Reports a SLIC error if the scheme does not support a nodal LM input or its MFEM data is invalid.
    */
   mfem::HypreParVector& getContactMultiplier();
 #endif

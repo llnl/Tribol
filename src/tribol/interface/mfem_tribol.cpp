@@ -16,7 +16,8 @@
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/physics/ContactFormulationFactory.hpp"
 #include "tribol/enforcement/PenaltyStiffness.hpp"
-#include <stdexcept>
+#include "axom/slic/interface/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 
 namespace tribol {
 
@@ -346,7 +347,8 @@ void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_
 {
   auto* cs = CouplingSchemeManager::getInstance().findData( cs_id );
   if ( !cs || cs->getContactMethod() != COMMON_PLANE || !cs->hasMfemData() ) {
-    throw std::invalid_argument( "Register an MFEM COMMON_PLANE scheme before selecting its formulation." );
+    SLIC_ERROR_ROOT( "Register an MFEM COMMON_PLANE scheme before selecting its formulation." );
+    return;
   }
   if ( !enabled ) {
     if ( cs->getParameters().use_common_plane_formulation ) {
@@ -360,7 +362,9 @@ void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_
     }
     return;
   }
-  detail::validateCommonPlaneFormulation( *cs, compute_jacobian );
+  if ( !detail::validateCommonPlaneFormulation( *cs, compute_jacobian ) ) {
+    return;
+  }
   if ( cs->getParameters().use_common_plane_formulation &&
        cs->getParameters().common_plane_compute_jacobian == compute_jacobian ) {
     return;
@@ -436,12 +440,14 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the penalty." );
   const bool uses_formulation = cs->usesContactFormulation();
   if ( uses_formulation ) {
-    const RealT checked_mesh1_penalty = detail::checkedPenaltyStiffness( mesh1_penalty );
-    const RealT checked_mesh2_penalty = detail::checkedPenaltyStiffness( mesh2_penalty );
     const RealT effective_penalty = cs->getContactMethod() == ENERGY_MORTAR
-                                        ? AveragePenaltyStiffness{}( checked_mesh1_penalty, checked_mesh2_penalty )
-                                        : SeriesPenaltyStiffness{}( checked_mesh1_penalty, checked_mesh2_penalty );
-    detail::checkedPenaltyStiffness( effective_penalty );
+                                        ? AveragePenaltyStiffness{}( mesh1_penalty, mesh2_penalty )
+                                        : SeriesPenaltyStiffness{}( mesh1_penalty, mesh2_penalty );
+    if ( !detail::isValidPenaltyStiffness( mesh1_penalty ) || !detail::isValidPenaltyStiffness( mesh2_penalty ) ||
+         !detail::isValidPenaltyStiffness( effective_penalty ) ) {
+      SLIC_ERROR_ROOT( "Contact penalty stiffness must be positive and finite." );
+      return;
+    }
   }
   setPenaltyOptions( cs_id, KINEMATIC, KINEMATIC_CONSTANT );
   cs->getMfemMeshData()->ClearAllPenaltyData();
@@ -540,9 +546,13 @@ void setMfemKinematicPenaltyScale( IndexT cs_id, RealT mesh1_scale, RealT mesh2_
                       "setMfemKinematicElementPenalty() first." );
   if ( cs->getParameters().use_common_plane_formulation ) {
     const auto& data = *cs->getMfemMeshData();
-    const RealT penalty1 = detail::checkedPenaltyStiffness( *data.GetMesh1KinematicConstantPenalty() * mesh1_scale );
-    const RealT penalty2 = detail::checkedPenaltyStiffness( *data.GetMesh2KinematicConstantPenalty() * mesh2_scale );
-    detail::checkedPenaltyStiffness( SeriesPenaltyStiffness{}( penalty1, penalty2 ) );
+    const RealT penalty1 = *data.GetMesh1KinematicConstantPenalty() * mesh1_scale;
+    const RealT penalty2 = *data.GetMesh2KinematicConstantPenalty() * mesh2_scale;
+    if ( !detail::isValidPenaltyStiffness( penalty1 ) || !detail::isValidPenaltyStiffness( penalty2 ) ||
+         !detail::isValidPenaltyStiffness( SeriesPenaltyStiffness{}( penalty1, penalty2 ) ) ) {
+      SLIC_ERROR_ROOT( "Contact penalty stiffness must be positive and finite." );
+      return;
+    }
   }
   cs->getMfemMeshData()->SetMesh1KinematicPenaltyScale( mesh1_scale );
   cs->getMfemMeshData()->SetMesh2KinematicPenaltyScale( mesh2_scale );
@@ -640,7 +650,8 @@ mfem::HypreParVector getMfemContactForce( IndexT cs_id )
       "Coupling scheme does not contain a contact formulation. Forces are returned using getMfemResponse() instead." );
   const auto& force = cs->getContactFormulationResult().force;
   if ( !force ) {
-    throw std::logic_error( "No contact force is available; call update() first." );
+    SLIC_ERROR_ROOT( "No contact force is available; call update() first." );
+    return {};
   }
   return *force;
 }
@@ -672,7 +683,8 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
   if ( cs->hasContactFormulation() ) {
     const auto& result = cs->getContactFormulationResult();
     if ( !result.df_dx ) {
-      throw std::logic_error( "No contact Jacobian is available; call update() first." );
+      SLIC_ERROR_ROOT( "No contact Jacobian is available; call update() first." );
+      return nullptr;
     }
     auto DfDx = copyResultMatrix( result.df_dx );
     auto DfDp = copyResultMatrix( result.df_dp );
@@ -803,7 +815,8 @@ void getMfemGap( IndexT cs_id, mfem::Vector& g )
                               cs_id ) );
 
   if ( cs->hasContactFormulation() ) {
-    throw std::logic_error( "Contact formulations return nodal gaps through getMfemContactGap()." );
+    SLIC_ERROR_ROOT( "Contact formulations return nodal gaps through getMfemContactGap()." );
+    return;
   }
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(),
                       axom::fmt::format( "Coupling scheme cs_id={0} does not contain MFEM pressure field data. "
@@ -823,7 +836,8 @@ mfem::HypreParVector getMfemContactGap( IndexT cs_id )
   SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
   const auto& gap = cs->getContactFormulationResult().gap;
   if ( !gap ) {
-    throw std::logic_error( "No nodal contact gap is available." );
+    SLIC_ERROR_ROOT( "No nodal contact gap is available." );
+    return {};
   }
   return *gap;
 }
@@ -865,7 +879,7 @@ mfem::HypreParVector& getMfemContactPressure( IndexT cs_id )
   SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
   const auto& pressure = cs->getContactFormulationResult().pressure;
   if ( !pressure ) {
-    throw std::logic_error( "No nodal contact pressure is available." );
+    SLIC_ERROR_ROOT( "No nodal contact pressure is available." );
   }
   return *pressure;
 }

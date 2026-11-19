@@ -8,7 +8,8 @@
 #define SRC_TRIBOL_SEARCH_PAIRLISTBUILDER_HPP_
 
 #include <memory>
-#include <stdexcept>
+#include "axom/slic/interface/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 #include "tribol/search/CoarseSearch.hpp"
 #include "tribol/search/RefinedSearch.hpp"
 
@@ -26,7 +27,7 @@ class PairListBuilder {
       : coarse_search_( std::move( coarse_search ) ), refined_search_( std::move( refined_search ) )
   {
     if ( !coarse_search_ || !refined_search_ ) {
-      throw std::invalid_argument( "PairListBuilder requires both search stages." );
+      SLIC_ERROR( "PairListBuilder requires both search stages." );
     }
   }
 

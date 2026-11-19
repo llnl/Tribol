@@ -5,23 +5,32 @@
 
 #include "tribol/physics/NodalEnergyMortar.hpp"
 
+#include <cmath>
+
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
 namespace tribol {
 namespace detail {
 
 ContactFormulationResult makeNodalPenaltyGapResult( EnergyMortarNodalQuantities& quantities )
 {
-  auto normalized_gap = quantities.weighted_gap.values.divide( quantities.tributary_area.values, nodal_area_tolerance );
+  // Penalty gaps are zero where contact is open and, matching the penalty energy, where the tributary area is too small
+  // to support contact. ParVector::divide() would leave the weighted gap unchanged at those nodes.
   // The vectors may be valid only in device memory. Synchronize before the host loop, and mark the host copy of the
-  // normalized gap as the valid one so later device reads see the zeroed opening nodes.
+  // normalized gap as the valid one so later device reads see the result.
+  shared::ParVector normalized_gap( quantities.weighted_gap.values.get() );
   const int num_nodes = quantities.weighted_gap.values.size();
   const RealT* weighted_gap = quantities.weighted_gap.values.get().HostRead();
-  RealT* normalized_gap_data = normalized_gap.get().HostReadWrite();
+  const RealT* area = quantities.tributary_area.values.get().HostRead();
+  RealT* normalized_gap_data = normalized_gap.get().HostWrite();
   mfem::Array<int> open_nodes;
   for ( int node = 0; node < num_nodes; ++node ) {
     if ( weighted_gap[node] > 0.0 ) {
       normalized_gap_data[node] = 0.0;
       open_nodes.Append( node );
+    } else if ( std::abs( area[node] ) <= nodal_area_tolerance ) {
+      normalized_gap_data[node] = 0.0;
+    } else {
+      normalized_gap_data[node] = weighted_gap[node] / area[node];
     }
   }
   quantities.weighted_gap.jacobian.eliminateRows( open_nodes );

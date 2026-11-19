@@ -16,6 +16,7 @@
  */
 #include <cmath>
 #include "gtest/gtest.h"
+#include "SlicErrorTest.hpp"
 #include "axom/slic/core/SimpleLogger.hpp"
 #include "shared/mesh/MeshBuilder.hpp"
 #include "tribol/interface/tribol.hpp"
@@ -266,10 +267,9 @@ TEST_F( MfemVectorAssemblerTest, returns_zero_outputs_for_empty_or_rejected_inpu
                                                             mesh2, 0, mesh1.getAllocatorId() );
   const ArrayT<InterfacePair> empty( 0, 0, mesh1.getAllocatorId() );
   const auto zero_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };
-  EXPECT_THROW( ( assembler.addPairs<ExecutionMode::Sequential, pair_dofs - 1, 2>( empty, zero_force ) ),
-                std::invalid_argument );
+  EXPECT_SLIC_ERROR( ( assembler.addPairs<ExecutionMode::Sequential, pair_dofs - 1, 2>( empty, zero_force ) ) );
   constexpr IndexT size_geom_coords = pair_dofs / 2;
-  EXPECT_THROW( ( matrix.view<size_geom_coords - 1, size_geom_coords, 4>() ), std::invalid_argument );
+  EXPECT_SLIC_ERROR( ( matrix.view<size_geom_coords - 1, size_geom_coords, 4>() ) );
   const auto force = assembler.assemble();
   const auto df_dx = matrix.assemble();
   EXPECT_EQ( force.size(), fes_->GetTrueVSize() );
@@ -295,7 +295,7 @@ TEST_F( MfemVectorAssemblerTest, assembles_scalar_fields_and_dual_transfers )
     EXPECT_NEAR( redecomp_field[dof], 2.5, tolerance );
   }
   mfem::Vector wrong_size( dual_fes.GetTrueVSize() + 1 );
-  EXPECT_THROW( dual_data.TransferTrueDofsToRedecomp( wrong_size ), std::invalid_argument );
+  EXPECT_SLIC_ERROR( dual_data.TransferTrueDofsToRedecomp( wrong_size ) );
 
   constexpr IndexT num_fields = 3;
   const MdArray<RealT, num_fields> factors{ 1.0, -2.0, 3.0 };
@@ -340,7 +340,7 @@ TEST_F( MfemVectorAssemblerTest, scalar_values_need_no_jacobian_data )
   const auto& dual = *cs.getMfemSubmeshData();
   const auto mesh1 = cs.getMesh1().getView();
   auto assembler = tribol::detail::makeScalarFieldVectorAssembler( dual, mesh1 );
-  EXPECT_THROW( ( assembler.view<ExecutionMode::Sequential, 2>() ), std::invalid_argument );
+  EXPECT_SLIC_ERROR( ( assembler.view<ExecutionMode::Sequential, 2>() ) );
   const auto zero = assembler.assemble();
   EXPECT_EQ( norm( zero.get() ), 0.0 );
   const auto pair_list = pairs();
@@ -388,11 +388,11 @@ TEST_P( MfemMatrixAssemblerTest, assembles_rectangular_matrices_in_both_orientat
     MfemMatrixAssembler empty_forward( scalar, coordinate, forward_blocks, 0, allocator_id );
     const ArrayT<InterfacePair> wrong_pair_count( pair_list.size() + 1, pair_list.size() + 1, allocator_id );
 
-    EXPECT_THROW( ( forward.view<3, size_geom_coords, 2>() ), std::invalid_argument );
+    EXPECT_SLIC_ERROR( ( forward.view<3, size_geom_coords, 2>() ) );
     auto invalid_blocks = forward_blocks;
     invalid_blocks[0].row_geometry = 2;
-    EXPECT_THROW( MfemMatrixAssembler( scalar, coordinate, invalid_blocks, 0, allocator_id ), std::invalid_argument );
-    EXPECT_THROW( MfemMatrixAssembler( scalar, coordinate, forward_blocks, -1, allocator_id ), std::invalid_argument );
+    EXPECT_SLIC_ERROR( MfemMatrixAssembler( scalar, coordinate, invalid_blocks, 0, allocator_id ) );
+    EXPECT_SLIC_ERROR( MfemMatrixAssembler( scalar, coordinate, forward_blocks, -1, allocator_id ) );
     const auto zero = empty_forward.assemble();
     mfem::Vector coordinate_direction( fes_->GetTrueVSize() ), scalar_action( zero->Height() );
     coordinate_direction = 1.0;
@@ -405,8 +405,8 @@ TEST_P( MfemMatrixAssemblerTest, assembles_rectangular_matrices_in_both_orientat
     const auto read_reverse = [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT coordinate, IndexT node ) {
       return read_forward( pair, node, coordinate );
     };
-    EXPECT_THROW( ( forward.addPairs<Exec, nodes_per_edge, size_geom_coords, 2>( wrong_pair_count, read_forward ) ),
-                  std::invalid_argument );
+    EXPECT_SLIC_ERROR(
+        ( forward.addPairs<Exec, nodes_per_edge, size_geom_coords, 2>( wrong_pair_count, read_forward ) ) );
     reference.addPairs<ExecutionMode::Sequential, nodes_per_edge, size_geom_coords, 2>( pair_list, read_forward );
     forward.addPairs<Exec, nodes_per_edge, size_geom_coords, 2>( pair_list, read_forward );
     reverse.addPairs<Exec, size_geom_coords, nodes_per_edge, 2>( pair_list, read_reverse );
@@ -461,7 +461,7 @@ TEST_P( MfemMatrixAssemblerTest, composes_residual_and_jacobian_assembly_views )
     const auto initial_force = force_only.assemble();
     EXPECT_EQ( norm( initial_force.get() ), 0.0 );
     const auto zero_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };
-    EXPECT_THROW( ( force_only.addPairs<Exec, pair_dofs - 1, 2>( pair_list, zero_force ) ), std::invalid_argument );
+    EXPECT_SLIC_ERROR( ( force_only.addPairs<Exec, pair_dofs - 1, 2>( pair_list, zero_force ) ) );
     constexpr IndexT size_geom_coords = pair_dofs / 2;
     const auto read_force = [] TRIBOL_HOST_DEVICE( IndexT, IndexT row ) { return row + 1.0; };
     const auto read_jacobian = [] TRIBOL_HOST_DEVICE( IndexT, IndexT row, IndexT column ) {

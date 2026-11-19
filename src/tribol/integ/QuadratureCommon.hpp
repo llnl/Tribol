@@ -43,12 +43,12 @@ enum class QuadratureStatus
 };
 
 /**
- * @brief Throw a quadrature failure outside differentiated calculations.
+ * @brief Report a quadrature failure with a SLIC error outside differentiated calculations.
  * @param status Failed generation status; must not be Success.
- * @throws std::length_error The rule requires more point storage.
- * @throws std::invalid_argument Pair geometry is invalid.
+ * @note Reports a SLIC error if the rule requires more point storage.
+ * @note Reports a SLIC error if pair geometry is invalid.
  */
-[[noreturn, gnu::noinline]]
+[[gnu::noinline]]
 #ifdef TRIBOL_USE_ENZYME
 MFEM_ENZYME_INACTIVE
 #endif
@@ -87,12 +87,12 @@ QuadratureStatus reduceQuadratureStatus( ArrayViewT<const QuadratureMetadata> me
 }  // namespace detail
 
 /**
- * @brief Check the quadrature metadata produced for all pairs and throw if any rule reports an error.
+ * @brief Check the quadrature metadata produced for all pairs and report a SLIC error for any failed rule.
  * @tparam Exec Concrete execution mode used to populate the metadata.
  * @param metadata One preallocated metadata entry per pair.
  * Empty metadata passes the check.
- * @throws std::invalid_argument A rule reports invalid geometry.
- * @throws std::length_error A rule reports insufficient quadrature capacity.
+ * @note Reports a SLIC error if a rule reports invalid geometry.
+ * @note Reports a SLIC error if a rule reports insufficient quadrature capacity.
  */
 template <ExecutionMode Exec>
 void checkPairQuadratureMetadata( const Array1D<QuadratureMetadata>& metadata )

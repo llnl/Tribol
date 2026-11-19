@@ -7,6 +7,7 @@
 #include <iostream>
 
 #include <gtest/gtest.h>
+#include "SlicErrorTest.hpp"
 
 #include "tribol/interface/tribol.hpp"
 #include "tribol/common/LoopExec.hpp"
@@ -40,8 +41,7 @@ TEST_P( ExecutionDispatchTest, selects_mode_and_returns_owned_result )
 TEST( ExecutionDispatch, rejects_dynamic_without_calling_operation )
 {
   bool called = false;
-  EXPECT_THROW( dispatchExecutionMode( ExecutionMode::Dynamic, [&]<ExecutionMode Exec>() { called = true; } ),
-                std::invalid_argument );
+  EXPECT_SLIC_ERROR( dispatchExecutionMode( ExecutionMode::Dynamic, [&]<ExecutionMode Exec>() { called = true; } ) );
   EXPECT_FALSE( called );
 }
 

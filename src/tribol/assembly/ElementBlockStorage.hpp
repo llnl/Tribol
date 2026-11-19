@@ -11,9 +11,10 @@
 #define SRC_TRIBOL_ASSEMBLY_ELEMENTBLOCKSTORAGE_HPP_
 
 #include <limits>
-#include <stdexcept>
 
 #include "tribol/common/ArrayTypes.hpp"
+#include "axom/slic/interface/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 #include "tribol/common/BasicTypes.hpp"
 
 namespace tribol {
@@ -52,15 +53,17 @@ namespace detail {
  * @param num_pairs Number of blocks.
  * @param values_per_block Scalar values in each block.
  * @return Total scalar values representable by IndexT.
- * @throws std::invalid_argument A size is negative.
- * @throws std::length_error The total exceeds the supported index range. */
+ * @note Reports a SLIC error if a size is negative.
+ * @note Reports a SLIC error if the total exceeds the supported index range. */
 inline IndexT checkedMatrixSize( IndexT num_pairs, IndexT values_per_block )
 {
   if ( num_pairs < 0 || values_per_block < 0 ) {
-    throw std::invalid_argument( "Element block storage sizes must be nonnegative." );
+    SLIC_ERROR( "Element block storage sizes must be nonnegative." );
+    return 0;
   }
   if ( values_per_block != 0 && num_pairs > std::numeric_limits<IndexT>::max() / values_per_block ) {
-    throw std::length_error( "Element block storage exceeds the supported index range." );
+    SLIC_ERROR( "Element block storage exceeds the supported index range." );
+    return 0;
   }
   return num_pairs * values_per_block;
 }
@@ -92,13 +95,14 @@ class ElementBlockStorage {
    * @tparam SizeRows Dense block row count.
    * @tparam SizeColumns Dense block column count.
    * @return View retaining no ownership.
-   * @throws std::invalid_argument The requested dimensions do not match the allocated block size. */
+   * @note Reports a SLIC error if the requested dimensions do not match the allocated block size. */
   template <IndexT SizeRows, IndexT SizeColumns>
   ElementBlockView<SizeRows, SizeColumns> view()
   {
     static_assert( SizeRows > 0 && SizeColumns > 0 );
     if ( SizeRows * SizeColumns != values_per_block_ ) {
-      throw std::invalid_argument( "Element block view dimensions do not match its storage." );
+      SLIC_ERROR( "Element block view dimensions do not match its storage." );
+      return {};
     }
     return { row_element_ids_.data(), column_element_ids_.data(), value_offsets_.data(), values_.data(), num_pairs_ };
   }

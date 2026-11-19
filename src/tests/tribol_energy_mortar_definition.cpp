@@ -21,6 +21,7 @@
 #include <stdexcept>
 
 #include "gtest/gtest.h"
+#include "SlicErrorTest.hpp"
 #include "axom/slic/core/SimpleLogger.hpp"
 #include "ExecutionTest.hpp"
 #include "tribol/enforcement/PenaltyEnergy.hpp"
@@ -497,11 +498,9 @@ TEST_P( EnergyMortarDefinitionTest, energy_kernels_return_values_jacobians_and_h
       EXPECT_EQ( jacobians[coordinate * pairs.size() + pair], 0.0 );
     }
   }
-  EXPECT_THROW( dispatchExecutionMode( GetParam(),
-                                       [&]<ExecutionMode Exec>() {
-                                         return checkPairQuadratureMetadata<Exec>( buffer.quadratureMetadata() );
-                                       } ),
-                std::invalid_argument );
+  EXPECT_SLIC_ERROR( dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    return checkPairQuadratureMetadata<Exec>( buffer.quadratureMetadata() );
+  } ) );
 
   // Read derivatives after destroying the input pair list. Reversed element IDs and unequal weights check pair slots.
   auto weighted = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {

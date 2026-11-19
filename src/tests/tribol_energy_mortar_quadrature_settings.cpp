@@ -19,6 +19,7 @@
  * Touching nonmatching surfaces retain the penalty tangent at zero gap, including zero nodal Hessian weights.
  */
 #include <gtest/gtest.h>
+#include "SlicErrorTest.hpp"
 #include <cmath>
 #include <array>
 #include <optional>
@@ -205,11 +206,11 @@ TEST_P( EnergyMortarQuadratureSettingsTest, configures_and_defers_formulation_re
   }
   for ( int invalid : { -1, 6 } ) {
     auto* before = cs->getContactFormulation();
-    EXPECT_THROW( tribol::setQuadratureOrder( 0, invalid ), std::invalid_argument );
+    EXPECT_SLIC_ERROR( tribol::setQuadratureOrder( 0, invalid ) );
     EXPECT_EQ( cs->getParameters().quadrature_order, 5 );
     EXPECT_EQ( cs->getContactFormulation(), before );
     cs->getParameters().quadrature_order = invalid;
-    EXPECT_THROW( tribol::createContactFormulation( cs ), std::invalid_argument );
+    EXPECT_SLIC_ERROR( tribol::createContactFormulation( cs ) );
     cs->getParameters().quadrature_order = 5;
   }
   cs->setContactFormulation( nullptr );
@@ -229,7 +230,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, returns_owned_outputs_for_each_calcu
   const auto mesh1 = cs.getMesh1().getView();
   const auto mesh2 = cs.getMesh2().getView();
   mfem::Vector legacy_gap;
-  EXPECT_THROW( tribol::getMfemGap( 0, legacy_gap ), std::logic_error );
+  EXPECT_SLIC_ERROR( tribol::getMfemGap( 0, legacy_gap ) );
   if ( std::get<0>( GetParam() ) == tribol::EnforcementLocation::Nodal ) {
     auto gaps = formulation.computeNodalGaps( mesh1, mesh2 );
     ASSERT_NE( gaps.gap, nullptr );
@@ -246,7 +247,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, returns_owned_outputs_for_each_calcu
     EXPECT_LT( repeated.gap->Norml2(), 1.0e-12 );
     EXPECT_EQ( gaps.gap->Norml2(), original.Norml2() );
   } else {
-    EXPECT_THROW( formulation.computeNodalGaps( mesh1, mesh2 ), std::logic_error );
+    EXPECT_SLIC_ERROR( formulation.computeNodalGaps( mesh1, mesh2 ) );
   }
 
   auto first = formulation.computeNodalForces( mesh1, mesh2 );
@@ -344,7 +345,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, rejects_invalid_location_without_reb
   auto* fields = cs.getMfemSubmeshData();
   const auto location = cs.getParameters().enforcement_location;
   constexpr auto invalid_location = static_cast<tribol::EnforcementLocation>( -1 );
-  EXPECT_THROW( tribol::setEnforcementLocation( 0, invalid_location ), std::invalid_argument );
+  EXPECT_SLIC_ERROR( tribol::setEnforcementLocation( 0, invalid_location ) );
   EXPECT_EQ( cs.getParameters().enforcement_location, location );
   EXPECT_EQ( cs.getContactFormulation(), formulation );
   EXPECT_EQ( cs.getMfemSubmeshData(), fields );
@@ -360,7 +361,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, rejects_unconfigured_pair_penalty )
   cs.invalidateContactFormulation();
   EXPECT_FALSE( cs.hasContactFormulation() );
   tribol::RealT dt = 1.0;
-  EXPECT_THROW( tribol::update( 0, 0.0, dt ), std::logic_error );
+  EXPECT_SLIC_ERROR( tribol::update( 0, 0.0, dt ) );
   EXPECT_FALSE( cs.hasMfemSubmeshData() );
 }
 
@@ -418,7 +419,7 @@ TEST_P( EnergyMortarRegistrationTest, constructs_formulation_during_update )
   tribol::setQuadratureOrder( 0, quadratureOrder() );
   EXPECT_FALSE( cs.hasContactFormulation() );
   tribol::RealT dt = 1.0;
-  EXPECT_THROW( tribol::update( 0, 0.0, dt ), std::logic_error );
+  EXPECT_SLIC_ERROR( tribol::update( 0, 0.0, dt ) );
   tribol::setMfemKinematicConstantPenalty( 0, 100.0, 100.0 );
   ASSERT_FALSE( cs.hasContactFormulation() );
   const auto location = std::get<0>( GetParam() );
@@ -468,13 +469,13 @@ TEST_P( EnergyMortarQuadratureSettingsTest, rejects_invalid_mesh_penalties_witho
   for ( const tribol::RealT invalid : { -10.0, 0.0, std::numeric_limits<tribol::RealT>::quiet_NaN(),
                                         std::numeric_limits<tribol::RealT>::infinity() } ) {
     SCOPED_TRACE( invalid );
-    EXPECT_THROW( tribol::setMfemKinematicConstantPenalty( 0, invalid, 20.0 ), std::invalid_argument );
+    EXPECT_SLIC_ERROR( tribol::setMfemKinematicConstantPenalty( 0, invalid, 20.0 ) );
     check_unchanged();
-    EXPECT_THROW( tribol::setMfemKinematicConstantPenalty( 0, 20.0, invalid ), std::invalid_argument );
+    EXPECT_SLIC_ERROR( tribol::setMfemKinematicConstantPenalty( 0, 20.0, invalid ) );
     check_unchanged();
   }
   const tribol::RealT largest_penalty = std::numeric_limits<tribol::RealT>::max();
-  EXPECT_THROW( tribol::setMfemKinematicConstantPenalty( 0, largest_penalty, largest_penalty ), std::invalid_argument );
+  EXPECT_SLIC_ERROR( tribol::setMfemKinematicConstantPenalty( 0, largest_penalty, largest_penalty ) );
   check_unchanged();
   EXPECT_NO_THROW( tribol::setMfemKinematicConstantPenalty( 0, 2.0, 6.0 ) );
 }
@@ -489,7 +490,7 @@ TEST_P( EnergyMortarQuadratureSettingsTest, rejects_invalid_residual_gaps_withou
         { -1.0, -std::numeric_limits<tribol::RealT>::infinity(), std::numeric_limits<tribol::RealT>::infinity(),
           std::numeric_limits<tribol::RealT>::quiet_NaN() } ) {
     SCOPED_TRACE( invalid );
-    EXPECT_THROW( tribol::setResidualGap( 0, invalid ), std::invalid_argument );
+    EXPECT_SLIC_ERROR( tribol::setResidualGap( 0, invalid ) );
     EXPECT_EQ( cs.getParameters().residual_gap, residual_gap );
     EXPECT_EQ( cs.getContactFormulation(), formulation );
   }
@@ -531,8 +532,7 @@ TEST( EnergyMortarConfiguration, rejects_quadrature_point_lm_without_releasing_n
   auto* submesh_data = cs.getMfemSubmeshData();
   auto* jacobian_data = cs.getMfemJacobianData();
 
-  EXPECT_THROW( tribol::setEnforcementLocation( 0, tribol::EnforcementLocation::QuadraturePoint ),
-                std::invalid_argument );
+  EXPECT_SLIC_ERROR( tribol::setEnforcementLocation( 0, tribol::EnforcementLocation::QuadraturePoint ) );
   EXPECT_EQ( cs.getParameters().enforcement_location, tribol::EnforcementLocation::Nodal );
   EXPECT_EQ( cs.getContactFormulation(), formulation );
   EXPECT_EQ( cs.getMfemSubmeshData(), submesh_data );
@@ -748,7 +748,7 @@ struct Edges {
 // Unsupported methods and missing schemes must reject the setting without modifying configuration.
 TEST( ContactFormulation, rejects_order_setting_for_unsupported_schemes )
 {
-  EXPECT_THROW( tribol::setQuadratureOrder( 0, 2 ), std::invalid_argument );
+  EXPECT_SLIC_ERROR( tribol::setQuadratureOrder( 0, 2 ) );
   Edges edges;
   tribol::registerMesh( 0, 1, edges.x1.size(), edges.connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE,
                         edges.x1.data(), edges.y1.data() );
@@ -757,7 +757,7 @@ TEST( ContactFormulation, rejects_order_setting_for_unsupported_schemes )
   tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
                                   tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
                                   tribol::ExecutionMode::Sequential );
-  EXPECT_THROW( tribol::setQuadratureOrder( 0, 2 ), std::invalid_argument );
+  EXPECT_SLIC_ERROR( tribol::setQuadratureOrder( 0, 2 ) );
   EXPECT_EQ( tribol::CouplingSchemeManager::getInstance().findData( 0 )->getParameters().quadrature_order, 5 );
   tribol::finalize();
 }

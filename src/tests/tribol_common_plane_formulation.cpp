@@ -17,6 +17,7 @@
  */
 #include <cmath>
 #include "gtest/gtest.h"
+#include "SlicErrorTest.hpp"
 #include "axom/slic/core/SimpleLogger.hpp"
 #include "ExecutionTest.hpp"
 #include "tribol/common/BasicTypes.hpp"
@@ -586,11 +587,9 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
       EXPECT_NEAR( values[row * pairs.size() + pair], expected, tolerance );
     }
   }
-  EXPECT_THROW( dispatchExecutionMode( GetParam(),
-                                       [&]<ExecutionMode Exec>() {
-                                         return checkPairQuadratureMetadata<Exec>( buffer.quadratureMetadata() );
-                                       } ),
-                std::invalid_argument );
+  EXPECT_SLIC_ERROR( dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    return checkPairQuadratureMetadata<Exec>( buffer.quadratureMetadata() );
+  } ) );
   // A second calculation uses different stiffness and must leave the first returned buffer unchanged.
   auto doubled = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
     return evaluatePairValues<Exec>( pairs, mesh1.getView(), mesh2.getView(), Function{ {}, { 2.0 } } );

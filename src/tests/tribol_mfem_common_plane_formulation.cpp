@@ -23,6 +23,7 @@
 #include <limits>
 #include <stdexcept>
 #include "gtest/gtest.h"
+#include "SlicErrorTest.hpp"
 #include "axom/slic/core/SimpleLogger.hpp"
 #include "mfem.hpp"
 #include "shared/mesh/MeshBuilder.hpp"
@@ -170,7 +171,7 @@ TEST_P( MfemCommonPlaneTest, changes_jacobian_mode_without_changing_forces )
   setMfemUseCommonPlaneFormulation( 0, true, false );
 #else
   auto* formulation = scheme().getContactFormulation();
-  EXPECT_THROW( setMfemUseCommonPlaneFormulation( 0, true ), std::runtime_error );
+  EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( 0, true ) );
   EXPECT_EQ( scheme().getContactFormulation(), formulation );
   EXPECT_FALSE( scheme().getParameters().common_plane_compute_jacobian );
 #endif
@@ -245,9 +246,8 @@ TEST_P( MfemCommonPlaneTest, matches_nonmatching_constant_traction_patch )
     EXPECT_EQ( scheme().getMesh1().numberOfElements() + scheme().getMesh2().numberOfElements(), 0 );
   }
   EXPECT_FALSE( scheme().getContactFormulationResult().energy.has_value() );
-  EXPECT_THROW( scheme().getContactFormulation()->computeNodalGaps( scheme().getMesh1().getView(),
-                                                                    scheme().getMesh2().getView() ),
-                std::logic_error );
+  EXPECT_SLIC_ERROR( scheme().getContactFormulation()->computeNodalGaps( scheme().getMesh1().getView(),
+                                                                         scheme().getMesh2().getView() ) );
 }
 
 // Jacobian getters return independent copies, so repeated calls must not consume the cached result.
@@ -430,13 +430,13 @@ TEST_P( MfemCommonPlaneTest, rejects_invalid_constants_without_changing_scheme )
   for ( const RealT invalid :
         { -1.0, 0.0, std::numeric_limits<RealT>::infinity(), std::numeric_limits<RealT>::quiet_NaN() } ) {
     SCOPED_TRACE( invalid );
-    EXPECT_THROW( setMfemKinematicConstantPenalty( 0, invalid, 6.0 ), std::invalid_argument );
+    EXPECT_SLIC_ERROR( setMfemKinematicConstantPenalty( 0, invalid, 6.0 ) );
     check_unchanged();
-    EXPECT_THROW( setMfemKinematicConstantPenalty( 0, 2.0, invalid ), std::invalid_argument );
+    EXPECT_SLIC_ERROR( setMfemKinematicConstantPenalty( 0, 2.0, invalid ) );
     check_unchanged();
   }
   const RealT largest_penalty = std::numeric_limits<RealT>::max();
-  EXPECT_THROW( setMfemKinematicConstantPenalty( 0, largest_penalty, largest_penalty ), std::invalid_argument );
+  EXPECT_SLIC_ERROR( setMfemKinematicConstantPenalty( 0, largest_penalty, largest_penalty ) );
   check_unchanged();
 }
 
@@ -462,9 +462,9 @@ TEST_P( MfemCommonPlaneTest, constructs_with_scales_before_decomposition )
 TEST_P( MfemCommonPlaneTest, rejects_invalid_scales_at_construction )
 {
   enable();
-  EXPECT_THROW( setMfemKinematicPenaltyScale( 0, 0.0, 1.0 ), std::invalid_argument );
-  EXPECT_THROW( setMfemKinematicPenaltyScale( 0, 1.0, -1.0 ), std::invalid_argument );
-  EXPECT_THROW( setMfemKinematicPenaltyScale( 0, std::numeric_limits<RealT>::infinity(), 1.0 ), std::invalid_argument );
+  EXPECT_SLIC_ERROR( setMfemKinematicPenaltyScale( 0, 0.0, 1.0 ) );
+  EXPECT_SLIC_ERROR( setMfemKinematicPenaltyScale( 0, 1.0, -1.0 ) );
+  EXPECT_SLIC_ERROR( setMfemKinematicPenaltyScale( 0, std::numeric_limits<RealT>::infinity(), 1.0 ) );
   setMfemKinematicPenaltyScale( 0, 1.0, 1.0 );
   evaluate();
 }
@@ -558,7 +558,7 @@ TEST_P( MfemCommonPlaneTest, rebuilds_and_restores_legacy_response )
   auto error = scaled;
   error.Add( -2.0, initial );
   EXPECT_LT( norm( error ), 1.0e-11 );
-  EXPECT_THROW( setEnforcementLocation( 0, EnforcementLocation::Nodal ), std::invalid_argument );
+  EXPECT_SLIC_ERROR( setEnforcementLocation( 0, EnforcementLocation::Nodal ) );
   setMfemLORFactor( 0, 2 );
   EXPECT_EQ( scheme().getMfemMeshData()->GetLORMesh(), nullptr );
   EXPECT_TRUE( scheme().getParameters().use_common_plane_formulation );
@@ -623,12 +623,12 @@ TEST_P( MfemCommonPlaneTest, execution_modes_preserve_forces_and_jacobian_select
 TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
 {
   const auto check = [&]() {
-    EXPECT_THROW( setMfemUseCommonPlaneFormulation( 0, true, false ), std::invalid_argument );
+    EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( 0, true, false ) );
     EXPECT_FALSE( scheme().getParameters().use_common_plane_formulation );
     EXPECT_FALSE( scheme().hasContactFormulation() );
     EXPECT_FALSE( scheme().hasMfemJacobianData() );
   };
-  EXPECT_THROW( setMfemUseCommonPlaneFormulation( 1, true, false ), std::invalid_argument );
+  EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( 1, true, false ) );
   setMfemKinematicConstantPenalty( 0, 0.0, 6.0 );
   check();
   setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
@@ -643,7 +643,7 @@ TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
   penalty.rate_calculation = RATE_CONSTANT;
   check();
   penalty.rate_calc_set = false;
-  EXPECT_THROW( setQuadratureOrder( 0, 3 ), std::invalid_argument );
+  EXPECT_SLIC_ERROR( setQuadratureOrder( 0, 3 ) );
   enable( false );
   for ( int order = 0; order <= 5; ++order ) {
     setQuadratureOrder( 0, order );
@@ -652,7 +652,7 @@ TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
     ASSERT_TRUE( scheme().init() );
     EXPECT_TRUE( scheme().hasContactFormulation() );
   }
-  EXPECT_THROW( setQuadratureOrder( 0, 6 ), std::invalid_argument );
+  EXPECT_SLIC_ERROR( setQuadratureOrder( 0, 6 ) );
   EXPECT_EQ( scheme().getParameters().quadrature_order, 5 );
 }
 // The opt-in setter must reject unsupported contact models, enforcement, and tied cases before constructing resources.
@@ -678,7 +678,7 @@ TEST( CommonPlaneSelection, rejects_unsupported_methods_models_and_cases )
     registerMfemCouplingScheme( 0, 0, 1, mesh, coordinates, { 1 }, { 3 }, SURFACE_TO_SURFACE, test.contact_case,
                                 test.method, test.model, test.enforcement, BINNING_GRID, ExecutionMode::Sequential );
     setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
-    EXPECT_THROW( setMfemUseCommonPlaneFormulation( 0, true, false ), std::invalid_argument );
+    EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( 0, true, false ) );
     const auto& cs = CouplingSchemeManager::getInstance().at( 0 );
     EXPECT_FALSE( cs.hasContactFormulation() );
     EXPECT_FALSE( cs.hasMfemJacobianData() );
@@ -707,7 +707,7 @@ TEST( CommonPlaneSelection, rejects_higher_order_without_lor_and_three_dimension
                                                           std::set<int>{ 3 }, ExecutionMode::Sequential,
                                                           MemorySpace::Host, false ) );
     }
-    EXPECT_THROW( setMfemUseCommonPlaneFormulation( 0, true, false ), std::invalid_argument );
+    EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( 0, true, false ) );
     EXPECT_FALSE( cs.hasContactFormulation() );
     EXPECT_FALSE( cs.hasMfemJacobianData() );
     finalize();

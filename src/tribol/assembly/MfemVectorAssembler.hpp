@@ -7,9 +7,10 @@
 #ifndef SRC_TRIBOL_ASSEMBLY_MFEMVECTORASSEMBLER_HPP_
 #define SRC_TRIBOL_ASSEMBLY_MFEMVECTORASSEMBLER_HPP_
 #include "tribol/config.hpp"
+#include "axom/slic/interface/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 #ifdef BUILD_REDECOMP
 #include <functional>
-#include <stdexcept>
 #include <vector>
 #include "tribol/common/Atomics.hpp"
 #include "tribol/common/LoopExec.hpp"
@@ -90,8 +91,8 @@ class MfemVectorAssembler {
    * @brief Allocate an initially zero vector in the configured Redecomp FE space.
    * @param space FE-space references and a nonempty host transfer callback, retained by value.
    * @param blocks Nonempty geometry blocks with nonnegative input offsets and positive nodes per element.
-   * @throws std::invalid_argument Spaces, callback, geometry selectors, offsets, or node counts are invalid.
-   * @throws std::length_error Input extents exceed the supported index range.
+   * @note Reports a SLIC error if spaces, callback, geometry selectors, offsets, or node counts are invalid.
+   * @note Reports a SLIC error if input extents exceed the supported index range.
    */
   MfemVectorAssembler( MfemVectorSpace space, std::vector<MfemVectorBlock> blocks );
 
@@ -104,14 +105,15 @@ class MfemVectorAssembler {
    * @tparam Exec Concrete execution mode using the view.
    * @return View into this vector and the supplied connectivity. Keep both alive until the kernel finishes;
    * do not request another memory space while a kernel is using the view.
-   * @throws std::invalid_argument NumBlocks does not match the configuration.
+   * @note Reports a SLIC error if NumBlocks does not match the configuration.
    */
   template <ExecutionMode Exec, IndexT NumBlocks>
   MfemVectorAssemblyView<NumBlocks> view()
   {
     static_assert( NumBlocks > 0 );
     if ( blocks_.size() != static_cast<std::size_t>( NumBlocks ) ) {
-      throw std::invalid_argument( "Vector view block count does not match its configuration." );
+      SLIC_ERROR( "Vector view block count does not match its configuration." );
+      return {};
     }
     const bool use_device = isOnDevice( Exec );
     redecomp_values_.UseDevice( use_device );
@@ -135,13 +137,14 @@ class MfemVectorAssembler {
    * @tparam Exec Concrete execution mode.
    * @param pairs Supplied execution-accessible pairs.
    * @param read_value Input reader in node, then value-index order.
-   * @throws std::invalid_argument Template counts do not match the configuration; nothing is added.
+   * @note Reports a SLIC error if template counts do not match the configuration; nothing is added.
    */
   template <ExecutionMode Exec, IndexT SizeValues, IndexT NumBlocks, typename ValueReader>
   void addPairs( const ArrayT<InterfacePair>& pairs, ValueReader read_value )
   {
     if ( SizeValues != size_values_ ) {
-      throw std::invalid_argument( "Vector input count does not match its configured blocks." );
+      SLIC_ERROR( "Vector input count does not match its configured blocks." );
+      return;
     }
     const auto vector_view = view<Exec, NumBlocks>();
     const auto pairs_view = pairs.view();
@@ -169,8 +172,8 @@ namespace detail {
  * @param data Displacement data for the current decomposition; must outlive the returned assembler.
  * @param mesh1 First geometry. @param mesh2 Second geometry.
  * @return Force vector assembler referencing both geometries' connectivities and parent transfer data.
- * @throws std::invalid_argument Geometry dimensions do not match the displacement space.
- * @throws std::length_error Input extents exceed the supported index range. */
+ * @note Reports a SLIC error if geometry dimensions do not match the displacement space.
+ * @note Reports a SLIC error if input extents exceed the supported index range. */
 MfemVectorAssembler makeForceVectorAssembler( const MfemMeshData& data, MeshData::Viewer mesh1,
                                               MeshData::Viewer mesh2 );
 
@@ -178,8 +181,8 @@ MfemVectorAssembler makeForceVectorAssembler( const MfemMeshData& data, MeshData
  * @param data Scalar field data for the current decomposition; must outlive the returned assembler.
  * @param mesh1 Geometry1 connectivity indexing the scalar Redecomp DOFs.
  * @return Vector assembler referencing scalar submesh transfers and geometry1 connectivity.
- * @throws std::invalid_argument The configured FE spaces are not scalar, or the node count is invalid.
- * @throws std::length_error Input extent exceeds the supported index range. */
+ * @note Reports a SLIC error if the configured FE spaces are not scalar, or the node count is invalid.
+ * @note Reports a SLIC error if input extent exceeds the supported index range. */
 MfemVectorAssembler makeScalarFieldVectorAssembler( const MfemSubmeshData& data, MeshData::Viewer mesh1 );
 }  // namespace detail
 }  // namespace tribol

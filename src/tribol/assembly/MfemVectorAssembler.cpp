@@ -4,6 +4,8 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "tribol/assembly/MfemVectorAssembler.hpp"
+#include "axom/slic/interface/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 #ifdef BUILD_REDECOMP
 #include <algorithm>
 #include <limits>
@@ -16,17 +18,19 @@ MfemVectorAssembler::MfemVectorAssembler( MfemVectorSpace space, std::vector<Mfe
   const int num_values_per_node = space_.redecomp_fes.GetVDim();
   if ( num_values_per_node <= 0 || num_values_per_node != space_.final_fes.GetVDim() || !space_.transfer ||
        blocks_.empty() ) {
-    throw std::invalid_argument(
-        "Vector assembly requires matching positive numbers of values per node, a transfer, and blocks." );
+    SLIC_ERROR( "Vector assembly requires matching positive numbers of values per node, a transfer, and blocks." );
+    return;
   }
   for ( const auto& block : blocks_ ) {
     const IndexT num_nodes_per_element = block.connectivity.shape()[1];
     if ( block.geometry < 0 || block.geometry > 1 || block.offset < 0 || num_nodes_per_element <= 0 ) {
-      throw std::invalid_argument( "Vector geometry selectors, offsets, or node counts are invalid." );
+      SLIC_ERROR( "Vector geometry selectors, offsets, or node counts are invalid." );
+      return;
     }
     const IndexT max_size = std::numeric_limits<IndexT>::max();
     if ( num_nodes_per_element > ( max_size - block.offset ) / num_values_per_node ) {
-      throw std::length_error( "Vector input extent exceeds the supported index range." );
+      SLIC_ERROR( "Vector input extent exceeds the supported index range." );
+      return;
     }
     size_values_ = std::max( size_values_, block.offset + num_nodes_per_element * num_values_per_node );
   }
@@ -54,11 +58,11 @@ MfemVectorAssembler makeForceVectorAssembler( const MfemMeshData& data, MeshData
   if ( num_values_per_node <= 0 || mesh1.spatialDim() != num_values_per_node ||
        mesh2.spatialDim() != num_values_per_node || mesh1.numberOfNodesPerElement() <= 0 ||
        mesh2.numberOfNodesPerElement() <= 0 ) {
-    throw std::invalid_argument( "Force vector assembly requires matching geometry and FE-space dimensions." );
+    SLIC_ERROR( "Force vector assembly requires matching geometry and FE-space dimensions." );
   }
   const IndexT num_geom1_nodes = mesh1.numberOfNodesPerElement();
   if ( num_geom1_nodes > std::numeric_limits<IndexT>::max() / num_values_per_node ) {
-    throw std::length_error( "Force vector input extent exceeds the supported index range." );
+    SLIC_ERROR( "Force vector input extent exceeds the supported index range." );
   }
   return {
       { *data.GetParentCoords().ParFESpace(), redecomp_fes,
@@ -71,7 +75,7 @@ MfemVectorAssembler makeForceVectorAssembler( const MfemMeshData& data, MeshData
 MfemVectorAssembler makeScalarFieldVectorAssembler( const MfemSubmeshData& data, MeshData::Viewer mesh1 )
 {
   if ( data.GetRedecompFESpace().GetVDim() != 1 || data.GetSubmeshFESpace().GetVDim() != 1 ) {
-    throw std::invalid_argument( "Scalar field vector assembly requires scalar FE spaces." );
+    SLIC_ERROR( "Scalar field vector assembly requires scalar FE spaces." );
   }
   return { { data.GetSubmeshFESpace(), data.GetRedecompFESpace(),
              [&data]( const mfem::GridFunction& values, mfem::Vector& destination ) {

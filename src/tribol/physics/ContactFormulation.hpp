@@ -11,10 +11,11 @@
 #define SRC_TRIBOL_PHYSICS_CONTACTFORMULATION_HPP_
 
 #include "tribol/config.hpp"
+#include "axom/slic/interface/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include <memory>
 #include <optional>
-#include <stdexcept>
 #ifdef BUILD_REDECOMP
 #include "mfem.hpp"
 #endif
@@ -60,12 +61,13 @@ class ContactFormulation {
    * @param mesh1 Current first mesh in coupling-scheme order; not retained.
    * @param mesh2 Current second mesh in coupling-scheme order; not retained.
    * @return Caller-owned outputs; uncalculated quantities are absent.
-   * @throws std::logic_error The method does not define a nodal gap field.
+   * @note Reports a SLIC error if the method does not define a nodal gap field.
    */
   virtual ContactFormulationResult computeNodalGaps( [[maybe_unused]] MeshData::Viewer mesh1,
                                                      [[maybe_unused]] MeshData::Viewer mesh2 ) const
   {
-    throw std::logic_error( "This contact formulation does not define nodal gaps." );
+    SLIC_ERROR( "This contact formulation does not define nodal gaps." );
+    return {};
   }
 
   /**

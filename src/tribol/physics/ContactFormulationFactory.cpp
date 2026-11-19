@@ -17,7 +17,8 @@
 
 #include <utility>
 #include <cmath>
-#include <stdexcept>
+#include "axom/slic/interface/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 #include "tribol/geom/OffsetGap.hpp"
 #include "tribol/physics/CommonPlaneFormulation.hpp"
 #include "tribol/enforcement/PenaltyStiffness.hpp"
@@ -43,7 +44,9 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
   }
 
   if ( cs->getContactMethod() == COMMON_PLANE && cs->getParameters().use_common_plane_formulation ) {
-    detail::validateCommonPlaneFormulation( *cs, cs->getParameters().common_plane_compute_jacobian );
+    if ( !detail::validateCommonPlaneFormulation( *cs, cs->getParameters().common_plane_compute_jacobian ) ) {
+      return nullptr;
+    }
 #ifdef BUILD_REDECOMP
     return dispatchExecutionMode( cs->getExecutionMode(),
                                   [&]<ExecutionMode Exec>() { return createCommonPlane<Exec>( cs ); } );
@@ -64,11 +67,12 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
 }
 
 namespace detail {
-void validateCommonPlaneFormulation( CouplingScheme& cs, bool compute_jacobian )
+bool validateCommonPlaneFormulation( CouplingScheme& cs, bool compute_jacobian )
 {
 #ifndef TRIBOL_USE_ENZYME
   if ( compute_jacobian ) {
-    throw std::runtime_error( "Common Plane Jacobian calculation requires Enzyme." );
+    SLIC_ERROR_ROOT( "Common Plane Jacobian calculation requires Enzyme." );
+    return false;
   }
 #else
   (void)compute_jacobian;
@@ -82,28 +86,33 @@ void validateCommonPlaneFormulation( CouplingScheme& cs, bool compute_jacobian )
        options.kinematic_calculation != KINEMATIC_CONSTANT || !options.constraint_type_set ||
        options.constraint_type != KINEMATIC ||
        ( options.rate_calc_set && options.rate_calculation != NO_RATE_PENALTY ) ) {
-    throw std::invalid_argument(
+    SLIC_ERROR_ROOT(
         "Common Plane requires MFEM frictionless common-plane constant-penalty quadrature-point contact." );
+    return false;
   }
   const auto& data = *cs.getMfemMeshData();
   const int order = data.GetParentCoords().ParFESpace()->FEColl()->GetOrder();
   if ( data.GetParentCoords().ParFESpace()->GetParMesh()->SpaceDimension() != 2 ||
        data.GetParentCoords().ParFESpace()->GetVDim() != 2 || order < 1 ||
        ( order > 1 && data.GetLORMesh() == nullptr ) ) {
-    throw std::invalid_argument( "Common Plane supports only 2D linear or LOR-subdivided coordinates." );
+    SLIC_ERROR_ROOT( "Common Plane supports only 2D linear or LOR-subdivided coordinates." );
+    return false;
   }
   const auto* penalty1 = data.GetMesh1KinematicConstantPenalty();
   const auto* penalty2 = data.GetMesh2KinematicConstantPenalty();
   if ( !penalty1 || !penalty2 || !std::isfinite( *penalty1 ) || !std::isfinite( *penalty2 ) || *penalty1 <= 0.0 ||
        *penalty2 <= 0.0 || !std::isfinite( cs.getParameters().residual_gap ) || cs.getParameters().residual_gap < 0.0 ||
        cs.getParameters().quadrature_order < 0 || cs.getParameters().quadrature_order > 5 ) {
-    throw std::invalid_argument(
+    SLIC_ERROR_ROOT(
         "Common Plane requires positive finite mesh penalties, a nonnegative finite residual gap, and "
         "quadrature order 0-5." );
+    return false;
   }
+  return true;
 #else
   (void)cs;
-  throw std::runtime_error( "Common Plane requires Redecomp." );
+  SLIC_ERROR_ROOT( "Common Plane requires Redecomp." );
+  return false;
 #endif
 }
 }  // namespace detail
@@ -132,7 +141,8 @@ template <ExecutionMode Exec>
 std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
 {
   if ( cs->getParameters().common_plane_compute_jacobian && !cs->hasMfemJacobianData() ) {
-    throw std::invalid_argument( "Common Plane requires parent Jacobian transfer data." );
+    SLIC_ERROR_ROOT( "Common Plane requires parent Jacobian transfer data." );
+    return nullptr;
   }
   const auto& data = *cs->getMfemMeshData();
   const auto* scale1 = data.GetMesh1KinematicPenaltyScale();
@@ -153,7 +163,8 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
               *cs->getMfemMeshData(), *cs->getMfemJacobianData(), std::move( rule_generator ), penalty,
               OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap }, std::move( pair_builder ) );
 #else
-          throw std::runtime_error( "Common Plane Jacobian calculation requires Enzyme." );
+          SLIC_ERROR_ROOT( "Common Plane Jacobian calculation requires Enzyme." );
+          return nullptr;
 #endif
         }
         return std::make_unique<
@@ -200,7 +211,8 @@ template <ExecutionMode Exec>
 std::unique_ptr<ContactFormulation> createEnergyMortar( CouplingScheme* cs )
 {
   if ( !cs->hasMfemData() ) {
-    throw std::invalid_argument( "ENERGY_MORTAR requires MFEM mesh data." );
+    SLIC_ERROR_ROOT( "ENERGY_MORTAR requires MFEM mesh data." );
+    return nullptr;
   }
   if ( cs->getEnforcementMethod() == PENALTY ) {
     const auto& options = cs->getEnforcementOptions().penalty_options;
@@ -210,11 +222,13 @@ std::unique_ptr<ContactFormulation> createEnergyMortar( CouplingScheme* cs )
       return nullptr;
     }
     if ( options.kinematic_calculation != KINEMATIC_CONSTANT ) {
-      throw std::invalid_argument( "Energy Mortar requires constant penalty stiffness." );
+      SLIC_ERROR_ROOT( "Energy Mortar requires constant penalty stiffness." );
+      return nullptr;
     }
   } else if ( cs->getEnforcementMethod() != LAGRANGE_MULTIPLIER ||
               cs->getParameters().enforcement_location != EnforcementLocation::Nodal ) {
-    throw std::invalid_argument( "Energy Mortar requires penalty enforcement or nodal Lagrange multipliers." );
+    SLIC_ERROR_ROOT( "Energy Mortar requires penalty enforcement or nodal Lagrange multipliers." );
+    return nullptr;
   }
   const SmoothedProjectedEdgeMapping mapping{};
   return createWithQuadratureRuleGenerator(

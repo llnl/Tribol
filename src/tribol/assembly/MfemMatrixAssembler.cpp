@@ -4,6 +4,8 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "tribol/assembly/MfemMatrixAssembler.hpp"
+#include "axom/slic/interface/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 #ifdef BUILD_REDECOMP
 #include <array>
 #include <utility>
@@ -17,8 +19,8 @@ MfemMatrixAssembler::MfemMatrixAssembler( MfemMatrixSpace rows, MfemMatrixSpace 
   const int num_row_values_per_node = rows.redecomp_fes.GetVDim();
   const int num_column_values_per_node = columns.redecomp_fes.GetVDim();
   if ( num_pairs < 0 || blocks.empty() || num_row_values_per_node <= 0 || num_column_values_per_node <= 0 ) {
-    throw std::invalid_argument(
-        "Matrix assembly requires blocks, positive numbers of values per node, and a nonnegative pair count." );
+    SLIC_ERROR( "Matrix assembly requires blocks, positive numbers of values per node, and a nonnegative pair count." );
+    return;
   }
   layouts_.reserve( blocks.size() );
   block_storage_.reserve( blocks.size() );
@@ -26,13 +28,15 @@ MfemMatrixAssembler::MfemMatrixAssembler( MfemMatrixSpace rows, MfemMatrixSpace 
   for ( const auto& block : blocks ) {
     if ( block.row_geometry < 0 || block.row_geometry > 1 || block.column_geometry < 0 || block.column_geometry > 1 ||
          block.num_row_nodes <= 0 || block.num_column_nodes <= 0 || block.row_offset < 0 || block.column_offset < 0 ) {
-      throw std::invalid_argument( "Matrix block geometry selectors, node counts, and offsets are invalid." );
+      SLIC_ERROR( "Matrix block geometry selectors, node counts, and offsets are invalid." );
+      return;
     }
     const IndexT size_rows = detail::checkedMatrixSize( block.num_row_nodes, num_row_values_per_node );
     const IndexT size_columns = detail::checkedMatrixSize( block.num_column_nodes, num_column_values_per_node );
     if ( block.row_offset > std::numeric_limits<IndexT>::max() - size_rows ||
          block.column_offset > std::numeric_limits<IndexT>::max() - size_columns ) {
-      throw std::length_error( "Matrix input extents exceed the supported index range." );
+      SLIC_ERROR( "Matrix input extents exceed the supported index range." );
+      return;
     }
     const IndexT block_size = detail::checkedMatrixSize( size_rows, size_columns );
     detail::checkedMatrixSize( num_pairs, block_size );
@@ -66,7 +70,7 @@ MfemMatrixAssembler makeForceJacobianAssembler( const MfemMeshData& mesh_data, c
   const MdArray<IndexT, 2> nodes{ mesh1.numberOfNodesPerElement(), mesh2.numberOfNodesPerElement() };
   const auto& coordinate_space = *mesh_data.GetRedecompResponse().FESpace();
   if ( dim <= 0 || mesh2.spatialDim() != dim || coordinate_space.GetVDim() != dim || nodes[0] <= 0 || nodes[1] <= 0 ) {
-    throw std::invalid_argument( "Force Jacobian assembly requires matching dimensions and positive node counts." );
+    SLIC_ERROR( "Force Jacobian assembly requires matching dimensions and positive node counts." );
   }
   const MdArray<IndexT, 2> offsets{ 0, checkedMatrixSize( nodes[0], dim ) };
   const std::array<const Array1D<int>*, 2> maps{ &mesh_data.GetElemMap1(), &mesh_data.GetElemMap2() };
@@ -91,8 +95,7 @@ MfemMatrixAssembler makeScalarFieldJacobianAssembler( const MfemMeshData& mesh_d
   const auto& field = submesh_data.GetRedecompFESpace();
   if ( field.GetVDim() != 1 || submesh_data.GetSubmeshFESpace().GetVDim() != 1 || mesh1.spatialDim() <= 0 ||
        mesh1.spatialDim() != coordinates.GetVDim() || mesh2.spatialDim() != coordinates.GetVDim() ) {
-    throw std::invalid_argument(
-        "Scalar field Jacobian assembly requires scalar rows and matching coordinate dimensions." );
+    SLIC_ERROR( "Scalar field Jacobian assembly requires scalar rows and matching coordinate dimensions." );
   }
   const IndexT nodes1 = mesh1.numberOfNodesPerElement();
   const auto& map1 = mesh_data.GetElemMap1();

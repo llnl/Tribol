@@ -11,24 +11,30 @@
 #define SRC_TRIBOL_ENFORCEMENT_PENALTYSTIFFNESS_HPP_
 
 #include <cmath>
-#include <stdexcept>
 
 #include "tribol/common/BasicTypes.hpp"
+#include "axom/slic/interface/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 #include "tribol/common/Enzyme.hpp"
 
 namespace tribol {
 namespace detail {
 /**
+ * @brief Whether a mesh or effective penalty can be used by a formulation.
+ * @param stiffness Mesh or effective stiffness.
+ * @return True for a positive, finite stiffness.
+ */
+inline bool isValidPenaltyStiffness( RealT stiffness ) { return std::isfinite( stiffness ) && stiffness > 0.0; }
+
+/**
  * @brief Check a mesh or effective penalty before constructing a formulation.
  * @param stiffness Mesh or effective stiffness.
- * @return The supplied positive, finite stiffness.
- * @throws std::invalid_argument Stiffness is nonpositive or nonfinite; no value is returned.
+ * @return The supplied stiffness.
+ * @note Reports a SLIC error if stiffness is nonpositive or nonfinite.
  */
 inline RealT checkedPenaltyStiffness( RealT stiffness )
 {
-  if ( !std::isfinite( stiffness ) || stiffness <= 0.0 ) {
-    throw std::invalid_argument( "Contact penalty stiffness must be positive and finite." );
-  }
+  SLIC_ERROR_ROOT_IF( !isValidPenaltyStiffness( stiffness ), "Contact penalty stiffness must be positive and finite." );
   return stiffness;
 }
 }  // namespace detail

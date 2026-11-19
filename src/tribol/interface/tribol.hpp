@@ -142,8 +142,8 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
  * ENERGY_MORTAR creates pressure/gap fields only for nodal enforcement. Switching locations releases the previous
  * formulation and its cached outputs and initializes the selected transfer data on any existing decomposition.
  * Views into the previous pressure/gap fields must not be retained across this call.
- * @throws std::invalid_argument The value is not a supported location, Common Plane was given nodal enforcement, or
- * quadrature-point Energy Mortar was given non-penalty enforcement; the coupling scheme is unchanged.
+ * @note Reports a SLIC error, leaving the coupling scheme unchanged, if the value is not a supported location,
+ * Common Plane was given nodal enforcement, or quadrature-point Energy Mortar was given non-penalty enforcement.
  */
 void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
 
@@ -258,7 +258,7 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
  *
  * @note Configure the residual gap after registering the coupling scheme and before its first update. For MFEM
  * coupling schemes, this must precede the first call to updateMfemParallelDecomposition().
- * @throws std::invalid_argument The residual gap is negative or nonfinite; the coupling scheme is unchanged.
+ * @note Reports a SLIC error, leaving the coupling scheme unchanged, if the residual gap is negative or nonfinite.
  */
 void setResidualGap( IndexT cs_id, RealT residual_gap );
 
@@ -557,7 +557,8 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* mesh_id1, I
  * \param [in/out] dt the simulation timestep input with Tribol timestep vote output
  *
  * \return rc return code, a non-zero return code indicates an error.
- * @throws std::logic_error Energy Mortar penalty settings are incomplete; no contact is calculated for that scheme.
+ * @note Reports a SLIC error if Energy Mortar penalty settings are incomplete; no contact is calculated for that
+ * scheme.
  */
 int update( int cycle, RealT t, RealT& dt );
 

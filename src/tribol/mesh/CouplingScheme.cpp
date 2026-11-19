@@ -7,7 +7,6 @@
 
 // C++ includes
 #include <cmath>
-#include <stdexcept>
 
 // MFEM includes
 #include "mfem.hpp"
@@ -1042,11 +1041,13 @@ void CouplingScheme::performBinning()
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
   if ( usesContactFormulation() && !m_formulation ) {
-    throw std::logic_error( "Contact formulation is not ready; call update() after changing its configuration." );
+    SLIC_ERROR_ROOT( "Contact formulation is not ready; call update() after changing its configuration." );
+    return 1;
   }
   if ( m_formulation ) {
-    if ( m_parameters.use_common_plane_formulation ) {
-      detail::validateCommonPlaneFormulation( *this, m_parameters.common_plane_compute_jacobian );
+    if ( m_parameters.use_common_plane_formulation &&
+         !detail::validateCommonPlaneFormulation( *this, m_parameters.common_plane_compute_jacobian ) ) {
+      return 1;
     }
     // The formulation performs the search and gap calculations needed to compute forces from the current mesh data.
 #ifdef BUILD_REDECOMP
@@ -1202,12 +1203,12 @@ mfem::HypreParVector& CouplingScheme::getContactMultiplier()
     // LM values are caller inputs for the first update, so prepare their transfer space without constructing the
     // contact formulation early.
     if ( !setMeshPointers() || checkExecutionModeData() == 1 ) {
-      throw std::logic_error( "Contact multiplier input requires valid registered meshes." );
+      SLIC_ERROR_ROOT( "Contact multiplier input requires valid registered meshes." );
     }
     updateEnergyMortarTransferData();
   }
   if ( !m_contact_multiplier ) {
-    throw std::logic_error( "No contact multiplier input is available." );
+    SLIC_ERROR_ROOT( "No contact multiplier input is available." );
   }
   return *m_contact_multiplier;
 }
@@ -1223,7 +1224,8 @@ void CouplingScheme::updateEnergyMortarTransferData()
   std::unique_ptr<MfemSubmeshData> dual_data;
   if ( nodal ) {
     if ( m_contactModel != FRICTIONLESS ) {
-      throw std::invalid_argument( "Nodal Energy Mortar requires frictionless contact." );
+      SLIC_ERROR_ROOT( "Nodal Energy Mortar requires frictionless contact." );
+      return;
     }
     const auto* parent_fes = mesh_data.GetParentCoords().ParFESpace();
     auto pressure_fec = std::make_unique<mfem::H1_FECollection>( parent_fes->FEColl()->GetOrder(),
@@ -1267,7 +1269,8 @@ void CouplingScheme::updateEnergyMortarTransferData()
 void CouplingScheme::buildContactFormulation()
 {
   if ( !usesContactFormulation() ) {
-    throw std::logic_error( "Contact formulation construction requires Energy Mortar or opted-in Common Plane." );
+    SLIC_ERROR_ROOT( "Contact formulation construction requires Energy Mortar or opted-in Common Plane." );
+    return;
   }
 #ifdef BUILD_REDECOMP
   if ( m_contactMethod == ENERGY_MORTAR && hasMfemData() ) {
@@ -1276,10 +1279,9 @@ void CouplingScheme::buildContactFormulation()
 #endif
   setContactFormulation( createContactFormulation( this ) );
   if ( !m_formulation ) {
-    if ( m_contactMethod == ENERGY_MORTAR ) {
-      throw std::logic_error( "Configure Energy Mortar penalty settings before calling update()." );
-    }
-    throw std::logic_error( "The enabled contact formulation could not be constructed." );
+    SLIC_ERROR_ROOT( ( m_contactMethod == ENERGY_MORTAR
+                           ? "Configure Energy Mortar penalty settings before calling update()."
+                           : "The enabled contact formulation could not be constructed." ) );
   }
 }
 

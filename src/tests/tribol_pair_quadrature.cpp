@@ -17,6 +17,7 @@
 #include <stdexcept>
 #include <utility>
 #include "gtest/gtest.h"
+#include "SlicErrorTest.hpp"
 #include "axom/slic/core/SimpleLogger.hpp"
 #include "ExecutionTest.hpp"
 #include "tribol/common/BasicTypes.hpp"
@@ -1059,8 +1060,8 @@ TEST( QuadratureRuleGeneratorFactory, rejects_unsupported_orders_without_creatin
     SCOPED_TRACE( testing::Message() << "unsupported polynomial degree=" << requested_order );
     const int num_previous_creations = num_creations;
     // Invalid requests must report an argument error instead of silently selecting another degree.
-    EXPECT_THROW( createWithQuadratureRuleGenerator( requested_order, mapping, identify_selected_rule_generator ),
-                  std::invalid_argument );
+    EXPECT_SLIC_ERROR(
+        createWithQuadratureRuleGenerator( requested_order, mapping, identify_selected_rule_generator ) );
     // Rejection must happen before any creation callback runs.
     EXPECT_EQ( num_creations, num_previous_creations );
   }
