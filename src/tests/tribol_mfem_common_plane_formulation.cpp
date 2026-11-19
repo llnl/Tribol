@@ -5,12 +5,11 @@
 
 /**
  * @file
- * @brief Test MFEM configuration and assembly of the composed Common Plane formulation on parent-mesh true DOFs.
+ * @brief Verify public Common Plane formulation configuration and assembly with MFEM meshes.
  *
- * The main fixture couples boundaries divided into two and three edges, so opposing surface nodes do not align. The
- * tests check formulation selection and rebuilding, residual-only and Jacobian modes, quadrature and penalty settings,
- * MPI ranks without contact elements, and higher-order 2D coordinates transferred through a low-order-refined mesh.
- * Pair-level quadrature and differentiation are tested in tribol_common_plane_formulation.cpp.
+ * Tests cover formulation selection and rebuilding, residual and Jacobian modes, quadrature and penalty settings,
+ * higher-order coordinates transferred through a low-order-refined mesh, and MPI ranks without contact elements.
+ * Pair-level quadrature and derivatives are tested separately.
  */
 #include <cmath>
 #include <limits>
@@ -811,6 +810,8 @@ TEST( CommonPlaneSelection, rejects_unsupported_methods_models_and_cases )
   for ( const auto configuration : unsupported_configurations ) {
     constexpr int horizontal_element_count = 1;
     constexpr int vertical_element_count = 1;
+    // A single unit-square element supplies distinct bottom and top boundaries. Contact geometry is intentionally
+    // unimportant because each configuration must be rejected before formulation resources are constructed.
     mfem::ParMesh parent_mesh = shared::ParMeshBuilder(
         MPI_COMM_WORLD, shared::MeshBuilder::SquareMesh( horizontal_element_count, vertical_element_count ) );
     constexpr int spatial_dim = 2;
@@ -894,8 +895,8 @@ TEST( CommonPlaneSelection, evaluates_residuals_and_jacobians_with_lor_subdivisi
   constexpr int upper_contact_boundary_attribute = 5;
   constexpr int upper_noncontact_boundary_attribute = 6;
   constexpr int upper_body_attribute = 2;
-  // Shift the upper nonmatching body horizontally so projection endpoints do not coincide under coordinate
-  // perturbations.
+  // The lower body's top boundary has two edges. The upper body's bottom boundary has three edges, starts 0.01 below
+  // the lower top boundary, and is shifted right by 0.13 so projection endpoints do not coincide under perturbations.
   mfem::ParMesh parent_mesh = shared::ParMeshBuilder(
       MPI_COMM_WORLD, shared::MeshBuilder::Unify(
                           { shared::MeshBuilder::SquareMesh( lower_boundary_edge_count, vertical_element_count ),

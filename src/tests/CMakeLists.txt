@@ -9,7 +9,7 @@
 # Add single source tests
 #------------------------------------------------------------------------------
 set( tribol_tests
-     tribol_energy_mortar_definition.cpp
+     tribol_energy_mortar_pair_kernels.cpp
      tribol_basis_function.cpp
      tribol_check_tpl.cpp
      tribol_common_plane_formulation.cpp
@@ -80,7 +80,7 @@ endforeach()
 
 if(TRIBOL_USE_ENZYME)
   # Enzyme rejects the aggregate-heavy edge geometry IR produced at -O0. Both tests differentiate pair functions.
-  target_compile_options(tribol_energy_mortar_definition_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
+  target_compile_options(tribol_energy_mortar_pair_kernels_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
   target_compile_options(tribol_common_plane_formulation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
 endif()
 
@@ -174,7 +174,7 @@ endif()
 if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 
   set( combined_tests
-      tribol_mfem_vector_assembler.cpp
+      tribol_mfem_residual_and_jacobian_assembly.cpp
       tribol_mfem_common_plane_formulation.cpp
       tribol_mfem_data.cpp
       tribol_mfem_common_plane.cpp
@@ -215,7 +215,8 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 
   endforeach()
 
-  blt_add_test(NAME tribol_mfem_vector_assembler COMMAND tribol_mfem_vector_assembler_test NUM_MPI_TASKS 1)
+  blt_add_test(NAME tribol_mfem_residual_and_jacobian_assembly
+      COMMAND tribol_mfem_residual_and_jacobian_assembly_test NUM_MPI_TASKS 1)
   if(TRIBOL_USE_ENZYME)
     # Direct residual evaluators instantiate Enzyme's geometry derivatives in this translation unit.
     target_compile_options(tribol_mfem_common_plane_formulation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
@@ -237,7 +238,7 @@ if( TRIBOL_USE_ENZYME )
       tribol_enzyme_nodal_normal.cpp
       tribol_enzyme_mortar_assembled.cpp
       tribol_enzyme_poly_intersect.cpp
-      tribol_energy_mortar_quadrature_settings.cpp
+      tribol_mfem_energy_mortar_formulation.cpp
       tribol_energy_mortar_patch.cpp
       tribol_energy_mortar_patch_LM.cpp
       tribol_finite_diff_energy_mortar.cpp
@@ -271,7 +272,7 @@ if( TRIBOL_USE_ENZYME )
 
   # Enzyme rejects the aggregate-heavy edge geometry IR produced at -O0.
   target_compile_options(tribol_finite_diff_energy_mortar_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
-  target_compile_options(tribol_energy_mortar_quadrature_settings_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
+  target_compile_options(tribol_mfem_energy_mortar_formulation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
 
 endif()
 
@@ -297,8 +298,8 @@ endif()
 if( TRIBOL_USE_ENZYME )
 
   if( TRIBOL_USE_MPI )
-    blt_add_test(NAME tribol_energy_mortar_quadrature_settings_2rank
-        COMMAND tribol_energy_mortar_quadrature_settings_test NUM_MPI_TASKS 2)
+    blt_add_test(NAME tribol_mfem_energy_mortar_formulation_2rank
+        COMMAND tribol_mfem_energy_mortar_formulation_test NUM_MPI_TASKS 2)
   endif()
 
   set(enzyme_smoke_depends ClangEnzymeFlags gtest)

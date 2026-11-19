@@ -318,10 +318,10 @@ TEST( BasisFunction, reproduces_quadratic_polynomials )
                comparison_tolerance );
 }
 
+// This test ensures analytical parametric derivatives have the correct sign, scale, and local ordering for simplex
+// and tensor-product elements.
 TEST( BasisFunction, parametric_derivatives_match_finite_differences )
 {
-  // Independent finite differences catch sign, scaling, and local-order mistakes in the analytical parametric
-  // derivatives for both simplex and tensor-product elements.
   ExpectParametricDerivativesMatchFiniteDifferences<tribol::BasisFunction<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>>(
       { 0.23 } );
   ExpectParametricDerivativesMatchFiniteDifferences<tribol::BasisFunction<tribol::TRIANGLE, tribol::LINEAR_LAGRANGE>>(

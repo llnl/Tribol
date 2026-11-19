@@ -5,7 +5,7 @@
 
 /**
  * @file
- * @brief Check SLIC error reporting in unit tests without gtest death tests.
+ * @brief Provide a Google Test assertion for expected SLIC errors without using death tests.
  */
 #ifndef SRC_TESTS_SLICERRORTEST_HPP_
 #define SRC_TESTS_SLICERRORTEST_HPP_

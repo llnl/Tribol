@@ -5,13 +5,10 @@
 
 /**
  * @file
- * @brief Test common-line quadrature and direct penalty residuals on every enabled backend. Host Enzyme checks compare
- * the full pair Jacobian with finite differences; MFEM assembly and selection have separate integration tests.
- * Crossing edges check clipped interval bounds, point locations, and nodal loads from pointwise pressure. One-point
- * loads match centroid pressure; higher-order rules integrate the varying pressure. Gap offsets check activation at
- * individual quadrature points. Independent residual bases and prescribed nodal pressure check shared traction
- * integration. Value-only pair kernels check activation, quadrature failures, allocator selection, and empty input on
- * every enabled execution backend. Values from an earlier call remain unchanged after another evaluation.
+ * @brief Verify Common Plane pair quadrature, residuals, and automatic derivatives independently of MFEM assembly.
+ *
+ * Direct backend tests cover overlap mapping, physical integration weights, prescribed pressure, gap activation,
+ * quadrature failures, and result ownership. Host finite differences check the complete pair residual Jacobian.
  */
 #include <cmath>
 #include "gtest/gtest.h"
@@ -366,6 +363,8 @@ TEST_P( CommonPlaneTest, reports_geometry_and_capacity_without_writing )
   const auto quadrature_metadata_view = quadrature_metadata.view();
   const auto point_storage_view = point_storage.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
+    // The baseline pair is two oppositely directed, fully overlapping horizontal edges. The alternatives collapse one
+    // edge, move the second edge beyond x=2, reverse it to the same direction, or rotate it perpendicular to edge1.
     const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
     const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, 0.1 }, MdArray<RealT, 2>{ 0.0, 0.1 } };
     const Coordinates invalid{};
@@ -553,6 +552,8 @@ TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_deri
       PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>,
                            CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
   const PairIntegral pair_integral{ {}, { 1.0 } };
+  // Mesh1 contains one horizontal edge at y=0. Mesh2 contains four oppositely directed candidates: a penetrating edge
+  // at y=0.1, an open edge at y=-0.1, a coincident edge, and a collapsed edge with both nodes at the origin.
   const auto mesh1_x = copyToExecutionSpace<RealT>( { 0.0, 2.0 } );
   const auto mesh1_y = copyToExecutionSpace<RealT>( { 0.0, 0.0 } );
   const auto mesh1_connectivity = copyToExecutionSpace<IndexT>( { 0, 1 } );

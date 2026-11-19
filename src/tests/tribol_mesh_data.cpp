@@ -64,6 +64,8 @@ TEST( MeshData, stores_linear_edge_data )
   EXPECT_EQ( mesh_view.numberOfNodesPerElement(), linear_edge_node_count );
 }
 
+// This test ensures getFaceCoords() follows each element's local connectivity order and returns a coordinate snapshot
+// that remains valid after the caller changes the original nodal arrays.
 TEST( MeshData, returns_owned_face_coordinates_in_local_node_order )
 {
   constexpr tribol::IndexT num_elements = 2;
@@ -71,6 +73,8 @@ TEST( MeshData, returns_owned_face_coordinates_in_local_node_order )
   constexpr std::array<tribol::IndexT, num_elements * linear_edge_node_count> connectivity{ 3, 1, 2, 0 };
   std::array<tribol::RealT, num_nodes> x{ 1.0, 3.0, -2.0, 0.0 };
   std::array<tribol::RealT, num_nodes> y{ 1.0, 4.0, 1.0, 0.0 };
+  // The connectivity defines one edge from node 3 at (0,0) to node 1 at (3,4), and another from node 2 at (-2,1) to
+  // node 0 at (1,1). The nonsequential node IDs make local ordering visible in the returned coordinates.
   tribol::MeshData mesh( mesh_id, num_elements, num_nodes, connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE,
                          x.data(), y.data(), nullptr, tribol::MemorySpace::Host );
   const auto mesh_view = mesh.getView();

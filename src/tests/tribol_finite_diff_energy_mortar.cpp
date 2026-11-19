@@ -106,12 +106,16 @@ void checkRuleGenerator()
   const Gap gap{ {}, 0.05 };
   const PairEnergyIntegral<RuleGenerator, PenaltyEnergyDensity<Gap>> energy{ rule_generator, { 7.0, gap } };
   const PairNodalGapIntegral<RuleGenerator, Gap, BasisFunction<EDGE, LINEAR_LAGRANGE>> nodal{ rule_generator, gap };
+  // The two oblique, oppositely directed edges overlap only through their interiors, placing both projected endpoints
+  // inside the smoothing regions rather than on an exact endpoint branch.
   const MdArray<RealT, decltype( energy )::size_coords> coordinates{ 0.0, 0.0, 1.7, 0.1, 1.6, 0.25, 0.25, 0.15 };
   SCOPED_TRACE( testing::Message() << "Gauss points: " << NumPoints );
   checkFiniteDifferences( energy, coordinates, MdArray<RealT, decltype( energy )::size_values>{ 1.0 } );
   checkFiniteDifferences( nodal, coordinates, MdArray<RealT, decltype( nodal )::size_values>{ 0.3, -0.2, 0.4, 0.1 } );
 }
 
+// This test ensures each production Gauss rule differentiates energy and nodal integrals through the smoothed overlap
+// mapping.
 TEST( EnergyMortarFiniteDifference, smoothing_branch_with_production_quadrature )
 {
   checkRuleGenerator<1>();
@@ -119,11 +123,14 @@ TEST( EnergyMortarFiniteDifference, smoothing_branch_with_production_quadrature 
   checkRuleGenerator<3>();
 }
 
+// This test ensures a collapsed edge reports invalid geometry and returns zero values and derivatives instead of
+// differentiating an unusable quadrature rule.
 TEST( EnergyMortarFiniteDifference, invalid_geometry_reports_status_before_derivatives )
 {
   using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
   using Energy = PairEnergyIntegral<RuleGenerator, PenaltyEnergyDensity<OpposingNormalGap>>;
   const Energy energy{ RuleGenerator{}, { 1.0 } };
+  // Geometry1 has two coincident nodes at the origin; geometry2 is a valid unit edge on the same line.
   const MdArray<RealT, Energy::size_coords> coordinates{ 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0 };
   const typename Energy::Coords1 coords1{ coordinates.data(), Energy::size_geom1_coords };
   const typename Energy::Coords2 coords2{ coordinates.data() + Energy::size_geom1_coords, Energy::size_geom2_coords };
@@ -155,6 +162,8 @@ TEST( EnergyMortarValues, residual_gap_shifts_nodal_integrals_and_activates_ener
   constexpr RealT residual_gap = 0.15;
   constexpr RealT penalty = 3.0;
   constexpr RealT comparison_tolerance = 1.0e-14;
+  // Oppositely directed horizontal edges overlap from x=0.2 to x=0.8 and are separated by 0.1. The 0.15 residual gap
+  // therefore changes the open geometric gap into an active penalty gap without changing the overlap interval.
   const MdArray<RealT, Nodal::size_coords> coordinates{ 1.0, 0.0, 0.0, 0.0, 0.2, separation, 0.8, separation };
   const typename Nodal::Coords1 coords1{ coordinates.data(), Nodal::size_geom1_coords };
   const typename Nodal::Coords2 coords2{ coordinates.data() + Nodal::size_geom1_coords, Nodal::size_geom2_coords };
@@ -193,6 +202,7 @@ TEST( EnergyMortarValues, preserves_normal_gap_for_very_short_valid_edge )
   constexpr RealT edge_length = 1.0e-13;
   constexpr RealT separation = 0.25;
   constexpr RealT comparison_tolerance = 1.0e-12;
+  // Two oppositely directed horizontal edges have the same very short length and a fixed normal separation.
   const MdArray<RealT, Nodal::size_coords> coordinates{ 0.0,         0.0,        edge_length, 0.0,
                                                         edge_length, separation, 0.0,         separation };
   const Nodal nodal{ RuleGenerator{ SmoothedProjectedEdgeMapping{ 0.0 } } };
