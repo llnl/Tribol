@@ -74,8 +74,8 @@ ArrayT<InterfacePair> ProjectedEdgeSearch::filterCandidatePairs( const ArrayT<In
                 retained_pairs_view[retained_index] = candidates[candidate_index];
               } );
 
-  SLIC_INFO( "Projected-edge search retained " << retained_pairs.size() << " of " << candidate_count
-                                               << " spatial candidate pairs." );
+  SLIC_DEBUG( "Projected-edge search retained " << retained_pairs.size() << " of " << candidate_count
+                                                << " spatial candidate pairs." );
   return retained_pairs;
 }
 

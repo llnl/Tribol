@@ -75,8 +75,8 @@ void FilterCandidatePairs( CouplingScheme& coupling_scheme, ArrayT<InterfacePair
         interface_pairs_view[accepted_index] = candidate_view[candidate];
       } );
 
-  SLIC_INFO( "Coupling scheme has " << interface_pairs.size() << " pairs after filtering " << candidate_count
-                                    << " coarse candidates." );
+  SLIC_DEBUG( "Coupling scheme has " << interface_pairs.size() << " pairs after filtering " << candidate_count
+                                     << " coarse candidates." );
 }
 
 /**
