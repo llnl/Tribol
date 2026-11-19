@@ -5,24 +5,15 @@
 
 /**
  * @file
- * @brief Check explicit MFEM Common Plane selection, nonmatching constant-traction patches, and parent Jacobians.
- * The same tests run on one and two ranks; decomposition onto rank zero exercises a rank without surface elements.
- * Direct calls check output availability and validity after destroying the formulation.
- * Fixed penalties and MFEM setters that invalidate formulations are checked without refreshing the decomposition.
- * Direct residual and Jacobian scaling checks use Sequential and OpenMP when enabled, with host mesh storage.
- * Tilted nonmatching surfaces check agreement with legacy forces for one point and a different load distribution with
- * higher-order rules on the clipped overlap.
- * Local quadrature and full pair derivatives are checked in tribol_common_plane_formulation.
- * Residual-only selection and mode changes run without Enzyme as well, checking that no Jacobian transfers or outputs
- * are created. Nonmatching legacy forces provide an independent reference for residual-only assembly.
- * Formulation updates leave legacy face geometry and method storage unallocated.
- * Higher-order 2D meshes with LOR subdivision check residual agreement with legacy Common Plane forces and
- * finite-difference Jacobian accuracy across LOR transfers. Higher-order 2D meshes without LOR and 3D parents remain
- * rejected.
+ * @brief Test MFEM configuration and assembly of the composed Common Plane formulation on parent-mesh true DOFs.
+ *
+ * The main fixture couples boundaries divided into two and three edges, so opposing surface nodes do not align. The
+ * tests check formulation selection and rebuilding, residual-only and Jacobian modes, quadrature and penalty settings,
+ * MPI ranks without contact elements, and higher-order 2D coordinates transferred through a low-order-refined mesh.
+ * Pair-level quadrature and differentiation are tested in tribol_common_plane_formulation.cpp.
  */
 #include <cmath>
 #include <limits>
-#include <stdexcept>
 #include "gtest/gtest.h"
 #include "SlicErrorTest.hpp"
 #include "axom/slic/core/SimpleLogger.hpp"
@@ -62,31 +53,52 @@ bool usesCommonPlaneRule( const ContactFormulation* formulation )
 }
 #endif
 
-/** @brief Register a two-versus-three-element contact patch for each supported rule. */
+/** @brief Register contact between boundaries divided into two and three edges for each supported rule. */
 class MfemCommonPlaneTest : public testing::TestWithParam<int> {
  protected:
-  /** @brief Create separated bodies with a uniform 0.01 penetration along nonmatching boundary meshes. */
+  static constexpr IndexT coupling_scheme_id = 0;
+
+  /** @brief Create two bodies whose opposing boundaries use two and three edges and overlap by 0.01. */
   void SetUp() override
   {
-    mesh_ = std::make_unique<mfem::ParMesh>( static_cast<const mfem::ParMesh&>( shared::ParMeshBuilder(
-        MPI_COMM_WORLD,
-        shared::MeshBuilder::Unify( { shared::MeshBuilder::SquareMesh( 2, 1 ), shared::MeshBuilder::SquareMesh( 3, 1 )
-                                                                                   .translate( { 0.0, 0.99 } )
-                                                                                   .updateBdrAttrib( 1, 5 )
-                                                                                   .updateBdrAttrib( 3, 6 )
-                                                                                   .updateAttrib( 1, 2 ) } ) ) ) );
-    fec_ = std::make_unique<mfem::H1_FECollection>( 1, 2 );
-    fes_ = std::make_unique<mfem::ParFiniteElementSpace>( mesh_.get(), fec_.get(), 2, mfem::Ordering::byVDIM );
-    coords_ = std::make_unique<mfem::ParGridFunction>( fes_.get() );
-    mesh_->GetNodes( *coords_ );
+    constexpr int lower_boundary_edge_count = 2;
+    constexpr int upper_boundary_edge_count = 3;
+    constexpr int vertical_element_count = 1;
+    constexpr int upper_contact_boundary_attribute = 5;
+    constexpr int upper_noncontact_boundary_attribute = 6;
+    constexpr int upper_body_attribute = 2;
+    parent_mesh_ = std::make_unique<mfem::ParMesh>( static_cast<const mfem::ParMesh&>( shared::ParMeshBuilder(
+        MPI_COMM_WORLD, shared::MeshBuilder::Unify(
+                            { shared::MeshBuilder::SquareMesh( lower_boundary_edge_count, vertical_element_count ),
+                              shared::MeshBuilder::SquareMesh( upper_boundary_edge_count, vertical_element_count )
+                                  .translate( { 0.0, 0.99 } )
+                                  .updateBdrAttrib( 1, upper_contact_boundary_attribute )
+                                  .updateBdrAttrib( 3, upper_noncontact_boundary_attribute )
+                                  .updateAttrib( 1, upper_body_attribute ) } ) ) ) );
+    constexpr int spatial_dim = 2;
+    constexpr int linear_order = 1;
+    coordinate_collection_ = std::make_unique<mfem::H1_FECollection>( linear_order, spatial_dim );
+    coordinate_space_ = std::make_unique<mfem::ParFiniteElementSpace>( parent_mesh_.get(), coordinate_collection_.get(),
+                                                                       spatial_dim, mfem::Ordering::byVDIM );
+    coordinates_ = std::make_unique<mfem::ParGridFunction>( coordinate_space_.get() );
+    parent_mesh_->GetNodes( *coordinates_ );
     registerScheme( ExecutionMode::Sequential );
   }
-  /** @brief Register the existing patch and fixed penalties. @param execution_mode Requested backend. */
+  /** @brief Register the two-body contact configuration and fixed penalties. @param execution_mode Requested backend.
+   */
   void registerScheme( ExecutionMode execution_mode )
   {
-    registerMfemCouplingScheme( 0, 0, 1, *mesh_, *coords_, { 3 }, { 5 }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE,
-                                FRICTIONLESS, PENALTY, BINNING_GRID, execution_mode );
-    setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
+    constexpr IndexT lower_mesh_id = 0;
+    constexpr IndexT upper_mesh_id = 1;
+    constexpr int lower_contact_boundary_attribute = 3;
+    constexpr int upper_contact_boundary_attribute = 5;
+    registerMfemCouplingScheme( coupling_scheme_id, lower_mesh_id, upper_mesh_id, *parent_mesh_, *coordinates_,
+                                { lower_contact_boundary_attribute }, { upper_contact_boundary_attribute },
+                                SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE, FRICTIONLESS, PENALTY, BINNING_GRID,
+                                execution_mode );
+    constexpr RealT lower_mesh_penalty = 2.0;
+    constexpr RealT upper_mesh_penalty = 6.0;
+    setMfemKinematicConstantPenalty( coupling_scheme_id, lower_mesh_penalty, upper_mesh_penalty );
   }
   /** @brief Release coupling data before destroying the parent mesh and coordinate field it references. */
   void TearDown() override { finalize(); }
@@ -94,42 +106,44 @@ class MfemCommonPlaneTest : public testing::TestWithParam<int> {
    * @param compute_jacobian Whether to calculate df_dx as well as the residual. */
   void enable( bool compute_jacobian = true )
   {
-    setMfemUseCommonPlaneFormulation( 0, true, compute_jacobian );
-    setQuadratureOrder( 0, GetParam() );
+    setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, compute_jacobian );
+    setQuadratureOrder( coupling_scheme_id, GetParam() );
   }
   /** @brief Refresh geometry on one contact rank and compute the current residual. */
   void evaluate()
   {
-    updateMfemParallelDecomposition( 1, true );
+    constexpr int contact_rank_count = 1;
+    updateMfemParallelDecomposition( contact_rank_count, true );
     RealT dt = 1.0;
-    ASSERT_EQ( update( 0, 0.0, dt ), 0 );
+    ASSERT_EQ( update( coupling_scheme_id, 0.0, dt ), 0 );
   }
   /** @brief Return the registered coupling scheme. @return Scheme zero, valid for this fixture's lifetime. */
-  CouplingScheme& scheme() { return CouplingSchemeManager::getInstance().at( 0 ); }
+  CouplingScheme& scheme() { return CouplingSchemeManager::getInstance().at( coupling_scheme_id ); }
   /** @brief Calculate a distributed vector norm. @param v Distributed true-DOF vector. @return Global Euclidean norm.
    */
   RealT norm( const mfem::Vector& v ) { return std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, v, v ) ); }
   /** @brief Mark the upper body's finite-element nodes. @return One at upper-body nodes and zero elsewhere. */
   mfem::Array<int> upperBodyNodes() const
   {
-    mfem::Array<int> upper_nodes( fes_->GetNDofs() );
+    constexpr int upper_body_attribute = 2;
+    mfem::Array<int> upper_nodes( coordinate_space_->GetNDofs() );
     upper_nodes = 0;
-    for ( int element = 0; element < mesh_->GetNE(); ++element ) {
-      if ( mesh_->GetAttribute( element ) != 2 ) {
+    for ( int element = 0; element < parent_mesh_->GetNE(); ++element ) {
+      if ( parent_mesh_->GetAttribute( element ) != upper_body_attribute ) {
         continue;
       }
       mfem::Array<int> nodes;
-      fes_->GetElementDofs( element, nodes );
+      coordinate_space_->GetElementDofs( element, nodes );
       for ( const auto node : nodes ) {
         upper_nodes[node] = 1;
       }
     }
     return upper_nodes;
   }
-  std::unique_ptr<mfem::ParMesh> mesh_;               ///< Parent mesh referenced by the registered coupling scheme.
-  std::unique_ptr<mfem::H1_FECollection> fec_;        ///< Linear coordinate basis.
-  std::unique_ptr<mfem::ParFiniteElementSpace> fes_;  ///< Parent vector-coordinate space.
-  std::unique_ptr<mfem::ParGridFunction> coords_;     ///< Current parent geometry.
+  std::unique_ptr<mfem::ParMesh> parent_mesh_;  ///< Parent mesh referenced by the registered coupling scheme.
+  std::unique_ptr<mfem::H1_FECollection> coordinate_collection_;   ///< Linear coordinate basis.
+  std::unique_ptr<mfem::ParFiniteElementSpace> coordinate_space_;  ///< Vector coordinate FE space on the parent mesh.
+  std::unique_ptr<mfem::ParGridFunction> coordinates_;             ///< Current coordinates on the parent mesh.
 };
 
 // The composed calculation builds pair geometry directly and must not allocate legacy face or method data.
@@ -149,61 +163,63 @@ TEST_P( MfemCommonPlaneTest, update_does_not_allocate_legacy_geometry )
 // Residual-only assembly must preserve nonmatching nodal loads and MPI transfers without Jacobian resources.
 TEST_P( MfemCommonPlaneTest, residual_only_matches_legacy_without_matrix_transfers )
 {
+  constexpr RealT residual_tolerance = 1.0e-11;
   evaluate();
-  mfem::Vector legacy( fes_->GetVSize() );
-  legacy = 0.0;
-  getMfemResponse( 0, legacy );
-  mfem::Vector reference( fes_->GetTrueVSize() );
-  fes_->GetProlongationMatrix()->MultTranspose( legacy, reference );
+  mfem::Vector legacy_local_residual( coordinate_space_->GetVSize() );
+  legacy_local_residual = 0.0;
+  getMfemResponse( coupling_scheme_id, legacy_local_residual );
+  mfem::Vector legacy_true_residual( coordinate_space_->GetTrueVSize() );
+  coordinate_space_->GetProlongationMatrix()->MultTranspose( legacy_local_residual, legacy_true_residual );
 
   enable( false );
   EXPECT_FALSE( scheme().hasMfemJacobianData() );
   evaluate();
   ASSERT_NE( scheme().getContactFormulationResult().residual, nullptr );
   EXPECT_EQ( scheme().getContactFormulationResult().df_dx, nullptr );
-  EXPECT_EQ( getMfemDfDx( 0 ), nullptr );
-  auto residual = getMfemContactResidual( 0 );
-  EXPECT_GT( norm( residual ), 0.0 );
-  residual += reference;
-  EXPECT_LT( norm( residual ), 1.0e-11 );
+  EXPECT_EQ( getMfemDfDx( coupling_scheme_id ), nullptr );
+  auto residual_difference = getMfemContactResidual( coupling_scheme_id );
+  EXPECT_GT( norm( residual_difference ), 0.0 );
+  residual_difference += legacy_true_residual;
+  EXPECT_LT( norm( residual_difference ), residual_tolerance );
 
-  setMfemKinematicPenaltyScale( 0, 2.0, 2.0 );
+  setMfemKinematicPenaltyScale( coupling_scheme_id, 2.0, 2.0 );
   evaluate();
   EXPECT_FALSE( scheme().hasMfemJacobianData() );
-  auto scaled = getMfemContactResidual( 0 );
-  scaled.Add( 2.0, reference );
-  EXPECT_LT( norm( scaled ), 1.0e-11 );
+  auto scaled_residual_difference = getMfemContactResidual( coupling_scheme_id );
+  scaled_residual_difference.Add( 2.0, legacy_true_residual );
+  EXPECT_LT( norm( scaled_residual_difference ), residual_tolerance );
 }
 
 // Changing evaluation mode must rebuild the formulation and release matrix data; unavailable Enzyme must be rejected
 // before changing an active residual-only formulation or clearing its outputs.
 TEST_P( MfemCommonPlaneTest, changes_jacobian_mode_without_changing_residuals )
 {
+  constexpr RealT residual_tolerance = 1.0e-11;
   enable( false );
   evaluate();
-  const auto reference = getMfemContactResidual( 0 );
+  const auto residual_only = getMfemContactResidual( coupling_scheme_id );
 #ifdef TRIBOL_USE_ENZYME
-  setMfemUseCommonPlaneFormulation( 0, true );
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, true );
   EXPECT_TRUE( scheme().hasMfemJacobianData() );
   evaluate();
   ASSERT_NE( scheme().getContactFormulationResult().df_dx, nullptr );
-  auto difference = getMfemContactResidual( 0 );
-  difference -= reference;
-  EXPECT_LT( norm( difference ), 1.0e-11 );
-  setMfemUseCommonPlaneFormulation( 0, true, false );
+  auto jacobian_mode_residual_difference = getMfemContactResidual( coupling_scheme_id );
+  jacobian_mode_residual_difference -= residual_only;
+  EXPECT_LT( norm( jacobian_mode_residual_difference ), residual_tolerance );
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false );
 #else
-  auto* formulation = scheme().getContactFormulation();
-  EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( 0, true ) );
-  EXPECT_EQ( scheme().getContactFormulation(), formulation );
+  auto* residual_only_formulation = scheme().getContactFormulation();
+  EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( coupling_scheme_id, true ) );
+  EXPECT_EQ( scheme().getContactFormulation(), residual_only_formulation );
   EXPECT_FALSE( scheme().getParameters().common_plane_compute_jacobian );
 #endif
   EXPECT_FALSE( scheme().hasMfemJacobianData() );
   evaluate();
   EXPECT_EQ( scheme().getContactFormulationResult().df_dx, nullptr );
-  auto unchanged = getMfemContactResidual( 0 );
-  unchanged -= reference;
-  EXPECT_LT( norm( unchanged ), 1.0e-11 );
-  setMfemUseCommonPlaneFormulation( 0, false );
+  auto restored_residual_difference = getMfemContactResidual( coupling_scheme_id );
+  restored_residual_difference -= residual_only;
+  EXPECT_LT( norm( restored_residual_difference ), residual_tolerance );
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, false );
   EXPECT_FALSE( scheme().hasContactFormulation() );
   EXPECT_FALSE( scheme().hasMfemJacobianData() );
 }
@@ -211,60 +227,73 @@ TEST_P( MfemCommonPlaneTest, changes_jacobian_mode_without_changing_residuals )
 // Open contact must return an allocated zero residual with no matrix, including ranks without surface elements.
 TEST_P( MfemCommonPlaneTest, residual_only_returns_zero_for_open_contact )
 {
+  constexpr RealT residual_tolerance = 1.0e-11;
   enable( false );
   evaluate();
   const auto upper_nodes = upperBodyNodes();
   for ( int node = 0; node < upper_nodes.Size(); ++node ) {
     if ( upper_nodes[node] ) {
-      ( *coords_ )[fes_->DofToVDof( node, 1 )] += 0.1;
+      ( *coordinates_ )[coordinate_space_->DofToVDof( node, 1 )] += 0.1;
     }
   }
   evaluate();
   ASSERT_NE( scheme().getContactFormulationResult().residual, nullptr );
   EXPECT_EQ( scheme().getContactFormulationResult().df_dx, nullptr );
   EXPECT_FALSE( scheme().hasMfemJacobianData() );
-  EXPECT_LT( norm( getMfemContactResidual( 0 ) ), 1.0e-11 );
+  EXPECT_LT( norm( getMfemContactResidual( coupling_scheme_id ) ), residual_tolerance );
 }
 
 #ifdef TRIBOL_USE_ENZYME
-// Nonmatching pair assembly must reproduce uniform analytic boundary traction without any pressure or gap field.
-TEST_P( MfemCommonPlaneTest, matches_nonmatching_constant_traction_patch )
+// Uniform penetration produces constant pressure. Assembly on the two-edge and three-edge boundaries must match the
+// corresponding MFEM boundary loads without requiring a registered pressure or gap field.
+TEST_P( MfemCommonPlaneTest, matches_analytic_boundary_loads_for_uniform_penetration )
 {
+  constexpr int spatial_dim = 2;
+  constexpr int lower_contact_boundary_attribute = 3;
+  constexpr int upper_contact_boundary_attribute = 5;
+  constexpr RealT residual_tolerance = 1.0e-11;
   EXPECT_FALSE( scheme().hasContactFormulation() );
   enable();
   evaluate();
   EXPECT_EQ( scheme().getMfemSubmeshData(), nullptr );
   ASSERT_TRUE( scheme().hasMfemJacobianData() );
-  EXPECT_EQ( scheme().getMfemJacobianData()->ParentPath().final_fes, fes_.get() );
+  EXPECT_EQ( scheme().getMfemJacobianData()->ParentPath().final_fes, coordinate_space_.get() );
   for ( auto* mesh : { &scheme().getMesh1(), &scheme().getMesh2() } ) {
     EXPECT_FALSE( mesh->getNodalFields().m_is_node_gap_set );
     EXPECT_FALSE( mesh->getNodalFields().m_is_node_pressure_set );
   }
-  const auto residual = getMfemContactResidual( 0 );
-  mfem::Vector traction1( 2 ), traction2( 2 );
-  traction1 = 0.0;
-  traction2 = 0.0;
+  const auto assembled_residual = getMfemContactResidual( coupling_scheme_id );
+  mfem::Vector lower_boundary_traction( spatial_dim ), upper_boundary_traction( spatial_dim );
+  lower_boundary_traction = 0.0;
+  upper_boundary_traction = 0.0;
   constexpr RealT pressure = 0.015;  // Series stiffness 1.5 times uniform penetration 0.01.
-  traction1[1] = pressure;
-  traction2[1] = -pressure;
-  mfem::VectorConstantCoefficient coefficient1( traction1 ), coefficient2( traction2 );
-  mfem::Array<int> marker1( mesh_->bdr_attributes.Max() ), marker2( mesh_->bdr_attributes.Max() );
-  marker1 = 0;
-  marker2 = 0;
-  marker1[3 - 1] = 1;
-  marker2[5 - 1] = 1;
-  mfem::ParLinearForm expected( fes_.get() );
-  expected.AddBoundaryIntegrator( new mfem::VectorBoundaryLFIntegrator( coefficient1 ), marker1 );
-  expected.AddBoundaryIntegrator( new mfem::VectorBoundaryLFIntegrator( coefficient2 ), marker2 );
-  expected.Assemble();
-  std::unique_ptr<mfem::HypreParVector> exact( expected.ParallelAssemble() );
-  auto error = residual;
-  error -= *exact;
-  EXPECT_LT( norm( error ), 1.0e-11 );
-  int rank = 0, size = 0;
+  lower_boundary_traction[1] = pressure;
+  upper_boundary_traction[1] = -pressure;
+  mfem::VectorConstantCoefficient lower_traction_coefficient( lower_boundary_traction );
+  mfem::VectorConstantCoefficient upper_traction_coefficient( upper_boundary_traction );
+  mfem::Array<int> lower_boundary_marker( parent_mesh_->bdr_attributes.Max() );
+  mfem::Array<int> upper_boundary_marker( parent_mesh_->bdr_attributes.Max() );
+  lower_boundary_marker = 0;
+  upper_boundary_marker = 0;
+  lower_boundary_marker[lower_contact_boundary_attribute - 1] = 1;
+  upper_boundary_marker[upper_contact_boundary_attribute - 1] = 1;
+  mfem::ParLinearForm analytic_boundary_loads( coordinate_space_.get() );
+  analytic_boundary_loads.AddBoundaryIntegrator( new mfem::VectorBoundaryLFIntegrator( lower_traction_coefficient ),
+                                                 lower_boundary_marker );
+  analytic_boundary_loads.AddBoundaryIntegrator( new mfem::VectorBoundaryLFIntegrator( upper_traction_coefficient ),
+                                                 upper_boundary_marker );
+  analytic_boundary_loads.Assemble();
+  std::unique_ptr<mfem::HypreParVector> analytic_true_residual( analytic_boundary_loads.ParallelAssemble() );
+  auto residual_difference = assembled_residual;
+  residual_difference -= *analytic_true_residual;
+  EXPECT_LT( norm( residual_difference ), residual_tolerance );
+  int rank = 0;
+  int rank_count = 0;
   MPI_Comm_rank( MPI_COMM_WORLD, &rank );
-  MPI_Comm_size( MPI_COMM_WORLD, &size );
-  if ( size == 2 && rank == 1 ) {
+  MPI_Comm_size( MPI_COMM_WORLD, &rank_count );
+  constexpr int two_rank_run = 2;
+  constexpr int rank_without_contact_elements = 1;
+  if ( rank_count == two_rank_run && rank == rank_without_contact_elements ) {
     EXPECT_EQ( scheme().getMesh1().numberOfElements() + scheme().getMesh2().numberOfElements(), 0 );
   }
   EXPECT_FALSE( scheme().getContactFormulationResult().energy.has_value() );
@@ -277,35 +306,41 @@ TEST_P( MfemCommonPlaneTest, jacobian_getters_preserve_cached_result )
 {
   enable();
   evaluate();
-  const auto first = getMfemDfDx( 0 );
-  const auto second = getMfemDfDx( 0 );
-  ASSERT_NE( first, nullptr );
-  ASSERT_NE( second, nullptr );
+  const auto first_jacobian_copy = getMfemDfDx( coupling_scheme_id );
+  const auto second_jacobian_copy = getMfemDfDx( coupling_scheme_id );
+  ASSERT_NE( first_jacobian_copy, nullptr );
+  ASSERT_NE( second_jacobian_copy, nullptr );
   ASSERT_NE( scheme().getContactFormulationResult().df_dx, nullptr );
-  EXPECT_NE( first.get(), second.get() );
-  EXPECT_NE( first.get(), scheme().getContactFormulationResult().df_dx.get() );
-  mfem::Vector direction( first->Width() ), first_action( first->Height() ), second_action( second->Height() );
-  for ( int dof = 0; dof < direction.Size(); ++dof ) {
-    direction[dof] = 1.0 + 0.1 * dof;
+  EXPECT_NE( first_jacobian_copy.get(), second_jacobian_copy.get() );
+  EXPECT_NE( first_jacobian_copy.get(), scheme().getContactFormulationResult().df_dx.get() );
+  mfem::Vector displacement_direction( first_jacobian_copy->Width() );
+  mfem::Vector first_jacobian_action( first_jacobian_copy->Height() );
+  mfem::Vector second_jacobian_action( second_jacobian_copy->Height() );
+  for ( int dof = 0; dof < displacement_direction.Size(); ++dof ) {
+    displacement_direction[dof] = 1.0 + 0.1 * dof;
   }
-  first->Mult( direction, first_action );
-  second->Mult( direction, second_action );
-  second_action -= first_action;
-  EXPECT_EQ( norm( second_action ), 0.0 );
+  first_jacobian_copy->Mult( displacement_direction, first_jacobian_action );
+  second_jacobian_copy->Mult( displacement_direction, second_jacobian_action );
+  second_jacobian_action -= first_jacobian_action;
+  EXPECT_EQ( norm( second_jacobian_action ), 0.0 );
 }
 
 // Arithmetic averaging must scale residuals and Jacobians on each host backend for each Gauss count.
 TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
 {
+  constexpr RealT lower_mesh_penalty = 2.0;
+  constexpr RealT upper_mesh_penalty = 6.0;
+  constexpr RealT residual_tolerance = 1.0e-11;
   enable();
   evaluate();
-  const auto baseline = getMfemContactResidual( 0 );
-  const auto jacobian = getMfemDfDx( 0 );
-  mfem::Vector direction( jacobian->Width() ), reference_action( jacobian->Height() );
-  for ( int dof = 0; dof < direction.Size(); ++dof ) {
-    direction[dof] = 1.0 + 0.1 * dof;
+  const auto series_penalty_residual = getMfemContactResidual( coupling_scheme_id );
+  const auto series_penalty_jacobian = getMfemDfDx( coupling_scheme_id );
+  mfem::Vector displacement_direction( series_penalty_jacobian->Width() );
+  mfem::Vector series_penalty_jacobian_action( series_penalty_jacobian->Height() );
+  for ( int dof = 0; dof < displacement_direction.Size(); ++dof ) {
+    displacement_direction[dof] = 1.0 + 0.1 * dof;
   }
-  jacobian->Mult( direction, reference_action );
+  series_penalty_jacobian->Mult( displacement_direction, series_penalty_jacobian_action );
   for ( const auto execution_mode : { ExecutionMode::Sequential
 #ifdef TRIBOL_USE_OPENMP
                                       ,
@@ -313,181 +348,195 @@ TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
 #endif
         } ) {
     SCOPED_TRACE( static_cast<int>( execution_mode ) );
-    auto alternate = dispatchExecutionMode( execution_mode, [&]<ExecutionMode Exec>() {
+    auto average_penalty_formulation = dispatchExecutionMode( execution_mode, [&]<ExecutionMode Exec>() {
       return createWithQuadratureRuleGenerator(
           GetParam(), CommonPlaneEdgeMapping{}, [&]( auto rule_generator ) -> std::unique_ptr<ContactFormulation> {
-            auto coarse = createCoarseSearch( scheme().spatialDim(), scheme().getBinningMethod(), execution_mode,
-                                              scheme().getEffectiveBinningProximityScale(), 0.0 );
-            auto refined = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
+            auto coarse_search = createCoarseSearch( scheme().spatialDim(), scheme().getBinningMethod(), execution_mode,
+                                                     scheme().getEffectiveBinningProximityScale(), 0.0 );
+            auto projected_edge_search = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
             return std::make_unique<
                 CommonPlaneFormulation<Exec, decltype( rule_generator ), CommonPlaneGap, ResidualAndJacobian>>(
-                std::move( rule_generator ), AveragePenaltyStiffness{}( 2.0, 6.0 ), CommonPlaneGap{},
-                ResidualAndJacobian{ *scheme().getMfemMeshData(), *scheme().getMfemJacobianData() },
-                PairListBuilder{ std::move( coarse ), std::move( refined ) } );
+                std::move( rule_generator ), AveragePenaltyStiffness{}( lower_mesh_penalty, upper_mesh_penalty ),
+                CommonPlaneGap{}, ResidualAndJacobian{ *scheme().getMfemMeshData(), *scheme().getMfemJacobianData() },
+                PairListBuilder{ std::move( coarse_search ), std::move( projected_edge_search ) } );
           } );
     } );
-    auto result = alternate->computeNodalResiduals( scheme().getMesh1().getView(), scheme().getMesh2().getView(), {} );
-    ASSERT_NE( result.residual, nullptr );
-    ASSERT_NE( result.df_dx, nullptr );
-    EXPECT_FALSE( result.energy.has_value() );
+    auto average_penalty_result = average_penalty_formulation->computeNodalResiduals(
+        scheme().getMesh1().getView(), scheme().getMesh2().getView(), {} );
+    ASSERT_NE( average_penalty_result.residual, nullptr );
+    ASSERT_NE( average_penalty_result.df_dx, nullptr );
+    EXPECT_FALSE( average_penalty_result.energy.has_value() );
     // The configured stiffnesses 2 and 6 have arithmetic mean 4 and series stiffness 1.5.
     constexpr RealT stiffness_ratio = 4.0 / 1.5;
-    result.residual->Add( -stiffness_ratio, baseline );
-    EXPECT_LT( norm( *result.residual ), 1.0e-11 );
-    mfem::Vector action( result.df_dx->Height() );
-    result.df_dx->Mult( direction, action );
-    action.Add( -stiffness_ratio, reference_action );
-    EXPECT_LT( norm( action ), 1.0e-11 );
+    average_penalty_result.residual->Add( -stiffness_ratio, series_penalty_residual );
+    EXPECT_LT( norm( *average_penalty_result.residual ), residual_tolerance );
+    mfem::Vector average_penalty_jacobian_action( average_penalty_result.df_dx->Height() );
+    average_penalty_result.df_dx->Mult( displacement_direction, average_penalty_jacobian_action );
+    average_penalty_jacobian_action.Add( -stiffness_ratio, series_penalty_jacobian_action );
+    EXPECT_LT( norm( average_penalty_jacobian_action ), residual_tolerance );
   }
 }
 
 // Each direct call returns its own residual and matrix without changing earlier results or the coupling-scheme cache.
 TEST_P( MfemCommonPlaneTest, returns_owned_outputs_without_retaining_results )
 {
+  constexpr RealT residual_tolerance = 1.0e-11;
   enable();
-  updateMfemParallelDecomposition( 1, true );
+  constexpr int contact_rank_count = 1;
+  updateMfemParallelDecomposition( contact_rank_count, true );
   ASSERT_TRUE( scheme().init() );
   const auto& formulation = *scheme().getContactFormulation();
-  auto first = formulation.computeNodalResiduals( scheme().getMesh1().getView(), scheme().getMesh2().getView(), {} );
-  ASSERT_NE( first.residual, nullptr );
-  ASSERT_NE( first.df_dx, nullptr );
-  EXPECT_FALSE( first.energy.has_value() );
-  EXPECT_FALSE( first.time_step.has_value() );
-  EXPECT_EQ( first.gap, nullptr );
-  EXPECT_EQ( first.pressure, nullptr );
-  EXPECT_EQ( first.weighted_gap_jacobian, nullptr );
-  EXPECT_EQ( first.df_dp, nullptr );
+  auto retained_result =
+      formulation.computeNodalResiduals( scheme().getMesh1().getView(), scheme().getMesh2().getView(), {} );
+  ASSERT_NE( retained_result.residual, nullptr );
+  ASSERT_NE( retained_result.df_dx, nullptr );
+  EXPECT_FALSE( retained_result.energy.has_value() );
+  EXPECT_FALSE( retained_result.time_step.has_value() );
+  EXPECT_EQ( retained_result.gap, nullptr );
+  EXPECT_EQ( retained_result.pressure, nullptr );
+  EXPECT_EQ( retained_result.weighted_gap_jacobian, nullptr );
+  EXPECT_EQ( retained_result.df_dp, nullptr );
   EXPECT_EQ( scheme().getContactFormulationResult().residual, nullptr );
-  const mfem::HypreParVector original( *first.residual );
-  ASSERT_GT( norm( original ), 0.0 );
+  const mfem::HypreParVector retained_residual_copy( *retained_result.residual );
+  ASSERT_GT( norm( retained_residual_copy ), 0.0 );
 
-  auto second = scheme().getContactFormulation()->computeNodalResiduals( scheme().getMesh1().getView(),
-                                                                         scheme().getMesh2().getView(), {} );
-  auto error = *second.residual;
-  error -= original;
-  EXPECT_LT( norm( error ), 1.0e-11 );
+  auto subsequent_result = scheme().getContactFormulation()->computeNodalResiduals( scheme().getMesh1().getView(),
+                                                                                    scheme().getMesh2().getView(), {} );
+  auto subsequent_residual_difference = *subsequent_result.residual;
+  subsequent_residual_difference -= retained_residual_copy;
+  EXPECT_LT( norm( subsequent_residual_difference ), residual_tolerance );
   scheme().setContactFormulation( nullptr );
-  error = *first.residual;
-  error -= original;
-  EXPECT_EQ( norm( error ), 0.0 );
-  mfem::Vector direction( first.df_dx->Width() ), action( first.df_dx->Height() );
-  direction = 1.0;
-  first.df_dx->Mult( direction, action );
-  EXPECT_TRUE( std::isfinite( norm( action ) ) );
+  auto retained_residual_difference = *retained_result.residual;
+  retained_residual_difference -= retained_residual_copy;
+  EXPECT_EQ( norm( retained_residual_difference ), 0.0 );
+  mfem::Vector displacement_direction( retained_result.df_dx->Width() );
+  mfem::Vector retained_jacobian_action( retained_result.df_dx->Height() );
+  displacement_direction = 1.0;
+  retained_result.df_dx->Mult( displacement_direction, retained_jacobian_action );
+  EXPECT_TRUE( std::isfinite( norm( retained_jacobian_action ) ) );
 }
 
 // A formulation keeps its stiffness when registered constants and mesh scales change outside the MFEM setters.
 TEST_P( MfemCommonPlaneTest, keeps_penalty_fixed_until_formulation_is_rebuilt )
 {
+  constexpr IndexT lower_mesh_id = 0;
+  constexpr IndexT upper_mesh_id = 1;
+  constexpr RealT residual_tolerance = 1.0e-11;
   enable();
   evaluate();
-  const auto initial = getMfemContactResidual( 0 );
-  auto& data = *scheme().getMfemMeshData();
-  data.SetMesh1KinematicConstantPenalty( 4.0 );
-  data.SetMesh2KinematicConstantPenalty( 12.0 );
-  data.SetMesh1KinematicPenaltyScale( 2.0 );
-  data.SetMesh2KinematicPenaltyScale( 2.0 );
-  setPenaltyScale( 0, 2.0 );
-  setPenaltyScale( 1, 2.0 );
-  auto unchanged = scheme().getContactFormulation()->computeNodalResiduals( scheme().getMesh1().getView(),
-                                                                            scheme().getMesh2().getView(), {} );
-  unchanged.residual->Add( -1.0, initial );
-  EXPECT_LT( norm( *unchanged.residual ), 1.0e-11 );
+  const auto baseline_residual = getMfemContactResidual( coupling_scheme_id );
+  auto& mfem_mesh_data = *scheme().getMfemMeshData();
+  mfem_mesh_data.SetMesh1KinematicConstantPenalty( 4.0 );
+  mfem_mesh_data.SetMesh2KinematicConstantPenalty( 12.0 );
+  mfem_mesh_data.SetMesh1KinematicPenaltyScale( 2.0 );
+  mfem_mesh_data.SetMesh2KinematicPenaltyScale( 2.0 );
+  setPenaltyScale( lower_mesh_id, 2.0 );
+  setPenaltyScale( upper_mesh_id, 2.0 );
+  auto retained_penalty_result = scheme().getContactFormulation()->computeNodalResiduals(
+      scheme().getMesh1().getView(), scheme().getMesh2().getView(), {} );
+  retained_penalty_result.residual->Add( -1.0, baseline_residual );
+  EXPECT_LT( norm( *retained_penalty_result.residual ), residual_tolerance );
 
   scheme().invalidateContactFormulation();
   ASSERT_TRUE( scheme().init() );
-  auto rebuilt = scheme().getContactFormulation()->computeNodalResiduals( scheme().getMesh1().getView(),
-                                                                          scheme().getMesh2().getView(), {} );
-  rebuilt.residual->Add( -4.0, initial );
-  EXPECT_LT( norm( *rebuilt.residual ), 1.0e-11 );
+  auto rebuilt_penalty_result = scheme().getContactFormulation()->computeNodalResiduals(
+      scheme().getMesh1().getView(), scheme().getMesh2().getView(), {} );
+  rebuilt_penalty_result.residual->Add( -4.0, baseline_residual );
+  EXPECT_LT( norm( *rebuilt_penalty_result.residual ), residual_tolerance );
 }
 
 // Constants and scales set through the MFEM interface rebuild the formulation without changing the decomposition.
 TEST_P( MfemCommonPlaneTest, uses_changed_constants_without_decomposition_refresh )
 {
+  constexpr RealT residual_tolerance = 1.0e-11;
   enable();
   evaluate();
-  const auto initial = getMfemContactResidual( 0 );
-  setMfemKinematicConstantPenalty( 0, 4.0, 12.0 );
+  const auto baseline_residual = getMfemContactResidual( coupling_scheme_id );
+  setMfemKinematicConstantPenalty( coupling_scheme_id, 4.0, 12.0 );
   EXPECT_FALSE( scheme().hasContactFormulation() );
   ASSERT_TRUE( scheme().init() );
   auto changed_constants = scheme().getContactFormulation()->computeNodalResiduals( scheme().getMesh1().getView(),
                                                                                     scheme().getMesh2().getView(), {} );
-  changed_constants.residual->Add( -2.0, initial );
-  EXPECT_LT( norm( *changed_constants.residual ), 1.0e-11 );
-  setMfemKinematicPenaltyScale( 0, 2.0, 2.0 );
+  changed_constants.residual->Add( -2.0, baseline_residual );
+  EXPECT_LT( norm( *changed_constants.residual ), residual_tolerance );
+  setMfemKinematicPenaltyScale( coupling_scheme_id, 2.0, 2.0 );
   EXPECT_FALSE( scheme().hasContactFormulation() );
   ASSERT_TRUE( scheme().init() );
-  auto direct = scheme().getContactFormulation()->computeNodalResiduals( scheme().getMesh1().getView(),
-                                                                         scheme().getMesh2().getView(), {} );
+  auto changed_constants_and_scales_result = scheme().getContactFormulation()->computeNodalResiduals(
+      scheme().getMesh1().getView(), scheme().getMesh2().getView(), {} );
   // Doubling both constants and both scales multiplies the effective series stiffness by four.
-  direct.residual->Add( -4.0, initial );
-  EXPECT_LT( norm( *direct.residual ), 1.0e-11 );
+  changed_constants_and_scales_result.residual->Add( -4.0, baseline_residual );
+  EXPECT_LT( norm( *changed_constants_and_scales_result.residual ), residual_tolerance );
   RealT dt = 1.0;
-  ASSERT_EQ( update( 0, 0.0, dt ), 0 );
-  auto updated = getMfemContactResidual( 0 );
-  updated.Add( -4.0, initial );
-  EXPECT_LT( norm( updated ), 1.0e-11 );
+  ASSERT_EQ( update( coupling_scheme_id, 0.0, dt ), 0 );
+  auto updated_residual_difference = getMfemContactResidual( coupling_scheme_id );
+  updated_residual_difference.Add( -4.0, baseline_residual );
+  EXPECT_LT( norm( updated_residual_difference ), residual_tolerance );
 }
 
 // Rejected constants must not clear the active formulation's registered constants or scales.
 TEST_P( MfemCommonPlaneTest, rejects_invalid_constants_without_changing_scheme )
 {
+  constexpr RealT lower_mesh_penalty = 2.0;
+  constexpr RealT upper_mesh_penalty = 6.0;
   enable( false );
-  setMfemKinematicPenaltyScale( 0, 2.0, 3.0 );
+  setMfemKinematicPenaltyScale( coupling_scheme_id, 2.0, 3.0 );
   ASSERT_TRUE( scheme().init() );
   auto* formulation = scheme().getContactFormulation();
-  const auto& mesh_data = *scheme().getMfemMeshData();
-  const RealT mesh1_penalty = *mesh_data.GetMesh1KinematicConstantPenalty();
-  const RealT mesh2_penalty = *mesh_data.GetMesh2KinematicConstantPenalty();
-  const RealT mesh1_scale = *mesh_data.GetMesh1KinematicPenaltyScale();
-  const RealT mesh2_scale = *mesh_data.GetMesh2KinematicPenaltyScale();
+  const auto& mfem_mesh_data = *scheme().getMfemMeshData();
+  const RealT registered_lower_penalty = *mfem_mesh_data.GetMesh1KinematicConstantPenalty();
+  const RealT registered_upper_penalty = *mfem_mesh_data.GetMesh2KinematicConstantPenalty();
+  const RealT registered_lower_scale = *mfem_mesh_data.GetMesh1KinematicPenaltyScale();
+  const RealT registered_upper_scale = *mfem_mesh_data.GetMesh2KinematicPenaltyScale();
   const auto check_unchanged = [&] {
     EXPECT_EQ( scheme().getContactFormulation(), formulation );
-    EXPECT_EQ( *mesh_data.GetMesh1KinematicConstantPenalty(), mesh1_penalty );
-    EXPECT_EQ( *mesh_data.GetMesh2KinematicConstantPenalty(), mesh2_penalty );
-    EXPECT_EQ( *mesh_data.GetMesh1KinematicPenaltyScale(), mesh1_scale );
-    EXPECT_EQ( *mesh_data.GetMesh2KinematicPenaltyScale(), mesh2_scale );
+    EXPECT_EQ( *mfem_mesh_data.GetMesh1KinematicConstantPenalty(), registered_lower_penalty );
+    EXPECT_EQ( *mfem_mesh_data.GetMesh2KinematicConstantPenalty(), registered_upper_penalty );
+    EXPECT_EQ( *mfem_mesh_data.GetMesh1KinematicPenaltyScale(), registered_lower_scale );
+    EXPECT_EQ( *mfem_mesh_data.GetMesh2KinematicPenaltyScale(), registered_upper_scale );
   };
   for ( const RealT invalid :
         { -1.0, 0.0, std::numeric_limits<RealT>::infinity(), std::numeric_limits<RealT>::quiet_NaN() } ) {
     SCOPED_TRACE( invalid );
-    EXPECT_SLIC_ERROR( setMfemKinematicConstantPenalty( 0, invalid, 6.0 ) );
+    EXPECT_SLIC_ERROR( setMfemKinematicConstantPenalty( coupling_scheme_id, invalid, upper_mesh_penalty ) );
     check_unchanged();
-    EXPECT_SLIC_ERROR( setMfemKinematicConstantPenalty( 0, 2.0, invalid ) );
+    EXPECT_SLIC_ERROR( setMfemKinematicConstantPenalty( coupling_scheme_id, lower_mesh_penalty, invalid ) );
     check_unchanged();
   }
   const RealT largest_penalty = std::numeric_limits<RealT>::max();
-  EXPECT_SLIC_ERROR( setMfemKinematicConstantPenalty( 0, largest_penalty, largest_penalty ) );
+  EXPECT_SLIC_ERROR( setMfemKinematicConstantPenalty( coupling_scheme_id, largest_penalty, largest_penalty ) );
   check_unchanged();
 }
 
 // Unequal scales configured before decomposition must multiply each constant before combining springs in series.
 TEST_P( MfemCommonPlaneTest, constructs_with_scales_before_decomposition )
 {
-  setMfemKinematicPenaltyScale( 0, 2.0, 3.0 );
+  constexpr RealT lower_mesh_penalty = 2.0;
+  constexpr RealT upper_mesh_penalty = 6.0;
+  constexpr RealT residual_tolerance = 1.0e-11;
+  setMfemKinematicPenaltyScale( coupling_scheme_id, 2.0, 3.0 );
   enable();
   evaluate();
-  const auto scaled = getMfemContactResidual( 0 );
+  const auto scaled_penalty_residual = getMfemContactResidual( coupling_scheme_id );
   // Resetting constants clears registered scales even while the decomposed meshes still contain earlier scales.
-  setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
+  setMfemKinematicConstantPenalty( coupling_scheme_id, lower_mesh_penalty, upper_mesh_penalty );
   EXPECT_FALSE( scheme().hasContactFormulation() );
   ASSERT_TRUE( scheme().init() );
-  auto unscaled = scheme().getContactFormulation()->computeNodalResiduals( scheme().getMesh1().getView(),
-                                                                           scheme().getMesh2().getView(), {} );
+  auto unscaled_penalty_result = scheme().getContactFormulation()->computeNodalResiduals(
+      scheme().getMesh1().getView(), scheme().getMesh2().getView(), {} );
   // Scaled constants 4 and 18 give stiffness 36/11; unscaled constants 2 and 6 give stiffness 1.5.
-  unscaled.residual->Add( -11.0 / 24.0, scaled );
-  EXPECT_LT( norm( *unscaled.residual ), 1.0e-11 );
+  unscaled_penalty_result.residual->Add( -11.0 / 24.0, scaled_penalty_residual );
+  EXPECT_LT( norm( *unscaled_penalty_result.residual ), residual_tolerance );
 }
 
 // Each scaled mesh penalty must be positive and finite before a new formulation can be constructed.
 TEST_P( MfemCommonPlaneTest, rejects_invalid_scales_at_construction )
 {
   enable();
-  EXPECT_SLIC_ERROR( setMfemKinematicPenaltyScale( 0, 0.0, 1.0 ) );
-  EXPECT_SLIC_ERROR( setMfemKinematicPenaltyScale( 0, 1.0, -1.0 ) );
-  EXPECT_SLIC_ERROR( setMfemKinematicPenaltyScale( 0, std::numeric_limits<RealT>::infinity(), 1.0 ) );
-  setMfemKinematicPenaltyScale( 0, 1.0, 1.0 );
+  EXPECT_SLIC_ERROR( setMfemKinematicPenaltyScale( coupling_scheme_id, 0.0, 1.0 ) );
+  EXPECT_SLIC_ERROR( setMfemKinematicPenaltyScale( coupling_scheme_id, 1.0, -1.0 ) );
+  EXPECT_SLIC_ERROR( setMfemKinematicPenaltyScale( coupling_scheme_id, std::numeric_limits<RealT>::infinity(), 1.0 ) );
+  setMfemKinematicPenaltyScale( coupling_scheme_id, 1.0, 1.0 );
   evaluate();
 }
 
@@ -517,112 +566,117 @@ TEST_P( MfemCommonPlaneTest, factory_selects_configured_rule_generator )
 // pressure on the same penetrating interval and must produce a different nodal load distribution.
 TEST_P( MfemCommonPlaneTest, uses_configured_pressure_rule_for_interpenetrating_overlap )
 {
+  constexpr RealT residual_tolerance = 1.0e-11;
   const auto upper_nodes = upperBodyNodes();
   for ( int node = 0; node < upper_nodes.Size(); ++node ) {
     if ( upper_nodes[node] ) {
-      const RealT x = ( *coords_ )[fes_->DofToVDof( node, 0 )];
+      const RealT x = ( *coordinates_ )[coordinate_space_->DofToVDof( node, 0 )];
       // The upper boundary crosses y=1.0 at x=0.55, inside a nonmatching element pair whose full midpoint is open.
-      ( *coords_ )[fes_->DofToVDof( node, 1 )] += 0.04 * ( x - 0.3 );
+      ( *coordinates_ )[coordinate_space_->DofToVDof( node, 1 )] += 0.04 * ( x - 0.3 );
     }
   }
   evaluate();
-  mfem::Vector legacy( fes_->GetVSize() );
-  legacy = 0.0;
-  getMfemResponse( 0, legacy );
-  mfem::Vector true_legacy( fes_->GetTrueVSize() );
-  fes_->GetProlongationMatrix()->MultTranspose( legacy, true_legacy );
-  ASSERT_GT( norm( true_legacy ), 0.0 );
+  mfem::Vector legacy_local_residual( coordinate_space_->GetVSize() );
+  legacy_local_residual = 0.0;
+  getMfemResponse( coupling_scheme_id, legacy_local_residual );
+  mfem::Vector legacy_true_residual( coordinate_space_->GetTrueVSize() );
+  coordinate_space_->GetProlongationMatrix()->MultTranspose( legacy_local_residual, legacy_true_residual );
+  ASSERT_GT( norm( legacy_true_residual ), 0.0 );
   enable();
   evaluate();
-  auto error = getMfemContactResidual( 0 );
-  error += true_legacy;
+  auto residual_difference = getMfemContactResidual( coupling_scheme_id );
+  residual_difference += legacy_true_residual;
   if ( GetParam() == one_point_polynomial_order ) {
-    EXPECT_LT( norm( error ), 1.0e-11 );
+    EXPECT_LT( norm( residual_difference ), residual_tolerance );
   } else {
-    EXPECT_GT( norm( error ), 1.0e-11 );
+    EXPECT_GT( norm( residual_difference ), residual_tolerance );
   }
 }
 
-// Parent Jacobians differentiate assembled residuals through nonmatching pair maps and MPI transfers.
+// Residual Jacobians on parent-mesh displacement true DOFs differentiate through pair maps and MPI transfers.
 TEST_P( MfemCommonPlaneTest, assembled_jacobian_matches_finite_difference )
 {
+  constexpr int spatial_dim = 2;
   // Shift only the upper body so projection endpoints do not coincide. Rotating either edge under perturbation
   // then tests normal and overlap derivatives without switching which endpoints limit the overlap.
   const auto upper_nodes = upperBodyNodes();
   for ( int node = 0; node < upper_nodes.Size(); ++node ) {
     if ( upper_nodes[node] ) {
-      ( *coords_ )[fes_->DofToVDof( node, 0 )] += 0.13;
+      ( *coordinates_ )[coordinate_space_->DofToVDof( node, 0 )] += 0.13;
     }
   }
   enable();
   evaluate();
-  auto jacobian = getMfemDfDx( 0 );
-  ASSERT_NE( jacobian, nullptr );
-  const mfem::ParGridFunction original( *coords_ );
-  mfem::VectorFunctionCoefficient coefficient( 2, []( const mfem::Vector& x, mfem::Vector& v ) {
-    v.SetSize( 2 );
-    v[0] = 0.03 * x[0] + 0.01 * x[1];
-    v[1] = 0.02 * x[0] - 0.04 * x[1];
-  } );
-  mfem::ParGridFunction direction( fes_.get() );
-  direction.ProjectCoefficient( coefficient );
-  mfem::Vector true_direction;
-  direction.GetTrueDofs( true_direction );
-  mfem::Vector predicted( true_direction.Size() );
-  jacobian->Mult( true_direction, predicted );
-  constexpr RealT step = 1.0e-6;
-  *coords_ = original;
-  coords_->Add( step, direction );
+  auto assembled_jacobian = getMfemDfDx( coupling_scheme_id );
+  ASSERT_NE( assembled_jacobian, nullptr );
+  const mfem::ParGridFunction original_coordinates( *coordinates_ );
+  mfem::VectorFunctionCoefficient coordinate_direction_coefficient( spatial_dim,
+                                                                    []( const mfem::Vector& x, mfem::Vector& v ) {
+                                                                      v.SetSize( spatial_dim );
+                                                                      v[0] = 0.03 * x[0] + 0.01 * x[1];
+                                                                      v[1] = 0.02 * x[0] - 0.04 * x[1];
+                                                                    } );
+  mfem::ParGridFunction coordinate_direction( coordinate_space_.get() );
+  coordinate_direction.ProjectCoefficient( coordinate_direction_coefficient );
+  mfem::Vector coordinate_true_direction;
+  coordinate_direction.GetTrueDofs( coordinate_true_direction );
+  mfem::Vector jacobian_action( coordinate_true_direction.Size() );
+  assembled_jacobian->Mult( coordinate_true_direction, jacobian_action );
+  constexpr RealT finite_difference_step = 1.0e-6;
+  constexpr RealT finite_difference_tolerance = 1.0e-7;
+  *coordinates_ = original_coordinates;
+  coordinates_->Add( finite_difference_step, coordinate_direction );
   evaluate();
-  const auto plus = getMfemContactResidual( 0 );
-  *coords_ = original;
-  coords_->Add( -step, direction );
+  const auto increased_coordinate_residual = getMfemContactResidual( coupling_scheme_id );
+  *coordinates_ = original_coordinates;
+  coordinates_->Add( -finite_difference_step, coordinate_direction );
   evaluate();
-  auto difference = getMfemContactResidual( 0 );
-  difference.Neg();
-  difference += plus;
-  difference /= 2.0 * step;
-  difference -= predicted;
-  EXPECT_LT( norm( difference ), 1.0e-7 * ( 1.0 + norm( predicted ) ) );
-  *coords_ = original;
+  auto finite_difference_error = getMfemContactResidual( coupling_scheme_id );
+  finite_difference_error.Neg();
+  finite_difference_error += increased_coordinate_residual;
+  finite_difference_error /= 2.0 * finite_difference_step;
+  finite_difference_error -= jacobian_action;
+  EXPECT_LT( norm( finite_difference_error ), finite_difference_tolerance * ( 1.0 + norm( jacobian_action ) ) );
+  *coordinates_ = original_coordinates;
 }
 
 // Enabling after legacy evaluation, changing penalties, rebuilding, and disabling must preserve transfers and signs.
 TEST_P( MfemCommonPlaneTest, rebuilds_and_restores_legacy_response )
 {
+  constexpr RealT residual_tolerance = 1.0e-11;
   evaluate();
   scheme().setFixedBinning( true );  // Re-enabling legacy contact must discard a previously cached pair list.
 
   enable();
   evaluate();
-  const auto initial = getMfemContactResidual( 0 );
-  setMfemKinematicConstantPenalty( 0, 4.0, 12.0 );
+  const auto baseline_residual = getMfemContactResidual( coupling_scheme_id );
+  setMfemKinematicConstantPenalty( coupling_scheme_id, 4.0, 12.0 );
   evaluate();
-  auto scaled = getMfemContactResidual( 0 );
-  auto error = scaled;
-  error.Add( -2.0, initial );
-  EXPECT_LT( norm( error ), 1.0e-11 );
-  EXPECT_SLIC_ERROR( setEnforcementLocation( 0, EnforcementLocation::Nodal ) );
-  setMfemLORFactor( 0, 2 );
+  auto doubled_penalty_residual = getMfemContactResidual( coupling_scheme_id );
+  auto doubled_penalty_residual_difference = doubled_penalty_residual;
+  doubled_penalty_residual_difference.Add( -2.0, baseline_residual );
+  EXPECT_LT( norm( doubled_penalty_residual_difference ), residual_tolerance );
+  EXPECT_SLIC_ERROR( setEnforcementLocation( coupling_scheme_id, EnforcementLocation::Nodal ) );
+  setMfemLORFactor( coupling_scheme_id, 2 );
   EXPECT_EQ( scheme().getMfemMeshData()->GetLORMesh(), nullptr );
   EXPECT_TRUE( scheme().getParameters().use_common_plane_formulation );
   EXPECT_EQ( scheme().getParameters().enforcement_location, EnforcementLocation::QuadraturePoint );
-  setMfemUseCommonPlaneFormulation( 0, false );
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, false );
   EXPECT_FALSE( scheme().hasContactFormulation() );
   EXPECT_FALSE( scheme().hasMfemJacobianData() );
   EXPECT_FALSE( scheme().hasFixedBinning() );
   EXPECT_FALSE( scheme().isBinned() );
   evaluate();
-  mfem::Vector legacy( fes_->GetVSize() );
-  legacy = 0.0;
-  getMfemResponse( 0, legacy );
-  mfem::Vector true_legacy( fes_->GetTrueVSize() );
-  fes_->GetProlongationMatrix()->MultTranspose( legacy, true_legacy );
-  scaled += true_legacy;
-  EXPECT_LT( norm( scaled ), 1.0e-11 );
-  setMfemUseCommonPlaneFormulation( 0, true );
+  mfem::Vector legacy_local_residual( coordinate_space_->GetVSize() );
+  legacy_local_residual = 0.0;
+  getMfemResponse( coupling_scheme_id, legacy_local_residual );
+  mfem::Vector legacy_true_residual( coordinate_space_->GetTrueVSize() );
+  coordinate_space_->GetProlongationMatrix()->MultTranspose( legacy_local_residual, legacy_true_residual );
+  doubled_penalty_residual += legacy_true_residual;
+  EXPECT_LT( norm( doubled_penalty_residual ), residual_tolerance );
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, true );
   evaluate();
-  EXPECT_GT( norm( getMfemContactResidual( 0 ) ), 0.0 );
+  EXPECT_GT( norm( getMfemContactResidual( coupling_scheme_id ) ), 0.0 );
 }
 
 #endif  // TRIBOL_USE_ENZYME
@@ -630,35 +684,36 @@ TEST_P( MfemCommonPlaneTest, rebuilds_and_restores_legacy_response )
 // Factory-selected execution modes must preserve residuals, and evaluator selection must control matrix availability.
 TEST_P( MfemCommonPlaneTest, execution_modes_preserve_residuals_and_jacobian_selection )
 {
-  mfem::Vector reference;
-  for ( const auto mode : { ExecutionMode::Sequential
+  constexpr RealT residual_tolerance = 1.0e-11;
+  mfem::Vector sequential_residual;
+  for ( const auto execution_mode : { ExecutionMode::Sequential
 #ifdef TRIBOL_USE_OPENMP
-                            ,
-                            ExecutionMode::OpenMP
+                                      ,
+                                      ExecutionMode::OpenMP
 #endif
         } ) {
-    SCOPED_TRACE( static_cast<int>( mode ) );
+    SCOPED_TRACE( static_cast<int>( execution_mode ) );
     finalize();
-    registerScheme( mode );
+    registerScheme( execution_mode );
     enable( false );
     evaluate();
     ASSERT_TRUE( scheme().hasContactFormulation() );
     EXPECT_FALSE( scheme().hasMfemJacobianData() );
     EXPECT_EQ( scheme().getContactFormulationResult().df_dx, nullptr );
-    auto residual = getMfemContactResidual( 0 );
-    if ( mode == ExecutionMode::Sequential ) {
-      reference.SetSize( residual.Size() );
-      reference = residual;
+    auto residual_difference = getMfemContactResidual( coupling_scheme_id );
+    if ( execution_mode == ExecutionMode::Sequential ) {
+      sequential_residual.SetSize( residual_difference.Size() );
+      sequential_residual = residual_difference;
     }
-    residual -= reference;
-    EXPECT_LT( norm( residual ), 1.0e-11 );
+    residual_difference -= sequential_residual;
+    EXPECT_LT( norm( residual_difference ), residual_tolerance );
 #ifdef TRIBOL_USE_ENZYME
     enable();
     evaluate();
     ASSERT_NE( scheme().getContactFormulationResult().df_dx, nullptr );
-    residual = getMfemContactResidual( 0 );
-    residual -= reference;
-    EXPECT_LT( norm( residual ), 1.0e-11 );
+    residual_difference = getMfemContactResidual( coupling_scheme_id );
+    residual_difference -= sequential_residual;
+    EXPECT_LT( norm( residual_difference ), residual_tolerance );
 #endif
   }
 }
@@ -666,68 +721,73 @@ TEST_P( MfemCommonPlaneTest, execution_modes_preserve_residuals_and_jacobian_sel
 // A rejected switch must keep the active formulation, its Jacobian setting, and its transfer data unchanged.
 TEST_P( MfemCommonPlaneTest, rejected_switch_keeps_active_formulation )
 {
+  constexpr RealT residual_tolerance = 1.0e-11;
   enable( false );
   evaluate();
-  const auto reference = getMfemContactResidual( 0 );
-  const auto* formulation = scheme().getContactFormulation();
-  ASSERT_NE( formulation, nullptr );
+  const auto retained_residual = getMfemContactResidual( coupling_scheme_id );
+  const auto* retained_formulation = scheme().getContactFormulation();
+  ASSERT_NE( retained_formulation, nullptr );
 
   // An unsupported rate penalty makes any new selection invalid, including a switch to Jacobian calculation.
   auto& penalty = scheme().getEnforcementOptions().penalty_options;
   penalty.rate_calc_set = true;
   penalty.rate_calculation = RATE_CONSTANT;
-  EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( 0, true, true ) );
+  EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, true ) );
   EXPECT_TRUE( scheme().getParameters().use_common_plane_formulation );
   EXPECT_FALSE( scheme().getParameters().common_plane_compute_jacobian );
-  EXPECT_EQ( scheme().getContactFormulation(), formulation );
+  EXPECT_EQ( scheme().getContactFormulation(), retained_formulation );
   EXPECT_FALSE( scheme().hasMfemJacobianData() );
 
   // Restoring the configuration must reuse the retained formulation and reproduce the earlier residual.
   penalty.rate_calc_set = false;
   evaluate();
-  EXPECT_EQ( scheme().getContactFormulation(), formulation );
-  auto residual = getMfemContactResidual( 0 );
-  residual -= reference;
-  EXPECT_LT( norm( residual ), 1.0e-11 );
+  EXPECT_EQ( scheme().getContactFormulation(), retained_formulation );
+  auto restored_residual_difference = getMfemContactResidual( coupling_scheme_id );
+  restored_residual_difference -= retained_residual;
+  EXPECT_LT( norm( restored_residual_difference ), residual_tolerance );
 }
 
 // Rejected configuration must leave the legacy selection and its resources intact.
 TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
 {
-  const auto check = [&]() {
-    EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( 0, true, false ) );
+  constexpr RealT lower_mesh_penalty = 2.0;
+  constexpr RealT upper_mesh_penalty = 6.0;
+  const auto check_selection_rejected = [&]() {
+    EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false ) );
     EXPECT_FALSE( scheme().getParameters().use_common_plane_formulation );
     EXPECT_FALSE( scheme().hasContactFormulation() );
     EXPECT_FALSE( scheme().hasMfemJacobianData() );
   };
-  EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( 1, true, false ) );
-  setMfemKinematicConstantPenalty( 0, 0.0, 6.0 );
-  check();
-  setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
+  constexpr IndexT unregistered_coupling_scheme_id = 1;
+  EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( unregistered_coupling_scheme_id, true, false ) );
+  setMfemKinematicConstantPenalty( coupling_scheme_id, 0.0, upper_mesh_penalty );
+  check_selection_rejected();
+  setMfemKinematicConstantPenalty( coupling_scheme_id, lower_mesh_penalty, upper_mesh_penalty );
   scheme().getParameters().enforcement_location = EnforcementLocation::Nodal;
-  check();
+  check_selection_rejected();
   scheme().getParameters().enforcement_location = EnforcementLocation::QuadraturePoint;
   auto& penalty = scheme().getEnforcementOptions().penalty_options;
   penalty.kinematic_calculation = KINEMATIC_ELEMENT;
-  check();
+  check_selection_rejected();
   penalty.kinematic_calculation = KINEMATIC_CONSTANT;
   penalty.rate_calc_set = true;
   penalty.rate_calculation = RATE_CONSTANT;
-  check();
+  check_selection_rejected();
   penalty.rate_calc_set = false;
-  setResidualGap( 0, 0.1 );
-  check();
-  setResidualGap( 0, 0.0 );
-  EXPECT_SLIC_ERROR( setQuadratureOrder( 0, 3 ) );
+  setResidualGap( coupling_scheme_id, 0.1 );
+  check_selection_rejected();
+  setResidualGap( coupling_scheme_id, 0.0 );
+  constexpr int unsupported_quadrature_order = 3;
+  EXPECT_SLIC_ERROR( setQuadratureOrder( coupling_scheme_id, unsupported_quadrature_order ) );
   enable( false );
   for ( int order = minimum_supported_quadrature_order; order <= maximum_supported_quadrature_order; ++order ) {
-    setQuadratureOrder( 0, order );
+    setQuadratureOrder( coupling_scheme_id, order );
     EXPECT_FALSE( scheme().hasContactFormulation() );
     EXPECT_EQ( scheme().getParameters().quadrature_order, order );
     ASSERT_TRUE( scheme().init() );
     EXPECT_TRUE( scheme().hasContactFormulation() );
   }
-  EXPECT_SLIC_ERROR( setQuadratureOrder( 0, maximum_supported_quadrature_order + 1 ) );
+  EXPECT_SLIC_ERROR( setQuadratureOrder( coupling_scheme_id, maximum_supported_quadrature_order + 1 ) );
   EXPECT_EQ( scheme().getParameters().quadrature_order, maximum_supported_quadrature_order );
 }
 // The opt-in setter must reject unsupported contact models, enforcement, and tied cases before constructing resources.
@@ -739,148 +799,201 @@ TEST( CommonPlaneSelection, rejects_unsupported_methods_models_and_cases )
     EnforcementMethod enforcement;  ///< Constraint enforcement selected during registration.
     ContactCase contact_case;       ///< Pair interaction case.
   };
-  const Configuration cases[] = { { COMMON_PLANE, VISCOUS_TANGENTIAL, PENALTY, NO_CASE },
-                                  { COMMON_PLANE, FRICTIONLESS, LAGRANGE_MULTIPLIER, NO_CASE },
-                                  { COMMON_PLANE, FRICTIONLESS, PENALTY, TIED_NORMAL },
-                                  { COMMON_PLANE, FRICTIONLESS, PENALTY, TIED_FULL },
-                                  { SINGLE_MORTAR, FRICTIONLESS, PENALTY, NO_CASE } };
-  for ( const auto test : cases ) {
-    mfem::ParMesh mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::SquareMesh( 1, 1 ) );
-    mfem::H1_FECollection fec( 1, 2 );
-    mfem::ParFiniteElementSpace fes( &mesh, &fec, 2 );
-    mfem::ParGridFunction coordinates( &fes );
-    mesh.GetNodes( coordinates );
-    registerMfemCouplingScheme( 0, 0, 1, mesh, coordinates, { 1 }, { 3 }, SURFACE_TO_SURFACE, test.contact_case,
-                                test.method, test.model, test.enforcement, BINNING_GRID, ExecutionMode::Sequential );
-    setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
-    EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( 0, true, false ) );
-    const auto& cs = CouplingSchemeManager::getInstance().at( 0 );
-    EXPECT_FALSE( cs.hasContactFormulation() );
-    EXPECT_FALSE( cs.hasMfemJacobianData() );
+  const Configuration unsupported_configurations[] = { { COMMON_PLANE, VISCOUS_TANGENTIAL, PENALTY, NO_CASE },
+                                                       { COMMON_PLANE, FRICTIONLESS, LAGRANGE_MULTIPLIER, NO_CASE },
+                                                       { COMMON_PLANE, FRICTIONLESS, PENALTY, TIED_NORMAL },
+                                                       { COMMON_PLANE, FRICTIONLESS, PENALTY, TIED_FULL },
+                                                       { SINGLE_MORTAR, FRICTIONLESS, PENALTY, NO_CASE } };
+  for ( const auto configuration : unsupported_configurations ) {
+    constexpr int horizontal_element_count = 1;
+    constexpr int vertical_element_count = 1;
+    mfem::ParMesh parent_mesh = shared::ParMeshBuilder(
+        MPI_COMM_WORLD, shared::MeshBuilder::SquareMesh( horizontal_element_count, vertical_element_count ) );
+    constexpr int spatial_dim = 2;
+    constexpr int linear_order = 1;
+    mfem::H1_FECollection coordinate_collection( linear_order, spatial_dim );
+    mfem::ParFiniteElementSpace coordinate_space( &parent_mesh, &coordinate_collection, spatial_dim );
+    mfem::ParGridFunction coordinates( &coordinate_space );
+    parent_mesh.GetNodes( coordinates );
+    constexpr IndexT coupling_scheme_id = 0;
+    constexpr IndexT lower_mesh_id = 0;
+    constexpr IndexT upper_mesh_id = 1;
+    constexpr int mesh_boundary_attribute_1 = 1;
+    constexpr int mesh_boundary_attribute_2 = 3;
+    registerMfemCouplingScheme( coupling_scheme_id, lower_mesh_id, upper_mesh_id, parent_mesh, coordinates,
+                                { mesh_boundary_attribute_1 }, { mesh_boundary_attribute_2 }, SURFACE_TO_SURFACE,
+                                configuration.contact_case, configuration.method, configuration.model,
+                                configuration.enforcement, BINNING_GRID, ExecutionMode::Sequential );
+    constexpr RealT lower_mesh_penalty = 2.0;
+    constexpr RealT upper_mesh_penalty = 6.0;
+    setMfemKinematicConstantPenalty( coupling_scheme_id, lower_mesh_penalty, upper_mesh_penalty );
+    EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false ) );
+    const auto& coupling_scheme = CouplingSchemeManager::getInstance().at( coupling_scheme_id );
+    EXPECT_FALSE( coupling_scheme.hasContactFormulation() );
+    EXPECT_FALSE( coupling_scheme.hasMfemJacobianData() );
     finalize();
   }
 }
 
-// Curved 2D coordinate spaces without LOR subdivision and three-dimensional parents are rejected before any selection.
+// Curved 2D coordinate spaces without LOR subdivision and three-dimensional parent meshes are rejected before
+// selection.
 TEST( CommonPlaneSelection, rejects_higher_order_without_lor_and_three_dimensional_geometry )
 {
-  for ( const int dim : { 2, 3 } ) {
-    const int order = dim == 2 ? 2 : 1;
-    mfem::ParMesh mesh = shared::ParMeshBuilder(
-        MPI_COMM_WORLD, dim == 2 ? shared::MeshBuilder::SquareMesh( 1, 1 ) : shared::MeshBuilder::CubeMesh( 1, 1, 1 ) );
-    mfem::H1_FECollection fec( order, dim );
-    mfem::ParFiniteElementSpace fes( &mesh, &fec, dim );
-    mfem::ParGridFunction coordinates( &fes );
-    mesh.GetNodes( coordinates );
-    registerMfemCouplingScheme( 0, 0, 1, mesh, coordinates, { 1 }, { 3 }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE,
-                                FRICTIONLESS, PENALTY, BINNING_GRID, ExecutionMode::Sequential );
-    setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
-    auto& cs = CouplingSchemeManager::getInstance().at( 0 );
-    if ( dim == 2 ) {
+  constexpr int spatial_dim = 2;
+  constexpr int three_dimensional = 3;
+  for ( const int geometry_dim : { spatial_dim, three_dimensional } ) {
+    constexpr int linear_order = 1;
+    constexpr int quadratic_order = 2;
+    const int coordinate_order = geometry_dim == spatial_dim ? quadratic_order : linear_order;
+    constexpr int horizontal_element_count = 1;
+    constexpr int vertical_element_count = 1;
+    mfem::ParMesh parent_mesh = shared::ParMeshBuilder(
+        MPI_COMM_WORLD, geometry_dim == spatial_dim
+                            ? shared::MeshBuilder::SquareMesh( horizontal_element_count, vertical_element_count )
+                            : shared::MeshBuilder::CubeMesh( 1, 1, 1 ) );
+    mfem::H1_FECollection coordinate_collection( coordinate_order, geometry_dim );
+    mfem::ParFiniteElementSpace coordinate_space( &parent_mesh, &coordinate_collection, geometry_dim );
+    mfem::ParGridFunction coordinates( &coordinate_space );
+    parent_mesh.GetNodes( coordinates );
+    constexpr IndexT coupling_scheme_id = 0;
+    constexpr IndexT lower_mesh_id = 0;
+    constexpr IndexT upper_mesh_id = 1;
+    constexpr int mesh_boundary_attribute_1 = 1;
+    constexpr int mesh_boundary_attribute_2 = 3;
+    registerMfemCouplingScheme( coupling_scheme_id, lower_mesh_id, upper_mesh_id, parent_mesh, coordinates,
+                                { mesh_boundary_attribute_1 }, { mesh_boundary_attribute_2 }, SURFACE_TO_SURFACE,
+                                NO_CASE, COMMON_PLANE, FRICTIONLESS, PENALTY, BINNING_GRID, ExecutionMode::Sequential );
+    constexpr RealT lower_mesh_penalty = 2.0;
+    constexpr RealT upper_mesh_penalty = 6.0;
+    setMfemKinematicConstantPenalty( coupling_scheme_id, lower_mesh_penalty, upper_mesh_penalty );
+    auto& coupling_scheme = CouplingSchemeManager::getInstance().at( coupling_scheme_id );
+    if ( geometry_dim == spatial_dim ) {
       // Disable LOR transfer on the quadratic 2D mesh so Common Plane sees an unrefined higher-order surface.
-      cs.setMfemMeshData( std::make_unique<MfemMeshData>( 0, 1, mesh, coordinates, std::set<int>{ 1 },
-                                                          std::set<int>{ 3 }, ExecutionMode::Sequential,
-                                                          MemorySpace::Host, false ) );
+      coupling_scheme.setMfemMeshData( std::make_unique<MfemMeshData>(
+          lower_mesh_id, upper_mesh_id, parent_mesh, coordinates, std::set<int>{ mesh_boundary_attribute_1 },
+          std::set<int>{ mesh_boundary_attribute_2 }, ExecutionMode::Sequential, MemorySpace::Host, false ) );
     }
-    EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( 0, true, false ) );
-    EXPECT_FALSE( cs.hasContactFormulation() );
-    EXPECT_FALSE( cs.hasMfemJacobianData() );
+    EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false ) );
+    EXPECT_FALSE( coupling_scheme.hasContactFormulation() );
+    EXPECT_FALSE( coupling_scheme.hasMfemJacobianData() );
     finalize();
   }
 }
 
-// Higher-order 2D coordinates with LOR subdivision match legacy 1-point forces and parent Jacobian differences.
+// Higher-order 2D coordinates transferred through an LOR mesh match legacy one-point residuals and finite-difference
+// checks of the residual Jacobian on parent-mesh displacement true DOFs.
 TEST( CommonPlaneSelection, evaluates_residuals_and_jacobians_with_lor_subdivision )
 {
+  constexpr int lower_boundary_edge_count = 2;
+  constexpr int upper_boundary_edge_count = 3;
+  constexpr int vertical_element_count = 1;
+  constexpr int upper_contact_boundary_attribute = 5;
+  constexpr int upper_noncontact_boundary_attribute = 6;
+  constexpr int upper_body_attribute = 2;
   // Shift the upper nonmatching body horizontally so projection endpoints do not coincide under coordinate
   // perturbations.
-  mfem::ParMesh mesh = shared::ParMeshBuilder(
-      MPI_COMM_WORLD,
-      shared::MeshBuilder::Unify( { shared::MeshBuilder::SquareMesh( 2, 1 ), shared::MeshBuilder::SquareMesh( 3, 1 )
-                                                                                 .translate( { 0.13, 0.99 } )
-                                                                                 .updateBdrAttrib( 1, 5 )
-                                                                                 .updateBdrAttrib( 3, 6 )
-                                                                                 .updateAttrib( 1, 2 ) } ) );
-  constexpr int order = 2;
-  mesh.SetCurvature( order, /*discont=*/false, /*space_dim=*/2, mfem::Ordering::byVDIM );
-  auto* mesh_nodes = dynamic_cast<mfem::ParGridFunction*>( mesh.GetNodes() );
-  ASSERT_NE( mesh_nodes, nullptr );
-  auto& fes = *mesh_nodes->ParFESpace();
-  mfem::ParGridFunction coordinates( &fes );
-  coordinates = *mesh_nodes;
+  mfem::ParMesh parent_mesh = shared::ParMeshBuilder(
+      MPI_COMM_WORLD, shared::MeshBuilder::Unify(
+                          { shared::MeshBuilder::SquareMesh( lower_boundary_edge_count, vertical_element_count ),
+                            shared::MeshBuilder::SquareMesh( upper_boundary_edge_count, vertical_element_count )
+                                .translate( { 0.13, 0.99 } )
+                                .updateBdrAttrib( 1, upper_contact_boundary_attribute )
+                                .updateBdrAttrib( 3, upper_noncontact_boundary_attribute )
+                                .updateAttrib( 1, upper_body_attribute ) } ) );
+  constexpr int spatial_dim = 2;
+  constexpr int quadratic_order = 2;
+  parent_mesh.SetCurvature( quadratic_order, /*discont=*/false, /*space_dim=*/spatial_dim, mfem::Ordering::byVDIM );
+  auto* parent_mesh_nodes = dynamic_cast<mfem::ParGridFunction*>( parent_mesh.GetNodes() );
+  ASSERT_NE( parent_mesh_nodes, nullptr );
+  auto& coordinate_space = *parent_mesh_nodes->ParFESpace();
+  mfem::ParGridFunction coordinates( &coordinate_space );
+  coordinates = *parent_mesh_nodes;
 
-  registerMfemCouplingScheme( 0, 0, 1, mesh, coordinates, { 3 }, { 5 }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE,
-                              FRICTIONLESS, PENALTY, BINNING_GRID, ExecutionMode::Sequential );
-  setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
+  constexpr IndexT coupling_scheme_id = 0;
+  constexpr IndexT lower_mesh_id = 0;
+  constexpr IndexT upper_mesh_id = 1;
+  constexpr int lower_contact_boundary_attribute = 3;
+  registerMfemCouplingScheme( coupling_scheme_id, lower_mesh_id, upper_mesh_id, parent_mesh, coordinates,
+                              { lower_contact_boundary_attribute }, { upper_contact_boundary_attribute },
+                              SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE, FRICTIONLESS, PENALTY, BINNING_GRID,
+                              ExecutionMode::Sequential );
+  constexpr RealT lower_mesh_penalty = 2.0;
+  constexpr RealT upper_mesh_penalty = 6.0;
+  setMfemKinematicConstantPenalty( coupling_scheme_id, lower_mesh_penalty, upper_mesh_penalty );
 
-  const auto& cs = CouplingSchemeManager::getInstance().at( 0 );
-  ASSERT_NE( cs.getMfemMeshData()->GetLORMesh(), nullptr );
-  EXPECT_EQ( cs.getMfemMeshData()->GetLORFactor(), order );
+  const auto& coupling_scheme = CouplingSchemeManager::getInstance().at( coupling_scheme_id );
+  ASSERT_NE( coupling_scheme.getMfemMeshData()->GetLORMesh(), nullptr );
+  EXPECT_EQ( coupling_scheme.getMfemMeshData()->GetLORFactor(), quadratic_order );
 
   const auto norm = []( const mfem::Vector& v ) { return std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, v, v ) ); };
   const auto evaluate = [&]() {
-    updateMfemParallelDecomposition( 1, true );
+    constexpr int contact_rank_count = 1;
+    updateMfemParallelDecomposition( contact_rank_count, true );
     RealT dt = 1.0;
-    ASSERT_EQ( update( 0, 0.0, dt ), 0 );
+    ASSERT_EQ( update( coupling_scheme_id, 0.0, dt ), 0 );
   };
 
   evaluate();
-  mfem::Vector legacy( fes.GetVSize() );
-  legacy = 0.0;
-  getMfemResponse( 0, legacy );
-  mfem::Vector true_legacy( fes.GetTrueVSize() );
-  fes.GetProlongationMatrix()->MultTranspose( legacy, true_legacy );
-  ASSERT_GT( norm( true_legacy ), 0.0 );
+  mfem::Vector legacy_local_residual( coordinate_space.GetVSize() );
+  legacy_local_residual = 0.0;
+  getMfemResponse( coupling_scheme_id, legacy_local_residual );
+  mfem::Vector legacy_true_residual( coordinate_space.GetTrueVSize() );
+  coordinate_space.GetProlongationMatrix()->MultTranspose( legacy_local_residual, legacy_true_residual );
+  ASSERT_GT( norm( legacy_true_residual ), 0.0 );
 
-  setMfemUseCommonPlaneFormulation( 0, true, false );
-  setQuadratureOrder( 0, 1 );
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false );
+  setQuadratureOrder( coupling_scheme_id, one_point_polynomial_order );
   evaluate();
-  EXPECT_EQ( getMfemDfDx( 0 ), nullptr );
-  auto residual_error = getMfemContactResidual( 0 );
-  residual_error += true_legacy;
-  EXPECT_LT( norm( residual_error ), 1.0e-11 );
+  EXPECT_EQ( getMfemDfDx( coupling_scheme_id ), nullptr );
+  auto residual_difference = getMfemContactResidual( coupling_scheme_id );
+  residual_difference += legacy_true_residual;
+  constexpr RealT residual_tolerance = 1.0e-11;
+  EXPECT_LT( norm( residual_difference ), residual_tolerance );
 
 #ifdef TRIBOL_USE_ENZYME
-  // Enable the Jacobian, then override the LOR factor while the formulation is active and verify the parent-space
-  // Jacobian via finite differences.
-  setMfemUseCommonPlaneFormulation( 0, true, true );
-  setMfemLORFactor( 0, 3 );
-  EXPECT_FALSE( cs.hasContactFormulation() );
-  EXPECT_TRUE( cs.hasMfemJacobianData() );
-  EXPECT_EQ( cs.getMfemMeshData()->GetLORFactor(), 3 );
+  // Enable the Jacobian, then override the LOR factor while the formulation is active and verify the residual Jacobian
+  // on parent-mesh displacement true DOFs via finite differences.
+  constexpr int overridden_lor_factor = 3;
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, true );
+  setMfemLORFactor( coupling_scheme_id, overridden_lor_factor );
+  EXPECT_FALSE( coupling_scheme.hasContactFormulation() );
+  EXPECT_TRUE( coupling_scheme.hasMfemJacobianData() );
+  EXPECT_EQ( coupling_scheme.getMfemMeshData()->GetLORFactor(), overridden_lor_factor );
   evaluate();
-  auto jacobian = getMfemDfDx( 0 );
-  ASSERT_NE( jacobian, nullptr );
+  auto assembled_jacobian = getMfemDfDx( coupling_scheme_id );
+  ASSERT_NE( assembled_jacobian, nullptr );
 
-  const mfem::ParGridFunction original( coordinates );
-  mfem::VectorFunctionCoefficient coefficient( 2, []( const mfem::Vector& x, mfem::Vector& v ) {
-    v.SetSize( 2 );
-    v[0] = 0.03 * x[0] + 0.01 * x[1];
-    v[1] = 0.02 * x[0] - 0.04 * x[1];
-  } );
-  mfem::ParGridFunction direction( &fes );
-  direction.ProjectCoefficient( coefficient );
-  mfem::Vector true_direction;
-  direction.GetTrueDofs( true_direction );
-  mfem::Vector predicted( true_direction.Size() );
-  jacobian->Mult( true_direction, predicted );
-  ASSERT_GT( norm( predicted ), 0.0 );
-  const RealT predicted_norm = norm( predicted );
+  const mfem::ParGridFunction original_coordinates( coordinates );
+  mfem::VectorFunctionCoefficient coordinate_direction_coefficient( spatial_dim,
+                                                                    []( const mfem::Vector& x, mfem::Vector& v ) {
+                                                                      v.SetSize( spatial_dim );
+                                                                      v[0] = 0.03 * x[0] + 0.01 * x[1];
+                                                                      v[1] = 0.02 * x[0] - 0.04 * x[1];
+                                                                    } );
+  mfem::ParGridFunction coordinate_direction( &coordinate_space );
+  coordinate_direction.ProjectCoefficient( coordinate_direction_coefficient );
+  mfem::Vector coordinate_true_direction;
+  coordinate_direction.GetTrueDofs( coordinate_true_direction );
+  mfem::Vector jacobian_action( coordinate_true_direction.Size() );
+  assembled_jacobian->Mult( coordinate_true_direction, jacobian_action );
+  ASSERT_GT( norm( jacobian_action ), 0.0 );
+  const RealT jacobian_action_norm = norm( jacobian_action );
 
-  constexpr RealT step = 1.0e-6;
-  coordinates = original;
-  coordinates.Add( step, direction );
+  constexpr RealT finite_difference_step = 1.0e-6;
+  constexpr RealT finite_difference_tolerance = 1.0e-7;
+  coordinates = original_coordinates;
+  coordinates.Add( finite_difference_step, coordinate_direction );
   evaluate();
-  const auto plus = getMfemContactResidual( 0 );
-  coordinates = original;
-  coordinates.Add( -step, direction );
+  const auto increased_coordinate_residual = getMfemContactResidual( coupling_scheme_id );
+  coordinates = original_coordinates;
+  coordinates.Add( -finite_difference_step, coordinate_direction );
   evaluate();
-  auto difference = getMfemContactResidual( 0 );
-  difference.Neg();
-  difference += plus;
-  difference /= 2.0 * step;
-  difference -= predicted;
-  EXPECT_LT( norm( difference ), 1.0e-7 * ( 1.0 + predicted_norm ) );
+  auto finite_difference_error = getMfemContactResidual( coupling_scheme_id );
+  finite_difference_error.Neg();
+  finite_difference_error += increased_coordinate_residual;
+  finite_difference_error /= 2.0 * finite_difference_step;
+  finite_difference_error -= jacobian_action;
+  EXPECT_LT( norm( finite_difference_error ), finite_difference_tolerance * ( 1.0 + jacobian_action_norm ) );
 #endif
 
   finalize();
@@ -898,7 +1011,7 @@ int main( int argc, char** argv )
   MPI_Init( &argc, &argv );
   testing::InitGoogleTest( &argc, argv );
   axom::slic::SimpleLogger logger;
-  const int result = RUN_ALL_TESTS();
+  const int test_status = RUN_ALL_TESTS();
   MPI_Finalize();
-  return result;
+  return test_status;
 }
