@@ -66,9 +66,9 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
                                  ExecutionMode exec_mode = ExecutionMode::Sequential );
 
 /**
- * @brief Select Common Plane residuals with an optional coordinate Jacobian, or restore legacy Common Plane.
+ * @brief Enable the ContactFormulation-based common plane formulation.
  * @param cs_id MFEM COMMON_PLANE coupling scheme with positive constant penalties already configured.
- * @param enabled True selects the formulation; false restores the legacy response path.
+ * @param enabled True selects the new formulation; false restores the legacy response path.
  * @param compute_jacobian Whether to calculate df_dx. Defaults to true to preserve residual-and-Jacobian evaluation.
  * False calculates residuals without Enzyme, Jacobian buffers, or matrix transfers. Ignored when enabled is false.
  * @note Reports a SLIC error, leaving the selection unchanged, if the method, geometry, penalty, or execution settings
