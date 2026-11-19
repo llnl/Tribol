@@ -982,9 +982,10 @@ TEST_P( EnergyMortarPairEvaluationTest, zero_weights_skip_derivatives )
   }
 }
 
+#endif
+
 INSTANTIATE_TEST_SUITE_P( backends, EnergyMortarPairEvaluationTest, tribol::detail::enabledExecutionModes() );
 
-#endif
 }  // namespace
 
 /** @brief Run primal and optional Enzyme tests. @param argc Argument count. @param argv Arguments. @return Status. */
