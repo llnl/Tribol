@@ -45,6 +45,7 @@ constexpr int one_point_polynomial_order = EdgeQuadratureRuleGenerator<1>::polyn
 constexpr int two_point_polynomial_order = EdgeQuadratureRuleGenerator<2>::polynomial_order;
 constexpr int three_point_polynomial_order = EdgeQuadratureRuleGenerator<3>::polynomial_order;
 
+#ifdef TRIBOL_USE_ENZYME
 /**
  * @brief Check whether a factory result contains the requested Common Plane Gauss rule.
  * @tparam NumPoints Number of Gauss points in the expected concrete formulation.
@@ -59,6 +60,7 @@ bool usesCommonPlaneRule( const ContactFormulation* formulation )
       CommonPlaneFormulation<ExecutionMode::Sequential, RuleGenerator, CommonPlaneGap, ResidualAndJacobian>;
   return dynamic_cast<const Expected*>( formulation ) != nullptr;
 }
+#endif
 
 /** @brief Register a two-versus-three-element contact patch for each supported rule. */
 class MfemCommonPlaneTest : public testing::TestWithParam<int> {
