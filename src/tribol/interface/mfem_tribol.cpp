@@ -340,9 +340,6 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
     }
   }
   cs.setMfemMeshData( std::move( mfem_data ) );
-  if ( contact_method == ENERGY_MORTAR ) {
-    cs.updateContactFormulation();
-  }
 }
 
 void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_jacobian )
@@ -353,9 +350,9 @@ void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_
   }
   if ( !enabled ) {
     if ( cs->getParameters().use_common_plane_formulation ) {
-      cs->setContactFormulation( nullptr );
-      cs->setMfemJacobianData( nullptr );
       cs->getParameters().use_common_plane_formulation = false;
+      cs->invalidateContactFormulation();
+      cs->setMfemJacobianData( nullptr );
       // Mesh re-registration can change pair indices while the formulation is active. Search again before using
       // legacy pair arrays, including schemes that previously fixed their binning.
       cs->setFixedBinning( false );
@@ -372,23 +369,15 @@ void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_
     cs->getMfemMeshData()->EnableLORJacobianTransfer();
   }
   auto jacobian = compute_jacobian ? std::make_unique<MfemJacobianData>( *cs->getMfemMeshData() ) : nullptr;
-  // A Jacobian-enabled formulation retains MfemJacobianData by reference, so destroy the formulation before replacing
-  // its transfer data.
-  cs->setContactFormulation( nullptr );
-  cs->setMfemJacobianData( std::move( jacobian ) );
+  if ( jacobian ) {
+    jacobian->UpdateJacobianXfer();
+  }
   cs->getParameters().use_common_plane_formulation = true;
   cs->getParameters().common_plane_compute_jacobian = compute_jacobian;
-  try {
-    cs->updateContactFormulation();
-    if ( cs->hasMfemJacobianData() ) {
-      cs->getMfemJacobianData()->UpdateJacobianXfer();
-    }
-  } catch ( ... ) {
-    cs->setContactFormulation( nullptr );
-    cs->getParameters().use_common_plane_formulation = false;
-    cs->setMfemJacobianData( nullptr );
-    throw;
-  }
+  // A Jacobian-enabled formulation retains MfemJacobianData by reference. Destroy it before replacing the transfer
+  // data, then let the next update construct one formulation from the completed configuration.
+  cs->invalidateContactFormulation();
+  cs->setMfemJacobianData( std::move( jacobian ) );
 }
 
 void setMfemLORFactor( IndexT cs_id, int lor_factor )
@@ -401,13 +390,15 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the LOR factor." );
-  const bool rebuild_formulation = cs->hasContactFormulation();
+  const bool uses_formulation = cs->usesContactFormulation();
   const auto* previous_lor = cs->getMfemMeshData()->GetLORMesh();
   cs->getMfemMeshData()->SetLORFactor( lor_factor );
   if ( previous_lor == cs->getMfemMeshData()->GetLORMesh() ) {
     return;
   }
-  cs->setContactFormulation( nullptr );
+  if ( uses_formulation ) {
+    cs->invalidateContactFormulation();
+  }
 
   if ( cs->getMfemSubmeshData() ) {
     cs->getMfemSubmeshData()->SetLORMesh( cs->getMfemMeshData()->GetLORMesh() );
@@ -416,9 +407,6 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
     cs->setMfemJacobianData( cs->hasMfemSubmeshData() ? std::make_unique<MfemJacobianData>( *cs->getMfemMeshData(),
                                                                                             *cs->getMfemSubmeshData() )
                                                       : std::make_unique<MfemJacobianData>( *cs->getMfemMeshData() ) );
-  }
-  if ( rebuild_formulation ) {
-    cs->updateContactFormulation();
   }
 }
 
@@ -446,10 +434,8 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the penalty." );
-  // Energy Mortar may not have a formulation until this call supplies its penalties. Other methods rebuild only when
-  // a formulation is already active.
-  const bool rebuild_formulation = cs->getContactMethod() == ENERGY_MORTAR || cs->hasContactFormulation();
-  if ( rebuild_formulation ) {
+  const bool uses_formulation = cs->usesContactFormulation();
+  if ( uses_formulation ) {
     const RealT checked_mesh1_penalty = detail::checkedPenaltyStiffness( mesh1_penalty );
     const RealT checked_mesh2_penalty = detail::checkedPenaltyStiffness( mesh2_penalty );
     const RealT effective_penalty = cs->getContactMethod() == ENERGY_MORTAR
@@ -462,8 +448,8 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
   cs->getMfemMeshData()->SetMesh1KinematicConstantPenalty( mesh1_penalty );
   cs->getMfemMeshData()->SetMesh2KinematicConstantPenalty( mesh2_penalty );
 
-  if ( rebuild_formulation ) {
-    cs->updateContactFormulation();
+  if ( uses_formulation ) {
+    cs->invalidateContactFormulation();
   }
 }
 
@@ -552,10 +538,16 @@ void setMfemKinematicPenaltyScale( IndexT cs_id, RealT mesh1_scale, RealT mesh2_
   SLIC_ERROR_ROOT_IF( !penalty_opts.kinematic_calc_set,
                       "No kinematic enforcement method set. Call setMfemKinematicConstantPenalty() or "
                       "setMfemKinematicElementPenalty() first." );
+  if ( cs->getParameters().use_common_plane_formulation ) {
+    const auto& data = *cs->getMfemMeshData();
+    const RealT penalty1 = detail::checkedPenaltyStiffness( *data.GetMesh1KinematicConstantPenalty() * mesh1_scale );
+    const RealT penalty2 = detail::checkedPenaltyStiffness( *data.GetMesh2KinematicConstantPenalty() * mesh2_scale );
+    detail::checkedPenaltyStiffness( SeriesPenaltyStiffness{}( penalty1, penalty2 ) );
+  }
   cs->getMfemMeshData()->SetMesh1KinematicPenaltyScale( mesh1_scale );
   cs->getMfemMeshData()->SetMesh2KinematicPenaltyScale( mesh2_scale );
   if ( cs->getParameters().use_common_plane_formulation ) {
-    cs->updateContactFormulation();
+    cs->invalidateContactFormulation();
   }
 }
 
@@ -628,7 +620,7 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r )
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
   SLIC_ERROR_ROOT_IF(
-      cs->hasContactFormulation(),
+      cs->usesContactFormulation(),
       "Coupling scheme has a contact formulation. Forces are returned using getMfemContactForce() instead." );
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
@@ -844,6 +836,13 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id )
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
 
+  if ( !cs->hasMfemSubmeshData() && cs->getContactMethod() == ENERGY_MORTAR &&
+       cs->getEnforcementMethod() == LAGRANGE_MULTIPLIER &&
+       cs->getParameters().enforcement_location == EnforcementLocation::Nodal ) {
+    // The caller may initialize LM pressure before the first update. Preparing that input creates its field and
+    // transfer data without constructing the contact formulation.
+    cs->getContactMultiplier();
+  }
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(),
                       axom::fmt::format( "Coupling scheme cs_id={0} does not contain MFEM pressure field data. "
                                          "Create the coupling scheme using registerMfemCouplingScheme() and set the "
@@ -859,11 +858,11 @@ mfem::HypreParVector& getMfemContactPressure( IndexT cs_id )
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
-  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
   if ( cs->getEnforcementMethod() == LAGRANGE_MULTIPLIER &&
        cs->getParameters().enforcement_location == EnforcementLocation::Nodal ) {
     return cs->getContactMultiplier();
   }
+  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
   const auto& pressure = cs->getContactFormulationResult().pressure;
   if ( !pressure ) {
     throw std::logic_error( "No nodal contact pressure is available." );
@@ -928,8 +927,7 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         // the new redecomp mesh
         submesh_data->UpdateMfemSubmeshData( mfem_data->GetRedecompMesh(), new_redecomp );
         // ContactFormulation uses mesh 1 as non-mortar; legacy mortar methods use mesh 2.
-        const auto nonmortar_mesh_id =
-            mesh_ids[cs.getContactMethod() == ENERGY_MORTAR || cs.hasContactFormulation() ? 0 : 1];
+        const auto nonmortar_mesh_id = mesh_ids[cs.usesContactFormulation() ? 0 : 1];
         auto g_ptrs = submesh_data->GetRedecompGapPtrs();
         registerMortarGaps( nonmortar_mesh_id, g_ptrs[0] );
         auto p_ptrs = submesh_data->GetRedecompPressurePtrs();

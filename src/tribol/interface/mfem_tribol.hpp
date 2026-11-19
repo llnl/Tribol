@@ -51,9 +51,9 @@ namespace tribol {
  * @param [in] exec_mode Execution mode for the coupling scheme (Sequential by default)
  *
  * Quadrature-point ENERGY_MORTAR uses parent-only Jacobian transfer and creates no pressure/gap fields. Nodal
- * enforcement creates those fields when selected; switching locations rebuilds the formulation and transfer data.
- * Penalty Energy Mortar is registered without a formulation until setMfemKinematicConstantPenalty() supplies the
- * required constants. Nodal LM formulations are available immediately after registration.
+ * enforcement creates those fields when first accessed or when update() initializes the formulation. Configuration
+ * setters invalidate an existing formulation, and the next update() rebuilds it once from the completed configuration.
+ * Nodal LM callers can access the multiplier input before that first update().
  */
 void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, const mfem::ParMesh& mesh,
                                  const mfem::ParGridFunction& current_coords, std::set<int> b_attributes_1,
@@ -124,11 +124,11 @@ void setMfemRedecompTriggerDisplacement( IndexT cs_id, RealT val );
  * @param mesh1_penalty Penalty parameter for the first contact surface mesh
  * @param mesh2_penalty Penalty parameter for the second contact surface mesh
  *
- * For penalty Energy Mortar, constructs or replaces the formulation with the arithmetic mean of these constants.
- * For the opt-in Common Plane formulation, replaces it using these constants as springs in series. Existing penalty
- * scales are cleared; call setMfemKinematicPenaltyScale() after this setter to apply scales to the new constants.
- * The formulation keeps that effective stiffness until replaced. Construction requires no decomposition refresh;
- * call updateMfemParallelDecomposition() with current coordinates before calculating contact.
+ * For penalty Energy Mortar, the next update() constructs the formulation with the arithmetic mean of these constants.
+ * For the opt-in Common Plane formulation, the next update() uses these constants as springs in series. Existing
+ * penalty scales are cleared; call setMfemKinematicPenaltyScale() after this setter to apply scales to the new
+ * constants. Multiple configuration setters before update() cause one formulation construction. Call
+ * updateMfemParallelDecomposition() with current coordinates before calculating contact.
  * @throws std::invalid_argument A composed formulation's mesh or effective penalty is nonpositive or nonfinite; its
  * existing penalty data and formulation are unchanged.
  */
@@ -400,9 +400,9 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id );
 /**
  * @brief Returns a reference to the true-dof contact pressure vector
  *
- * For nodal penalty enforcement, returns the pressure in the latest coupling-scheme result. For LM enforcement,
- * returns the caller-supplied multiplier input for the next update(), available immediately after registration.
- * Formulations retain neither this input nor computed pressure. Quadrature-point methods have no nodal pressure.
+ * For nodal penalty enforcement, returns the pressure in the latest coupling-scheme result. For LM enforcement, the
+ * first access prepares and returns the caller-supplied multiplier input for the next update(). Formulations retain
+ * neither this input nor computed pressure. Quadrature-point methods have no nodal pressure.
  *
  * @throws std::logic_error No nodal pressure output or multiplier input is available.
  *

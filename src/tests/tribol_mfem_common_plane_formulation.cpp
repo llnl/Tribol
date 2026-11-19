@@ -8,7 +8,7 @@
  * @brief Check explicit MFEM Common Plane selection, nonmatching constant-traction patches, and parent Jacobians.
  * The same tests run on one and two ranks; decomposition onto rank zero exercises a rank without surface elements.
  * Direct calls check output availability and validity after destroying the formulation.
- * Fixed penalties and MFEM setters that rebuild formulations are checked without refreshing the decomposition.
+ * Fixed penalties and MFEM setters that invalidate formulations are checked without refreshing the decomposition.
  * Direct force and Jacobian scaling checks use Sequential and OpenMP when enabled, with host mesh storage.
  * Tilted nonmatching surfaces check legacy force agreement with one point and a different load distribution with
  * higher-order rules on the clipped overlap.
@@ -324,6 +324,7 @@ TEST_P( MfemCommonPlaneTest, returns_owned_outputs_without_retaining_results )
 {
   enable();
   updateMfemParallelDecomposition( 1, true );
+  ASSERT_TRUE( scheme().init() );
   const auto& formulation = *scheme().getContactFormulation();
   auto first = formulation.computeNodalForces( scheme().getMesh1().getView(), scheme().getMesh2().getView() );
   ASSERT_NE( first.force, nullptr );
@@ -371,7 +372,8 @@ TEST_P( MfemCommonPlaneTest, keeps_penalty_fixed_until_formulation_is_rebuilt )
   unchanged.force->Add( -1.0, initial );
   EXPECT_LT( norm( *unchanged.force ), 1.0e-11 );
 
-  scheme().updateContactFormulation();
+  scheme().invalidateContactFormulation();
+  ASSERT_TRUE( scheme().init() );
   auto rebuilt = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
                                                                        scheme().getMesh2().getView() );
   rebuilt.force->Add( -4.0, initial );
@@ -385,11 +387,15 @@ TEST_P( MfemCommonPlaneTest, uses_changed_constants_without_decomposition_refres
   evaluate();
   const auto initial = getMfemContactForce( 0 );
   setMfemKinematicConstantPenalty( 0, 4.0, 12.0 );
+  EXPECT_FALSE( scheme().hasContactFormulation() );
+  ASSERT_TRUE( scheme().init() );
   auto changed_constants = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
                                                                                  scheme().getMesh2().getView() );
   changed_constants.force->Add( -2.0, initial );
   EXPECT_LT( norm( *changed_constants.force ), 1.0e-11 );
   setMfemKinematicPenaltyScale( 0, 2.0, 2.0 );
+  EXPECT_FALSE( scheme().hasContactFormulation() );
+  ASSERT_TRUE( scheme().init() );
   auto direct = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
                                                                       scheme().getMesh2().getView() );
   // Doubling both constants and both scales multiplies the effective series stiffness by four.
@@ -407,6 +413,7 @@ TEST_P( MfemCommonPlaneTest, rejects_invalid_constants_without_changing_scheme )
 {
   enable( false );
   setMfemKinematicPenaltyScale( 0, 2.0, 3.0 );
+  ASSERT_TRUE( scheme().init() );
   auto* formulation = scheme().getContactFormulation();
   const auto& mesh_data = *scheme().getMfemMeshData();
   const RealT mesh1_penalty = *mesh_data.GetMesh1KinematicConstantPenalty();
@@ -442,6 +449,8 @@ TEST_P( MfemCommonPlaneTest, constructs_with_scales_before_decomposition )
   const auto scaled = getMfemContactForce( 0 );
   // Resetting constants clears registered scales even while the decomposed meshes still contain earlier scales.
   setMfemKinematicConstantPenalty( 0, 2.0, 6.0 );
+  EXPECT_FALSE( scheme().hasContactFormulation() );
+  ASSERT_TRUE( scheme().init() );
   auto unscaled = scheme().getContactFormulation()->computeNodalForces( scheme().getMesh1().getView(),
                                                                         scheme().getMesh2().getView() );
   // Scaled constants 4 and 18 give stiffness 36/11; unscaled constants 2 and 6 give stiffness 1.5.
@@ -638,9 +647,10 @@ TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
   enable( false );
   for ( int order = 0; order <= 5; ++order ) {
     setQuadratureOrder( 0, order );
-    auto* formulation = scheme().getContactFormulation();
-    EXPECT_NE( formulation, nullptr );
+    EXPECT_FALSE( scheme().hasContactFormulation() );
     EXPECT_EQ( scheme().getParameters().quadrature_order, order );
+    ASSERT_TRUE( scheme().init() );
+    EXPECT_TRUE( scheme().hasContactFormulation() );
   }
   EXPECT_THROW( setQuadratureOrder( 0, 6 ), std::invalid_argument );
   EXPECT_EQ( scheme().getParameters().quadrature_order, 5 );
@@ -760,7 +770,7 @@ TEST( CommonPlaneSelection, evaluates_forces_and_jacobians_with_lor_subdivision 
   // Jacobian via finite differences.
   setMfemUseCommonPlaneFormulation( 0, true, true );
   setMfemLORFactor( 0, 3 );
-  EXPECT_TRUE( cs.hasContactFormulation() );
+  EXPECT_FALSE( cs.hasContactFormulation() );
   EXPECT_TRUE( cs.hasMfemJacobianData() );
   EXPECT_EQ( cs.getMfemMeshData()->GetLORFactor(), 3 );
   evaluate();

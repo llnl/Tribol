@@ -341,6 +341,9 @@ CouplingScheme::CouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, 
   m_contactModel = static_cast<ContactModel>( contact_model ),
   m_enforcementMethod = static_cast<EnforcementMethod>( enforcement_method );
   m_binningMethod = static_cast<BinningMethod>( binning_method );
+  if ( m_contactMethod == ENERGY_MORTAR ) {
+    m_formulation_state = ContactFormulationState::NeedsBuild;
+  }
 
   m_couplingSchemeErrors.cs_mode_error = NO_MODE_ERROR;
   m_couplingSchemeErrors.cs_case_error = NO_CASE_ERROR;
@@ -1038,8 +1041,8 @@ void CouplingScheme::performBinning()
 //------------------------------------------------------------------------------
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
-  if ( m_contactMethod == ENERGY_MORTAR && !m_formulation ) {
-    throw std::logic_error( "Configure Energy Mortar penalty settings before calculating contact." );
+  if ( usesContactFormulation() && !m_formulation ) {
+    throw std::logic_error( "Contact formulation is not ready; call update() after changing its configuration." );
   }
   if ( m_formulation ) {
     if ( m_parameters.use_common_plane_formulation ) {
@@ -1167,26 +1170,53 @@ void CouplingScheme::setContactFormulation( std::unique_ptr<ContactFormulation> 
 {
   m_formulation = std::move( formulation );
   m_formulation_result = {};
+  m_formulation_state = m_formulation              ? ContactFormulationState::Current
+                        : usesContactFormulation() ? ContactFormulationState::NeedsBuild
+                                                   : ContactFormulationState::Disabled;
 #ifdef BUILD_REDECOMP
-  if ( m_formulation && m_enforcementMethod == LAGRANGE_MULTIPLIER &&
-       m_parameters.enforcement_location == EnforcementLocation::Nodal ) {
-    auto* fes = const_cast<mfem::ParFiniteElementSpace*>( &getMfemSubmeshData()->GetSubmeshFESpace() );
-    if ( !m_contact_multiplier || m_contact_multiplier->Size() != fes->GetTrueVSize() ) {
-      shared::ParVector multiplier( fes );
-      multiplier.fill( 0.0 );
-      m_contact_multiplier.reset( multiplier.release() );
-    }
-  } else {
-    m_contact_multiplier.reset();
+  if ( m_formulation ) {
+    updateContactMultiplier();
   }
 #endif
 }
 
 #ifdef BUILD_REDECOMP
+void CouplingScheme::updateContactMultiplier()
+{
+  if ( m_enforcementMethod != LAGRANGE_MULTIPLIER || m_parameters.enforcement_location != EnforcementLocation::Nodal ||
+       !hasMfemSubmeshData() ) {
+    return;
+  }
+  auto* fes = const_cast<mfem::ParFiniteElementSpace*>( &getMfemSubmeshData()->GetSubmeshFESpace() );
+  if ( !m_contact_multiplier || m_contact_multiplier->Size() != fes->GetTrueVSize() ) {
+    shared::ParVector multiplier( fes );
+    multiplier.fill( 0.0 );
+    m_contact_multiplier.reset( multiplier.release() );
+  }
+}
+
+mfem::HypreParVector& CouplingScheme::getContactMultiplier()
+{
+  if ( !m_contact_multiplier && m_contactMethod == ENERGY_MORTAR && m_enforcementMethod == LAGRANGE_MULTIPLIER &&
+       m_parameters.enforcement_location == EnforcementLocation::Nodal && hasMfemData() ) {
+    // LM values are caller inputs for the first update, so prepare their transfer space without constructing the
+    // contact formulation early.
+    if ( !setMeshPointers() || checkExecutionModeData() == 1 ) {
+      throw std::logic_error( "Contact multiplier input requires valid registered meshes." );
+    }
+    updateEnergyMortarTransferData();
+  }
+  if ( !m_contact_multiplier ) {
+    throw std::logic_error( "No contact multiplier input is available." );
+  }
+  return *m_contact_multiplier;
+}
+
 void CouplingScheme::updateEnergyMortarTransferData()
 {
   const bool nodal = m_parameters.enforcement_location == EnforcementLocation::Nodal;
   if ( hasMfemJacobianData() && hasMfemSubmeshData() == nodal ) {
+    updateContactMultiplier();
     return;
   }
   auto& mesh_data = *getMfemMeshData();
@@ -1229,49 +1259,48 @@ void CouplingScheme::updateEnergyMortarTransferData()
     fields.m_is_node_gap_set = true;
     fields.m_is_node_pressure_set = true;
   }
+  updateContactMultiplier();
 }
 #endif
 
 //------------------------------------------------------------------------------
-void CouplingScheme::updateContactFormulation()
+void CouplingScheme::buildContactFormulation()
 {
-  if ( m_contactMethod == ENERGY_MORTAR ||
-       ( m_contactMethod == COMMON_PLANE && m_parameters.use_common_plane_formulation ) ) {
-    // Formulation construction captures search configuration, so valid current meshes are required before invoking
-    // the factory. Setters that change search configuration update its derived values before rebuilding here.
-    // Status 2 selects a usable but nonoptimal execution mode, so only status 1 prevents formulation construction.
-    if ( !setMeshPointers() || checkExecutionModeData() == 1 ) {
-      SLIC_ERROR_ROOT( "Formulation configuration requires valid registered meshes." );
-      return;
-    }
+  if ( !usesContactFormulation() ) {
+    throw std::logic_error( "Contact formulation construction requires Energy Mortar or opted-in Common Plane." );
+  }
 #ifdef BUILD_REDECOMP
-    if ( m_contactMethod == ENERGY_MORTAR && hasMfemData() ) {
-      updateEnergyMortarTransferData();
-    }
+  if ( m_contactMethod == ENERGY_MORTAR && hasMfemData() ) {
+    updateEnergyMortarTransferData();
+  }
 #endif
-    this->setContactFormulation( createContactFormulation( this ) );
-  } else {
-    SLIC_WARNING_ROOT( "Rebuilding requires ENERGY_MORTAR or an opted-in Common Plane formulation." );
+  setContactFormulation( createContactFormulation( this ) );
+  if ( !m_formulation ) {
+    if ( m_contactMethod == ENERGY_MORTAR ) {
+      throw std::logic_error( "Configure Energy Mortar penalty settings before calling update()." );
+    }
+    throw std::logic_error( "The enabled contact formulation could not be constructed." );
   }
 }
 
 //------------------------------------------------------------------------------
 bool CouplingScheme::init()
 {
-  if ( m_contactMethod == ENERGY_MORTAR && !m_formulation ) {
-    throw std::logic_error( "Configure Energy Mortar penalty settings before calling update()." );
-  }
-  if ( m_formulation ) {
-    // validity checks are done in the constructors of ContactFormulations
+  if ( usesContactFormulation() ) {
+    // ContactFormulation constructors validate method-specific settings. Meshes and the execution mode must be current
+    // first because the factory captures both in the formulation's search objects.
     this->m_isValid = true;
-    // the validity checks also set mesh pointers and allocator id, so these calls are still needed
     // Status 2 selects a usable but nonoptimal execution mode, so only status 1 prevents initialization.
     if ( !setMeshPointers() || checkExecutionModeData() == 1 ) {
-      // TODO: consider design; should these checks be specific to a contact formulation or are they specific to
-      // ENERGY_MORTAR?
       return false;
     }
+    if ( m_formulation_state != ContactFormulationState::Current || !m_formulation ) {
+      buildContactFormulation();
+    }
   } else {
+    if ( m_formulation_state != ContactFormulationState::Disabled || m_formulation ) {
+      setContactFormulation( nullptr );
+    }
     this->m_isValid = this->isValidCouplingScheme();
   }
 

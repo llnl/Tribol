@@ -735,15 +735,27 @@ class CouplingScheme {
   /**
    * @brief Set the ContactFormulation implementation
    *
+   * A null formulation marks enabled formulation-based contact for construction during the next init().
+   *
    * @param formulation Unique pointer to the formulation
    */
   void setContactFormulation( std::unique_ptr<ContactFormulation> formulation );
 
   /**
-   * @brief Rebuilds the contact formulation based on the current scheme parameters.
-   * Energy Mortar penalty schemes have no formulation until penalty selection and both constants are supplied.
+   * @brief Destroy the current formulation so init() rebuilds it from the latest configuration.
    */
-  void updateContactFormulation();
+  void invalidateContactFormulation() { setContactFormulation( nullptr ); }
+
+  /**
+   * @brief Check whether the selected contact method uses a ContactFormulation.
+   *
+   * @return True for Energy Mortar and opted-in Common Plane formulations.
+   */
+  bool usesContactFormulation() const
+  {
+    return m_contactMethod == ENERGY_MORTAR ||
+           ( m_contactMethod == COMMON_PLANE && m_parameters.use_common_plane_formulation );
+  }
 
   /**
    * @brief Check if a ContactFormulation implementation is set
@@ -768,15 +780,9 @@ class CouplingScheme {
   /**
    * @brief Access caller-supplied true-DOF Lagrange multipliers.
    * @return Mutable input for the next contact calculation.
-   * @throws std::logic_error No LM formulation has initialized this input.
+   * @throws std::logic_error The scheme does not support a nodal LM input or its MFEM data is invalid.
    */
-  mfem::HypreParVector& getContactMultiplier()
-  {
-    if ( !m_contact_multiplier ) {
-      throw std::logic_error( "No contact multiplier input is available." );
-    }
-    return *m_contact_multiplier;
-  }
+  mfem::HypreParVector& getContactMultiplier();
 #endif
 
 #ifdef BUILD_REDECOMP
@@ -932,7 +938,21 @@ class CouplingScheme {
   void computeCommonPlaneTimeStep( RealT& dt );
 
  private:
+  /** @brief Track whether formulation-based contact is disabled, stale, or ready for use. */
+  enum class ContactFormulationState
+  {
+    Disabled,
+    NeedsBuild,
+    Current
+  };
+
+  /** @brief Build the enabled formulation after init() resolves its meshes and execution mode. */
+  void buildContactFormulation();
+
 #ifdef BUILD_REDECOMP
+  /** @brief Allocate the caller-owned multiplier input when nodal LM transfer data is available. */
+  void updateContactMultiplier();
+
   /// Create or replace parent-only or nodal pressure/gap transfer data for the selected Energy Mortar location.
   /// Existing formulations and cached outputs are released before replacing the data they reference.
   void updateEnergyMortarTransferData();
@@ -978,6 +998,7 @@ class CouplingScheme {
   std::unique_ptr<MethodData> m_dndxJacobian;  ///< Store derivative of normal w.r.t. nodal coordinates on element pairs
 
   std::unique_ptr<ContactFormulation> m_formulation;  ///< Polymorphic contact formulation.
+  ContactFormulationState m_formulation_state{ ContactFormulationState::Disabled };  ///< Formulation lifecycle state.
 
   ArrayT<InterfacePair> m_interface_pairs;  ///< List of interface pairs
 
