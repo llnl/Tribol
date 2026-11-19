@@ -131,349 +131,271 @@ shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& 
   return assembler.assemble();
 }
 
-/**
- * @brief Convert assembled nodal quantities to normalized compressive penalty gaps.
- * @param quantities Assembled weighted gaps and areas, consumed for the result.
- * @return Owned gap and coordinate-Jacobian fields.
- */
-ContactFormulationResult makeNodalPenaltyGapResult( EnergyMortarNodalQuantities& quantities );
-
-/**
- * @brief Convert assembled nodal quantities to signed weighted Lagrange multiplier gaps.
- * @param quantities Assembled weighted gaps and areas, consumed for the result.
- * @return Owned gap and coordinate-Jacobian fields.
- */
-ContactFormulationResult makeNodalLagrangeMultiplierGapResult( EnergyMortarNodalQuantities& quantities );
-
 }  // namespace detail
 
-/**
- * @brief Assemble nodal integrals and calculate normalized compressive penalty gaps.
- * @tparam Exec Concrete execution mode for evaluation and assembly kernels.
- * @tparam PairFunction Pair function returning weighted-gap integrals followed by tributary areas.
- * @param pairs Accepted element pairs; not retained.
- * @param mesh1 Current first mesh.
- * @param mesh2 Current second mesh.
- * @param mesh_data Displacement transfer data used for assembly.
- * @param submesh_data Pressure and gap transfer data used for assembly.
- * @param jacobian_data Parent and scalar-field Jacobian transfer data used for assembly.
- * @param pair_function Configured nodal-integral pair_function.
- * @return Owned gaps and their coordinate Jacobian; other outputs are absent. Empty pairs give zero gaps.
- * @note Reports a SLIC error if pair geometry or assembly dimensions are invalid.
- * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
- */
-template <ExecutionMode Exec, PairFunctionType PairFunction>
-ContactFormulationResult evaluateAndAssembleNodalPenaltyGaps(
-    const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2, const MfemMeshData& mesh_data,
-    const MfemSubmeshData& submesh_data, const MfemJacobianData& jacobian_data, const PairFunction& pair_function )
-{
-  auto quantities = detail::evaluateAndAssembleNodalQuantities<Exec>( pairs, mesh1, mesh2, pair_function, mesh_data,
-                                                                      submesh_data, jacobian_data );
-  return detail::makeNodalPenaltyGapResult( quantities );
-}
-
-/**
- * @brief Assemble nodal integrals, apply penalty enforcement, and calculate residuals and derivatives.
- * @tparam Exec Concrete execution mode for evaluation and assembly kernels.
- * @tparam PairFunction Pair function returning weighted-gap integrals followed by tributary areas.
- * @param pairs Accepted element pairs; not retained.
- * @param mesh1 Current first mesh.
- * @param mesh2 Current second mesh.
- * @param mesh_data Displacement transfer data used for assembly.
- * @param submesh_data Pressure and gap transfer data used for assembly.
- * @param jacobian_data Parent and scalar-field Jacobian transfer data used for assembly.
- * @param pair_function Configured nodal-integral pair_function.
- * @param penalty Fixed positive, finite penalty stiffness, validated when constructing the formulation.
- * @return Owned gaps, pressure, energy, residual, weighted_gap_jacobian, and df_dx; df_dp is absent. Empty pairs
- * contribute zero residual and energy; unsupported nodal areas give zero penalty pressure.
- * @note Reports a SLIC error if geometry, assembly dimensions, or nodal field dimensions are invalid.
- * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
- */
-template <ExecutionMode Exec, PairFunctionType PairFunction>
-ContactFormulationResult evaluateAndAssembleNodalPenalty( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
-                                                          MeshData::Viewer mesh2, const MfemMeshData& mesh_data,
-                                                          const MfemSubmeshData& submesh_data,
-                                                          const MfemJacobianData& jacobian_data,
-                                                          const PairFunction& pair_function, RealT penalty )
-{
-  auto quantities = detail::evaluateAndAssembleNodalQuantities<Exec>( pairs, mesh1, mesh2, pair_function, mesh_data,
-                                                                      submesh_data, jacobian_data );
-  const auto make_vector = [&] {
-    shared::ParVector vector( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data.GetSubmeshFESpace() ) );
-    vector.fill( 0.0 );
-    return vector;
-  };
-  auto gap_weights = make_vector();
-  auto area_weights = make_vector();
-  auto d2energy_dweighted_gap2 = make_vector();
-  auto d2energy_dweighted_gap_dtributary_area = make_vector();
-  auto d2energy_dtributary_area2 = make_vector();
-  const int allocator_id = pairs.getAllocatorID();
-  Array1D<RealT> nodal_energy( gap_weights.size(), gap_weights.size(), allocator_id );
-  const bool use_device = isOnDevice( Exec );
-  const auto* weighted_gap = quantities.weighted_gap.values.get().Read( use_device );
-  const auto* area = quantities.tributary_area.values.get().Read( use_device );
-  auto* gap_weight = gap_weights.get().Write( use_device );
-  auto* area_weight = area_weights.get().Write( use_device );
-  auto* gap_gap_data = d2energy_dweighted_gap2.get().Write( use_device );
-  auto* gap_area_data = d2energy_dweighted_gap_dtributary_area.get().Write( use_device );
-  auto* area_area_data = d2energy_dtributary_area2.get().Write( use_device );
-  auto* nodal_energy_data = nodal_energy.data();
-  forAllExec<Exec>( gap_weights.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) {
-    const auto partials = EnergyMortarNodalPenaltyPartials::evaluate( weighted_gap[node], area[node], penalty,
-                                                                      detail::nodal_area_tolerance );
-    nodal_energy_data[node] = partials.energy;
-    gap_weight[node] = partials.denergy_dweighted_gap;
-    area_weight[node] = partials.denergy_dtributary_area;
-    gap_gap_data[node] = partials.d2energy_dweighted_gap2;
-    gap_area_data[node] = partials.d2energy_dweighted_gap_dtributary_area;
-    area_area_data[node] = partials.d2energy_dtributary_area2;
-  } );
-  const RealT energy = GlobalScalarAssembler::sum<Exec>(
-      gap_weights.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) { return nodal_energy_data[node]; },
-      gap_weights.get().GetComm() );
-  auto residual = gap_weights * quantities.weighted_gap.jacobian;
-  residual += area_weights * quantities.tributary_area.jacobian;
-
-  const auto redecomp_gap_weights = submesh_data.TransferTrueDofsToRedecomp( gap_weights.get() );
-  const auto redecomp_area_weights = submesh_data.TransferTrueDofsToRedecomp( area_weights.get() );
-  const auto* gap_data = redecomp_gap_weights.Read( use_device );
-  const auto* area_data = redecomp_area_weights.Read( use_device );
-  auto jacobian = detail::assembleWeightedNodalHessian<Exec>(
-      pairs, mesh1, mesh2, pair_function, mesh_data, jacobian_data,
-      [=] TRIBOL_HOST_DEVICE( IndexT node ) { return MdArray<RealT, 2>{ gap_data[node], area_data[node] }; } );
-  const auto make_diagonal = [&]( const shared::ParVector& values ) {
-    const auto& fes = submesh_data.GetSubmeshFESpace();
-    return shared::ParSparseMat::diagonalMatrix( fes.GetComm(), fes.GlobalTrueVSize(), fes.GetTrueDofOffsets(),
-                                                 values.get() );
-  };
-  const auto gg = make_diagonal( d2energy_dweighted_gap2 );
-  const auto ga = make_diagonal( d2energy_dweighted_gap_dtributary_area );
-  const auto aa = make_diagonal( d2energy_dtributary_area2 );
-  jacobian += shared::ParSparseMat::rap( gg, quantities.weighted_gap.jacobian );
-  const auto mixed =
-      shared::ParSparseMat::rap( quantities.weighted_gap.jacobian, ga, quantities.tributary_area.jacobian );
-  jacobian += mixed;
-  jacobian += mixed.transpose();
-  jacobian += shared::ParSparseMat::rap( aa, quantities.tributary_area.jacobian );
-
-  auto result = detail::makeNodalPenaltyGapResult( quantities );
-  result.energy = energy;
-  result.residual.reset( residual.release() );
-  result.df_dx.reset( jacobian.release() );
-  result.pressure.reset( gap_weights.release() );
-  return result;
-}
-
-/**
- * @brief Assemble nodal integrals and calculate signed weighted Lagrange multiplier gaps.
- * @tparam Exec Concrete execution mode for evaluation and assembly kernels.
- * @tparam PairFunction Pair function returning weighted-gap integrals followed by tributary areas.
- * @param pairs Accepted element pairs; not retained.
- * @param mesh1 Current first mesh.
- * @param mesh2 Current second mesh.
- * @param mesh_data Displacement transfer data used for assembly.
- * @param submesh_data Pressure and gap transfer data used for assembly.
- * @param jacobian_data Parent and scalar-field Jacobian transfer data used for assembly.
- * @param pair_function Configured nodal-integral pair_function.
- * @return Owned gaps and their coordinate Jacobian; other outputs are absent. Empty pairs give zero gaps.
- * @note Reports a SLIC error if pair geometry or assembly dimensions are invalid.
- * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
- */
-template <ExecutionMode Exec, PairFunctionType PairFunction>
-ContactFormulationResult evaluateAndAssembleNodalLagrangeMultiplierGaps(
-    const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2, const MfemMeshData& mesh_data,
-    const MfemSubmeshData& submesh_data, const MfemJacobianData& jacobian_data, const PairFunction& pair_function )
-{
-  auto quantities = detail::evaluateAndAssembleNodalQuantities<Exec>( pairs, mesh1, mesh2, pair_function, mesh_data,
-                                                                      submesh_data, jacobian_data );
-  return detail::makeNodalLagrangeMultiplierGapResult( quantities );
-}
-
-/**
- * @brief Assemble nodal integrals, apply Lagrange multiplier enforcement, and calculate residuals and derivatives.
- * @tparam Exec Concrete execution mode for evaluation and assembly kernels.
- * @tparam PairFunction Pair function returning weighted-gap integrals followed by tributary areas.
- * @param pairs Accepted element pairs; not retained.
- * @param mesh1 Current first mesh.
- * @param mesh2 Current second mesh.
- * @param mesh_data Displacement transfer data used for assembly.
- * @param submesh_data Pressure and gap transfer data used for assembly.
- * @param jacobian_data Parent and scalar-field Jacobian transfer data used for assembly.
- * @param pair_function Configured nodal-integral pair_function.
- * @param multiplier LM values on dual true DOFs; read during the call and copied into the returned pressure.
- * @return Owned gaps, pressure, energy, residual, weighted_gap_jacobian, df_dx, and df_dp. Empty pairs contribute zero
- * residual and energy; pressure contains the supplied LM values.
- * @note Reports a SLIC error, returning no outputs, if the multiplier size does not match the dual true DOFs.
- * @note Reports a SLIC error if geometry, assembly dimensions, or nodal field dimensions are invalid.
- * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
- */
-template <ExecutionMode Exec, PairFunctionType PairFunction>
-ContactFormulationResult evaluateAndAssembleNodalLagrangeMultiplier(
-    const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2, const MfemMeshData& mesh_data,
-    const MfemSubmeshData& submesh_data, const MfemJacobianData& jacobian_data, const PairFunction& pair_function,
-    const mfem::HypreParVector& multiplier )
-{
-  if ( multiplier.Size() != submesh_data.GetSubmeshFESpace().GetTrueVSize() ) {
-    SLIC_ERROR( "LM values must match dual true DOFs." );
-    return {};
-  }
-  auto quantities = detail::evaluateAndAssembleNodalQuantities<Exec>( pairs, mesh1, mesh2, pair_function, mesh_data,
-                                                                      submesh_data, jacobian_data );
-  shared::ParVector pressure( multiplier );
-  const RealT energy = pressure.dot( quantities.weighted_gap.values );
-  auto residual = pressure * quantities.weighted_gap.jacobian;
-  const auto redecomp_pressure = submesh_data.TransferTrueDofsToRedecomp( pressure.get() );
-  const auto* pressure_data = redecomp_pressure.Read( isOnDevice( Exec ) );
-  auto jacobian = detail::assembleWeightedNodalHessian<Exec>(
-      pairs, mesh1, mesh2, pair_function, mesh_data, jacobian_data,
-      [=] TRIBOL_HOST_DEVICE( IndexT node ) { return MdArray<RealT, 2>{ pressure_data[node], 0.0 }; } );
-  auto df_dp = quantities.weighted_gap.jacobian.transpose();
-
-  auto result = detail::makeNodalLagrangeMultiplierGapResult( quantities );
-  result.energy = energy;
-  result.residual.reset( residual.release() );
-  result.df_dx.reset( jacobian.release() );
-  result.df_dp.reset( df_dp.release() );
-  result.pressure.reset( pressure.release() );
-  return result;
-}
-
-/**
- * @brief Nodal penalty Energy Mortar with normalized compressive gaps and a contact residual.
- *
- * Uses PairNodalGapIntegral with a linear Lagrange basis on geometry1; enforcement follows nodal assembly.
- * @tparam Exec Concrete execution mode for search, evaluation, and assembly kernels.
- * @tparam PairRuleGenerator Generates quadrature points and physical weights for the current edge pair.
- * @tparam GapDefinition Geometric or offset alignment-corrected gap.
- */
-template <ExecutionMode Exec, typename PairRuleGenerator, typename GapDefinition = OpposingNormalGap>
-class NodalPenaltyEnergyMortar final : public ContactFormulation {
- public:
+/** @brief Penalty enforcement applied after nodal Energy Mortar gap and area assembly. */
+struct NodalPenaltyEnforcement {
   /**
-   * @brief Construct the nodal gap integral, own the penalty stiffness and search, and reference transfer data.
-   * @param mesh_data Displacement transfer data; must outlive this formulation.
-   * @param submesh_data Pressure and gap transfer data; must outlive this formulation.
-   * @param jacobian_data Parent and scalar-field Jacobian transfer data; must outlive this formulation.
-   * @param rule_generator Configured pair quadrature generator, retained by value.
-   * @param penalty Fixed positive, finite penalty stiffness.
-   * @param gap Configured alignment-corrected gap, retained by value.
-   * @param pair_builder Owned pair search.
-   * @note Reports a SLIC error if penalty stiffness is nonpositive or nonfinite.
+   * @brief Store a validated penalty stiffness.
+   * @param penalty_value Positive, finite penalty stiffness.
+   * @note Reports a SLIC error if the stiffness is nonpositive or nonfinite.
    */
-  NodalPenaltyEnergyMortar( const MfemMeshData& mesh_data, const MfemSubmeshData& submesh_data,
-                            const MfemJacobianData& jacobian_data, PairRuleGenerator rule_generator, RealT penalty,
-                            GapDefinition gap, PairListBuilder pair_builder )
-      : mesh_data_( mesh_data ),
-        submesh_data_( submesh_data ),
-        jacobian_data_( jacobian_data ),
-        pair_integral_( std::move( rule_generator ), std::move( gap ) ),
-        penalty_( detail::checkedPenaltyStiffness( penalty ) ),
-        pair_builder_( std::move( pair_builder ) )
+  explicit NodalPenaltyEnforcement( RealT penalty_value ) : penalty( detail::checkedPenaltyStiffness( penalty_value ) )
   {
   }
 
   /**
-   * @brief Calculate normalized compressive nodal gaps and their coordinate Jacobian.
+   * @brief Accept inputs because penalty enforcement does not require caller-supplied fields.
+   * @param inputs Unused caller-supplied fields.
+   * @param submesh_data Unused scalar transfer data.
+   * @return Always true.
+   */
+  bool hasValidInputs( [[maybe_unused]] const ContactFormulationInputs& inputs,
+                       [[maybe_unused]] const MfemSubmeshData& submesh_data ) const
+  {
+    return true;
+  }
+
+  /**
+   * @brief Convert assembled nodal quantities to normalized compressive gaps.
+   * @param quantities Assembled weighted gaps and areas, consumed for the result.
+   * @return Owned gap and weighted-gap Jacobian; other outputs are absent.
+   */
+  ContactFormulationResult computeGaps( detail::EnergyMortarNodalQuantities& quantities ) const;
+
+  /**
+   * @brief Apply penalty enforcement and calculate residuals and derivatives.
+   * @tparam Exec Concrete execution mode for evaluation and assembly kernels.
+   * @tparam PairFunction Pair function returning weighted-gap integrals followed by tributary areas.
+   * @param pairs Accepted element pairs; not retained.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
-   * @return Owned gap and weighted_gap_jacobian; other outputs are absent.
+   * @param mesh_data Displacement transfer data used for assembly.
+   * @param submesh_data Pressure and gap transfer data used for assembly.
+   * @param jacobian_data Parent and scalar-field Jacobian transfer data used for assembly.
+   * @param pair_function Configured nodal-integral pair function.
+   * @param quantities Assembled weighted gaps and areas, consumed for the result.
+   * @param inputs Unused caller-supplied fields.
+   * @return Owned gaps, pressure, energy, residual, weighted-gap Jacobian, and df_dx; df_dp is absent.
    */
-  ContactFormulationResult computeNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
+  template <ExecutionMode Exec, PairFunctionType PairFunction>
+  ContactFormulationResult computeResidual( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
+                                            MeshData::Viewer mesh2, const MfemMeshData& mesh_data,
+                                            const MfemSubmeshData& submesh_data, const MfemJacobianData& jacobian_data,
+                                            const PairFunction& pair_function,
+                                            detail::EnergyMortarNodalQuantities& quantities,
+                                            [[maybe_unused]] const ContactFormulationInputs& inputs ) const
   {
-    const auto pairs = pair_builder_.build( mesh1, mesh2 );
-    return evaluateAndAssembleNodalPenaltyGaps<Exec>( pairs, mesh1, mesh2, mesh_data_, submesh_data_, jacobian_data_,
-                                                      pair_integral_ );
+    const auto make_vector = [&] {
+      shared::ParVector vector( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data.GetSubmeshFESpace() ) );
+      vector.fill( 0.0 );
+      return vector;
+    };
+    auto gap_weights = make_vector();
+    auto area_weights = make_vector();
+    auto d2energy_dweighted_gap2 = make_vector();
+    auto d2energy_dweighted_gap_dtributary_area = make_vector();
+    auto d2energy_dtributary_area2 = make_vector();
+    const int allocator_id = pairs.getAllocatorID();
+    Array1D<RealT> nodal_energy( gap_weights.size(), gap_weights.size(), allocator_id );
+    const bool use_device = isOnDevice( Exec );
+    const auto* weighted_gap = quantities.weighted_gap.values.get().Read( use_device );
+    const auto* area = quantities.tributary_area.values.get().Read( use_device );
+    auto* gap_weight = gap_weights.get().Write( use_device );
+    auto* area_weight = area_weights.get().Write( use_device );
+    auto* gap_gap_data = d2energy_dweighted_gap2.get().Write( use_device );
+    auto* gap_area_data = d2energy_dweighted_gap_dtributary_area.get().Write( use_device );
+    auto* area_area_data = d2energy_dtributary_area2.get().Write( use_device );
+    auto* nodal_energy_data = nodal_energy.data();
+    const RealT penalty_stiffness = penalty;
+    forAllExec<Exec>( gap_weights.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) {
+      const auto partials = EnergyMortarNodalPenaltyPartials::evaluate(
+          weighted_gap[node], area[node], penalty_stiffness, detail::nodal_area_tolerance );
+      nodal_energy_data[node] = partials.energy;
+      gap_weight[node] = partials.denergy_dweighted_gap;
+      area_weight[node] = partials.denergy_dtributary_area;
+      gap_gap_data[node] = partials.d2energy_dweighted_gap2;
+      gap_area_data[node] = partials.d2energy_dweighted_gap_dtributary_area;
+      area_area_data[node] = partials.d2energy_dtributary_area2;
+    } );
+    const RealT energy = GlobalScalarAssembler::sum<Exec>(
+        gap_weights.size(), [=] TRIBOL_HOST_DEVICE( IndexT node ) { return nodal_energy_data[node]; },
+        gap_weights.get().GetComm() );
+    auto assembled_residual = gap_weights * quantities.weighted_gap.jacobian;
+    assembled_residual += area_weights * quantities.tributary_area.jacobian;
+
+    const auto redecomp_gap_weights = submesh_data.TransferTrueDofsToRedecomp( gap_weights.get() );
+    const auto redecomp_area_weights = submesh_data.TransferTrueDofsToRedecomp( area_weights.get() );
+    const auto* gap_data = redecomp_gap_weights.Read( use_device );
+    const auto* area_data = redecomp_area_weights.Read( use_device );
+    auto jacobian = detail::assembleWeightedNodalHessian<Exec>(
+        pairs, mesh1, mesh2, pair_function, mesh_data, jacobian_data,
+        [=] TRIBOL_HOST_DEVICE( IndexT node ) { return MdArray<RealT, 2>{ gap_data[node], area_data[node] }; } );
+    const auto make_diagonal = [&]( const shared::ParVector& values ) {
+      const auto& fes = submesh_data.GetSubmeshFESpace();
+      return shared::ParSparseMat::diagonalMatrix( fes.GetComm(), fes.GlobalTrueVSize(), fes.GetTrueDofOffsets(),
+                                                   values.get() );
+    };
+    const auto gg = make_diagonal( d2energy_dweighted_gap2 );
+    const auto ga = make_diagonal( d2energy_dweighted_gap_dtributary_area );
+    const auto aa = make_diagonal( d2energy_dtributary_area2 );
+    jacobian += shared::ParSparseMat::rap( gg, quantities.weighted_gap.jacobian );
+    const auto mixed =
+        shared::ParSparseMat::rap( quantities.weighted_gap.jacobian, ga, quantities.tributary_area.jacobian );
+    jacobian += mixed;
+    jacobian += mixed.transpose();
+    jacobian += shared::ParSparseMat::rap( aa, quantities.tributary_area.jacobian );
+
+    auto result = computeGaps( quantities );
+    result.energy = energy;
+    result.residual.reset( assembled_residual.release() );
+    result.df_dx.reset( jacobian.release() );
+    result.pressure.reset( gap_weights.release() );
+    return result;
+  }
+
+  RealT penalty;  ///< Fixed positive, finite penalty stiffness.
+};
+
+/** @brief Lagrange multiplier enforcement applied after nodal Energy Mortar gap and area assembly. */
+struct NodalLagrangeMultiplierEnforcement {
+  /**
+   * @brief Check that caller-supplied multiplier values match the dual true DOFs.
+   * @param inputs Caller-supplied fields containing required multiplier values.
+   * @param submesh_data Scalar transfer data defining the dual true DOFs.
+   * @return True when multiplier values are present with the required size.
+   * @note Reports a SLIC error when the multiplier is absent or has the wrong size.
+   */
+  bool hasValidInputs( const ContactFormulationInputs& inputs, const MfemSubmeshData& submesh_data ) const
+  {
+    if ( !inputs.multiplier ) {
+      SLIC_ERROR( "Lagrange multiplier Energy Mortar requires LM values in ContactFormulationInputs." );
+      return false;
+    }
+    if ( inputs.multiplier->Size() != submesh_data.GetSubmeshFESpace().GetTrueVSize() ) {
+      SLIC_ERROR( "LM values must match dual true DOFs." );
+      return false;
+    }
+    return true;
   }
 
   /**
-   * @brief Calculate nodal penalty energy, gaps, pressure, residual, and coordinate derivatives.
+   * @brief Convert assembled nodal quantities to signed weighted gaps.
+   * @param quantities Assembled weighted gaps and areas, consumed for the result.
+   * @return Owned gap and weighted-gap Jacobian; other outputs are absent.
+   */
+  ContactFormulationResult computeGaps( detail::EnergyMortarNodalQuantities& quantities ) const;
+
+  /**
+   * @brief Apply Lagrange multiplier enforcement and calculate residuals and derivatives.
+   * @tparam Exec Concrete execution mode for evaluation and assembly kernels.
+   * @tparam PairFunction Pair function returning weighted-gap integrals followed by tributary areas.
+   * @param pairs Accepted element pairs; not retained.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
-   * @param inputs Unused; this formulation reads no caller-supplied fields.
-   * @return Owned energy, gap, pressure, residual, weighted_gap_jacobian, and df_dx; df_dp is absent.
+   * @param mesh_data Displacement transfer data used for assembly.
+   * @param submesh_data Pressure and gap transfer data used for assembly.
+   * @param jacobian_data Parent and scalar-field Jacobian transfer data used for assembly.
+   * @param pair_function Configured nodal-integral pair function.
+   * @param quantities Assembled weighted gaps and areas, consumed for the result.
+   * @param inputs Caller-supplied fields containing validated multiplier values.
+   * @return Owned gaps, pressure, energy, residual, weighted-gap Jacobian, df_dx, and df_dp.
    */
-  ContactFormulationResult computeNodalResiduals(
-      MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-      [[maybe_unused]] const ContactFormulationInputs& inputs ) const override
+  template <ExecutionMode Exec, PairFunctionType PairFunction>
+  ContactFormulationResult computeResidual( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
+                                            MeshData::Viewer mesh2, const MfemMeshData& mesh_data,
+                                            const MfemSubmeshData& submesh_data, const MfemJacobianData& jacobian_data,
+                                            const PairFunction& pair_function,
+                                            detail::EnergyMortarNodalQuantities& quantities,
+                                            const ContactFormulationInputs& inputs ) const
   {
-    const auto pairs = pair_builder_.build( mesh1, mesh2 );
-    return evaluateAndAssembleNodalPenalty<Exec>( pairs, mesh1, mesh2, mesh_data_, submesh_data_, jacobian_data_,
-                                                  pair_integral_, penalty_ );
-  }
+    shared::ParVector pressure( *inputs.multiplier );
+    const RealT energy = pressure.dot( quantities.weighted_gap.values );
+    auto assembled_residual = pressure * quantities.weighted_gap.jacobian;
+    const auto redecomp_pressure = submesh_data.TransferTrueDofsToRedecomp( pressure.get() );
+    const auto* pressure_data = redecomp_pressure.Read( isOnDevice( Exec ) );
+    auto jacobian = detail::assembleWeightedNodalHessian<Exec>(
+        pairs, mesh1, mesh2, pair_function, mesh_data, jacobian_data,
+        [=] TRIBOL_HOST_DEVICE( IndexT node ) { return MdArray<RealT, 2>{ pressure_data[node], 0.0 }; } );
+    auto df_dp = quantities.weighted_gap.jacobian.transpose();
 
- private:
-  const MfemMeshData& mesh_data_;          ///< Displacement transfer data referenced for this formulation's lifetime.
-  const MfemSubmeshData& submesh_data_;    ///< Scalar transfer data referenced for this formulation's lifetime.
-  const MfemJacobianData& jacobian_data_;  ///< Matrix transfer data referenced for this formulation's lifetime.
-  const PairNodalGapIntegral<PairRuleGenerator, GapDefinition, BasisFunction<EDGE, LINEAR_LAGRANGE>>
-      pair_integral_;    ///< Integrates weighted gaps and tributary areas on geometry1 before contact activation.
-  const RealT penalty_;  ///< Fixed positive, finite penalty stiffness.
-  PairListBuilder pair_builder_;  ///< Owned pair search.
+    auto result = computeGaps( quantities );
+    result.energy = energy;
+    result.residual.reset( assembled_residual.release() );
+    result.df_dx.reset( jacobian.release() );
+    result.df_dp.reset( df_dp.release() );
+    result.pressure.reset( pressure.release() );
+    return result;
+  }
 };
 
 /**
- * @brief Nodal Lagrange multiplier Energy Mortar with signed weighted gaps and mixed derivatives.
+ * @brief Nodal Energy Mortar with enforcement selected by a policy object.
  *
- * Uses PairNodalGapIntegral with a linear Lagrange basis on geometry1; enforcement follows nodal assembly.
+ * Uses PairNodalGapIntegral with a linear Lagrange basis on geometry1, then applies enforcement after weighted gaps and
+ * tributary areas are assembled.
  * @tparam Exec Concrete execution mode for search, evaluation, and assembly kernels.
  * @tparam PairRuleGenerator Generates quadrature points and physical weights for the current edge pair.
  * @tparam GapDefinition Geometric or offset alignment-corrected gap.
+ * @tparam Enforcement Converts assembled nodal quantities to gaps, residuals, and derivatives.
  */
-template <ExecutionMode Exec, typename PairRuleGenerator, typename GapDefinition = OpposingNormalGap>
-class NodalLagrangeMultiplierEnergyMortar final : public ContactFormulation {
+template <ExecutionMode Exec, typename PairRuleGenerator, typename GapDefinition, typename Enforcement>
+class NodalEnergyMortar final : public ContactFormulation {
  public:
   /**
-   * @brief Construct the nodal gap integral, own the search, and reference required transfer data.
+   * @brief Construct the nodal gap integral, own the enforcement and search, and reference required transfer data.
    * @param mesh_data Displacement transfer data; must outlive this formulation.
    * @param submesh_data Pressure and gap transfer data; must outlive this formulation.
    * @param jacobian_data Parent and scalar-field Jacobian transfer data; must outlive this formulation.
    * @param rule_generator Configured pair quadrature generator, retained by value.
    * @param gap Configured alignment-corrected gap, retained by value.
+   * @param enforcement Configured nodal enforcement, retained by value.
    * @param pair_builder Owned pair search.
    */
-  NodalLagrangeMultiplierEnergyMortar( const MfemMeshData& mesh_data, const MfemSubmeshData& submesh_data,
-                                       const MfemJacobianData& jacobian_data, PairRuleGenerator rule_generator,
-                                       GapDefinition gap, PairListBuilder pair_builder )
+  NodalEnergyMortar( const MfemMeshData& mesh_data, const MfemSubmeshData& submesh_data,
+                     const MfemJacobianData& jacobian_data, PairRuleGenerator rule_generator, GapDefinition gap,
+                     Enforcement enforcement, PairListBuilder pair_builder )
       : mesh_data_( mesh_data ),
         submesh_data_( submesh_data ),
         jacobian_data_( jacobian_data ),
         pair_integral_( std::move( rule_generator ), std::move( gap ) ),
+        enforcement_( std::move( enforcement ) ),
         pair_builder_( std::move( pair_builder ) )
   {
   }
 
   /**
-   * @brief Calculate signed weighted nodal gaps and their coordinate Jacobian.
+   * @brief Calculate nodal gaps and their coordinate Jacobian using the selected enforcement.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
-   * @return Owned gap and weighted_gap_jacobian; other outputs are absent.
+   * @return Owned gap and weighted-gap Jacobian; other outputs are absent.
    */
   ContactFormulationResult computeNodalGaps( MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const override
   {
     const auto pairs = pair_builder_.build( mesh1, mesh2 );
-    return evaluateAndAssembleNodalLagrangeMultiplierGaps<Exec>( pairs, mesh1, mesh2, mesh_data_, submesh_data_,
-                                                                 jacobian_data_, pair_integral_ );
+    auto quantities = detail::evaluateAndAssembleNodalQuantities<Exec>( pairs, mesh1, mesh2, pair_integral_, mesh_data_,
+                                                                        submesh_data_, jacobian_data_ );
+    return enforcement_.computeGaps( quantities );
   }
 
   /**
-   * @brief Calculate nodal LM energy, gaps, pressure, residual, and mixed derivatives.
+   * @brief Calculate nodal energy, gaps, pressure, residual, and derivatives using the selected enforcement.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
-   * @param inputs Supplies the LM values on dual true DOFs, which are required.
-   * @return Owned energy, gap, pressure, residual, weighted_gap_jacobian, df_dx, and df_dp.
-   * @note Reports a SLIC error, returning no outputs, if inputs.multiplier is null.
+   * @param inputs Caller-supplied fields required by the selected enforcement.
+   * @return Owned formulation outputs selected by the enforcement.
    */
   ContactFormulationResult computeNodalResiduals( MeshData::Viewer mesh1, MeshData::Viewer mesh2,
                                                   const ContactFormulationInputs& inputs ) const override
   {
-    if ( !inputs.multiplier ) {
-      SLIC_ERROR( "Lagrange multiplier Energy Mortar requires LM values in ContactFormulationInputs." );
+    if ( !enforcement_.hasValidInputs( inputs, submesh_data_ ) ) {
       return {};
     }
     const auto pairs = pair_builder_.build( mesh1, mesh2 );
-    return evaluateAndAssembleNodalLagrangeMultiplier<Exec>( pairs, mesh1, mesh2, mesh_data_, submesh_data_,
-                                                             jacobian_data_, pair_integral_, *inputs.multiplier );
+    auto quantities = detail::evaluateAndAssembleNodalQuantities<Exec>( pairs, mesh1, mesh2, pair_integral_, mesh_data_,
+                                                                        submesh_data_, jacobian_data_ );
+    return enforcement_.template computeResidual<Exec>( pairs, mesh1, mesh2, mesh_data_, submesh_data_, jacobian_data_,
+                                                        pair_integral_, quantities, inputs );
   }
 
  private:
@@ -481,8 +403,9 @@ class NodalLagrangeMultiplierEnergyMortar final : public ContactFormulation {
   const MfemSubmeshData& submesh_data_;    ///< Scalar transfer data referenced for this formulation's lifetime.
   const MfemJacobianData& jacobian_data_;  ///< Matrix transfer data referenced for this formulation's lifetime.
   const PairNodalGapIntegral<PairRuleGenerator, GapDefinition, BasisFunction<EDGE, LINEAR_LAGRANGE>>
-      pair_integral_;  ///< Integrates weighted gaps and tributary areas on geometry1 before contact activation.
-  PairListBuilder pair_builder_;  ///< Owned pair search.
+      pair_integral_;              ///< Integrates weighted gaps and tributary areas before contact enforcement.
+  const Enforcement enforcement_;  ///< Owns enforcement-specific validation and output assembly.
+  PairListBuilder pair_builder_;   ///< Owned pair search.
 };
 
 #endif

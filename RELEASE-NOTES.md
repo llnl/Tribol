@@ -79,8 +79,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   generated C/Fortran interfaces retain their concrete types. Single precision remains unsupported.
 - `ContactFormulation` is now stateless: `computeNodalGaps()` and `computeNodalResiduals()` return a caller-owned
   `ContactFormulationResult` instead of retaining outputs behind formulation-specific getters.
-  `EnergyMortar` and `EnergyMortarAdapter` are replaced by `NodalPenaltyEnergyMortar`,
-  `NodalLagrangeMultiplierEnergyMortar`, and `QuadraturePointEnergyMortar`.
+  `EnergyMortar` and `EnergyMortarAdapter` are replaced by `NodalEnergyMortar`, configured with penalty or Lagrange
+  multiplier enforcement, and `QuadraturePointEnergyMortar`.
 - `computeNodalResiduals()` takes a `ContactFormulationInputs` argument carrying caller-supplied fields. Lagrange
   multiplier Energy Mortar reads its multiplier from these inputs; `update()` passes the values set through
   `getMfemContactPressure()`. The `getMfemPressure()` grid function is no longer read or updated by nodal Lagrange

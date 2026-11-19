@@ -196,13 +196,15 @@ std::unique_ptr<ContactFormulation> createEnergyMortarForRuleGenerator( Coupling
   }
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "Nodal Energy Mortar requires pressure/gap data." );
   if ( use_penalty ) {
-    return std::make_unique<NodalPenaltyEnergyMortar<Exec, PairRuleGenerator, OffsetGap<OpposingNormalGap>>>(
-        data, *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( rule_generator ), penalty,
-        OffsetGap{ OpposingNormalGap{}, residual_gap }, std::move( pair_builder ) );
+    return std::make_unique<
+        NodalEnergyMortar<Exec, PairRuleGenerator, OffsetGap<OpposingNormalGap>, NodalPenaltyEnforcement>>(
+        data, *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( rule_generator ),
+        OffsetGap{ OpposingNormalGap{}, residual_gap }, NodalPenaltyEnforcement{ penalty }, std::move( pair_builder ) );
   }
-  return std::make_unique<NodalLagrangeMultiplierEnergyMortar<Exec, PairRuleGenerator, OffsetGap<OpposingNormalGap>>>(
+  return std::make_unique<
+      NodalEnergyMortar<Exec, PairRuleGenerator, OffsetGap<OpposingNormalGap>, NodalLagrangeMultiplierEnforcement>>(
       data, *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), std::move( rule_generator ),
-      OffsetGap{ OpposingNormalGap{}, residual_gap }, std::move( pair_builder ) );
+      OffsetGap{ OpposingNormalGap{}, residual_gap }, NodalLagrangeMultiplierEnforcement{}, std::move( pair_builder ) );
 }
 
 template <ExecutionMode Exec>

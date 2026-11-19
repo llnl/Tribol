@@ -9,9 +9,8 @@
 
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
 namespace tribol {
-namespace detail {
 
-ContactFormulationResult makeNodalPenaltyGapResult( EnergyMortarNodalQuantities& quantities )
+ContactFormulationResult NodalPenaltyEnforcement::computeGaps( detail::EnergyMortarNodalQuantities& quantities ) const
 {
   // Penalty gaps are zero where contact is open and, matching the penalty energy, where the tributary area is too small
   // to support contact. ParVector::divide() would leave the weighted gap unchanged at those nodes.
@@ -27,7 +26,7 @@ ContactFormulationResult makeNodalPenaltyGapResult( EnergyMortarNodalQuantities&
     if ( weighted_gap[node] > 0.0 ) {
       normalized_gap_data[node] = 0.0;
       open_nodes.Append( node );
-    } else if ( std::abs( area[node] ) <= nodal_area_tolerance ) {
+    } else if ( std::abs( area[node] ) <= detail::nodal_area_tolerance ) {
       normalized_gap_data[node] = 0.0;
     } else {
       normalized_gap_data[node] = weighted_gap[node] / area[node];
@@ -40,7 +39,8 @@ ContactFormulationResult makeNodalPenaltyGapResult( EnergyMortarNodalQuantities&
   return result;
 }
 
-ContactFormulationResult makeNodalLagrangeMultiplierGapResult( EnergyMortarNodalQuantities& quantities )
+ContactFormulationResult NodalLagrangeMultiplierEnforcement::computeGaps(
+    detail::EnergyMortarNodalQuantities& quantities ) const
 {
   ContactFormulationResult result;
   result.gap.reset( quantities.weighted_gap.values.release() );
@@ -48,6 +48,5 @@ ContactFormulationResult makeNodalLagrangeMultiplierGapResult( EnergyMortarNodal
   return result;
 }
 
-}  // namespace detail
 }  // namespace tribol
 #endif

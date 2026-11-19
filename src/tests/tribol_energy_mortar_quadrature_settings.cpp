@@ -309,11 +309,11 @@ TEST_P( EnergyMortarQuadratureSettingsTest, accepts_series_penalty_stiffness )
             auto refined = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
             PairListBuilder pair_builder{ std::move( coarse ), std::move( refined ) };
             if ( std::get<0>( GetParam() ) == EnforcementLocation::Nodal ) {
-              return std::make_unique<
-                  NodalPenaltyEnergyMortar<Exec, decltype( rule_generator ), OffsetGap<OpposingNormalGap>>>(
+              return std::make_unique<NodalEnergyMortar<Exec, decltype( rule_generator ), OffsetGap<OpposingNormalGap>,
+                                                        NodalPenaltyEnforcement>>(
                   *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(),
-                  std::move( rule_generator ), SeriesPenaltyStiffness{}( 2.0, 6.0 ),
-                  OffsetGap{ OpposingNormalGap{}, 0.0 }, std::move( pair_builder ) );
+                  std::move( rule_generator ), OffsetGap{ OpposingNormalGap{}, 0.0 },
+                  NodalPenaltyEnforcement{ SeriesPenaltyStiffness{}( 2.0, 6.0 ) }, std::move( pair_builder ) );
             }
             return std::make_unique<
                 QuadraturePointEnergyMortar<Exec, decltype( rule_generator ), OffsetGap<OpposingNormalGap>>>(
@@ -700,10 +700,11 @@ TEST_P( EnergyMortarQuadratureSettingsTest, nodal_activation_preserves_only_comp
                                           cs.getEffectiveBinningProximityScale(), 0.0 );
         auto refined = std::make_unique<ProjectedEdgeSearch>( cs.getExecutionMode(), false );
         PairListBuilder pair_builder{ std::move( coarse ), std::move( refined ) };
-        NodalLagrangeMultiplierEnergyMortar<ExecutionMode::Sequential, decltype( rule_generator ),
-                                            OffsetGap<OpposingNormalGap>>
+        NodalEnergyMortar<ExecutionMode::Sequential, decltype( rule_generator ), OffsetGap<OpposingNormalGap>,
+                          NodalLagrangeMultiplierEnforcement>
             lm( *cs.getMfemMeshData(), *cs.getMfemSubmeshData(), *cs.getMfemJacobianData(), std::move( rule_generator ),
-                OffsetGap{ OpposingNormalGap{}, 0.0 }, std::move( pair_builder ) );
+                OffsetGap{ OpposingNormalGap{}, 0.0 }, NodalLagrangeMultiplierEnforcement{},
+                std::move( pair_builder ) );
         return lm.computeNodalGaps( cs.getMesh1().getView(), cs.getMesh2().getView() );
       } );
   mfem::Vector direction( fes_->GetTrueVSize() ), penalty_action( penalty.gap->Size() ),
