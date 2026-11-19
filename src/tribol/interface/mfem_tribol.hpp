@@ -177,7 +177,7 @@ void setMfemRateConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT mesh2_
 void setMfemRatePercentPenalty( IndexT cs_id, RealT mesh1_ratio, RealT mesh2_ratio );
 
 /**
- * @brief Adds a scale to the computed kinematic penalty
+ * @brief Sets per-mesh scale factors for the computed kinematic penalty
  *
  * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
  * @pre Kinematic penalty must be initialized through setMfemKinematicConstantPenalty() or
@@ -189,8 +189,9 @@ void setMfemRatePercentPenalty( IndexT cs_id, RealT mesh1_ratio, RealT mesh2_rat
  * @param mesh1_scale Scaling coefficient of the kinematic penalty for the first contact surface mesh
  * @param mesh2_scale Scaling coefficient of the kinematic penalty for the second contact surface mesh
  *
- * Replaces an enabled Common Plane formulation using the scaled mesh constants, without a decomposition refresh.
- * Its effective stiffness stays fixed until the formulation is replaced. Energy Mortar does not apply these scales.
+ * This setter stores both scales on the coupling scheme. If CommonPlaneFormulation is enabled, it invalidates the
+ * current formulation; the next update() rebuilds it using each mesh's constant penalty multiplied by its new scale.
+ * ENERGY_MORTAR does not use these scales.
  * @note Reports a SLIC error, leaving the existing scales unchanged, if a Common Plane scaled mesh penalty is
  * nonpositive or nonfinite.
  */
