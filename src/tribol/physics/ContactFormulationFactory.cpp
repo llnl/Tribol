@@ -101,11 +101,10 @@ bool validateCommonPlaneFormulation( CouplingScheme& cs, bool compute_jacobian )
   const auto* penalty1 = data.GetMesh1KinematicConstantPenalty();
   const auto* penalty2 = data.GetMesh2KinematicConstantPenalty();
   if ( !penalty1 || !penalty2 || !std::isfinite( *penalty1 ) || !std::isfinite( *penalty2 ) || *penalty1 <= 0.0 ||
-       *penalty2 <= 0.0 || !std::isfinite( cs.getParameters().residual_gap ) || cs.getParameters().residual_gap < 0.0 ||
-       cs.getParameters().quadrature_order < 0 || cs.getParameters().quadrature_order > 5 ) {
+       *penalty2 <= 0.0 || cs.getParameters().residual_gap != 0.0 || cs.getParameters().quadrature_order < 0 ||
+       cs.getParameters().quadrature_order > 5 ) {
     SLIC_ERROR_ROOT(
-        "Common Plane requires positive finite mesh penalties, a nonnegative finite residual gap, and "
-        "quadrature order 0-5." );
+        "Common Plane requires positive finite mesh penalties, zero residual gap, and quadrature order 0-5." );
     return false;
   }
   return true;
@@ -159,18 +158,17 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
         if ( cs->getParameters().common_plane_compute_jacobian ) {
 #ifdef TRIBOL_USE_ENZYME
           return std::make_unique<
-              CommonPlaneResidualJacobianFormulation<Exec, decltype( rule_generator ), OffsetGap<CommonPlaneGap>>>(
-              *cs->getMfemMeshData(), *cs->getMfemJacobianData(), std::move( rule_generator ), penalty,
-              OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap }, std::move( pair_builder ) );
+              CommonPlaneFormulation<Exec, decltype( rule_generator ), CommonPlaneGap, ResidualAndJacobian>>(
+              std::move( rule_generator ), penalty, CommonPlaneGap{},
+              ResidualAndJacobian{ *cs->getMfemMeshData(), *cs->getMfemJacobianData() }, std::move( pair_builder ) );
 #else
           SLIC_ERROR_ROOT( "Common Plane Jacobian calculation requires Enzyme." );
           return nullptr;
 #endif
         }
-        return std::make_unique<
-            CommonPlaneResidualFormulation<Exec, decltype( rule_generator ), OffsetGap<CommonPlaneGap>>>(
-            *cs->getMfemMeshData(), std::move( rule_generator ), penalty,
-            OffsetGap{ CommonPlaneGap{}, cs->getParameters().residual_gap }, std::move( pair_builder ) );
+        return std::make_unique<CommonPlaneFormulation<Exec, decltype( rule_generator ), CommonPlaneGap, ResidualOnly>>(
+            std::move( rule_generator ), penalty, CommonPlaneGap{}, ResidualOnly{ *cs->getMfemMeshData() },
+            std::move( pair_builder ) );
       } );
 }
 

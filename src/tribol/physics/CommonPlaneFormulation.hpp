@@ -69,110 +69,55 @@ struct CommonPlanePenaltyTraction {
 
 #ifdef BUILD_REDECOMP
 /**
- * @brief Common Plane pair search followed by residual-only evaluation and assembly.
+ * @brief Common Plane pair search followed by the configured residual evaluation and assembly.
  *
  * Uses PairTractionIntegral with CommonPlanePenaltyTraction and linear Lagrange residual bases on both edges.
  * @tparam Exec Concrete execution mode for search, evaluation, and assembly kernels.
  * @tparam PairRuleGenerator Generates quadrature points and physical weights for the current edge pair.
  * @tparam GapDefinition Geometric or offset common-plane gap.
+ * @tparam ResidualOutputs Evaluates pair residuals and assembles the configured output set.
  */
-template <ExecutionMode Exec, typename PairRuleGenerator, typename GapDefinition = CommonPlaneGap>
-class CommonPlaneResidualFormulation final : public ContactFormulation {
+template <ExecutionMode Exec, typename PairRuleGenerator, typename GapDefinition, typename ResidualOutputs>
+class CommonPlaneFormulation final : public ContactFormulation {
  public:
   /**
-   * @brief Construct the penalty traction integral, own the pair search, and displacement transfer data.
-   * @param mesh_data Displacement transfer data; must outlive this formulation.
+   * @brief Construct the penalty traction integral and own the output policy and pair search.
    * @param rule_generator Configured pair quadrature generator, retained by value.
    * @param penalty Fixed effective penalty stiffness.
    * @param gap Configured common-plane gap, retained by value.
+   * @param residual_outputs Configured output policy, retained by value.
    * @param pair_builder Owned pair search composition.
    */
-  CommonPlaneResidualFormulation( const MfemMeshData& mesh_data, PairRuleGenerator rule_generator, RealT penalty,
-                                  GapDefinition gap, PairListBuilder pair_builder )
-      : mesh_data_( mesh_data ),
-        pair_integral_( std::move( rule_generator ), { penalty, std::move( gap ) } ),
+  CommonPlaneFormulation( PairRuleGenerator rule_generator, RealT penalty, GapDefinition gap,
+                          ResidualOutputs residual_outputs, PairListBuilder pair_builder )
+      : pair_integral_( std::move( rule_generator ), { penalty, std::move( gap ) } ),
+        residual_outputs_( std::move( residual_outputs ) ),
         pair_builder_( std::move( pair_builder ) )
   {
   }
 
   /**
-   * @brief Compute the Common Plane residual without calculating its Jacobian.
+   * @brief Compute the Common Plane residual outputs selected by the policy.
    * @param mesh1 Current first mesh.
    * @param mesh2 Current second mesh.
    * @param inputs Unused; this formulation reads no caller-supplied fields.
-   * @return Owned residual; df_dx and other outputs are absent.
+   * @return Owned residual outputs selected by ResidualOutputs; other outputs are absent.
    */
   ContactFormulationResult computeNodalResiduals(
       MeshData::Viewer mesh1, MeshData::Viewer mesh2,
       [[maybe_unused]] const ContactFormulationInputs& inputs ) const override
   {
     const auto pairs = pair_builder_.build( mesh1, mesh2 );
-    return assembleResidual<Exec>( pairs, mesh1, mesh2, mesh_data_, pair_integral_ );
+    return residual_outputs_.template computeResidual<Exec>( pairs, mesh1, mesh2, pair_integral_ );
   }
 
  private:
-  const MfemMeshData& mesh_data_;  ///< Displacement transfer data referenced for this formulation's lifetime.
   const PairTractionIntegral<PairRuleGenerator, CommonPlanePenaltyTraction<GapDefinition>,
                              BasisFunction<EDGE, LINEAR_LAGRANGE>>
-      pair_integral_;             ///< Integrates the fixed Common Plane penalty traction with linear edge bases.
-  PairListBuilder pair_builder_;  ///< Owned search composition.
+      pair_integral_;  ///< Integrates the fixed Common Plane penalty traction with linear edge bases.
+  const ResidualOutputs residual_outputs_;  ///< Owns the selected assembly behavior and references its transfer data.
+  PairListBuilder pair_builder_;            ///< Owned search composition.
 };
-
-#ifdef TRIBOL_USE_ENZYME
-/**
- * @brief Common Plane pair search followed by residual and coordinate-Jacobian evaluation and assembly.
- *
- * Uses PairTractionIntegral with CommonPlanePenaltyTraction and linear Lagrange residual bases on both edges.
- * @tparam Exec Concrete execution mode for search, evaluation, and assembly kernels.
- * @tparam PairRuleGenerator Generates quadrature points and physical weights for the current edge pair.
- * @tparam GapDefinition Geometric or offset common-plane gap.
- */
-template <ExecutionMode Exec, typename PairRuleGenerator, typename GapDefinition = CommonPlaneGap>
-class CommonPlaneResidualJacobianFormulation final : public ContactFormulation {
- public:
-  /**
-   * @brief Construct the penalty traction integral, own the pair search, and reference vector and matrix transfer data.
-   * @param mesh_data Displacement transfer data; must outlive this formulation.
-   * @param jacobian_data Coordinate-matrix transfer data; must outlive this formulation.
-   * @param rule_generator Configured pair quadrature generator, retained by value.
-   * @param penalty Fixed effective penalty stiffness.
-   * @param gap Configured common-plane gap, retained by value.
-   * @param pair_builder Owned pair search composition.
-   */
-  CommonPlaneResidualJacobianFormulation( const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
-                                          PairRuleGenerator rule_generator, RealT penalty, GapDefinition gap,
-                                          PairListBuilder pair_builder )
-      : mesh_data_( mesh_data ),
-        jacobian_data_( jacobian_data ),
-        pair_integral_( std::move( rule_generator ), { penalty, std::move( gap ) } ),
-        pair_builder_( std::move( pair_builder ) )
-  {
-  }
-
-  /**
-   * @brief Compute the Common Plane residual and its coordinate Jacobian.
-   * @param mesh1 Current first mesh.
-   * @param mesh2 Current second mesh.
-   * @param inputs Unused; this formulation reads no caller-supplied fields.
-   * @return Owned residual and df_dx; other outputs are absent.
-   */
-  ContactFormulationResult computeNodalResiduals(
-      MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-      [[maybe_unused]] const ContactFormulationInputs& inputs ) const override
-  {
-    const auto pairs = pair_builder_.build( mesh1, mesh2 );
-    return assembleResidualAndJacobian<Exec>( pairs, mesh1, mesh2, mesh_data_, jacobian_data_, pair_integral_ );
-  }
-
- private:
-  const MfemMeshData& mesh_data_;          ///< Displacement transfer data referenced for this formulation's lifetime.
-  const MfemJacobianData& jacobian_data_;  ///< Matrix transfer data referenced for this formulation's lifetime.
-  const PairTractionIntegral<PairRuleGenerator, CommonPlanePenaltyTraction<GapDefinition>,
-                             BasisFunction<EDGE, LINEAR_LAGRANGE>>
-      pair_integral_;             ///< Integrates the fixed Common Plane penalty traction with linear edge bases.
-  PairListBuilder pair_builder_;  ///< Owned search composition.
-};
-#endif  // TRIBOL_USE_ENZYME
 #endif
 
 }  // namespace tribol

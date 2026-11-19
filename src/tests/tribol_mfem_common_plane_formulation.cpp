@@ -31,7 +31,6 @@
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/geom/OffsetGap.hpp"
 #include "tribol/physics/CommonPlaneFormulation.hpp"
 #include "tribol/enforcement/PenaltyStiffness.hpp"
 #include "tribol/common/LoopExec.hpp"
@@ -299,9 +298,9 @@ TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
                                               scheme().getEffectiveBinningProximityScale(), 0.0 );
             auto refined = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
             return std::make_unique<
-                CommonPlaneResidualJacobianFormulation<Exec, decltype( rule_generator ), OffsetGap<CommonPlaneGap>>>(
-                *scheme().getMfemMeshData(), *scheme().getMfemJacobianData(), std::move( rule_generator ),
-                AveragePenaltyStiffness{}( 2.0, 6.0 ), OffsetGap{ CommonPlaneGap{}, 0.0 },
+                CommonPlaneFormulation<Exec, decltype( rule_generator ), CommonPlaneGap, ResidualAndJacobian>>(
+                std::move( rule_generator ), AveragePenaltyStiffness{}( 2.0, 6.0 ), CommonPlaneGap{},
+                ResidualAndJacobian{ *scheme().getMfemMeshData(), *scheme().getMfemJacobianData() },
                 PairListBuilder{ std::move( coarse ), std::move( refined ) } );
           } );
     } );
@@ -672,6 +671,9 @@ TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
   penalty.rate_calculation = RATE_CONSTANT;
   check();
   penalty.rate_calc_set = false;
+  setResidualGap( 0, 0.1 );
+  check();
+  setResidualGap( 0, 0.0 );
   EXPECT_SLIC_ERROR( setQuadratureOrder( 0, 3 ) );
   enable( false );
   for ( int order = 0; order <= 5; ++order ) {

@@ -133,70 +133,78 @@ ContactFormulationResult assembleResidualAndJacobian( const ArrayT<InterfacePair
 
 }  // namespace detail
 
-/**
- * @brief Evaluate and assemble pair residuals without calculating derivatives or allocating matrix storage.
- * @tparam Exec Concrete execution mode for evaluation and assembly kernels.
- * @tparam PairFunction Fixed pair function with one residual entry per coordinate.
- * @param pairs Accepted element pairs; not retained.
- * @param mesh1 Current first mesh; not retained.
- * @param mesh2 Current second mesh; not retained.
- * @param mesh_data Displacement transfer data used for assembly.
- * @param pair_function Configured residual function.
- * @return Owned residual; df_dx and other outputs are absent. Empty or inactive pairs produce a zero residual.
- * @note Reports a SLIC error if pair geometry or assembly dimensions are invalid.
- * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
- */
-template <ExecutionMode Exec, PairFunctionType PairFunction>
-ContactFormulationResult assembleResidual( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
-                                           MeshData::Viewer mesh2, const MfemMeshData& mesh_data,
-                                           const PairFunction& pair_function )
-{
-  static_assert( PairFunction::size_values == PairFunction::size_coords, "Pair residuals must match coordinate DOFs." );
-  auto all_pair_values = evaluatePairValues<Exec>( pairs, mesh1, mesh2, pair_function );
-  checkPairQuadratureMetadata<Exec>( all_pair_values.quadratureMetadata() );
+/** @brief Evaluate and assemble a contact residual without calculating derivatives. */
+struct ResidualOnly {
+  const MfemMeshData& mesh_data;  ///< Displacement transfer data; must outlive this policy.
 
-  auto assembler = detail::makeResidualVectorAssembler( mesh_data, mesh1, mesh2 );
-  const auto all_pair_values_view = all_pair_values.view();
-  assembler.addPairs<Exec, PairFunction::size_coords, 2>(
-      pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) { return all_pair_values_view.value( pair, row ); } );
-  ContactFormulationResult result;
-  result.residual.reset( assembler.assemble().release() );
-  return result;
-}
+  /**
+   * @brief Evaluate and assemble pair residuals without allocating matrix storage.
+   * @tparam Exec Concrete execution mode for evaluation and assembly kernels.
+   * @tparam PairFunction Fixed pair function with one residual entry per coordinate.
+   * @param pairs Accepted element pairs; not retained.
+   * @param mesh1 Current first mesh; not retained.
+   * @param mesh2 Current second mesh; not retained.
+   * @param pair_function Configured residual function.
+   * @return Owned residual; df_dx and other outputs are absent. Empty or inactive pairs produce a zero residual.
+   * @note Reports a SLIC error if pair geometry or assembly dimensions are invalid.
+   * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
+   */
+  template <ExecutionMode Exec, PairFunctionType PairFunction>
+  ContactFormulationResult computeResidual( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
+                                            MeshData::Viewer mesh2, const PairFunction& pair_function ) const
+  {
+    static_assert( PairFunction::size_values == PairFunction::size_coords,
+                   "Pair residuals must match coordinate DOFs." );
+    auto all_pair_values = evaluatePairValues<Exec>( pairs, mesh1, mesh2, pair_function );
+    checkPairQuadratureMetadata<Exec>( all_pair_values.quadratureMetadata() );
+
+    auto assembler = detail::makeResidualVectorAssembler( mesh_data, mesh1, mesh2 );
+    const auto all_pair_values_view = all_pair_values.view();
+    assembler.addPairs<Exec, PairFunction::size_coords, 2>(
+        pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) { return all_pair_values_view.value( pair, row ); } );
+    ContactFormulationResult result;
+    result.residual.reset( assembler.assemble().release() );
+    return result;
+  }
+};
 
 #ifdef TRIBOL_USE_ENZYME
-/**
- * @brief Evaluate pair residuals and their Jacobians with Enzyme and assemble both outputs.
- * @tparam Exec Concrete execution mode for evaluation and assembly kernels.
- * @tparam PairFunction Fixed pair function with one residual entry per coordinate.
- * @param pairs Accepted element pairs; not retained.
- * @param mesh1 Current first mesh; not retained.
- * @param mesh2 Current second mesh; not retained.
- * @param mesh_data Displacement transfer data used for vector and matrix assembly.
- * @param jacobian_data Coordinate-matrix transfer data used for matrix assembly.
- * @param pair_function Configured residual function.
- * @return Owned residual and df_dx; other outputs are absent. Empty or inactive pairs produce allocated zero outputs.
- * @note Reports a SLIC error if pair geometry or assembly dimensions are invalid.
- * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
- */
-template <ExecutionMode Exec, PairFunctionType PairFunction>
-ContactFormulationResult assembleResidualAndJacobian( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
-                                                      MeshData::Viewer mesh2, const MfemMeshData& mesh_data,
-                                                      const MfemJacobianData& jacobian_data,
-                                                      const PairFunction& pair_function )
-{
-  static_assert( PairFunction::size_values == PairFunction::size_coords, "Pair residuals must match coordinate DOFs." );
-  auto all_pair_values = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function );
-  checkPairQuadratureMetadata<Exec>( all_pair_values.quadratureMetadata() );
+/** @brief Evaluate and assemble a contact residual and its coordinate Jacobian. */
+struct ResidualAndJacobian {
+  const MfemMeshData& mesh_data;          ///< Displacement transfer data; must outlive this policy.
+  const MfemJacobianData& jacobian_data;  ///< Matrix transfer data; must outlive this policy.
 
-  const auto all_pair_values_view = all_pair_values.view();
-  return detail::assembleResidualAndJacobian<Exec, PairFunction::size_coords>(
-      pairs, mesh1, mesh2, mesh_data, jacobian_data,
-      [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) { return all_pair_values_view.value( pair, row ); },
-      [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
-        return all_pair_values_view.jacobian( pair, row, column );
-      } );
-}
+  /**
+   * @brief Evaluate pair residuals and their Jacobians with Enzyme and assemble both outputs.
+   * @tparam Exec Concrete execution mode for evaluation and assembly kernels.
+   * @tparam PairFunction Fixed pair function with one residual entry per coordinate.
+   * @param pairs Accepted element pairs; not retained.
+   * @param mesh1 Current first mesh; not retained.
+   * @param mesh2 Current second mesh; not retained.
+   * @param pair_function Configured residual function.
+   * @return Owned residual and df_dx; other outputs are absent. Empty or inactive pairs produce allocated zero outputs.
+   * @note Reports a SLIC error if pair geometry or assembly dimensions are invalid.
+   * @note Reports a SLIC error if quadrature capacity or the supported assembly index range is exceeded.
+   */
+  template <ExecutionMode Exec, PairFunctionType PairFunction>
+  ContactFormulationResult computeResidual( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1,
+                                            MeshData::Viewer mesh2, const PairFunction& pair_function ) const
+  {
+    static_assert( PairFunction::size_values == PairFunction::size_coords,
+                   "Pair residuals must match coordinate DOFs." );
+    auto all_pair_values = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function );
+    checkPairQuadratureMetadata<Exec>( all_pair_values.quadratureMetadata() );
+
+    const auto all_pair_values_view = all_pair_values.view();
+    return detail::assembleResidualAndJacobian<Exec, PairFunction::size_coords>(
+        pairs, mesh1, mesh2, mesh_data, jacobian_data,
+        [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) { return all_pair_values_view.value( pair, row ); },
+        [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
+          return all_pair_values_view.jacobian( pair, row, column );
+        } );
+  }
+};
+
 /**
  * @brief Evaluate scalar energies and assemble their energy, residual, and residual-Jacobian contributions.
  * @tparam Exec Concrete execution mode for evaluation and assembly kernels.
