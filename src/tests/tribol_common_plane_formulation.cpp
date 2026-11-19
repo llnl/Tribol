@@ -73,41 +73,43 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
   template <int NumPoints>
   void checkParallelResiduals()
   {
-    struct Case {
+    struct ParallelResidualCase {
       RealT separation;        ///< Height of the second edge; positive means penetration for these orientations.
       RealT residual_gap;      ///< Separation offset subtracted before activation.
       RealT expected_first_y;  ///< Expected residual at either first-edge node.
-      bool active;             ///< Whether the nonpositive gap branch is taken.
+      bool has_active_points;  ///< Whether the nonpositive gap branch is taken.
     };
     // Unequal mesh springs combine to stiffness 1.5, rather than their arithmetic average 4.0.
-    const Case cases[] = {
+    const ParallelResidualCase cases[] = {
         { 0.1, 0.0, -0.15, true }, { -0.1, 0.0, 0.0, false }, { 0.0, 0.0, 0.0, true }, { -0.05, 0.1, -0.075, true } };
-    for ( const auto test : cases ) {
-      SCOPED_TRACE( test.separation );
-      ArrayT<CommonPlaneResidualValue> results( 1, 1, allocatorId() );
-      const auto output = results.view();
+    for ( const auto test_case : cases ) {
+      SCOPED_TRACE( test_case.separation );
+      ArrayT<CommonPlaneResidualValue> pair_residuals( 1, 1, allocatorId() );
+      const auto pair_residuals_view = pair_residuals.view();
       forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
         const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
-        const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, test.separation }, MdArray<RealT, 2>{ 0.0, test.separation } };
+        const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, test_case.separation },
+                                 MdArray<RealT, 2>{ 0.0, test_case.separation } };
         const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>
             rule_generator;
         const PairTractionIntegral<
             PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>,
             CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>, BasisFunction<EDGE, LINEAR_LAGRANGE>>
-            function{
+            pair_integral{
                 rule_generator,
-                { ComputePenaltyStiffnessPerArea( 2.0, 6.0 ), OffsetGap{ CommonPlaneGap{}, test.residual_gap } } };
-        output[0] = function.evaluate( edge1.view(), edge2.view() );
+                { ComputePenaltyStiffnessPerArea( 2.0, 6.0 ), OffsetGap{ CommonPlaneGap{}, test_case.residual_gap } } };
+        pair_residuals_view[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
       } );
-      const ArrayT<CommonPlaneResidualValue, 1, MemorySpace::Host> host( results );
-      ASSERT_EQ( host[0].quadrature_metadata.status, QuadratureStatus::Success );
-      EXPECT_EQ( host[0].quadrature_metadata.num_required_points, NumPoints );
-      EXPECT_EQ( host[0].has_active_points, test.active );
+      const ArrayT<CommonPlaneResidualValue, 1, MemorySpace::Host> host_pair_residuals( pair_residuals );
+      const auto& pair_residual = host_pair_residuals[0];
+      ASSERT_EQ( pair_residual.quadrature_metadata.status, QuadratureStatus::Success );
+      EXPECT_EQ( pair_residual.quadrature_metadata.num_required_points, NumPoints );
+      EXPECT_EQ( pair_residual.has_active_points, test_case.has_active_points );
       for ( int node = 0; node < BasisFunction<EDGE, LINEAR_LAGRANGE>::num_nodes; ++node ) {
-        EXPECT_NEAR( host[0].geometry1( node, 0 ), 0.0, tolerance );
-        EXPECT_NEAR( host[0].geometry1( node, 1 ), test.expected_first_y, tolerance );
-        EXPECT_NEAR( host[0].geometry2( node, 0 ), 0.0, tolerance );
-        EXPECT_NEAR( host[0].geometry2( node, 1 ), -test.expected_first_y, tolerance );
+        EXPECT_NEAR( pair_residual.geometry1( node, 0 ), 0.0, tolerance );
+        EXPECT_NEAR( pair_residual.geometry1( node, 1 ), test_case.expected_first_y, tolerance );
+        EXPECT_NEAR( pair_residual.geometry2( node, 0 ), 0.0, tolerance );
+        EXPECT_NEAR( pair_residual.geometry2( node, 1 ), -test_case.expected_first_y, tolerance );
       }
     }
   }
@@ -125,34 +127,35 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
       Point2X,
       NumColumns
     };
-    ArrayT<RealT, 2> records( axom::StackArray<axom::IndexType, 2>{ NumPoints, NumColumns }, allocatorId() );
-    const auto output = records.view();
+    ArrayT<RealT, 2> quadrature_samples( axom::StackArray<axom::IndexType, 2>{ NumPoints, NumColumns }, allocatorId() );
+    const auto quadrature_samples_view = quadrature_samples.view();
     forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
       // Oppositely directed parallel edges whose projected overlap is x in [1, 3].
       const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } };
       const Coordinates edge2{ MdArray<RealT, 2>{ 3.0, 0.2 }, MdArray<RealT, 2>{ 1.0, 0.2 } };
       const LinearEdgeGeometry geometry1( edge1.view() ), geometry2( edge2.view() );
       const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>> rule_generator;
-      const auto generated = rule_generator.generate( geometry1, geometry2 );
-      const auto points = generated.getView();
+      const auto quadrature_rule = rule_generator.generate( geometry1, geometry2 );
+      const auto quadrature_points = quadrature_rule.getView();
       for ( int q = 0; q < NumPoints; ++q ) {
-        output( q, Parent1 ) = points.geom1_parametric_coords( q, 0 );
-        output( q, Parent2 ) = points.geom2_parametric_coords( q, 0 );
-        output( q, Weight ) = points.weights[q];
-        output( q, Point1X ) = geometry1.position( { &output( q, Parent1 ), 1 } )[0];
-        output( q, Point2X ) = geometry2.position( { &output( q, Parent2 ), 1 } )[0];
+        quadrature_samples_view( q, Parent1 ) = quadrature_points.geom1_parametric_coords( q, 0 );
+        quadrature_samples_view( q, Parent2 ) = quadrature_points.geom2_parametric_coords( q, 0 );
+        quadrature_samples_view( q, Weight ) = quadrature_points.weights[q];
+        quadrature_samples_view( q, Point1X ) = geometry1.position( { &quadrature_samples_view( q, Parent1 ), 1 } )[0];
+        quadrature_samples_view( q, Point2X ) = geometry2.position( { &quadrature_samples_view( q, Parent2 ), 1 } )[0];
       }
     } );
-    const ArrayT<RealT, 2, MemorySpace::Host> values( records );
+    const ArrayT<RealT, 2, MemorySpace::Host> host_quadrature_samples( quadrature_samples );
     RealT measure = 0.0, second_moment = 0.0;
     for ( int q = 0; q < NumPoints; ++q ) {
-      EXPECT_GE( values( q, Parent1 ), -0.5 );
-      EXPECT_LE( values( q, Parent1 ), 0.5 );
-      EXPECT_NEAR( values( q, Point1X ), values( q, Point2X ), tolerance );
-      EXPECT_NEAR( values( q, Parent2 ), 2.0 - values( q, Point1X ), tolerance );
-      EXPECT_GT( values( q, Weight ), 0.0 );
-      measure += values( q, Weight );
-      second_moment += values( q, Weight ) * values( q, Point1X ) * values( q, Point1X );
+      EXPECT_GE( host_quadrature_samples( q, Parent1 ), -0.5 );
+      EXPECT_LE( host_quadrature_samples( q, Parent1 ), 0.5 );
+      EXPECT_NEAR( host_quadrature_samples( q, Point1X ), host_quadrature_samples( q, Point2X ), tolerance );
+      EXPECT_NEAR( host_quadrature_samples( q, Parent2 ), 2.0 - host_quadrature_samples( q, Point1X ), tolerance );
+      EXPECT_GT( host_quadrature_samples( q, Weight ), 0.0 );
+      measure += host_quadrature_samples( q, Weight );
+      second_moment += host_quadrature_samples( q, Weight ) * host_quadrature_samples( q, Point1X ) *
+                       host_quadrature_samples( q, Point1X );
     }
     EXPECT_NEAR( measure, 2.0, tolerance );
     if constexpr ( NumPoints >= 2 ) {
@@ -165,7 +168,7 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
   template <int NumPoints>
   void checkInterpenetratingOverlap()
   {
-    struct Case {
+    struct InterpenetratingOverlapCase {
       RealT slope;          ///< Slope of edge1; edge2 has the opposite slope.
       RealT separation;     ///< Height of edge2 at x=0.0.
       RealT residual_gap;   ///< Value subtracted from the geometric gap in the pressure law after geometric clipping.
@@ -175,7 +178,7 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
     };
     // Each case spans the physical interval x in [-1, 1]. Edge1 follows y=slope*x, and the oppositely directed edge2
     // follows y=separation-slope*x. Therefore, x=0 is the midpoint of their full projected overlap.
-    const Case cases[] = {
+    const InterpenetratingOverlapCase cases[] = {
         // The edges cross at x=-0.5. Their geometric gap is positive at x=0, so only the left interval is retained.
         { 0.25, -0.25, 0.0, -1.0, -0.5, -0.0625 },
         // Mirroring both slopes moves the crossing to x=0.5 and retains only the right interval.
@@ -184,7 +187,7 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
         { 0.25, 0.25, 0.0, -1.0, 0.5, -0.5625 },
         // The first geometry is reused, but pressure uses the geometric gap minus 0.1 on the same clipped interval.
         { 0.25, -0.25, 0.1, -1.0, -0.5, -0.1125 } };
-    struct Sample {
+    struct InterpenetratingOverlapResult {
       EdgeQuadratureInterval interval;      ///< Calculated geometric bounds.
       CommonPlaneResidualValue residual;    ///< Pair loads and quadrature status.
       MdArray<RealT, NumPoints> x1{};       ///< Point positions on edge1.
@@ -192,71 +195,72 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
       MdArray<RealT, NumPoints> gaps{};     ///< Unshifted point gaps.
       MdArray<RealT, NumPoints> weights{};  ///< Physical line weights.
     };
-    for ( const auto test : cases ) {
-      SCOPED_TRACE( testing::Message() << "points=" << NumPoints << ", slope=" << test.slope << ", separation="
-                                       << test.separation << ", residual_gap=" << test.residual_gap );
-      ArrayT<Sample> samples( 1, 1, allocatorId() );
-      const auto output = samples.view();
+    for ( const auto test_case : cases ) {
+      SCOPED_TRACE( testing::Message() << "points=" << NumPoints << ", slope=" << test_case.slope << ", separation="
+                                       << test_case.separation << ", residual_gap=" << test_case.residual_gap );
+      ArrayT<InterpenetratingOverlapResult> overlap_results( 1, 1, allocatorId() );
+      const auto overlap_results_view = overlap_results.view();
       forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
-        const Coordinates edge1{ MdArray<RealT, 2>{ -1.0, -test.slope }, MdArray<RealT, 2>{ 1.0, test.slope } };
-        const Coordinates edge2{ MdArray<RealT, 2>{ 1.0, test.separation - test.slope },
-                                 MdArray<RealT, 2>{ -1.0, test.separation + test.slope } };
+        const Coordinates edge1{ MdArray<RealT, 2>{ -1.0, -test_case.slope },
+                                 MdArray<RealT, 2>{ 1.0, test_case.slope } };
+        const Coordinates edge2{ MdArray<RealT, 2>{ 1.0, test_case.separation - test_case.slope },
+                                 MdArray<RealT, 2>{ -1.0, test_case.separation + test_case.slope } };
         const LinearEdgeGeometry geometry1( edge1.view() ), geometry2( edge2.view() );
         const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>
             rule_generator;
-        const auto points = rule_generator.generate( geometry1, geometry2 );
+        const auto quadrature_rule = rule_generator.generate( geometry1, geometry2 );
         const auto line = CommonPlaneEdgeMapping::computeCommonPlaneLine( geometry1, geometry2 );
-        output[0].interval = CommonPlaneEdgeMapping{}.makeIntegrationSurface( geometry1, geometry2 );
+        overlap_results_view[0].interval = CommonPlaneEdgeMapping{}.makeIntegrationSurface( geometry1, geometry2 );
         const PairTractionIntegral<
             PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>,
             CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>, BasisFunction<EDGE, LINEAR_LAGRANGE>>
-            function{ rule_generator, { 1.0, OffsetGap{ CommonPlaneGap{}, test.residual_gap } } };
-        output[0].residual = function.evaluate( edge1.view(), edge2.view() );
+            pair_integral{ rule_generator, { 1.0, OffsetGap{ CommonPlaneGap{}, test_case.residual_gap } } };
+        overlap_results_view[0].residual = pair_integral.evaluate( edge1.view(), edge2.view() );
         for ( int point = 0; point < NumPoints; ++point ) {
-          const auto point1 = geometry1.position( { &points.geom1_parametric_coords( point, 0 ), 1 } );
-          const auto point2 = geometry2.position( { &points.geom2_parametric_coords( point, 0 ), 1 } );
-          output[0].x1[point] = point1[0];
-          output[0].x2[point] = point2[0];
-          output[0].gaps[point] = CommonPlaneGap{}( point1, point2, line );
-          output[0].weights[point] = points.weights[point];
+          const auto point1 = geometry1.position( { &quadrature_rule.geom1_parametric_coords( point, 0 ), 1 } );
+          const auto point2 = geometry2.position( { &quadrature_rule.geom2_parametric_coords( point, 0 ), 1 } );
+          overlap_results_view[0].x1[point] = point1[0];
+          overlap_results_view[0].x2[point] = point2[0];
+          overlap_results_view[0].gaps[point] = CommonPlaneGap{}( point1, point2, line );
+          overlap_results_view[0].weights[point] = quadrature_rule.weights[point];
         }
       } );
-      const ArrayT<Sample, 1, MemorySpace::Host> host( samples );
-      const auto& sample = host[0];
-      ASSERT_TRUE( sample.interval.valid );
-      EXPECT_NEAR( sample.interval.bounds[0], test.lower, tolerance );
-      EXPECT_NEAR( sample.interval.bounds[1], test.upper, tolerance );
-      ASSERT_EQ( sample.residual.quadrature_metadata.status, QuadratureStatus::Success );
-      EXPECT_EQ( sample.residual.quadrature_metadata.num_required_points, NumPoints );
-      EXPECT_TRUE( sample.residual.has_active_points );
+      const ArrayT<InterpenetratingOverlapResult, 1, MemorySpace::Host> host_overlap_results( overlap_results );
+      const auto& overlap_result = host_overlap_results[0];
+      ASSERT_TRUE( overlap_result.interval.valid );
+      EXPECT_NEAR( overlap_result.interval.bounds[0], test_case.lower, tolerance );
+      EXPECT_NEAR( overlap_result.interval.bounds[1], test_case.upper, tolerance );
+      ASSERT_EQ( overlap_result.residual.quadrature_metadata.status, QuadratureStatus::Success );
+      EXPECT_EQ( overlap_result.residual.quadrature_metadata.num_required_points, NumPoints );
+      EXPECT_TRUE( overlap_result.residual.has_active_points );
       RealT measure = 0.0;
       RealT first_moment = 0.0;
       for ( int point = 0; point < NumPoints; ++point ) {
-        EXPECT_GT( sample.x1[point], test.lower );
-        EXPECT_LT( sample.x1[point], test.upper );
-        EXPECT_NEAR( sample.x1[point], sample.x2[point], tolerance );
-        EXPECT_LT( sample.gaps[point], 0.0 );
-        EXPECT_GT( sample.weights[point], 0.0 );
-        measure += sample.weights[point];
-        first_moment += sample.weights[point] * sample.x1[point];
+        EXPECT_GT( overlap_result.x1[point], test_case.lower );
+        EXPECT_LT( overlap_result.x1[point], test_case.upper );
+        EXPECT_NEAR( overlap_result.x1[point], overlap_result.x2[point], tolerance );
+        EXPECT_LT( overlap_result.gaps[point], 0.0 );
+        EXPECT_GT( overlap_result.weights[point], 0.0 );
+        measure += overlap_result.weights[point];
+        first_moment += overlap_result.weights[point] * overlap_result.x1[point];
       }
-      const RealT center = 0.5 * ( test.lower + test.upper );
-      EXPECT_NEAR( measure, test.upper - test.lower, tolerance );
+      const RealT center = 0.5 * ( test_case.lower + test_case.upper );
+      EXPECT_NEAR( measure, test_case.upper - test_case.lower, tolerance );
       EXPECT_NEAR( first_moment / measure, center, tolerance );
       // The one-point rule applies centroid pressure. Two or more points integrate N_i(x) * (2*slope*x-offset)
       // exactly, including the pressure variation's contribution to the first moment of the load.
-      RealT load_moment = center * test.total_force_y;
+      RealT load_moment = center * test_case.total_force_y;
       if constexpr ( NumPoints >= 2 ) {
-        const RealT length = test.upper - test.lower;
-        load_moment += test.slope * length * length * length / 6.0;
+        const RealT length = test_case.upper - test_case.lower;
+        load_moment += test_case.slope * length * length * length / 6.0;
       }
-      const MdArray<RealT, 4> loads{
-          0.5 * ( test.total_force_y - load_moment ), 0.5 * ( test.total_force_y + load_moment ),
-          -0.5 * ( test.total_force_y + load_moment ), -0.5 * ( test.total_force_y - load_moment ) };
-      const auto residual_values = sample.residual.values();
-      for ( int node = 0; node < loads.size(); ++node ) {
+      const MdArray<RealT, 4> expected_nodal_y_loads{
+          0.5 * ( test_case.total_force_y - load_moment ), 0.5 * ( test_case.total_force_y + load_moment ),
+          -0.5 * ( test_case.total_force_y + load_moment ), -0.5 * ( test_case.total_force_y - load_moment ) };
+      const auto residual_values = overlap_result.residual.values();
+      for ( int node = 0; node < expected_nodal_y_loads.size(); ++node ) {
         EXPECT_NEAR( residual_values[2 * node], 0.0, tolerance );
-        EXPECT_NEAR( residual_values[2 * node + 1], loads[node], tolerance );
+        EXPECT_NEAR( residual_values[2 * node + 1], expected_nodal_y_loads[node], tolerance );
       }
     }
   }
@@ -289,7 +293,6 @@ TEST_P( CommonPlaneTest, balances_rotated_pair_forces_and_moments )
   constexpr RealT rotation_sine = rotated_edge_y_component / edge_length;
   constexpr RealT penalty_stiffness = 2.0;
   constexpr int pair_node_count = 2 * LinearEdgeGeometry::num_vertices;
-  constexpr int pair_residual_size = 2 * Coordinates::size();
 
   // Begin with two oppositely directed length-five edges separated by 0.25 in their normal direction.
   const Coordinates reference_edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ edge_length, 0.0 } };
@@ -314,33 +317,31 @@ TEST_P( CommonPlaneTest, balances_rotated_pair_forces_and_moments )
   const Coordinates edge1 = transform( reference_edge1 );
   const Coordinates edge2 = transform( reference_edge2 );
 
-  ArrayT<RealT> records( pair_residual_size, pair_residual_size, allocatorId() );
-  const auto output = records.view();
+  using Integral =
+      PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>>,
+                           CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
+  ArrayT<Integral::PairResidual> pair_residuals( 1, 1, allocatorId() );
+  const auto pair_residuals_view = pair_residuals.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
     const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>> rule_generator;
-    const PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>>,
-                               CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>
-        function{ rule_generator, { penalty_stiffness } };
-    const auto result = function.evaluate( edge1.view(), edge2.view() );
-    const auto values = result.values();
-    for ( int i = 0; i < pair_residual_size; ++i ) {
-      output[i] = values[i];
-    }
+    const Integral pair_integral{ rule_generator, { penalty_stiffness } };
+    pair_residuals_view[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
   } );
-  const ArrayT<RealT, 1, MemorySpace::Host> values( records );
+  const ArrayT<Integral::PairResidual, 1, MemorySpace::Host> host_pair_residuals( pair_residuals );
+  const auto pair_residual_values = host_pair_residuals[0].values();
   RealT force_x = 0.0, force_y = 0.0, moment = 0.0;
   const Coordinates edges[] = { edge1, edge2 };
   for ( int pair_node = 0; pair_node < pair_node_count; ++pair_node ) {
     const int edge = pair_node / LinearEdgeGeometry::num_vertices;
     const int edge_node = pair_node % LinearEdgeGeometry::num_vertices;
-    force_x += values[2 * pair_node];
-    force_y += values[2 * pair_node + 1];
-    moment +=
-        edges[edge]( edge_node, 0 ) * values[2 * pair_node + 1] - edges[edge]( edge_node, 1 ) * values[2 * pair_node];
+    force_x += pair_residual_values[2 * pair_node];
+    force_y += pair_residual_values[2 * pair_node + 1];
+    moment += edges[edge]( edge_node, 0 ) * pair_residual_values[2 * pair_node + 1] -
+              edges[edge]( edge_node, 1 ) * pair_residual_values[2 * pair_node];
   }
   const RealT reference_nodal_force_y = -penalty_stiffness * edge_offset * edge_length / 2.0;
-  EXPECT_NEAR( values[0], -rotation_sine * reference_nodal_force_y, tolerance );
-  EXPECT_NEAR( values[1], rotation_cosine * reference_nodal_force_y, tolerance );
+  EXPECT_NEAR( pair_residual_values[0], -rotation_sine * reference_nodal_force_y, tolerance );
+  EXPECT_NEAR( pair_residual_values[1], rotation_cosine * reference_nodal_force_y, tolerance );
   EXPECT_NEAR( force_x, 0.0, tolerance );
   EXPECT_NEAR( force_y, 0.0, tolerance );
   EXPECT_NEAR( moment, 0.0, tolerance );
@@ -349,21 +350,21 @@ TEST_P( CommonPlaneTest, balances_rotated_pair_forces_and_moments )
 // Failed geometry is distinct from valid empty overlap, and insufficient capacity must leave all storage untouched.
 TEST_P( CommonPlaneTest, reports_geometry_and_capacity_without_writing )
 {
-  enum Result
+  enum GenerationCase
   {
-    InvalidFirst,
-    InvalidSecond,
+    InvalidFirstGeometry,
+    InvalidSecondGeometry,
     Disjoint,
     Cooriented,
     Perpendicular,
-    Overflow,
-    NumResults
+    InsufficientCapacity,
+    NumCases
   };
   constexpr RealT unwritten = -7.0;
-  ArrayT<QuadratureMetadata> records( NumResults, NumResults, allocatorId() );
-  ArrayT<RealT> storage( 4, 4, allocatorId() );
-  const auto output = records.view();
-  const auto values = storage.view();
+  ArrayT<QuadratureMetadata> quadrature_metadata( NumCases, NumCases, allocatorId() );
+  ArrayT<RealT> point_storage( 4, 4, allocatorId() );
+  const auto quadrature_metadata_view = quadrature_metadata.view();
+  const auto point_storage_view = point_storage.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
     const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
     const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, 0.1 }, MdArray<RealT, 2>{ 0.0, 0.1 } };
@@ -372,38 +373,39 @@ TEST_P( CommonPlaneTest, reports_geometry_and_capacity_without_writing )
     const Coordinates cooriented{ MdArray<RealT, 2>{ 0.0, 0.1 }, MdArray<RealT, 2>{ 2.0, 0.1 } };
     const Coordinates perpendicular{ MdArray<RealT, 2>{ 1.0, -1.0 }, MdArray<RealT, 2>{ 1.0, 1.0 } };
     const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>> rule_generator;
-    output[InvalidFirst] =
+    quadrature_metadata_view[InvalidFirstGeometry] =
         rule_generator.generate( LinearEdgeGeometry( invalid.view() ), LinearEdgeGeometry( edge2.view() ) ).metadata;
-    output[InvalidSecond] =
+    quadrature_metadata_view[InvalidSecondGeometry] =
         rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( invalid.view() ) ).metadata;
-    output[Disjoint] =
+    quadrature_metadata_view[Disjoint] =
         rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( disjoint.view() ) ).metadata;
-    output[Cooriented] =
+    quadrature_metadata_view[Cooriented] =
         rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( cooriented.view() ) ).metadata;
-    output[Perpendicular] =
+    quadrature_metadata_view[Perpendicular] =
         rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( perpendicular.view() ) )
             .metadata;
-    for ( int i = 0; i < values.size(); ++i ) {
-      values[i] = unwritten;
+    for ( int i = 0; i < point_storage_view.size(); ++i ) {
+      point_storage_view[i] = unwritten;
     }
-    const PairQuadratureRuleView<1, 1> bounded{
-        { values.data() + 1, { 2, 1 } }, { values.data() + 1, { 2, 1 } }, { values.data() + 1, 2 } };
-    output[Overflow] =
-        rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( edge2.view() ), bounded );
+    const PairQuadratureRuleView<1, 1> limited_capacity_rule_view{ { point_storage_view.data() + 1, { 2, 1 } },
+                                                                   { point_storage_view.data() + 1, { 2, 1 } },
+                                                                   { point_storage_view.data() + 1, 2 } };
+    quadrature_metadata_view[InsufficientCapacity] = rule_generator.generate(
+        LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( edge2.view() ), limited_capacity_rule_view );
   } );
-  const ArrayT<QuadratureMetadata, 1, MemorySpace::Host> results( records );
-  const ArrayT<RealT, 1, MemorySpace::Host> host( storage );
-  for ( int invalid : { InvalidFirst, InvalidSecond } ) {
-    EXPECT_EQ( results[invalid].status, QuadratureStatus::InvalidGeometry );
-    EXPECT_EQ( results[invalid].num_required_points, 0 );
+  const ArrayT<QuadratureMetadata, 1, MemorySpace::Host> host_quadrature_metadata( quadrature_metadata );
+  const ArrayT<RealT, 1, MemorySpace::Host> host_point_storage( point_storage );
+  for ( int invalid_geometry : { InvalidFirstGeometry, InvalidSecondGeometry } ) {
+    EXPECT_EQ( host_quadrature_metadata[invalid_geometry].status, QuadratureStatus::InvalidGeometry );
+    EXPECT_EQ( host_quadrature_metadata[invalid_geometry].num_required_points, 0 );
   }
-  for ( int empty : { Disjoint, Cooriented, Perpendicular } ) {
-    EXPECT_EQ( results[empty].status, QuadratureStatus::Success );
-    EXPECT_EQ( results[empty].num_required_points, 0 );
+  for ( int empty_overlap : { Disjoint, Cooriented, Perpendicular } ) {
+    EXPECT_EQ( host_quadrature_metadata[empty_overlap].status, QuadratureStatus::Success );
+    EXPECT_EQ( host_quadrature_metadata[empty_overlap].num_required_points, 0 );
   }
-  EXPECT_EQ( results[Overflow].status, QuadratureStatus::InsufficientCapacity );
-  EXPECT_EQ( results[Overflow].num_required_points, 3 );
-  for ( const auto value : host ) {
+  EXPECT_EQ( host_quadrature_metadata[InsufficientCapacity].status, QuadratureStatus::InsufficientCapacity );
+  EXPECT_EQ( host_quadrature_metadata[InsufficientCapacity].num_required_points, 3 );
+  for ( const auto value : host_point_storage ) {
     EXPECT_EQ( value, unwritten );
   }
 }
@@ -458,28 +460,29 @@ TEST_P( CommonPlaneTest, integrates_supplied_traction_with_independent_bases )
   using Integral = PairTractionIntegral<RuleGenerator, NodalPressureTraction, BasisFunction<EDGE, LINEAR_LAGRANGE>,
                                         BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
   static_assert( PairFunctionType<Integral> );
-  ArrayT<Integral::PairResidual> results( 1, 1, allocatorId() );
-  const auto output = results.view();
+  ArrayT<Integral::PairResidual> pair_residuals( 1, 1, allocatorId() );
+  const auto pair_residuals_view = pair_residuals.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
     const Coordinates edge1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 } };
     const Coordinates edge2{ MdArray<RealT, 2>{ 1.0, -0.1 }, MdArray<RealT, 2>{ -1.0, -0.1 } };
     const Integral pair_integral{ {}, {} };
-    output[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
+    pair_residuals_view[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
   } );
-  const ArrayT<Integral::PairResidual, 1, MemorySpace::Host> host( results );
-  ASSERT_EQ( host[0].quadrature_metadata.status, QuadratureStatus::Success );
-  EXPECT_EQ( host[0].quadrature_metadata.num_required_points, 2 );
-  EXPECT_TRUE( host[0].has_active_points );
+  const ArrayT<Integral::PairResidual, 1, MemorySpace::Host> host_pair_residuals( pair_residuals );
+  const auto& pair_residual = host_pair_residuals[0];
+  ASSERT_EQ( pair_residual.quadrature_metadata.status, QuadratureStatus::Success );
+  EXPECT_EQ( pair_residual.quadrature_metadata.num_required_points, 2 );
+  EXPECT_TRUE( pair_residual.has_active_points );
   // Geometry1's pressure is 2-x. Geometry2's reversed coordinate gives 2+xi and endpoint/endpoint/midpoint ordering.
-  const MdArray<RealT, 2> loads1{ 7.0 / 3.0, 5.0 / 3.0 };
-  const MdArray<RealT, 3> loads2{ -1.0 / 3.0, -1.0, -8.0 / 3.0 };
-  for ( IndexT node = 0; node < loads1.size(); ++node ) {
-    EXPECT_NEAR( host[0].geometry1( node, 0 ), 0.0, tolerance );
-    EXPECT_NEAR( host[0].geometry1( node, 1 ), loads1[node], tolerance );
+  const MdArray<RealT, 2> expected_geometry1_y_loads{ 7.0 / 3.0, 5.0 / 3.0 };
+  const MdArray<RealT, 3> expected_geometry2_y_loads{ -1.0 / 3.0, -1.0, -8.0 / 3.0 };
+  for ( IndexT node = 0; node < expected_geometry1_y_loads.size(); ++node ) {
+    EXPECT_NEAR( pair_residual.geometry1( node, 0 ), 0.0, tolerance );
+    EXPECT_NEAR( pair_residual.geometry1( node, 1 ), expected_geometry1_y_loads[node], tolerance );
   }
-  for ( IndexT node = 0; node < loads2.size(); ++node ) {
-    EXPECT_NEAR( host[0].geometry2( node, 0 ), 0.0, tolerance );
-    EXPECT_NEAR( host[0].geometry2( node, 1 ), loads2[node], tolerance );
+  for ( IndexT node = 0; node < expected_geometry2_y_loads.size(); ++node ) {
+    EXPECT_NEAR( pair_residual.geometry2( node, 0 ), 0.0, tolerance );
+    EXPECT_NEAR( pair_residual.geometry2( node, 1 ), expected_geometry2_y_loads[node], tolerance );
   }
 }
 
@@ -490,8 +493,8 @@ TEST_P( CommonPlaneTest, activates_each_quadrature_point_after_gap_offset )
   const RealT active_x = -0.5 - 0.5 / std::sqrt( 3.0 );
   for ( const RealT residual_gap : { -0.3, -0.5 } ) {
     SCOPED_TRACE( residual_gap );
-    ArrayT<CommonPlaneResidualValue> results( 1, 1, allocatorId() );
-    const auto output = results.view();
+    ArrayT<CommonPlaneResidualValue> pair_residuals( 1, 1, allocatorId() );
+    const auto pair_residuals_view = pair_residuals.view();
     forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
       const Coordinates edge1{ MdArray<RealT, 2>{ -1.0, -0.25 }, MdArray<RealT, 2>{ 1.0, 0.25 } };
       const Coordinates edge2{ MdArray<RealT, 2>{ 1.0, -0.25 }, MdArray<RealT, 2>{ -1.0, 0.25 } };
@@ -499,23 +502,24 @@ TEST_P( CommonPlaneTest, activates_each_quadrature_point_after_gap_offset )
                                  CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>,
                                  BasisFunction<EDGE, LINEAR_LAGRANGE>>
           pair_integral{ {}, { 1.0, OffsetGap{ CommonPlaneGap{}, residual_gap } } };
-      output[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
+      pair_residuals_view[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
     } );
-    const ArrayT<CommonPlaneResidualValue, 1, MemorySpace::Host> host( results );
-    ASSERT_EQ( host[0].quadrature_metadata.status, QuadratureStatus::Success );
-    EXPECT_EQ( host[0].quadrature_metadata.num_required_points, 2 );
+    const ArrayT<CommonPlaneResidualValue, 1, MemorySpace::Host> host_pair_residuals( pair_residuals );
+    const auto& pair_residual = host_pair_residuals[0];
+    ASSERT_EQ( pair_residual.quadrature_metadata.status, QuadratureStatus::Success );
+    EXPECT_EQ( pair_residual.quadrature_metadata.num_required_points, 2 );
     const RealT gap = 0.5 * active_x - residual_gap;
-    const bool active = gap <= 0.0;
-    EXPECT_EQ( host[0].has_active_points, active );
+    const bool has_active_point = gap <= 0.0;
+    EXPECT_EQ( pair_residual.has_active_points, has_active_point );
     // The clipped interval is [-1, 0], so each Gauss weight is 0.5 and N_0(x)=(1-x)/2.
-    const RealT weighted_pressure = active ? 0.5 * gap : 0.0;
+    const RealT weighted_pressure = has_active_point ? 0.5 * gap : 0.0;
     const RealT first_load = 0.5 * ( 1.0 - active_x ) * weighted_pressure;
     const RealT second_load = 0.5 * ( 1.0 + active_x ) * weighted_pressure;
-    const MdArray<RealT, 4> loads{ first_load, second_load, -second_load, -first_load };
-    const auto values = host[0].values();
-    for ( int node = 0; node < loads.size(); ++node ) {
-      EXPECT_NEAR( values[2 * node], 0.0, tolerance );
-      EXPECT_NEAR( values[2 * node + 1], loads[node], tolerance );
+    const MdArray<RealT, 4> expected_nodal_y_loads{ first_load, second_load, -second_load, -first_load };
+    const auto residual_values = pair_residual.values();
+    for ( int node = 0; node < expected_nodal_y_loads.size(); ++node ) {
+      EXPECT_NEAR( residual_values[2 * node], 0.0, tolerance );
+      EXPECT_NEAR( residual_values[2 * node + 1], expected_nodal_y_loads[node], tolerance );
     }
   }
 }
@@ -545,66 +549,71 @@ struct UnmaskedResidualPairFunction
 // A force-only kernel must keep pair slots distinct and preserve active zero-gap and invalid-geometry state.
 TEST_P( CommonPlaneTest, value_kernel_returns_forces_and_quadrature_without_derivatives )
 {
-  using Function =
+  using PairIntegral =
       PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>,
                            CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
-  const Function function{ {}, { 1.0 } };
-  const auto x1 = copyToExecutionSpace<RealT>( { 0.0, 2.0 } );
-  const auto y1 = copyToExecutionSpace<RealT>( { 0.0, 0.0 } );
-  const auto conn1 = copyToExecutionSpace<IndexT>( { 0, 1 } );
-  const auto x2 = copyToExecutionSpace<RealT>( { 2.0, 0.0, 2.0, 0.0, 2.0, 0.0, 0.0, 0.0 } );
-  const auto y2 = copyToExecutionSpace<RealT>( { 0.1, 0.1, -0.1, -0.1, 0.0, 0.0, 0.0, 0.0 } );
-  const auto conn2 = copyToExecutionSpace<IndexT>( { 0, 1, 2, 3, 4, 5, 6, 7 } );
-  MeshData mesh1( 0, 1, x1.size(), conn1.data(), EDGE, LINEAR_LAGRANGE, x1.data(), y1.data(), nullptr, memorySpace() );
-  MeshData mesh2( 1, 4, x2.size(), conn2.data(), EDGE, LINEAR_LAGRANGE, x2.data(), y2.data(), nullptr, memorySpace() );
-  const auto pairs = copyToExecutionSpace<InterfacePair>( { { 0, 0 }, { 0, 1 }, { 0, 2 }, { 0, 3 } } );
-  auto buffer = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
-    return evaluatePairValues<Exec>( pairs, mesh1.getView(), mesh2.getView(), function );
+  const PairIntegral pair_integral{ {}, { 1.0 } };
+  const auto mesh1_x = copyToExecutionSpace<RealT>( { 0.0, 2.0 } );
+  const auto mesh1_y = copyToExecutionSpace<RealT>( { 0.0, 0.0 } );
+  const auto mesh1_connectivity = copyToExecutionSpace<IndexT>( { 0, 1 } );
+  const auto mesh2_x = copyToExecutionSpace<RealT>( { 2.0, 0.0, 2.0, 0.0, 2.0, 0.0, 0.0, 0.0 } );
+  const auto mesh2_y = copyToExecutionSpace<RealT>( { 0.1, 0.1, -0.1, -0.1, 0.0, 0.0, 0.0, 0.0 } );
+  const auto mesh2_connectivity = copyToExecutionSpace<IndexT>( { 0, 1, 2, 3, 4, 5, 6, 7 } );
+  MeshData mesh1( 0, 1, mesh1_x.size(), mesh1_connectivity.data(), EDGE, LINEAR_LAGRANGE, mesh1_x.data(),
+                  mesh1_y.data(), nullptr, memorySpace() );
+  MeshData mesh2( 1, 4, mesh2_x.size(), mesh2_connectivity.data(), EDGE, LINEAR_LAGRANGE, mesh2_x.data(),
+                  mesh2_y.data(), nullptr, memorySpace() );
+  const auto pair_list = copyToExecutionSpace<InterfacePair>( { { 0, 0 }, { 0, 1 }, { 0, 2 }, { 0, 3 } } );
+  auto pair_value_buffer = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    return evaluatePairValues<Exec>( pair_list, mesh1.getView(), mesh2.getView(), pair_integral );
   } );
-  EXPECT_EQ( buffer.numberOfPairs(), pairs.size() );
-  EXPECT_EQ( buffer.values().getAllocatorID(), pairs.getAllocatorID() );
-  EXPECT_EQ( buffer.quadratureMetadata().getAllocatorID(), pairs.getAllocatorID() );
-  const Array1D<RealT, MemorySpace::Host> values( buffer.values() );
-  const Array1D<QuadratureMetadata, MemorySpace::Host> status( buffer.quadratureMetadata() );
-  for ( IndexT pair = 0; pair < pairs.size(); ++pair ) {
-    EXPECT_EQ( status[pair].status, pair == 3 ? QuadratureStatus::InvalidGeometry : QuadratureStatus::Success );
-    EXPECT_EQ( status[pair].num_required_points, pair == 3 ? 0 : 2 );
-    for ( IndexT row = 0; row < Function::size_values; ++row ) {
-      const RealT expected = pair == 0 && row % 2 == 1 ? ( row < Function::size_geom1_coords ? -0.1 : 0.1 ) : 0.0;
-      EXPECT_NEAR( values[row * pairs.size() + pair], expected, tolerance );
+  EXPECT_EQ( pair_value_buffer.numberOfPairs(), pair_list.size() );
+  EXPECT_EQ( pair_value_buffer.values().getAllocatorID(), pair_list.getAllocatorID() );
+  EXPECT_EQ( pair_value_buffer.quadratureMetadata().getAllocatorID(), pair_list.getAllocatorID() );
+  const Array1D<RealT, MemorySpace::Host> host_pair_values( pair_value_buffer.values() );
+  const Array1D<QuadratureMetadata, MemorySpace::Host> host_quadrature_metadata(
+      pair_value_buffer.quadratureMetadata() );
+  for ( IndexT pair = 0; pair < pair_list.size(); ++pair ) {
+    EXPECT_EQ( host_quadrature_metadata[pair].status,
+               pair == 3 ? QuadratureStatus::InvalidGeometry : QuadratureStatus::Success );
+    EXPECT_EQ( host_quadrature_metadata[pair].num_required_points, pair == 3 ? 0 : 2 );
+    for ( IndexT row = 0; row < PairIntegral::size_values; ++row ) {
+      const RealT expected_pair_value =
+          pair == 0 && row % 2 == 1 ? ( row < PairIntegral::size_geom1_coords ? -0.1 : 0.1 ) : 0.0;
+      EXPECT_NEAR( host_pair_values[row * pair_list.size() + pair], expected_pair_value, tolerance );
     }
   }
   EXPECT_SLIC_ERROR( dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
-    return checkPairQuadratureMetadata<Exec>( buffer.quadratureMetadata() );
+    return checkPairQuadratureMetadata<Exec>( pair_value_buffer.quadratureMetadata() );
   } ) );
   // A second calculation uses different stiffness and must leave the first returned buffer unchanged.
-  auto doubled = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
-    return evaluatePairValues<Exec>( pairs, mesh1.getView(), mesh2.getView(), Function{ {}, { 2.0 } } );
+  auto doubled_stiffness_buffer = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    return evaluatePairValues<Exec>( pair_list, mesh1.getView(), mesh2.getView(), PairIntegral{ {}, { 2.0 } } );
   } );
-  const Array1D<RealT, MemorySpace::Host> doubled_values( doubled.values() );
-  const Array1D<RealT, MemorySpace::Host> unchanged( buffer.values() );
-  for ( IndexT i = 0; i < values.size(); ++i ) {
-    EXPECT_EQ( unchanged[i], values[i] );
-    EXPECT_NEAR( doubled_values[i], 2.0 * values[i], tolerance );
+  const Array1D<RealT, MemorySpace::Host> host_doubled_stiffness_values( doubled_stiffness_buffer.values() );
+  const Array1D<RealT, MemorySpace::Host> host_preserved_pair_values( pair_value_buffer.values() );
+  for ( IndexT i = 0; i < host_pair_values.size(); ++i ) {
+    EXPECT_EQ( host_preserved_pair_values[i], host_pair_values[i] );
+    EXPECT_NEAR( host_doubled_stiffness_values[i], 2.0 * host_pair_values[i], tolerance );
   }
   // The kernel must zero inactive or failed outputs even when evaluate() supplies nonzero numerical entries.
-  auto unmasked = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
-    return evaluatePairValues<Exec>( pairs, mesh1.getView(), mesh2.getView(),
+  auto masked_pair_value_buffer = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    return evaluatePairValues<Exec>( pair_list, mesh1.getView(), mesh2.getView(),
                                      UnmaskedResidualPairFunction{ {}, { 1.0 } } );
   } );
-  const Array1D<RealT, MemorySpace::Host> masked_values( unmasked.values() );
-  for ( IndexT pair = 0; pair < pairs.size(); ++pair ) {
-    EXPECT_EQ( masked_values[pair], pair == 0 || pair == 2 ? 1.0 : 0.0 );
+  const Array1D<RealT, MemorySpace::Host> host_masked_values( masked_pair_value_buffer.values() );
+  for ( IndexT pair = 0; pair < pair_list.size(); ++pair ) {
+    EXPECT_EQ( host_masked_values[pair], pair == 0 || pair == 2 ? 1.0 : 0.0 );
   }
   const ArrayT<InterfacePair> empty_pairs( 0, 0, allocatorId() );
-  auto empty = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
-    return evaluatePairValues<Exec>( empty_pairs, mesh1.getView(), mesh2.getView(), function );
+  auto empty_pair_buffer = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
+    return evaluatePairValues<Exec>( empty_pairs, mesh1.getView(), mesh2.getView(), pair_integral );
   } );
-  EXPECT_EQ( empty.numberOfPairs(), 0 );
-  EXPECT_EQ( empty.values().size(), 0 );
-  EXPECT_EQ( empty.quadratureMetadata().size(), 0 );
+  EXPECT_EQ( empty_pair_buffer.numberOfPairs(), 0 );
+  EXPECT_EQ( empty_pair_buffer.values().size(), 0 );
+  EXPECT_EQ( empty_pair_buffer.quadratureMetadata().size(), 0 );
   EXPECT_NO_THROW( dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
-    return checkPairQuadratureMetadata<Exec>( empty.quadratureMetadata() );
+    return checkPairQuadratureMetadata<Exec>( empty_pair_buffer.quadratureMetadata() );
   } ) );
 }
 INSTANTIATE_TEST_SUITE_P( execution, CommonPlaneTest, tribol::detail::enabledExecutionModes() );
@@ -614,83 +623,85 @@ INSTANTIATE_TEST_SUITE_P( execution, CommonPlaneTest, tribol::detail::enabledExe
 template <int NumPoints>
 void checkJacobian()
 {
-  using Function =
+  using PairIntegral =
       PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>,
                            CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
   const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>> rule_generator;
   constexpr RealT step =
       2.0e-7;  // Small enough to resolve derivatives without changing the active or overlap branches.
   // The longer second edge in the offset case keeps the limiting overlap endpoint unchanged under perturbation.
-  const Coordinates cases1[] = { Coordinates{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.2 } },
-                                 Coordinates{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 } },
-                                 Coordinates{ MdArray<RealT, 2>{ -1.0, -0.25 }, MdArray<RealT, 2>{ 1.0, 0.25 } } };
-  const Coordinates cases2[] = { Coordinates{ MdArray<RealT, 2>{ 1.8, 0.35 }, MdArray<RealT, 2>{ 0.2, 0.1 } },
-                                 Coordinates{ MdArray<RealT, 2>{ 0.8, 0.2 }, MdArray<RealT, 2>{ -0.8, -0.2 } },
-                                 Coordinates{ MdArray<RealT, 2>{ 1.2, -0.3 }, MdArray<RealT, 2>{ -1.2, 0.3 } } };
+  const Coordinates edge1_cases[] = { Coordinates{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.2 } },
+                                      Coordinates{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 } },
+                                      Coordinates{ MdArray<RealT, 2>{ -1.0, -0.25 }, MdArray<RealT, 2>{ 1.0, 0.25 } } };
+  const Coordinates edge2_cases[] = { Coordinates{ MdArray<RealT, 2>{ 1.8, 0.35 }, MdArray<RealT, 2>{ 0.2, 0.1 } },
+                                      Coordinates{ MdArray<RealT, 2>{ 0.8, 0.2 }, MdArray<RealT, 2>{ -0.8, -0.2 } },
+                                      Coordinates{ MdArray<RealT, 2>{ 1.2, -0.3 }, MdArray<RealT, 2>{ -1.2, 0.3 } } };
   const MdArray<RealT, 3> residual_gaps{ 0.03, 0.03, -0.3 };
-  for ( int geometry = 0; geometry < residual_gaps.size(); ++geometry ) {
-    const Function function{ rule_generator, { 2.5, OffsetGap{ CommonPlaneGap{}, residual_gaps[geometry] } } };
-    const auto coordinates = packPairCoordinates( cases1[geometry].view(), cases2[geometry].view() );
-    const auto expected = function.evaluate( cases1[geometry].view(), cases2[geometry].view() );
-    const auto result =
-        EnzymePairDerivative<Function>::valuesAndJacobian( cases1[geometry].view(), cases2[geometry].view(), function );
-    const auto expected_values = expected.values();
-    ASSERT_EQ( result.pair_value.quadrature_metadata.status, QuadratureStatus::Success );
-    EXPECT_EQ( result.pair_value.quadrature_metadata.num_required_points, NumPoints );
-    EXPECT_EQ( result.pair_value.has_active_points, expected.has_active_points );
-    const auto result_values = result.pair_value.values();
-    for ( IndexT row = 0; row < Function::size_values; ++row ) {
-      EXPECT_DOUBLE_EQ( result_values[row], expected_values[row] );
+  for ( int case_index = 0; case_index < residual_gaps.size(); ++case_index ) {
+    const PairIntegral pair_integral{ rule_generator,
+                                      { 2.5, OffsetGap{ CommonPlaneGap{}, residual_gaps[case_index] } } };
+    const auto pair_coordinates = packPairCoordinates( edge1_cases[case_index].view(), edge2_cases[case_index].view() );
+    const auto reference_residual =
+        pair_integral.evaluate( edge1_cases[case_index].view(), edge2_cases[case_index].view() );
+    const auto differentiated_residual = EnzymePairDerivative<PairIntegral>::valuesAndJacobian(
+        edge1_cases[case_index].view(), edge2_cases[case_index].view(), pair_integral );
+    const auto reference_residual_values = reference_residual.values();
+    ASSERT_EQ( differentiated_residual.pair_value.quadrature_metadata.status, QuadratureStatus::Success );
+    EXPECT_EQ( differentiated_residual.pair_value.quadrature_metadata.num_required_points, NumPoints );
+    EXPECT_EQ( differentiated_residual.pair_value.has_active_points, reference_residual.has_active_points );
+    const auto differentiated_residual_values = differentiated_residual.pair_value.values();
+    for ( IndexT row = 0; row < PairIntegral::size_values; ++row ) {
+      EXPECT_DOUBLE_EQ( differentiated_residual_values[row], reference_residual_values[row] );
     }
-    for ( int column = 0; column < Function::size_coords; ++column ) {
-      auto plus_coordinates = coordinates;
-      auto minus_coordinates = coordinates;
-      plus_coordinates[column] += step;
-      minus_coordinates[column] -= step;
-      const auto plus =
-          function.evaluate( { plus_coordinates.data(), Function::size_geom1_coords },
-                             { plus_coordinates.data() + Function::size_geom1_coords, Function::size_geom2_coords } );
-      const auto minus =
-          function.evaluate( { minus_coordinates.data(), Function::size_geom1_coords },
-                             { minus_coordinates.data() + Function::size_geom1_coords, Function::size_geom2_coords } );
-      ASSERT_EQ( plus.quadrature_metadata.status, QuadratureStatus::Success );
-      ASSERT_EQ( minus.quadrature_metadata.status, QuadratureStatus::Success );
-      const auto plus_values = plus.values();
-      const auto minus_values = minus.values();
-      for ( int row = 0; row < Function::size_values; ++row ) {
-        EXPECT_NEAR( result.derivatives.jacobian( row, column ),
-                     ( plus_values[row] - minus_values[row] ) / ( 2.0 * step ), 2.0e-7 )
-            << "points=" << NumPoints << ", geometry=" << geometry << ", row=" << row << ", column=" << column;
+    for ( int column = 0; column < PairIntegral::size_coords; ++column ) {
+      auto increased_coordinate_pair = pair_coordinates;
+      auto decreased_coordinate_pair = pair_coordinates;
+      increased_coordinate_pair[column] += step;
+      decreased_coordinate_pair[column] -= step;
+      const auto increased_coordinate_residual = pair_integral.evaluate(
+          { increased_coordinate_pair.data(), PairIntegral::size_geom1_coords },
+          { increased_coordinate_pair.data() + PairIntegral::size_geom1_coords, PairIntegral::size_geom2_coords } );
+      const auto decreased_coordinate_residual = pair_integral.evaluate(
+          { decreased_coordinate_pair.data(), PairIntegral::size_geom1_coords },
+          { decreased_coordinate_pair.data() + PairIntegral::size_geom1_coords, PairIntegral::size_geom2_coords } );
+      ASSERT_EQ( increased_coordinate_residual.quadrature_metadata.status, QuadratureStatus::Success );
+      ASSERT_EQ( decreased_coordinate_residual.quadrature_metadata.status, QuadratureStatus::Success );
+      const auto increased_coordinate_values = increased_coordinate_residual.values();
+      const auto decreased_coordinate_values = decreased_coordinate_residual.values();
+      for ( int row = 0; row < PairIntegral::size_values; ++row ) {
+        EXPECT_NEAR( differentiated_residual.derivatives.jacobian( row, column ),
+                     ( increased_coordinate_values[row] - decreased_coordinate_values[row] ) / ( 2.0 * step ), 2.0e-7 )
+            << "points=" << NumPoints << ", case=" << case_index << ", row=" << row << ", column=" << column;
       }
     }
   }
   const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
   const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, 0.0 }, MdArray<RealT, 2>{ 0.0, 0.0 } };
-  using UnshiftedFunction =
+  using UnshiftedIntegral =
       PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>,
                            CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
-  const UnshiftedFunction unshifted{ rule_generator, { 1.0 } };
-  const auto zero = unshifted.evaluate( edge1.view(), edge2.view() );
-  EXPECT_TRUE( zero.has_active_points );
-  const auto derivatives =
-      EnzymePairDerivative<UnshiftedFunction>::valuesAndJacobian( edge1.view(), edge2.view(), unshifted );
-  EXPECT_TRUE( derivatives.pair_value.has_active_points );
-  const auto derivative_values = derivatives.pair_value.values();
-  for ( IndexT row = 0; row < UnshiftedFunction::size_values; ++row ) {
-    EXPECT_EQ( derivative_values[row], 0.0 );
+  const UnshiftedIntegral unshifted_pair_integral{ rule_generator, { 1.0 } };
+  const auto zero_gap_residual = unshifted_pair_integral.evaluate( edge1.view(), edge2.view() );
+  EXPECT_TRUE( zero_gap_residual.has_active_points );
+  const auto zero_gap_derivatives =
+      EnzymePairDerivative<UnshiftedIntegral>::valuesAndJacobian( edge1.view(), edge2.view(), unshifted_pair_integral );
+  EXPECT_TRUE( zero_gap_derivatives.pair_value.has_active_points );
+  const auto zero_gap_residual_values = zero_gap_derivatives.pair_value.values();
+  for ( IndexT row = 0; row < UnshiftedIntegral::size_values; ++row ) {
+    EXPECT_EQ( zero_gap_residual_values[row], 0.0 );
   }
-  EXPECT_GT( derivatives.derivatives.jacobian( 1, 1 ), 0.0 );
+  EXPECT_GT( zero_gap_derivatives.derivatives.jacobian( 1, 1 ), 0.0 );
   const Coordinates invalid{};
-  const auto failure =
-      EnzymePairDerivative<UnshiftedFunction>::valuesAndJacobian( invalid.view(), edge2.view(), unshifted );
-  EXPECT_EQ( failure.pair_value.quadrature_metadata.status, QuadratureStatus::InvalidGeometry );
-  EXPECT_EQ( failure.pair_value.quadrature_metadata.num_required_points, 0 );
-  EXPECT_FALSE( failure.pair_value.has_active_points );
-  const auto failure_values = failure.pair_value.values();
-  for ( int row = 0; row < failure_values.size(); ++row ) {
-    EXPECT_EQ( failure_values[row], 0.0 );
-    for ( IndexT column = 0; column < UnshiftedFunction::size_coords; ++column ) {
-      EXPECT_EQ( failure.derivatives.jacobian( row, column ), 0.0 );
+  const auto invalid_geometry_derivatives = EnzymePairDerivative<UnshiftedIntegral>::valuesAndJacobian(
+      invalid.view(), edge2.view(), unshifted_pair_integral );
+  EXPECT_EQ( invalid_geometry_derivatives.pair_value.quadrature_metadata.status, QuadratureStatus::InvalidGeometry );
+  EXPECT_EQ( invalid_geometry_derivatives.pair_value.quadrature_metadata.num_required_points, 0 );
+  EXPECT_FALSE( invalid_geometry_derivatives.pair_value.has_active_points );
+  const auto invalid_geometry_residual_values = invalid_geometry_derivatives.pair_value.values();
+  for ( int row = 0; row < invalid_geometry_residual_values.size(); ++row ) {
+    EXPECT_EQ( invalid_geometry_residual_values[row], 0.0 );
+    for ( IndexT column = 0; column < UnshiftedIntegral::size_coords; ++column ) {
+      EXPECT_EQ( invalid_geometry_derivatives.derivatives.jacobian( row, column ), 0.0 );
     }
   }
 }
