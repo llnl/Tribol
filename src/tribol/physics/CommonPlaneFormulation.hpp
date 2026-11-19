@@ -75,7 +75,7 @@ struct CommonPlanePenaltyTraction {
  * @tparam Exec Concrete execution mode for search, evaluation, and assembly kernels.
  * @tparam PairRuleGenerator Generates quadrature points and physical weights for the current edge pair.
  * @tparam GapDefinition Geometric or offset common-plane gap.
- * @tparam ResidualOutputs Evaluates pair residuals and assembles the configured output set.
+ * @tparam ResidualOutputs Either ResidualOnly or ResidualAndJacobian in assembly/AssemblePairs.hpp
  */
 template <ExecutionMode Exec, typename PairRuleGenerator, typename GapDefinition, typename ResidualOutputs>
 class CommonPlaneFormulation final : public ContactFormulation {

@@ -31,12 +31,13 @@
 
 namespace tribol {
 
-/** @brief One quadrature-point quantity and whether its values or derivatives must be integrated.
+/** @brief One quadrature-point quantity (usually energy density or traction) and whether its values or derivatives must
+ * be integrated.
  * @tparam T Scalar energy density or fixed-size vector traction.
  */
 template <typename T>
 struct QuadraturePointValue {
-  T value{};            ///< Unweighted quantity; the integral applies the physical quadrature weight.
+  T value{};            ///< Unweighted energy density or traction vector; the integral applies the physical weight.
   bool active = false;  ///< Whether to retain this point, including a zero value with a nonzero tangent.
 };
 
