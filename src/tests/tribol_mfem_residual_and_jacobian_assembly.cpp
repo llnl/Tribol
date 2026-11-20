@@ -49,6 +49,107 @@ RealT rowValue( RealT x, RealT y, int spatial_dim ) { return 1.0 + x + 2.0 * y +
  */
 RealT columnValue( RealT x, RealT y, int spatial_dim ) { return -2.0 + 3.0 * x - y - 4.0 * spatial_dim; }
 
+// These named callables keep device-capable assembly operations outside GoogleTest's generated TestBody() methods and
+// the generic lambdas used to select an execution mode. NVCC rejects extended host-device lambdas in either context:
+// TestBody() is private, and a generic lambda cannot contain another extended lambda. Each object below stores the same
+// captured test data and performs the same calculation that a local lambda would otherwise express.
+template <typename Values>
+struct StoredResidualReader {
+  Values values;
+
+  TRIBOL_HOST_DEVICE RealT operator()( IndexT pair, IndexT row ) const { return values[pair * pair_dofs + row]; }
+};
+
+template <typename Values>
+struct StoredJacobianReader {
+  Values values;
+
+  TRIBOL_HOST_DEVICE RealT operator()( IndexT pair, IndexT row, IndexT column ) const
+  {
+    return values[( pair * pair_dofs + row ) * pair_dofs + column];
+  }
+};
+
+struct ZeroResidualReader {
+  TRIBOL_HOST_DEVICE RealT operator()( IndexT, IndexT ) const { return 0.0; }
+};
+
+template <typename Factors>
+struct ScaledNodalValueReader {
+  Factors factors;
+
+  TRIBOL_HOST_DEVICE RealT operator()( IndexT, IndexT field, IndexT node ) const
+  {
+    return factors[field] * ( node + 1.0 );
+  }
+};
+
+template <typename Factors>
+struct ScaledNodalGradientReader {
+  Factors factors;
+
+  TRIBOL_HOST_DEVICE RealT operator()( IndexT, IndexT field, IndexT node, IndexT column ) const
+  {
+    return factors[field] * ( node + 1.0 ) * ( column + 1.0 );
+  }
+};
+
+struct ScalarRowReader {
+  TRIBOL_HOST_DEVICE RealT operator()( IndexT, IndexT row ) const { return row + 1.0; }
+};
+
+struct ForwardMatrixReader {
+  TRIBOL_HOST_DEVICE RealT operator()( IndexT pair, IndexT node, IndexT coordinate ) const
+  {
+    return node + 1.0 + ( coordinate + 2.0 ) * ( pair + 1.0 );
+  }
+};
+
+struct ReverseMatrixReader {
+  TRIBOL_HOST_DEVICE RealT operator()( IndexT pair, IndexT coordinate, IndexT node ) const
+  {
+    return ForwardMatrixReader{}( pair, node, coordinate );
+  }
+};
+
+struct ResidualRowReader {
+  TRIBOL_HOST_DEVICE RealT operator()( IndexT, IndexT row ) const { return row + 1.0; }
+};
+
+struct JacobianEntryReader {
+  TRIBOL_HOST_DEVICE RealT operator()( IndexT, IndexT row, IndexT column ) const
+  {
+    return ( row + 1.0 ) * ( column + 2.0 );
+  }
+};
+
+template <typename ResidualView, typename MatrixView, typename PairsView>
+struct ComposedAssemblyWriter {
+  ResidualView residual;
+  MatrixView matrix;
+  PairsView pairs;
+
+  TRIBOL_HOST_DEVICE void operator()( IndexT pair ) const
+  {
+    residual.scatterAddPair( pair, pairs[pair], ResidualRowReader{} );
+    matrix.packPair( pair, pairs[pair], JacobianEntryReader{} );
+  }
+};
+
+struct FieldValueReader {
+  TRIBOL_HOST_DEVICE RealT operator()( IndexT, IndexT field, IndexT node ) const
+  {
+    return ( field + 1.0 ) * ( node + 1.0 );
+  }
+};
+
+struct FieldGradientReader {
+  TRIBOL_HOST_DEVICE RealT operator()( IndexT, IndexT field, IndexT node, IndexT column ) const
+  {
+    return ( field + 1.0 ) * ( node + 1.0 ) * ( column + 2.0 );
+  }
+};
+
 /** @brief Provide parent and Redecomp transfers without selecting a contact formulation. */
 class MfemResidualAndJacobianAssemblyTest : public testing::Test {
  protected:
@@ -249,14 +350,11 @@ TEST_F( MfemResidualAndJacobianAssemblyTest, assembles_prescribed_residual_and_n
     }
     const auto residuals_view = residuals.view();
     const auto jacobians_view = jacobians.view();
-    residual_assembler.addPairs<ExecutionMode::Sequential, pair_dofs, 2>(
-        pair_list,
-        [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) { return residuals_view[pair * pair_dofs + row]; } );
+    residual_assembler.addPairs<ExecutionMode::Sequential, pair_dofs, 2>( pair_list,
+                                                                          StoredResidualReader{ residuals_view } );
     constexpr IndexT size_geom_coords = pair_dofs / 2;
     jacobian_assembler.addPairs<ExecutionMode::Sequential, size_geom_coords, size_geom_coords, 4>(
-        pair_list, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row, IndexT column ) {
-          return jacobians_view[( pair * pair_dofs + row ) * pair_dofs + column];
-        } );
+        pair_list, StoredJacobianReader{ jacobians_view } );
     assembled_result.residual.reset( residual_assembler.assemble().release() );
     assembled_result.df_dx.reset( jacobian_assembler.assemble().release() );
   }
@@ -298,9 +396,8 @@ TEST_F( MfemResidualAndJacobianAssemblyTest, returns_zero_outputs_for_empty_or_r
       *coupling_scheme.getMfemMeshData(), *coupling_scheme.getMfemJacobianData(), lower_mesh, upper_mesh, 0,
       lower_mesh.getAllocatorId() );
   const ArrayT<InterfacePair> empty_pairs( 0, 0, lower_mesh.getAllocatorId() );
-  const auto zero_residual = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };
-  EXPECT_SLIC_ERROR(
-      ( residual_assembler.addPairs<ExecutionMode::Sequential, pair_dofs - 1, 2>( empty_pairs, zero_residual ) ) );
+  EXPECT_SLIC_ERROR( (
+      residual_assembler.addPairs<ExecutionMode::Sequential, pair_dofs - 1, 2>( empty_pairs, ZeroResidualReader{} ) ) );
   constexpr IndexT size_geom_coords = pair_dofs / 2;
   EXPECT_SLIC_ERROR( ( jacobian_assembler.view<size_geom_coords - 1, size_geom_coords, 4>() ) );
   const auto residual = residual_assembler.assemble();
@@ -340,11 +437,8 @@ TEST_F( MfemResidualAndJacobianAssemblyTest, assembles_scalar_fields_and_dual_tr
   const auto assembled_fields =
       tribol::detail::assembleNodalValuesAndJacobians<ExecutionMode::Sequential, num_fields, nodes_per_edge, pair_dofs>(
           pair_list, lower_mesh, upper_mesh, *coupling_scheme.getMfemMeshData(), dual_data,
-          *coupling_scheme.getMfemJacobianData(),
-          [=] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node ) { return factors[field] * ( node + 1.0 ); },
-          [=] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node, IndexT column ) {
-            return factors[field] * ( node + 1.0 ) * ( column + 1.0 );
-          } );
+          *coupling_scheme.getMfemJacobianData(), ScaledNodalValueReader{ factors },
+          ScaledNodalGradientReader{ factors } );
   ASSERT_EQ( assembled_fields.size(), num_fields );
   mfem::Vector direction( coordinate_space_->GetTrueVSize() ), action( dual_fes.GetTrueVSize() );
   direction = 1.0;
@@ -379,8 +473,7 @@ TEST_F( MfemResidualAndJacobianAssemblyTest, scalar_values_need_no_jacobian_data
   const auto zero = scalar_assembler.assemble();
   EXPECT_EQ( norm( zero.get() ), 0.0 );
   const auto pair_list = pairs();
-  scalar_assembler.addPairs<ExecutionMode::Sequential, nodes_per_edge, 1>(
-      pair_list, [] TRIBOL_HOST_DEVICE( IndexT, IndexT row ) { return row + 1.0; } );
+  scalar_assembler.addPairs<ExecutionMode::Sequential, nodes_per_edge, 1>( pair_list, ScalarRowReader{} );
   const auto assembled_values = scalar_assembler.assemble();
   RealT local_sum = assembled_values.get().Sum();
   RealT global_sum = 0.0;
@@ -439,12 +532,8 @@ TEST_P( MfemMatrixAssemblyTest, assembles_rectangular_matrices_in_both_orientati
     zero->Mult( coordinate_direction, scalar_action );
     EXPECT_EQ( norm( scalar_action ), 0.0 );
 
-    const auto read_forward = [] TRIBOL_HOST_DEVICE( IndexT pair, IndexT node, IndexT coordinate ) {
-      return node + 1.0 + ( coordinate + 2.0 ) * ( pair + 1.0 );
-    };
-    const auto read_reverse = [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT coordinate, IndexT node ) {
-      return read_forward( pair, node, coordinate );
-    };
+    const ForwardMatrixReader read_forward;
+    const ReverseMatrixReader read_reverse;
     EXPECT_SLIC_ERROR(
         ( forward_assembler.addPairs<Exec, nodes_per_edge, size_geom_coords, 2>( wrong_pair_count, read_forward ) ) );
     reference_assembler.addPairs<ExecutionMode::Sequential, nodes_per_edge, size_geom_coords, 2>( pair_list,
@@ -505,13 +594,11 @@ TEST_P( MfemMatrixAssemblyTest, composes_residual_and_jacobian_assembly_views )
         mfem_mesh_data, jacobian_data, lower_mesh, upper_mesh, pair_list.size(), allocator_id );
     const auto initial_residual = residual_only_assembler.assemble();
     EXPECT_EQ( norm( initial_residual.get() ), 0.0 );
-    const auto zero_residual = [] TRIBOL_HOST_DEVICE( IndexT, IndexT ) { return 0.0; };
-    EXPECT_SLIC_ERROR( ( residual_only_assembler.addPairs<Exec, pair_dofs - 1, 2>( pair_list, zero_residual ) ) );
+    EXPECT_SLIC_ERROR(
+        ( residual_only_assembler.addPairs<Exec, pair_dofs - 1, 2>( pair_list, ZeroResidualReader{} ) ) );
     constexpr IndexT size_geom_coords = pair_dofs / 2;
-    const auto read_residual = [] TRIBOL_HOST_DEVICE( IndexT, IndexT row ) { return row + 1.0; };
-    const auto read_jacobian = [] TRIBOL_HOST_DEVICE( IndexT, IndexT row, IndexT column ) {
-      return ( row + 1.0 ) * ( column + 2.0 );
-    };
+    const ResidualRowReader read_residual;
+    const JacobianEntryReader read_jacobian;
     reference_residual_assembler.addPairs<ExecutionMode::Sequential, pair_dofs, 2>( pair_list, read_residual );
     reference_jacobian_assembler.addPairs<ExecutionMode::Sequential, size_geom_coords, size_geom_coords, 4>(
         pair_list, read_jacobian );
@@ -520,10 +607,7 @@ TEST_P( MfemMatrixAssemblyTest, composes_residual_and_jacobian_assembly_views )
     const auto matrix_view = composed_jacobian_assembler.view<size_geom_coords, size_geom_coords, 4>();
     const auto residual_view = composed_residual_assembler.view<Exec, 2>();
     const auto pairs_view = pair_list.view();
-    forAllExec<Exec>( pair_list.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair ) {
-      residual_view.scatterAddPair( pair, pairs_view[pair], read_residual );
-      matrix_view.packPair( pair, pairs_view[pair], read_jacobian );
-    } );
+    forAllExec<Exec>( pair_list.size(), ComposedAssemblyWriter{ residual_view, matrix_view, pairs_view } );
     const auto expected_residual = reference_residual_assembler.assemble();
     auto residual_only_result = residual_only_assembler.assemble();
     residual_only_result.get().Add( -1.0, expected_residual.get() );
@@ -556,12 +640,8 @@ TEST_P( MfemMatrixAssemblyTest, assembles_scalar_fields_and_gradients )
     const auto upper_mesh = coupling_scheme.getMesh2().getView();
     const auto pair_list = pairs();
     constexpr IndexT num_fields = 3;
-    const auto read_value = [] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node ) {
-      return ( field + 1.0 ) * ( node + 1.0 );
-    };
-    const auto read_gradient = [] TRIBOL_HOST_DEVICE( IndexT, IndexT field, IndexT node, IndexT column ) {
-      return ( field + 1.0 ) * ( node + 1.0 ) * ( column + 2.0 );
-    };
+    const FieldValueReader read_value;
+    const FieldGradientReader read_gradient;
     const auto sequential_fields =
         tribol::detail::assembleNodalValuesAndJacobians<ExecutionMode::Sequential, num_fields, nodes_per_edge,
                                                         pair_dofs>(

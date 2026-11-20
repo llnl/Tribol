@@ -8,6 +8,13 @@
 #------------------------------------------------------------------------------
 # Add single source tests
 #------------------------------------------------------------------------------
+if(CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA")
+  # NVCC's device pass reports GoogleTest registration data and host-only concept test types in anonymous namespaces as
+  # unused. The host compiler still checks unused test code, so suppress this device-pass false positive for GoogleTest
+  # consumers without changing production warning diagnostics.
+  target_compile_options(gtest INTERFACE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=177>")
+endif()
+
 set( tribol_tests
      tribol_energy_mortar_pair_evaluation.cpp
      tribol_basis_function.cpp
