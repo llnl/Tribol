@@ -39,6 +39,22 @@ struct CommonPlaneGap {
   {
     return LinearEdgeGeometry::Vector( point2, point1 ).dot( line.normal );
   }
+
+  /**
+   * @brief Project separation onto a supplied current unit normal.
+   * @tparam Point Physical point type with two components.
+   * @tparam Vector Physical vector type with two components.
+   * @param point1 Point on the first edge.
+   * @param point2 Point on the second edge.
+   * @param normal Current unit direction from the two local edge normals.
+   * @return Separation along normal, negative in compression.
+   */
+  template <typename Point, typename Vector>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT operator()( const Point& point1, const Point& point2,
+                                                            const Vector& normal ) const
+  {
+    return Vector( point2, point1 ).dot( normal );
+  }
 };
 }  // namespace tribol
 #endif

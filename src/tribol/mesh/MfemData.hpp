@@ -400,6 +400,9 @@ class ParentField {
    */
   void UpdateField( ParentRedecompTransfer& parent_redecomp_xfer, bool use_device );
 
+  /** @brief Release data tied to the current Redecomp transfer and finite-element space. */
+  void ClearRedecompField() { update_data_.reset(); }
+
   /**
    * @brief Get the parent grid function
    *
@@ -1161,7 +1164,7 @@ class MfemMeshData {
    *
    * @return int
    */
-  int GetLORFactor() const { return lor_factor_; }
+  int GetLORFactor() const { return lor_mesh_ ? lor_factor_ : 0; }
 
   /**
    * @brief Set the LOR factor
@@ -1175,6 +1178,18 @@ class MfemMeshData {
    * @param lor_factor LOR factor
    */
   void SetLORFactor( int lor_factor );
+
+  /**
+   * @brief Select LOR or direct higher-order field transfer and invalidate decomposition-dependent data.
+   * @param enabled True restores LOR transfer; false uses the higher-order boundary submesh directly.
+   */
+  void SetLORFieldTransferEnabled( bool enabled );
+
+  /**
+   * @brief Report whether higher-order fields are configured to transfer through LOR.
+   * @return True when Redecomp fields use the low-order refined mesh.
+   */
+  bool IsLORFieldTransferEnabled() const { return transfers_fields_through_lor_; }
 
   /**
    * @brief Computes element thicknesses for volume elements attached to the contact surface
@@ -1384,7 +1399,7 @@ class MfemMeshData {
    * When this is false, RedecompMesh must use the higher-order boundary submesh as its parent so direct field transfers
    * use matching element and DOF lists.
    */
-  const bool transfers_fields_through_lor_;
+  bool transfers_fields_through_lor_;
 
   /** @brief Whether new LOR transfer objects also retain an assembled Jacobian matrix. */
   bool retains_lor_jacobian_transfer_;

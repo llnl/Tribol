@@ -1,0 +1,100 @@
+// Copyright (c) Lawrence Livermore National Security, LLC and
+// other Tribol Project Developers. See the top-level LICENSE file for details.
+//
+// SPDX-License-Identifier: (MIT)
+
+/** @file @brief Current three-node quadratic Lagrange edge geometry. */
+#ifndef SRC_TRIBOL_GEOM_QUADRATICEDGEGEOMETRY_HPP_
+#define SRC_TRIBOL_GEOM_QUADRATICEDGEGEOMETRY_HPP_
+
+#include <cmath>
+
+#include "axom/primal/geometry/Point.hpp"
+#include "axom/primal/geometry/Vector.hpp"
+#include "tribol/common/Enzyme.hpp"
+#include "tribol/common/MdArray.hpp"
+#include "tribol/integ/BasisFunction.hpp"
+
+namespace tribol {
+
+/** @brief Own a current quadratic edge in endpoint, endpoint, midpoint node order. */
+class QuadraticEdgeGeometry {
+ public:
+  using Basis = BasisFunction<EDGE, QUADRATIC_LAGRANGE>;        ///< Basis defining interpolation and node ordering.
+  static constexpr int num_nodes = Basis::size_basis;           ///< Number of finite-element nodes.
+  static constexpr int parametric_dim = Basis::parametric_dim;  ///< Number of parent coordinates.
+  static constexpr int spatial_dim = Basis::spatial_dim;        ///< Number of physical coordinates.
+  using Point = axom::primal::Point<RealT, spatial_dim>;        ///< Physical point on the edge.
+  using Vector = axom::primal::Vector<RealT, spatial_dim>;      ///< Physical tangent or normal.
+  using Coords = MdSpan<const RealT, num_nodes, spatial_dim>;   ///< Input coordinates [node][component].
+
+  /** @brief Copy the three current finite-element node coordinates. @param coords Current nodal coordinates. */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE explicit QuadraticEdgeGeometry( Coords coords )
+  {
+    for ( IndexT node = 0; node < num_nodes; ++node ) {
+      for ( IndexT component = 0; component < spatial_dim; ++component ) {
+        coords_( node, component ) = coords( node, component );
+      }
+    }
+  }
+
+  /** @brief Evaluate the quadratic map. @param parametric_coords Parent coordinate in [-1,1]. @return Current point. */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Point position( MdSpan<const RealT, parametric_dim> parametric_coords ) const
+  {
+    MdArray<RealT, num_nodes> values{};
+    Basis::eval( parametric_coords, values.view() );
+    Point point;
+    for ( IndexT component = 0; component < spatial_dim; ++component ) {
+      point[component] = 0.0;
+      for ( IndexT node = 0; node < num_nodes; ++node ) {
+        point[component] += values[node] * coords_( node, component );
+      }
+    }
+    return point;
+  }
+
+  /** @brief Evaluate the physical tangent dx/dxi. @param parametric_coords Parent coordinate. @return Current tangent.
+   */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Vector tangent( MdSpan<const RealT, parametric_dim> parametric_coords ) const
+  {
+    MdArray<RealT, num_nodes, parametric_dim> derivatives{};
+    Basis::evalParametricDerivatives( parametric_coords, derivatives.view() );
+    Vector result;
+    for ( IndexT component = 0; component < spatial_dim; ++component ) {
+      result[component] = 0.0;
+      for ( IndexT node = 0; node < num_nodes; ++node ) {
+        result[component] += derivatives( node, 0 ) * coords_( node, component );
+      }
+    }
+    return result;
+  }
+
+  /**
+   * @brief Evaluate the directed unit normal when the local tangent is usable.
+   * @param parametric_coords Parent coordinate.
+   * @param[out] normal Unit normal oriented (dy,-dx) when true; zero when false.
+   * @return Whether the tangent has finite components and nonzero length.
+   */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE bool unitNormal( MdSpan<const RealT, parametric_dim> parametric_coords,
+                                                           Vector& normal ) const
+  {
+    const auto local_tangent = tangent( parametric_coords );
+    const RealT squared_length = local_tangent.dot( local_tangent );
+    if ( !std::isfinite( local_tangent[0] ) || !std::isfinite( local_tangent[1] ) || !std::isfinite( squared_length ) ||
+         squared_length <= 0.0 ) {
+      normal = Vector{};
+      return false;
+    }
+    const RealT inverse_length = 1.0 / std::sqrt( squared_length );
+    normal[0] = local_tangent[1] * inverse_length;
+    normal[1] = -local_tangent[0] * inverse_length;
+    return true;
+  }
+
+ private:
+  MdArray<RealT, num_nodes, spatial_dim> coords_{};  ///< Owned current nodal coordinates.
+};
+
+}  // namespace tribol
+
+#endif  // SRC_TRIBOL_GEOM_QUADRATICEDGEGEOMETRY_HPP_

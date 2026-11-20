@@ -14,6 +14,9 @@
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
+#ifdef BUILD_REDECOMP
+#include "tribol/mesh/MfemData.hpp"
+#endif
 
 #include "tribol/physics/Physics.hpp"
 #include "tribol/integ/QuadratureRuleGeneratorFactory.hpp"
@@ -225,6 +228,34 @@ void setQuadratureOrder( IndexT cs_id, int order )
     cs->getParameters().quadrature_order = order;
     cs->invalidateContactFormulation();
   }
+}
+
+//------------------------------------------------------------------------------
+void setQuadratureSubdivisionCount( IndexT cs_id, int count )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+#ifdef BUILD_REDECOMP
+  const bool has_quadratic_common_plane =
+      cs && cs->getContactMethod() == COMMON_PLANE && cs->hasMfemData() &&
+      cs->getMfemMeshData()->GetParentCoords().ParFESpace()->FEColl()->GetOrder() == 2;
+  if ( !has_quadratic_common_plane || count < minimum_quadrature_subdivision_count ||
+       count > maximum_quadrature_subdivision_count ) {
+    SLIC_ERROR_ROOT( "setQuadratureSubdivisionCount requires quadratic MFEM COMMON_PLANE contact and a count from "
+                     << minimum_quadrature_subdivision_count << " through " << maximum_quadrature_subdivision_count
+                     << "." );
+    return;
+  }
+  if ( cs->getParameters().quadrature_subdivision_count != count ) {
+    cs->getParameters().quadrature_subdivision_count = count;
+    if ( cs->usesContactFormulation() ) {
+      cs->invalidateContactFormulation();
+    }
+  }
+#else
+  (void)cs;
+  (void)count;
+  SLIC_ERROR_ROOT( "Quadrature subdivision requires Redecomp." );
+#endif
 }
 
 //------------------------------------------------------------------------------

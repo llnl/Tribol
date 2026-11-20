@@ -166,6 +166,16 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
  */
 void setQuadratureOrder( IndexT cs_id, int order );
 
+/**
+ * @brief Set the uniform parent-element subdivision count used by supported contact quadrature.
+ * @param cs_id Registered coupling scheme ID.
+ * @param count Number of child intervals on each parent element.
+ * @note This release applies subdivision only to quadratic composed Common Plane contact. Energy Mortar retains its
+ * current quadrature path. Reports a SLIC error for other methods, coordinate orders, or counts outside the supported
+ * range.
+ */
+void setQuadratureSubdivisionCount( IndexT cs_id, int count );
+
 /*!
  *
  * \brief sets the timestep scale factor applied to the timestep vote

@@ -47,8 +47,12 @@ ArrayT<InterfacePair> ProjectedEdgeSearch::filterCandidatePairs( const ArrayT<In
                       !InterfacePairChecks::elementsShareNode( mesh1, pair.element_id1_, mesh2, pair.element_id2_ );
                 }
                 if ( pair_passes_checks ) {
-                  pair_passes_checks = InterfacePairChecks::linearEdgeNormalsAreOpposing( mesh1, pair.element_id1_,
-                                                                                          mesh2, pair.element_id2_ );
+                  const bool both_edges_are_linear =
+                      mesh1.getFaceOrder() == LINEAR_LAGRANGE && mesh2.getFaceOrder() == LINEAR_LAGRANGE;
+                  if ( both_edges_are_linear ) {
+                    pair_passes_checks = InterfacePairChecks::linearEdgeNormalsAreOpposing( mesh1, pair.element_id1_,
+                                                                                            mesh2, pair.element_id2_ );
+                  }
                 }
 
                 passes_checks_values[candidate_index] = pair_passes_checks;

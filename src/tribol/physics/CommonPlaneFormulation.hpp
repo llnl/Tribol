@@ -12,6 +12,7 @@
 #include "tribol/config.hpp"
 #include "tribol/geom/CommonPlaneEdgeMapping.hpp"
 #include "tribol/geom/CommonPlaneGap.hpp"
+#include "tribol/geom/QuadraticEdgeGeometry.hpp"
 #include "tribol/integ/BasisFunction.hpp"
 #include "tribol/assembly/AssemblePairs.hpp"
 #include "tribol/physics/integrals/PairIntegrals.hpp"
@@ -37,6 +38,24 @@ struct CommonPlanePenaltyTraction {
                                                                         const LinearEdgeGeometry& geometry2 ) const
   {
     return gap.computePairGeometryData( geometry1, geometry2 );
+  }
+
+  /** @brief Own both quadratic edges so local normals can be evaluated at each paired point. */
+  struct QuadraticPairGeometryData {
+    QuadraticEdgeGeometry geometry1;  ///< First current quadratic edge.
+    QuadraticEdgeGeometry geometry2;  ///< Second current quadratic edge.
+  };
+
+  /**
+   * @brief Retain quadratic geometry for pointwise normal evaluation.
+   * @param geometry1 First current quadratic edge.
+   * @param geometry2 Second current quadratic edge.
+   * @return Owning copies used after quadrature generation.
+   */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadraticPairGeometryData
+  computePairGeometryData( const QuadraticEdgeGeometry& geometry1, const QuadraticEdgeGeometry& geometry2 ) const
+  {
+    return { geometry1, geometry2 };
   }
 
   /** @brief Compute penalty traction at one quadrature point; zero gap retains the compressive-side derivative.
@@ -65,19 +84,61 @@ struct CommonPlanePenaltyTraction {
     }
     return result;
   }
+
+  /**
+   * @brief Compute penalty traction using true quadratic positions and pointwise averaged normals.
+   * @param point1 Physical point on geometry1.
+   * @param point2 Physical point on geometry2.
+   * @param parametric_coords1 Parent coordinate on geometry1.
+   * @param parametric_coords2 Parent coordinate on geometry2.
+   * @param pair_geometry_data Quadratic edges retained for local tangent evaluation.
+   * @return Active compressive traction; unusable or nonopposing local normals return inactive.
+   */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadraturePointValue<MdArray<RealT, QuadraticEdgeGeometry::spatial_dim>>
+  operator()( const QuadraticEdgeGeometry::Point& point1, const QuadraticEdgeGeometry::Point& point2,
+              MdSpan<const RealT, QuadraticEdgeGeometry::parametric_dim> parametric_coords1,
+              MdSpan<const RealT, QuadraticEdgeGeometry::parametric_dim> parametric_coords2,
+              const QuadraticPairGeometryData& pair_geometry_data ) const
+  {
+    QuadraticEdgeGeometry::Vector normal1;
+    QuadraticEdgeGeometry::Vector normal2;
+    if ( !pair_geometry_data.geometry1.unitNormal( parametric_coords1, normal1 ) ||
+         !pair_geometry_data.geometry2.unitNormal( parametric_coords2, normal2 ) || normal1.dot( normal2 ) >= 0.0 ) {
+      return {};
+    }
+    auto normal = normal2 - normal1;
+    const RealT normal_length = std::sqrt( normal.dot( normal ) );
+    if ( !std::isfinite( normal_length ) || normal_length <= 0.0 ) {
+      return {};
+    }
+    normal /= normal_length;
+    const RealT scalar_gap = gap( point1, point2, normal );
+    if ( scalar_gap > 0.0 ) {
+      return {};
+    }
+    QuadraturePointValue<MdArray<RealT, QuadraticEdgeGeometry::spatial_dim>> result;
+    result.active = true;
+    const RealT pressure = penalty * scalar_gap;
+    for ( IndexT component = 0; component < QuadraticEdgeGeometry::spatial_dim; ++component ) {
+      result.value[component] = pressure * normal[component];
+    }
+    return result;
+  }
 };
 
 #ifdef BUILD_REDECOMP
 /**
  * @brief Common Plane pair search followed by the configured residual evaluation and assembly.
  *
- * Uses PairTractionIntegral with CommonPlanePenaltyTraction and linear Lagrange residual bases on both edges.
+ * Uses PairTractionIntegral with CommonPlanePenaltyTraction and the configured residual basis on both edges.
  * @tparam Exec Concrete execution mode for search, evaluation, and assembly kernels.
  * @tparam PairRuleGenerator Generates quadrature points and physical weights for the current edge pair.
  * @tparam GapDefinition Geometric or offset common-plane gap.
  * @tparam ResidualOutputs Either ResidualOnly or ResidualAndJacobian in assembly/AssemblePairs.hpp
+ * @tparam ResidualBasis Finite-element basis used to weight traction on both edges.
  */
-template <ExecutionMode Exec, typename PairRuleGenerator, typename GapDefinition, typename ResidualOutputs>
+template <ExecutionMode Exec, typename PairRuleGenerator, typename GapDefinition, typename ResidualOutputs,
+          typename ResidualBasis = BasisFunction<EDGE, LINEAR_LAGRANGE>>
 class CommonPlaneFormulation final : public ContactFormulation {
  public:
   /**
@@ -113,8 +174,8 @@ class CommonPlaneFormulation final : public ContactFormulation {
 
  private:
   const PairTractionIntegral<PairRuleGenerator, CommonPlanePenaltyTraction<GapDefinition>,
-                             BasisFunction<EDGE, LINEAR_LAGRANGE>>
-      pair_integral_;  ///< Integrates the fixed Common Plane penalty traction with linear edge bases.
+                             ResidualBasis>
+      pair_integral_;  ///< Integrates the fixed Common Plane penalty traction with the configured edge basis.
   const ResidualOutputs residual_outputs_;  ///< Owns the selected assembly behavior -- residual or residual + jacobian
   PairListBuilder pair_builder_;            ///< Owned search composition.
 };

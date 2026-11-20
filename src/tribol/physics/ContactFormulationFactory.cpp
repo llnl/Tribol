@@ -13,6 +13,7 @@
 #include "tribol/search/CoarseSearchFactory.hpp"
 #include "tribol/search/ProjectedEdgeSearch.hpp"
 #include "tribol/integ/QuadratureRuleGeneratorFactory.hpp"
+#include "tribol/integ/SubdividedPairQuadratureRuleGenerator.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 
 #include <utility>
@@ -93,9 +94,8 @@ bool validateCommonPlaneFormulation( CouplingScheme& cs, bool compute_jacobian )
   const auto& data = *cs.getMfemMeshData();
   const int order = data.GetParentCoords().ParFESpace()->FEColl()->GetOrder();
   if ( data.GetParentCoords().ParFESpace()->GetParMesh()->SpaceDimension() != 2 ||
-       data.GetParentCoords().ParFESpace()->GetVDim() != 2 || order < 1 ||
-       ( order > 1 && data.GetLORMesh() == nullptr ) ) {
-    SLIC_ERROR_ROOT( "Common Plane supports only 2D linear or LOR-subdivided coordinates." );
+       data.GetParentCoords().ParFESpace()->GetVDim() != 2 || order < 1 || order > 2 ) {
+    SLIC_ERROR_ROOT( "Common Plane supports only 2D linear or quadratic coordinates." );
     return false;
   }
   const auto* penalty1 = data.GetMesh1KinematicConstantPenalty();
@@ -103,9 +103,13 @@ bool validateCommonPlaneFormulation( CouplingScheme& cs, bool compute_jacobian )
   if ( !penalty1 || !penalty2 || !std::isfinite( *penalty1 ) || !std::isfinite( *penalty2 ) || *penalty1 <= 0.0 ||
        *penalty2 <= 0.0 || cs.getParameters().residual_gap != 0.0 ||
        cs.getParameters().quadrature_order < minimum_supported_quadrature_order ||
-       cs.getParameters().quadrature_order > maximum_supported_quadrature_order ) {
-    SLIC_ERROR_ROOT( "Common Plane requires positive finite mesh penalties, zero residual gap, and quadrature order "
-                     << minimum_supported_quadrature_order << "-" << maximum_supported_quadrature_order << "." );
+       cs.getParameters().quadrature_order > maximum_supported_quadrature_order ||
+       cs.getParameters().quadrature_subdivision_count < minimum_quadrature_subdivision_count ||
+       cs.getParameters().quadrature_subdivision_count > maximum_quadrature_subdivision_count ) {
+    SLIC_ERROR_ROOT( "Common Plane requires positive finite mesh penalties, zero residual gap, quadrature order "
+                     << minimum_supported_quadrature_order << "-" << maximum_supported_quadrature_order
+                     << ", and quadrature subdivision count " << minimum_quadrature_subdivision_count << "-"
+                     << maximum_quadrature_subdivision_count << "." );
     return false;
   }
   return true;
@@ -132,6 +136,37 @@ PairListBuilder makePairListBuilder( CouplingScheme& cs )
 }
 
 /**
+ * @brief Construct Common Plane after geometry, quadrature, and residual basis selection.
+ * @tparam Exec Concrete execution mode for search, evaluation, and assembly.
+ * @tparam ResidualBasis Basis used to distribute traction to both element residuals.
+ * @tparam PairRuleGenerator Configured quadrature generator for the selected geometry.
+ * @param cs Validated scheme owning MFEM transfer data and search settings.
+ * @param rule_generator Quadrature generator retained by the formulation.
+ * @param penalty Effective constant penalty stiffness.
+ * @return Formulation configured for residual-only or residual-and-Jacobian output.
+ */
+template <ExecutionMode Exec, typename ResidualBasis, typename PairRuleGenerator>
+std::unique_ptr<ContactFormulation> createCommonPlaneForRuleGenerator( CouplingScheme* cs,
+                                                                       PairRuleGenerator rule_generator, RealT penalty )
+{
+  auto pair_builder = makePairListBuilder<Exec>( *cs );
+  if ( cs->getParameters().common_plane_compute_jacobian ) {
+#ifdef TRIBOL_USE_ENZYME
+    return std::make_unique<
+        CommonPlaneFormulation<Exec, PairRuleGenerator, CommonPlaneGap, ResidualAndJacobian, ResidualBasis>>(
+        std::move( rule_generator ), penalty, CommonPlaneGap{},
+        ResidualAndJacobian{ *cs->getMfemMeshData(), *cs->getMfemJacobianData() }, std::move( pair_builder ) );
+#else
+    SLIC_ERROR_ROOT( "Common Plane Jacobian calculation requires Enzyme." );
+    return nullptr;
+#endif
+  }
+  return std::make_unique<CommonPlaneFormulation<Exec, PairRuleGenerator, CommonPlaneGap, ResidualOnly, ResidualBasis>>(
+      std::move( rule_generator ), penalty, CommonPlaneGap{}, ResidualOnly{ *cs->getMfemMeshData() },
+      std::move( pair_builder ) );
+}
+
+/**
  * @brief Build Common Plane with the requested residual evaluation and current search settings.
  * @tparam Exec Concrete execution mode for the searches and evaluator kernels.
  * @param cs Validated scheme owning displacement and Jacobian-transfer data.
@@ -152,24 +187,22 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
   const RealT penalty2 =
       detail::checkedPenaltyStiffness( *data.GetMesh2KinematicConstantPenalty() * ( scale2 ? *scale2 : 1.0 ) );
   const RealT penalty = detail::checkedPenaltyStiffness( SeriesPenaltyStiffness{}( penalty1, penalty2 ) );
+  const int coordinate_order = data.GetParentCoords().ParFESpace()->FEColl()->GetOrder();
   return createWithQuadratureRuleGenerator(
       cs->getParameters().quadrature_order, CommonPlaneEdgeMapping{},
-      [&]( auto rule_generator ) -> std::unique_ptr<ContactFormulation> {
-        auto pair_builder = makePairListBuilder<Exec>( *cs );
-        if ( cs->getParameters().common_plane_compute_jacobian ) {
-#ifdef TRIBOL_USE_ENZYME
-          return std::make_unique<
-              CommonPlaneFormulation<Exec, decltype( rule_generator ), CommonPlaneGap, ResidualAndJacobian>>(
-              std::move( rule_generator ), penalty, CommonPlaneGap{},
-              ResidualAndJacobian{ *cs->getMfemMeshData(), *cs->getMfemJacobianData() }, std::move( pair_builder ) );
-#else
-          SLIC_ERROR_ROOT( "Common Plane Jacobian calculation requires Enzyme." );
-          return nullptr;
-#endif
+      [&]( auto linear_rule_generator ) -> std::unique_ptr<ContactFormulation> {
+        if ( coordinate_order == 1 ) {
+          return createCommonPlaneForRuleGenerator<Exec, BasisFunction<EDGE, LINEAR_LAGRANGE>>(
+              cs, std::move( linear_rule_generator ), penalty );
         }
-        return std::make_unique<CommonPlaneFormulation<Exec, decltype( rule_generator ), CommonPlaneGap, ResidualOnly>>(
-            std::move( rule_generator ), penalty, CommonPlaneGap{}, ResidualOnly{ *cs->getMfemMeshData() },
-            std::move( pair_builder ) );
+        using SubdividedRuleGenerator =
+            SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, decltype( linear_rule_generator ),
+                                                  maximum_quadrature_subdivision_count>;
+        return createCommonPlaneForRuleGenerator<Exec, BasisFunction<EDGE, QUADRATIC_LAGRANGE>>(
+            cs,
+            SubdividedRuleGenerator{ cs->getParameters().quadrature_subdivision_count,
+                                     std::move( linear_rule_generator ) },
+            penalty );
       } );
 }
 
