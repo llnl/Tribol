@@ -26,7 +26,7 @@ struct MfemVectorSpace {
   const mfem::ParFiniteElementSpace& final_fes;  ///< Destination FE space, before true-DOF assembly.
   const mfem::FiniteElementSpace& redecomp_fes;  ///< Space containing accumulated pair entries.
   std::function<void( const mfem::GridFunction&, mfem::Vector& )>
-      transfer;  ///< Host transfer, called once per assemble().
+      transfer;  ///< Transfer to final local DOFs, called once per assemble().
 };
 
 /** @brief Configure entries contributed by one geometry in each pair. */
@@ -79,9 +79,9 @@ struct MfemVectorAssemblyView {
  * @brief Accumulate one scalar or vector nodal field without matrix or derivative data.
  *
  * Geometry blocks specify which pair elements contribute and how their input entries are ordered. The configured
- * FE space supplies the number of values per node and the Redecomp vector ordering. The host transfer callback selects
- * the
- * destination space; it is never invoked inside a pair kernel. Use multiple assemblers for independent fields.
+ * FE space supplies the number of values per node and the Redecomp vector ordering. The transfer callback selects the
+ * destination space and uses the destination vector's memory preference; it is never invoked inside a pair kernel. Use
+ * multiple assemblers for independent fields.
  * FE spaces, transfer prerequisites, and connectivity must remain valid for the assembler's lifetime. Recreate after
  * decomposition or mesh registration.
  */
@@ -89,7 +89,7 @@ class MfemVectorAssembler {
  public:
   /**
    * @brief Allocate an initially zero vector in the configured Redecomp FE space.
-   * @param space FE-space references and a nonempty host transfer callback, retained by value.
+   * @param space FE-space references and a nonempty transfer callback, retained by value.
    * @param blocks Nonempty geometry blocks with nonnegative input offsets and positive nodes per element.
    * @note Reports a SLIC error if spaces, callback, geometry selectors, offsets, or node counts are invalid.
    * @note Reports a SLIC error if input extents exceed the supported index range.
@@ -154,14 +154,15 @@ class MfemVectorAssembler {
   }
 
   /**
-   * @brief Transfer accumulated entries to final true DOFs.
+   * @brief Transfer accumulated entries to final true DOFs in the selected execution space.
+   * @param execution_mode Host or device location used for the parent-local and true-DOF vectors.
    * @return Owned vector; no contributions produce an allocated zero vector. Results remain valid after this
    * assembler is destroyed while the associated FE spaces and communicator remain alive.
    */
-  shared::ParVector assemble() const;
+  shared::ParVector assemble( ExecutionMode execution_mode = ExecutionMode::Sequential ) const;
 
  private:
-  MfemVectorSpace space_;                ///< FE-space references and the host transfer operation.
+  MfemVectorSpace space_;                ///< FE-space references and the local-DOF transfer operation.
   std::vector<MfemVectorBlock> blocks_;  ///< Geometry layout with nodal connectivity views.
   IndexT size_values_ = 0;               ///< Input extent including block offsets.
   mfem::GridFunction redecomp_values_;   ///< Owned accumulated dual entries.

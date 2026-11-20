@@ -184,7 +184,9 @@ struct NodalPenaltyEnforcement {
                                             [[maybe_unused]] const ContactFormulationInputs& inputs ) const
   {
     const auto make_vector = [&] {
-      shared::ParVector vector( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data.GetSubmeshFESpace() ) );
+      const auto memory_space = isOnDevice( Exec ) ? shared::ParVectorMemory::Device : shared::ParVectorMemory::Host;
+      shared::ParVector vector( memory_space,
+                                const_cast<mfem::ParFiniteElementSpace*>( &submesh_data.GetSubmeshFESpace() ) );
       vector.fill( 0.0 );
       return vector;
     };

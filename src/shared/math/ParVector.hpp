@@ -20,6 +20,33 @@ namespace shared {
 
 class ParVector;
 
+/** @brief Preferred HYPRE allocation and operation location for an owned parallel vector. */
+enum class ParVectorMemory
+{
+  Host,
+  Device
+};
+
+namespace detail {
+/** @brief Temporarily select the HYPRE allocation location required by one vector operation. */
+class HypreMemoryLocationGuard {
+ public:
+  explicit HypreMemoryLocationGuard( ParVectorMemory memory_space )
+  {
+    HYPRE_GetMemoryLocation( &previous_location_ );
+    HYPRE_SetMemoryLocation( memory_space == ParVectorMemory::Device ? HYPRE_MEMORY_DEVICE : HYPRE_MEMORY_HOST );
+  }
+
+  ~HypreMemoryLocationGuard() { HYPRE_SetMemoryLocation( previous_location_ ); }
+
+  HypreMemoryLocationGuard( const HypreMemoryLocationGuard& ) = delete;
+  HypreMemoryLocationGuard& operator=( const HypreMemoryLocationGuard& ) = delete;
+
+ private:
+  HYPRE_MemoryLocation previous_location_;
+};
+}  // namespace detail
+
 /**
  * @brief Non-owning view of a mfem::HypreParVector
  *
@@ -166,22 +193,38 @@ class ParVector : public ParVectorView {
   explicit ParVector( std::unique_ptr<mfem::HypreParVector> vec );
 
   /**
-   * @brief Forward arguments to a mfem::HypreParVector constructor and take ownership
+   * @brief Copy an MFEM parallel vector while preserving its preferred host or device location.
+   * @param vec Source vector.
+   */
+  explicit ParVector( const mfem::HypreParVector& vec );
+
+  /** @copydoc ParVector(const mfem::HypreParVector&) */
+  explicit ParVector( mfem::HypreParVector& vec ) : ParVector( static_cast<const mfem::HypreParVector&>( vec ) ) {}
+
+  /**
+   * @brief Forward arguments to an MFEM parallel-vector constructor in the requested memory space.
+   * @tparam Args MFEM constructor argument types.
+   * @param memory_space Preferred HYPRE allocation and operation location.
+   * @param args MFEM constructor arguments.
+   */
+  template <typename... Args>
+  ParVector( ParVectorMemory memory_space, Args&&... args ) : ParVectorView( nullptr ), owned_vec_( nullptr )
+  {
+    detail::HypreMemoryLocationGuard memory_guard( memory_space );
+    owned_vec_ = std::make_unique<mfem::HypreParVector>( std::forward<Args>( args )... );
+    owned_vec_->UseDevice( memory_space == ParVectorMemory::Device );
+    vec_ = owned_vec_.get();
+  }
+
+  /**
+   * @brief Forward arguments to a host MFEM parallel-vector constructor and take ownership.
    *
    * @tparam Args Constructor argument types
    * @param args Constructor arguments
    */
   template <typename... Args>
-  explicit ParVector( Args&&... args ) : ParVectorView( nullptr ), owned_vec_( nullptr )
+  explicit ParVector( Args&&... args ) : ParVector( ParVectorMemory::Host, std::forward<Args>( args )... )
   {
-    // ParVector is host-only for now.
-    HYPRE_MemoryLocation old_hypre_mem_location;
-    HYPRE_GetMemoryLocation( &old_hypre_mem_location );
-    HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
-    owned_vec_ = std::make_unique<mfem::HypreParVector>( std::forward<Args>( args )... );
-    // Return hypre's memory location to what it was before
-    HYPRE_SetMemoryLocation( old_hypre_mem_location );
-    vec_ = owned_vec_.get();
   }
 
   /**
@@ -220,6 +263,12 @@ class ParVector : public ParVectorView {
    * @return ParVector& Reference to this
    */
   ParVector& operator=( const ParVector& other );
+
+  /**
+   * @brief Return the vector's preferred operation location.
+   * @return Device when MFEM prefers device access; otherwise Host.
+   */
+  ParVectorMemory memorySpace() const { return vec_->UseDevice() ? ParVectorMemory::Device : ParVectorMemory::Host; }
 
   /**
    * @brief Access and release ownership of the HypreParVector pointer. The caller is now responsible for releasing the

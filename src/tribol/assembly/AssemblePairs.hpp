@@ -84,7 +84,7 @@ std::array<AssembledField, NumFields> assembleNodalValuesAndJacobians(
   } );
   return [&]<std::size_t... Field>( std::index_sequence<Field...> ) {
     return std::array<AssembledField, NumFields>{
-        AssembledField{ vectors[Field].assemble(), matrices[Field].assemble() }... };
+        AssembledField{ vectors[Field].assemble( Exec ), matrices[Field].assemble() }... };
   }( std::make_index_sequence<NumFields>{} );
 }
 
@@ -126,7 +126,7 @@ ContactFormulationResult assembleResidualAndJacobian( const ArrayT<InterfacePair
     matrix_view.packPair( pair_index, pair, read_jacobian );
   } );
   ContactFormulationResult result;
-  result.residual.reset( residual.assemble().release() );
+  result.residual.reset( residual.assemble( Exec ).release() );
   result.df_dx.reset( jacobian.assemble().release() );
   return result;
 }
@@ -163,7 +163,7 @@ struct ResidualOnly {
     assembler.addPairs<Exec, PairFunction::size_coords, 2>(
         pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair, IndexT row ) { return all_pair_values_view.value( pair, row ); } );
     ContactFormulationResult result;
-    result.residual.reset( assembler.assemble().release() );
+    result.residual.reset( assembler.assemble( Exec ).release() );
     return result;
   }
 };

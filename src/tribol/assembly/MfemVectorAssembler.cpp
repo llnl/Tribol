@@ -38,23 +38,29 @@ MfemVectorAssembler::MfemVectorAssembler( MfemVectorSpace space, std::vector<Mfe
   redecomp_values_ = 0.0;
 }
 
-shared::ParVector MfemVectorAssembler::assemble() const
+shared::ParVector MfemVectorAssembler::assemble( ExecutionMode execution_mode ) const
 {
+  const bool use_device = isOnDevice( execution_mode );
+  const auto memory_space = use_device ? shared::ParVectorMemory::Device : shared::ParVectorMemory::Host;
   auto* final_fes = const_cast<mfem::ParFiniteElementSpace*>( &space_.final_fes );
-  shared::ParVector result( final_fes );
+  shared::ParVector result( memory_space, final_fes );
   result.fill( 0.0 );
-  mfem::Vector local( final_fes->GetVSize() );
+  mfem::Vector local;
+  local.UseDevice( use_device );
+  local.SetSize( final_fes->GetVSize() );
   local = 0.0;
   space_.transfer( redecomp_values_, local );
-  // The Redecomp transfer and shared::ParVector output are host-backed. When HYPRE defaults to device memory, keep the
-  // transpose multiply on the host so it updates the output that getMfemContactResidual() returns.
-  auto* prolongation = final_fes->Dof_TrueDof_Matrix();
-  HYPRE_MemoryLocation old_hypre_memory_location;
-  HYPRE_GetMemoryLocation( &old_hypre_memory_location );
-  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
-  prolongation->HostRead();
-  prolongation->MultTranspose( local, result.get() );
-  HYPRE_SetMemoryLocation( old_hypre_memory_location );
+  if ( use_device ) {
+    shared::detail::HypreMemoryLocationGuard memory_guard( shared::ParVectorMemory::Device );
+    final_fes->GetProlongationMatrix()->MultTranspose( local, result.get() );
+  } else {
+    // A GPU-enabled MFEM build still selects its device conforming operator for a sequential Tribol formulation. Use
+    // the concrete HYPRE matrix so host execution updates the host-backed result.
+    shared::detail::HypreMemoryLocationGuard memory_guard( shared::ParVectorMemory::Host );
+    auto* prolongation = final_fes->Dof_TrueDof_Matrix();
+    prolongation->HostRead();
+    prolongation->MultTranspose( local, result.get() );
+  }
   return result;
 }
 
