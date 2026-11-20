@@ -570,10 +570,8 @@ TEST( BasisFunction, matches_mfem_h1_basis )
 }
 
 #if defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP )
-TEST( BasisFunction, evaluates_on_device )
+tribol::ArrayT<tribol::RealT, 1, tribol::MemorySpace::Host> evaluateQuadraticBasisOnDevice()
 {
-  // Basis evaluation, fixed-size storage, and nodal interpolation must all compile and execute inside the configured
-  // CUDA or HIP kernel path rather than passing only through host-compatible annotations.
   using Basis = tribol::BasisFunction<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>;
   tribol::ArrayT<tribol::RealT, 1, tribol::MemorySpace::Device> device_values( Basis::size_basis + 1 );
   auto values = device_values.view();
@@ -599,8 +597,17 @@ TEST( BasisFunction, evaluates_on_device )
     values[Basis::size_basis] = interpolated_value[0];
   } );
 
+  return tribol::ArrayT<tribol::RealT, 1, tribol::MemorySpace::Host>( device_values );
+}
+
+TEST( BasisFunction, evaluates_on_device )
+{
+  // Basis evaluation, fixed-size storage, and nodal interpolation must all compile and execute inside the configured
+  // CUDA or HIP kernel path rather than passing only through host-compatible annotations.
+  using Basis = tribol::BasisFunction<tribol::EDGE, tribol::QUADRATIC_LAGRANGE>;
+
   // Evaluating at the midpoint node produces its Kronecker row, which then selects the third nodal field value.
-  tribol::ArrayT<tribol::RealT, 1, tribol::MemorySpace::Host> host_values( device_values );
+  const auto host_values = evaluateQuadraticBasisOnDevice();
   EXPECT_NEAR( host_values[0], 0.0, comparison_tolerance );
   EXPECT_NEAR( host_values[1], 0.0, comparison_tolerance );
   EXPECT_NEAR( host_values[2], 1.0, comparison_tolerance );

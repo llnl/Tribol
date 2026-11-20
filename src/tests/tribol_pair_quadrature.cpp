@@ -45,7 +45,8 @@ static_assert( !PairRuleGenerator<PairGeneratorWithoutPairGeneration> );
 
 /** @brief Run local rule calculations in memory accessible to the selected backend. */
 class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
- protected:
+ public:
+  // NVCC requires functions containing extended device lambdas to have public access.
   /**
    * @brief Check a Gauss-Legendre rule against exact monomial integrals on [-1, 1].
    * @tparam NumPoints Number of Gauss points.
@@ -112,6 +113,9 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
         { "Disjoint intervals beyond smoothing support", 8.0, 6.0, 0.1, 1.0, 1.0 } };
     for ( const auto& test_case : test_cases ) {
       SCOPED_TRACE( testing::Message() << test_case.label << ", Gauss points=" << NumPoints );
+      const RealT edge2_right = test_case.edge2_right;
+      const RealT edge2_left = test_case.edge2_left;
+      const RealT smoothing = test_case.smoothing;
       // Each row stores data for one quadrature point. Columns are:
       // 0: edge1 parent coordinate; 1-2: edge1 physical (x,y); 3: physical integration weight;
       // 4: edge2 parent coordinate; 5-6: edge2 physical (x,y).
@@ -123,10 +127,9 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
       const auto results_view = results.view();
       forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
         const MdArray<RealT, 2, 2> edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } };
-        const MdArray<RealT, 2, 2> edge2{ MdArray<RealT, 2>{ test_case.edge2_right, 0.2 },
-                                          MdArray<RealT, 2>{ test_case.edge2_left, 0.2 } };
+        const MdArray<RealT, 2, 2> edge2{ MdArray<RealT, 2>{ edge2_right, 0.2 }, MdArray<RealT, 2>{ edge2_left, 0.2 } };
         const PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>
-            generator{ SmoothedProjectedEdgeMapping{ test_case.smoothing } };
+            generator{ SmoothedProjectedEdgeMapping{ smoothing } };
         const auto rule = generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( edge2.view() ) );
         results_view[0] = rule.metadata;
         const auto points = rule.getView();
@@ -176,6 +179,53 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
       }
       // Integrating 1 must give the physical interval length: parent interval width times edge1's Jacobian of 2.
       EXPECT_NEAR( measure, 2.0 * ( test_case.expected_upper - test_case.expected_lower ), tolerance );
+    }
+  }
+
+  /** @brief Check that nonfinite edge lengths fail without writing mapped quadrature points. */
+  template <typename Mapping>
+  void checkNonfiniteEdgeLengthsWithoutWritingPoints()
+  {
+    ArrayT<QuadratureMetadata> results( 2, 2, allocatorId() );
+    ArrayT<RealT> stored_values( 3, 3, allocatorId() );
+    const auto status = results.view();
+    const auto stored = stored_values.view();
+    constexpr RealT unwritten = -1.0;
+    for ( const RealT invalid : { std::numeric_limits<RealT>::quiet_NaN(), std::numeric_limits<RealT>::infinity(),
+                                  -std::numeric_limits<RealT>::infinity() } ) {
+      for ( IndexT geometry_index = 0; geometry_index < 2; ++geometry_index ) {
+        SCOPED_TRACE( testing::Message() << "invalid coordinate=" << invalid << ", geometry=" << geometry_index );
+        forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
+          MdArray<RealT, 2, 2> coords1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
+          MdArray<RealT, 2, 2> coords2{ MdArray<RealT, 2>{ 2.0, 0.1 }, MdArray<RealT, 2>{ 0.0, 0.1 } };
+          if ( geometry_index == 0 ) {
+            coords1( 1, 0 ) = invalid;
+          } else {
+            coords2( 1, 0 ) = invalid;
+          }
+          const LinearEdgeGeometry geometry1( coords1.view() ), geometry2( coords2.view() );
+          const PairQuadratureRuleGenerator<Mapping, EdgeQuadratureRuleGenerator<1>> generator{};
+          status[0] = generator.generate( geometry1, geometry2 ).metadata;
+          PairQuadratureRule<1, 1, 1> mapped{};
+          mapped.geom1_parametric_coords( 0, 0 ) = unwritten;
+          mapped.geom2_parametric_coords( 0, 0 ) = unwritten;
+          mapped.weights[0] = unwritten;
+          const auto reference = EdgeQuadratureRuleGenerator<1>{}.generate();
+          status[1] = Mapping{}.mapToElements( geometry1, geometry2, reference.getView(), mapped.getOutputView() );
+          stored[0] = mapped.geom1_parametric_coords( 0, 0 );
+          stored[1] = mapped.geom2_parametric_coords( 0, 0 );
+          stored[2] = mapped.weights[0];
+        } );
+        const ArrayT<QuadratureMetadata, 1, MemorySpace::Host> host_results( results );
+        const ArrayT<RealT, 1, MemorySpace::Host> host_values( stored_values );
+        for ( const auto result : host_results ) {
+          EXPECT_EQ( result.status, QuadratureStatus::InvalidGeometry );
+          EXPECT_EQ( result.num_required_points, 0 );
+        }
+        for ( const auto value : host_values ) {
+          EXPECT_EQ( value, unwritten );
+        }
+      }
     }
   }
 };
@@ -303,51 +353,8 @@ TEST_P( EdgeQuadratureTest, keeps_endpoint_fallback_for_parallel_projection_line
 // Nonfinite lengths on either edge must fail both rule generation and direct mapping without writing mapped points.
 TEST_P( EdgeQuadratureTest, rejects_nonfinite_edge_lengths_without_writing_points )
 {
-  const auto check_mapping = [&]<typename Mapping>() {
-    ArrayT<QuadratureMetadata> results( 2, 2, allocatorId() );
-    ArrayT<RealT> stored_values( 3, 3, allocatorId() );
-    const auto status = results.view();
-    const auto stored = stored_values.view();
-    constexpr RealT unwritten = -1.0;
-    for ( const RealT invalid : { std::numeric_limits<RealT>::quiet_NaN(), std::numeric_limits<RealT>::infinity(),
-                                  -std::numeric_limits<RealT>::infinity() } ) {
-      for ( IndexT geometry_index = 0; geometry_index < 2; ++geometry_index ) {
-        SCOPED_TRACE( testing::Message() << "invalid coordinate=" << invalid << ", geometry=" << geometry_index );
-        forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
-          MdArray<RealT, 2, 2> coords1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
-          MdArray<RealT, 2, 2> coords2{ MdArray<RealT, 2>{ 2.0, 0.1 }, MdArray<RealT, 2>{ 0.0, 0.1 } };
-          if ( geometry_index == 0 ) {
-            coords1( 1, 0 ) = invalid;
-          } else {
-            coords2( 1, 0 ) = invalid;
-          }
-          const LinearEdgeGeometry geometry1( coords1.view() ), geometry2( coords2.view() );
-          const PairQuadratureRuleGenerator<Mapping, EdgeQuadratureRuleGenerator<1>> generator{};
-          status[0] = generator.generate( geometry1, geometry2 ).metadata;
-          PairQuadratureRule<1, 1, 1> mapped{};
-          mapped.geom1_parametric_coords( 0, 0 ) = unwritten;
-          mapped.geom2_parametric_coords( 0, 0 ) = unwritten;
-          mapped.weights[0] = unwritten;
-          const auto reference = EdgeQuadratureRuleGenerator<1>{}.generate();
-          status[1] = Mapping{}.mapToElements( geometry1, geometry2, reference.getView(), mapped.getOutputView() );
-          stored[0] = mapped.geom1_parametric_coords( 0, 0 );
-          stored[1] = mapped.geom2_parametric_coords( 0, 0 );
-          stored[2] = mapped.weights[0];
-        } );
-        const ArrayT<QuadratureMetadata, 1, MemorySpace::Host> host_results( results );
-        const ArrayT<RealT, 1, MemorySpace::Host> host_values( stored_values );
-        for ( const auto result : host_results ) {
-          EXPECT_EQ( result.status, QuadratureStatus::InvalidGeometry );
-          EXPECT_EQ( result.num_required_points, 0 );
-        }
-        for ( const auto value : host_values ) {
-          EXPECT_EQ( value, unwritten );
-        }
-      }
-    }
-  };
-  check_mapping.template operator()<SmoothedProjectedEdgeMapping>();
-  check_mapping.template operator()<CommonPlaneEdgeMapping>();
+  checkNonfiniteEdgeLengthsWithoutWritingPoints<SmoothedProjectedEdgeMapping>();
+  checkNonfiniteEdgeLengthsWithoutWritingPoints<CommonPlaneEdgeMapping>();
 }
 
 // Reference-point generation must skip edges whose normals point in the same general direction.
@@ -554,13 +561,13 @@ TEST_P( EdgeQuadratureTest, applies_same_minimum_length_to_both_edges )
     // count.
     ArrayT<QuadratureMetadata> results( num_operations, num_operations, allocatorId() );
     const auto results_view = results.view();
+    const RealT edge1_length = test_case.edge1_length;
+    const RealT edge2_length = test_case.edge2_length;
     forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
       // Both edges extend rightward from x=0 and are separated vertically by 0.2. Edge2's endpoint order is reversed
       // so their normals oppose. Their lengths vary independently, but their projected intervals always overlap.
-      const MdArray<RealT, 2, 2> coords1{ MdArray<RealT, 2>{ 0.0, 0.0 },
-                                          MdArray<RealT, 2>{ test_case.edge1_length, 0.0 } };
-      const MdArray<RealT, 2, 2> coords2{ MdArray<RealT, 2>{ test_case.edge2_length, 0.2 },
-                                          MdArray<RealT, 2>{ 0.0, 0.2 } };
+      const MdArray<RealT, 2, 2> coords1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ edge1_length, 0.0 } };
+      const MdArray<RealT, 2, 2> coords2{ MdArray<RealT, 2>{ edge2_length, 0.2 }, MdArray<RealT, 2>{ 0.0, 0.2 } };
       // Disable endpoint smoothing to isolate the length check from smoothing effects on the overlap interval.
       const PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<num_points>>
           rule_generator{ SmoothedProjectedEdgeMapping{ 0.0 } };

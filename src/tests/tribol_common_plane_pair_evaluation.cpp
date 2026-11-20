@@ -36,6 +36,16 @@ using CommonPlaneTraction = CommonPlanePenaltyTraction<CommonPlaneGap>;
 using CommonPlaneResidualValue = PairTractionIntegral<CommonPlaneRuleGenerator, CommonPlaneTraction,
                                                       BasisFunction<EDGE, LINEAR_LAGRANGE>>::PairResidual;
 
+template <int NumPoints>
+struct InterpenetratingOverlapResult {
+  EdgeQuadratureInterval interval;      ///< Calculated geometric bounds.
+  CommonPlaneResidualValue residual;    ///< Pair loads and quadrature status.
+  MdArray<RealT, NumPoints> x1{};       ///< Point positions on edge1.
+  MdArray<RealT, NumPoints> x2{};       ///< Point positions on edge2.
+  MdArray<RealT, NumPoints> gaps{};     ///< Unshifted point gaps.
+  MdArray<RealT, NumPoints> weights{};  ///< Physical line weights.
+};
+
 static_assert( PairTractionFunction<CommonPlaneTraction, CommonPlaneRuleGenerator> );
 static_assert( !PairEnergyFunction<CommonPlaneTraction, CommonPlaneRuleGenerator> );
 
@@ -65,7 +75,8 @@ TRIBOL_HOST_DEVICE MdArray<RealT, 2 * Coordinates::size()> packPairCoordinates(
 
 /** @brief Execute local geometry and residual calculations using backend-accessible storage. */
 class CommonPlaneTest : public tribol::detail::ExecutionTest {
- protected:
+ public:
+  // NVCC requires functions containing extended device lambdas to have public access.
   /** @brief Check exact parallel-edge loads and activation. @tparam NumPoints Gauss point count. */
   template <int NumPoints>
   void checkParallelResiduals()
@@ -81,12 +92,13 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
         { 0.1, 0.0, -0.15, true }, { -0.1, 0.0, 0.0, false }, { 0.0, 0.0, 0.0, true }, { -0.05, 0.1, -0.075, true } };
     for ( const auto test_case : cases ) {
       SCOPED_TRACE( test_case.separation );
+      const RealT separation = test_case.separation;
+      const RealT residual_gap = test_case.residual_gap;
       ArrayT<CommonPlaneResidualValue> pair_residuals( 1, 1, allocatorId() );
       const auto pair_residuals_view = pair_residuals.view();
       forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
         const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
-        const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, test_case.separation },
-                                 MdArray<RealT, 2>{ 0.0, test_case.separation } };
+        const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, separation }, MdArray<RealT, 2>{ 0.0, separation } };
         const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>
             rule_generator;
         const PairTractionIntegral<
@@ -94,7 +106,7 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
             CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>, BasisFunction<EDGE, LINEAR_LAGRANGE>>
             pair_integral{
                 rule_generator,
-                { ComputePenaltyStiffnessPerArea( 2.0, 6.0 ), OffsetGap{ CommonPlaneGap{}, test_case.residual_gap } } };
+                { ComputePenaltyStiffnessPerArea( 2.0, 6.0 ), OffsetGap{ CommonPlaneGap{}, residual_gap } } };
         pair_residuals_view[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
       } );
       const ArrayT<CommonPlaneResidualValue, 1, MemorySpace::Host> host_pair_residuals( pair_residuals );
@@ -184,24 +196,18 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
         { 0.25, 0.25, 0.0, -1.0, 0.5, -0.5625 },
         // The first geometry is reused, but pressure uses the geometric gap minus 0.1 on the same clipped interval.
         { 0.25, -0.25, 0.1, -1.0, -0.5, -0.1125 } };
-    struct InterpenetratingOverlapResult {
-      EdgeQuadratureInterval interval;      ///< Calculated geometric bounds.
-      CommonPlaneResidualValue residual;    ///< Pair loads and quadrature status.
-      MdArray<RealT, NumPoints> x1{};       ///< Point positions on edge1.
-      MdArray<RealT, NumPoints> x2{};       ///< Point positions on edge2.
-      MdArray<RealT, NumPoints> gaps{};     ///< Unshifted point gaps.
-      MdArray<RealT, NumPoints> weights{};  ///< Physical line weights.
-    };
     for ( const auto test_case : cases ) {
       SCOPED_TRACE( testing::Message() << "points=" << NumPoints << ", slope=" << test_case.slope << ", separation="
                                        << test_case.separation << ", residual_gap=" << test_case.residual_gap );
-      ArrayT<InterpenetratingOverlapResult> overlap_results( 1, 1, allocatorId() );
+      const RealT slope = test_case.slope;
+      const RealT separation = test_case.separation;
+      const RealT residual_gap = test_case.residual_gap;
+      ArrayT<InterpenetratingOverlapResult<NumPoints>> overlap_results( 1, 1, allocatorId() );
       const auto overlap_results_view = overlap_results.view();
       forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
-        const Coordinates edge1{ MdArray<RealT, 2>{ -1.0, -test_case.slope },
-                                 MdArray<RealT, 2>{ 1.0, test_case.slope } };
-        const Coordinates edge2{ MdArray<RealT, 2>{ 1.0, test_case.separation - test_case.slope },
-                                 MdArray<RealT, 2>{ -1.0, test_case.separation + test_case.slope } };
+        const Coordinates edge1{ MdArray<RealT, 2>{ -1.0, -slope }, MdArray<RealT, 2>{ 1.0, slope } };
+        const Coordinates edge2{ MdArray<RealT, 2>{ 1.0, separation - slope },
+                                 MdArray<RealT, 2>{ -1.0, separation + slope } };
         const LinearEdgeGeometry geometry1( edge1.view() ), geometry2( edge2.view() );
         const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>
             rule_generator;
@@ -211,7 +217,7 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
         const PairTractionIntegral<
             PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>,
             CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>, BasisFunction<EDGE, LINEAR_LAGRANGE>>
-            pair_integral{ rule_generator, { 1.0, OffsetGap{ CommonPlaneGap{}, test_case.residual_gap } } };
+            pair_integral{ rule_generator, { 1.0, OffsetGap{ CommonPlaneGap{}, residual_gap } } };
         overlap_results_view[0].residual = pair_integral.evaluate( edge1.view(), edge2.view() );
         for ( int point = 0; point < NumPoints; ++point ) {
           const auto point1 = geometry1.position( { &quadrature_rule.geom1_parametric_coords( point, 0 ), 1 } );
@@ -222,7 +228,8 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
           overlap_results_view[0].weights[point] = quadrature_rule.weights[point];
         }
       } );
-      const ArrayT<InterpenetratingOverlapResult, 1, MemorySpace::Host> host_overlap_results( overlap_results );
+      const ArrayT<InterpenetratingOverlapResult<NumPoints>, 1, MemorySpace::Host> host_overlap_results(
+          overlap_results );
       const auto& overlap_result = host_overlap_results[0];
       ASSERT_TRUE( overlap_result.interval.valid );
       EXPECT_NEAR( overlap_result.interval.bounds[0], test_case.lower, tolerance );
