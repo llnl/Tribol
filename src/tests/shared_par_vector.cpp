@@ -99,12 +99,17 @@ TEST_F( ParVectorTest, Construction )
 TEST_F( ParVectorTest, DeviceConstructionAndCopyPreserveMemorySpace )
 {
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
+
+  // Start from host allocation so device construction must temporarily change HYPRE's process-wide location. Save the
+  // original location because other tests may rely on the device configuration selected in main().
   HYPRE_MemoryLocation initial_hypre_location;
   HYPRE_GetMemoryLocation( &initial_hypre_location );
   HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
 
   shared::ParVector device_vector( shared::ParVectorMemory::Device, MPI_COMM_WORLD, 10, row_starts.GetData() );
   EXPECT_EQ( device_vector.memorySpace(), shared::ParVectorMemory::Device );
+
+  // Constructing a device vector must not leave later HYPRE allocations on the device.
   HYPRE_MemoryLocation restored_hypre_location;
   HYPRE_GetMemoryLocation( &restored_hypre_location );
   EXPECT_EQ( restored_hypre_location, HYPRE_MEMORY_HOST );
@@ -119,8 +124,11 @@ TEST_F( ParVectorTest, DeviceConstructionAndCopyPreserveMemorySpace )
   EXPECT_EQ( assigned_vector.memorySpace(), shared::ParVectorMemory::Device );
   EXPECT_EQ( assigned_vector.max(), device_vector.size() );
 
+  // Device-preserving copies also allocate through HYPRE and must restore the caller's allocation location.
   HYPRE_GetMemoryLocation( &restored_hypre_location );
   EXPECT_EQ( restored_hypre_location, HYPRE_MEMORY_HOST );
+
+  // Restore the process state that existed before this test.
   HYPRE_SetMemoryLocation( initial_hypre_location );
 }
 #endif
