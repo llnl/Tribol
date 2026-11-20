@@ -10,13 +10,15 @@
 #include <iostream>
 
 // Axom includes
-#include "axom/slic.hpp"
-#include "axom/fmt.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
+#include "axom/fmt/format.h"
+#include "axom/fmt/ranges.h"
 
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/Atomics.hpp"
-#include "tribol/geom/ElementNormal.hpp"
+// Required by the explicit computeFaceData instantiations.
+#include "tribol/geom/ElementNormal.hpp"  // IWYU pragma: keep
 #include "tribol/integ/BasisFunction.hpp"
 #include "tribol/utils/Math.hpp"
 
@@ -260,9 +262,9 @@ int MeshData::getDimFromElementType() const
 //------------------------------------------------------------------------------
 ArrayViewT<const IndexT, 2> MeshData::createConnectivity( IndexT num_elements, const IndexT* connectivity )
 {
-  const int face_node_count = getFaceNodeCount( m_element_type, m_face_order );
-  if ( face_node_count > 0 ) {
-    return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, face_node_count } );
+  const int num_face_nodes = numberOfFaceNodes( m_element_type, m_face_order );
+  if ( num_face_nodes > 0 ) {
+    return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, num_face_nodes } );
   }
 
   SLIC_ERROR_ROOT( "Unsupported element type and face order for a contact mesh." );

@@ -8,7 +8,7 @@
 #include <memory>
 #include <utility>
 
-#include "axom/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 
 #include "tribol/common/Atomics.hpp"
 #include "tribol/common/ExecModel.hpp"
@@ -75,8 +75,8 @@ void FilterCandidatePairs( CouplingScheme& coupling_scheme, ArrayT<InterfacePair
         interface_pairs_view[accepted_index] = candidate_view[candidate];
       } );
 
-  SLIC_INFO( "Coupling scheme has " << interface_pairs.size() << " pairs after filtering " << candidate_count
-                                    << " coarse candidates." );
+  SLIC_DEBUG( "Coupling scheme has " << interface_pairs.size() << " pairs after filtering " << candidate_count
+                                     << " coarse candidates." );
 }
 
 /**
@@ -203,7 +203,7 @@ std::unique_ptr<SearchBase> MakeFilteredSearch( CouplingScheme& coupling_scheme 
 InterfacePairFinder::InterfacePairFinder( CouplingScheme* coupling_scheme ) : m_coupling_scheme( coupling_scheme )
 {
   SLIC_ASSERT_MSG( coupling_scheme != nullptr, "Coupling scheme was invalid (null pointer)" );
-  const int spatial_dimension = m_coupling_scheme->spatialDimension();
+  const int spatial_dimension = m_coupling_scheme->spatialDim();
   m_search = nullptr;
 
   if ( isOnDevice( coupling_scheme->getExecutionMode() ) && coupling_scheme->getBinningMethod() == BINNING_GRID ) {

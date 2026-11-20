@@ -14,7 +14,6 @@
 
 // Tribol includes
 #include "tribol/common/Parameters.hpp"
-#include "tribol/integ/FE.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/MfemData.hpp"
@@ -128,7 +127,7 @@ class CouplingScheme {
      *
      * @return spatial dimension
      */
-    TRIBOL_HOST_DEVICE int spatialDimension() const { return m_mesh1.spatialDimension(); }
+    TRIBOL_HOST_DEVICE int spatialDim() const { return m_mesh1.spatialDim(); }
 
     /**
      * @brief Return a view of the first mesh in the coupling scheme
@@ -442,11 +441,11 @@ class CouplingScheme {
    *
    * @return spatial dimension
    */
-  int spatialDimension() const
+  int spatialDim() const
   {
     // same for both meshes since meshes are required to have the same element
     // types
-    return m_mesh1->spatialDimension();
+    return m_mesh1->spatialDim();
   }
 
   /**
@@ -605,6 +604,7 @@ class CouplingScheme {
    * @brief Initializes the coupling scheme
    *
    * @return true if the coupling scheme was successfully initialized
+   * @note Reports a SLIC error if Energy Mortar has no configured formulation.
    */
   bool init();
 
@@ -626,6 +626,7 @@ class CouplingScheme {
    * @param [in/out] dt the simulation dt at the given cycle sent back as Tribol timestep vote
    *
    * @return 0 if successful apply
+   * @note Reports a SLIC error if Energy Mortar has no configured formulation.
    */
   int apply( int cycle, RealT t, RealT& dt );
 
@@ -734,17 +735,27 @@ class CouplingScheme {
   /**
    * @brief Set the ContactFormulation implementation
    *
+   * A null formulation marks enabled formulation-based contact for construction during the next init().
+   *
    * @param formulation Unique pointer to the formulation
    */
-  void setContactFormulation( std::unique_ptr<ContactFormulation> formulation )
-  {
-    m_formulation = std::move( formulation );
-  }
+  void setContactFormulation( std::unique_ptr<ContactFormulation> formulation );
 
   /**
-   * @brief Rebuilds the contact formulation based on the current scheme parameters
+   * @brief Destroy the current formulation so init() rebuilds it from the latest configuration.
    */
-  void updateContactFormulation();
+  void invalidateContactFormulation() { setContactFormulation( nullptr ); }
+
+  /**
+   * @brief Check whether the selected contact method uses a ContactFormulation.
+   *
+   * @return True for Energy Mortar and opted-in Common Plane formulations.
+   */
+  bool usesContactFormulation() const
+  {
+    return m_contactMethod == ENERGY_MORTAR ||
+           ( m_contactMethod == COMMON_PLANE && m_parameters.use_common_plane_formulation );
+  }
 
   /**
    * @brief Check if a ContactFormulation implementation is set
@@ -759,6 +770,18 @@ class CouplingScheme {
    * @return ContactFormulation*
    */
   ContactFormulation* getContactFormulation() const { return m_formulation.get(); }
+
+  /** @brief Read outputs from the latest update(). @return Outputs owned by this coupling scheme. */
+  const ContactFormulationResult& getContactFormulationResult() const { return m_formulation_result; }
+
+#ifdef BUILD_REDECOMP
+  /**
+   * @brief Access caller-supplied true-DOF Lagrange multipliers.
+   * @return Mutable input for the next contact calculation.
+   * @note Reports a SLIC error if the scheme does not support a nodal LM input or its MFEM data is invalid.
+   */
+  mfem::HypreParVector& getContactMultiplier();
+#endif
 
 #ifdef BUILD_REDECOMP
 
@@ -913,6 +936,25 @@ class CouplingScheme {
   void computeCommonPlaneTimeStep( RealT& dt );
 
  private:
+  /** @brief Track whether formulation-based contact is disabled, stale, or ready for use. */
+  enum class ContactFormulationState
+  {
+    Disabled,
+    NeedsBuild,
+    Current
+  };
+
+  /** @brief Build the enabled formulation after init() resolves its meshes and execution mode. */
+  void buildContactFormulation();
+
+#ifdef BUILD_REDECOMP
+  /** @brief Allocate the caller-owned multiplier input when nodal LM transfer data is available. */
+  void updateContactMultiplier();
+
+  /// Create or replace parent-only or nodal pressure/gap transfer data for the selected Energy Mortar location.
+  /// Existing formulations and cached outputs are released before replacing the data they reference.
+  void updateEnergyMortarTransferData();
+#endif
   CommT m_problem_comm = TRIBOL_COMM_WORLD;  ///! MPI communicator for the problem
 
   IndexT m_id;  ///< Coupling Scheme id
@@ -925,7 +967,7 @@ class CouplingScheme {
 
   ExecutionMode m_given_exec_mode;  ///< User preferred execution mode (set by constructor)
 
-  ExecutionMode m_exec_mode;  ///< Execution mode for kernels (set when init() is called)
+  ExecutionMode m_exec_mode;  ///< Requested mode until init() resolves the execution mode for kernels.
   int m_allocator_id;         ///< Allocator for arrays used in kernels (set when init() is called)
 
   Parameters m_parameters;              ///< Struct holding coupling scheme parameters
@@ -953,7 +995,8 @@ class CouplingScheme {
   std::unique_ptr<MethodData> m_dfdnJacobian;  ///< Store derivative of force w.r.t. normal on element pairs
   std::unique_ptr<MethodData> m_dndxJacobian;  ///< Store derivative of normal w.r.t. nodal coordinates on element pairs
 
-  std::unique_ptr<ContactFormulation> m_formulation;  ///< Polymorphic contact formulation
+  std::unique_ptr<ContactFormulation> m_formulation;  ///< Polymorphic contact formulation.
+  ContactFormulationState m_formulation_state{ ContactFormulationState::Disabled };  ///< Formulation lifecycle state.
 
   ArrayT<InterfacePair> m_interface_pairs;  ///< List of interface pairs
 
@@ -969,11 +1012,14 @@ class CouplingScheme {
 
 #ifdef BUILD_REDECOMP
 
-  std::unique_ptr<MfemMeshData> m_mfemMeshData;          ///< MFEM mesh data
-  std::unique_ptr<MfemSubmeshData> m_mfemSubmeshData;    ///< MFEM submesh field data
-  std::unique_ptr<MfemJacobianData> m_mfemJacobianData;  ///< MFEM jacobian data
+  std::unique_ptr<MfemMeshData> m_mfemMeshData;                ///< MFEM mesh data
+  std::unique_ptr<MfemSubmeshData> m_mfemSubmeshData;          ///< MFEM submesh field data
+  std::unique_ptr<MfemJacobianData> m_mfemJacobianData;        ///< MFEM jacobian data
+  std::unique_ptr<mfem::HypreParVector> m_contact_multiplier;  ///< Caller-supplied LM values; never an output cache.
 
 #endif /* BUILD_REDECOMP */
+
+  ContactFormulationResult m_formulation_result;  ///< Latest outputs, destroyed before their MFEM spaces.
 
 };  // end class CouplingScheme
 
@@ -1075,7 +1121,7 @@ TRIBOL_HOST_DEVICE inline bool CouplingScheme::Viewer::pruneMethodFacePair( cons
 
   auto& mesh1 = this->getMesh1View();
   auto& mesh2 = this->getMesh2View();
-  int dim = mesh1.spatialDimension();
+  int dim = mesh1.spatialDim();
   int num_nodes_face_1 = static_cast<int>( mesh1.numberOfNodesPerElement() );
   int num_nodes_face_2 = static_cast<int>( mesh2.numberOfNodesPerElement() );
 

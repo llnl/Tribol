@@ -6,15 +6,12 @@
 #include "AlignedMortar.hpp"
 
 #include "tribol/mesh/MethodCouplingData.hpp"
-#include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/geom/CompGeom.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/geom/NodalNormal.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/integ/Integration.hpp"
 #include "tribol/integ/FE.hpp"
-#include "tribol/utils/Algorithm.hpp"
 #include "tribol/utils/Math.hpp"
 
 namespace tribol {
@@ -150,7 +147,7 @@ void ComputeAlignedMortarGaps( CouplingScheme* cs )
 {
   MeshManager& meshManager = MeshManager::getInstance();
   MeshData& nonmortarMeshData = meshManager.at( cs->getMeshId2() );
-  int const dim = cs->spatialDimension();
+  int const dim = cs->spatialDim();
   // compute nodal normals (do this outside the element loop)
   // This routine is guarded against a null mesh
   ElementAvgNodalNormal normal_method;
@@ -236,7 +233,7 @@ int ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
   auto& cg_pairs = cs->getCompGeom();
   // auto planes = cg_pairs.getAlignedMortarPlanePairs();
 
-  int const dim = cs->spatialDimension();
+  int const dim = cs->spatialDim();
 
   ////////////////////////////////////////////////////////////////////////
   //

@@ -20,13 +20,23 @@ constexpr tribol::IndexT first_element_id = 0;
 constexpr tribol::IndexT linear_edge_node_count = 2;
 constexpr tribol::IndexT quadratic_edge_node_count = 3;
 constexpr tribol::IndexT quadratic_quad_node_count = 9;
-constexpr int edge_dimension = 2;
-constexpr int quad_dimension = 3;
+constexpr int edge_dim = 2;
+constexpr int quad_dim = 3;
 constexpr int x_component = 0;
 constexpr int y_component = 1;
 constexpr int z_component = 2;
 constexpr bool higher_order_face_data_is_supported = false;
 constexpr bool derived_face_data_is_populated = false;
+using LinearEdgeCoordinates = tribol::MdArray<tribol::RealT, linear_edge_node_count, edge_dim>;
+
+void ExpectCoordinatesEqual( const LinearEdgeCoordinates& actual, const LinearEdgeCoordinates& expected )
+{
+  for ( tribol::IndexT node{}; node < linear_edge_node_count; ++node ) {
+    for ( int component{}; component < edge_dim; ++component ) {
+      EXPECT_DOUBLE_EQ( actual( node, component ), expected( node, component ) );
+    }
+  }
+}
 
 void ExpectDerivedFaceDataIsEmpty( tribol::MeshData& mesh )
 {
@@ -54,6 +64,41 @@ TEST( MeshData, stores_linear_edge_data )
   EXPECT_EQ( mesh_view.numberOfNodesPerElement(), linear_edge_node_count );
 }
 
+// This test ensures getFaceCoords() follows each element's local connectivity order and returns a coordinate snapshot
+// that remains valid after the caller changes the original nodal arrays.
+TEST( MeshData, returns_owned_face_coordinates_in_local_node_order )
+{
+  constexpr tribol::IndexT num_elements = 2;
+  constexpr tribol::IndexT num_nodes = 4;
+  constexpr std::array<tribol::IndexT, num_elements * linear_edge_node_count> connectivity{ 3, 1, 2, 0 };
+  std::array<tribol::RealT, num_nodes> x{ 1.0, 3.0, -2.0, 0.0 };
+  std::array<tribol::RealT, num_nodes> y{ 1.0, 4.0, 1.0, 0.0 };
+  // The connectivity defines one edge from node 3 at (0,0) to node 1 at (3,4), and another from node 2 at (-2,1) to
+  // node 0 at (1,1). The nonsequential node IDs make local ordering visible in the returned coordinates.
+  tribol::MeshData mesh( mesh_id, num_elements, num_nodes, connectivity.data(), tribol::EDGE, tribol::LINEAR_LAGRANGE,
+                         x.data(), y.data(), nullptr, tribol::MemorySpace::Host );
+  const auto mesh_view = mesh.getView();
+
+  const auto first_face = mesh_view.getFaceCoords<LinearEdgeCoordinates>( 0 );
+  const auto second_face = mesh_view.getFaceCoords<LinearEdgeCoordinates>( 1 );
+  const LinearEdgeCoordinates expected_first_face{ tribol::MdArray<tribol::RealT, edge_dim>{ 0.0, 0.0 },
+                                                   tribol::MdArray<tribol::RealT, edge_dim>{ 3.0, 4.0 } };
+  const LinearEdgeCoordinates expected_second_face{ tribol::MdArray<tribol::RealT, edge_dim>{ -2.0, 1.0 },
+                                                    tribol::MdArray<tribol::RealT, edge_dim>{ 1.0, 1.0 } };
+  ExpectCoordinatesEqual( first_face, expected_first_face );
+  ExpectCoordinatesEqual( second_face, expected_second_face );
+
+  // Changing the caller-owned mesh arrays must not change coordinates returned by an earlier call.
+  x[3] = 2.0;
+  x[1] = 5.0;
+  y[3] = -1.0;
+  y[1] = 3.0;
+  const LinearEdgeCoordinates expected_updated_first_face{ tribol::MdArray<tribol::RealT, edge_dim>{ 2.0, -1.0 },
+                                                           tribol::MdArray<tribol::RealT, edge_dim>{ 5.0, 3.0 } };
+  ExpectCoordinatesEqual( first_face, expected_first_face );
+  ExpectCoordinatesEqual( mesh_view.getFaceCoords<LinearEdgeCoordinates>( 0 ), expected_updated_first_face );
+}
+
 TEST( MeshData, stores_quadratic_edge_data )
 {
   // The midpoint follows the two edge vertices in the quadratic basis order.
@@ -70,22 +115,22 @@ TEST( MeshData, stores_quadratic_edge_data )
 
   EXPECT_EQ( mesh.getElementType(), tribol::EDGE );
   EXPECT_EQ( mesh.getFaceOrder(), tribol::QUADRATIC_LAGRANGE );
-  EXPECT_EQ( mesh.spatialDimension(), edge_dimension );
+  EXPECT_EQ( mesh.spatialDim(), edge_dim );
   EXPECT_EQ( mesh.numberOfElements(), one_element );
   EXPECT_EQ( mesh.numberOfNodes(), quadratic_edge_node_count );
   EXPECT_EQ( mesh.numberOfNodesPerElement(), quadratic_edge_node_count );
   EXPECT_EQ( mesh_view.getFaceOrder(), tribol::QUADRATIC_LAGRANGE );
 
-  std::array<tribol::RealT, edge_dimension * quadratic_edge_node_count> face_coordinates{};
-  std::array<tribol::RealT, edge_dimension * quadratic_edge_node_count> face_velocities{};
+  std::array<tribol::RealT, edge_dim * quadratic_edge_node_count> face_coordinates{};
+  std::array<tribol::RealT, edge_dim * quadratic_edge_node_count> face_velocities{};
   mesh_view.getFaceCoords( first_element_id, face_coordinates.data() );
   mesh_view.getFaceVelocities( first_element_id, face_velocities.data() );
   for ( tribol::IndexT local_node{}; local_node < quadratic_edge_node_count; ++local_node ) {
     EXPECT_EQ( mesh.getGlobalNodeId( first_element_id, local_node ), connectivity[local_node] );
-    EXPECT_DOUBLE_EQ( face_coordinates[edge_dimension * local_node + x_component], x[local_node] );
-    EXPECT_DOUBLE_EQ( face_coordinates[edge_dimension * local_node + y_component], y[local_node] );
-    EXPECT_DOUBLE_EQ( face_velocities[edge_dimension * local_node + x_component], velocity_x[local_node] );
-    EXPECT_DOUBLE_EQ( face_velocities[edge_dimension * local_node + y_component], velocity_y[local_node] );
+    EXPECT_DOUBLE_EQ( face_coordinates[edge_dim * local_node + x_component], x[local_node] );
+    EXPECT_DOUBLE_EQ( face_coordinates[edge_dim * local_node + y_component], y[local_node] );
+    EXPECT_DOUBLE_EQ( face_velocities[edge_dim * local_node + x_component], velocity_x[local_node] );
+    EXPECT_DOUBLE_EQ( face_velocities[edge_dim * local_node + y_component], velocity_y[local_node] );
   }
 
   const auto surface_node_ids = mesh.sortSurfaceNodeIds();
@@ -121,24 +166,24 @@ TEST( MeshData, stores_quadratic_quad_data )
 
   EXPECT_EQ( mesh.getElementType(), tribol::QUAD );
   EXPECT_EQ( mesh.getFaceOrder(), tribol::QUADRATIC_LAGRANGE );
-  EXPECT_EQ( mesh.spatialDimension(), quad_dimension );
+  EXPECT_EQ( mesh.spatialDim(), quad_dim );
   EXPECT_EQ( mesh.numberOfElements(), one_element );
   EXPECT_EQ( mesh.numberOfNodes(), quadratic_quad_node_count );
   EXPECT_EQ( mesh.numberOfNodesPerElement(), quadratic_quad_node_count );
   EXPECT_EQ( mesh_view.getFaceOrder(), tribol::QUADRATIC_LAGRANGE );
 
-  std::array<tribol::RealT, quad_dimension * quadratic_quad_node_count> face_coordinates{};
-  std::array<tribol::RealT, quad_dimension * quadratic_quad_node_count> face_velocities{};
+  std::array<tribol::RealT, quad_dim * quadratic_quad_node_count> face_coordinates{};
+  std::array<tribol::RealT, quad_dim * quadratic_quad_node_count> face_velocities{};
   mesh_view.getFaceCoords( first_element_id, face_coordinates.data() );
   mesh_view.getFaceVelocities( first_element_id, face_velocities.data() );
   for ( tribol::IndexT local_node{}; local_node < quadratic_quad_node_count; ++local_node ) {
     EXPECT_EQ( mesh_view.getGlobalNodeId( first_element_id, local_node ), connectivity[local_node] );
-    EXPECT_DOUBLE_EQ( face_coordinates[quad_dimension * local_node + x_component], x[local_node] );
-    EXPECT_DOUBLE_EQ( face_coordinates[quad_dimension * local_node + y_component], y[local_node] );
-    EXPECT_DOUBLE_EQ( face_coordinates[quad_dimension * local_node + z_component], z[local_node] );
-    EXPECT_DOUBLE_EQ( face_velocities[quad_dimension * local_node + x_component], velocity_x[local_node] );
-    EXPECT_DOUBLE_EQ( face_velocities[quad_dimension * local_node + y_component], velocity_y[local_node] );
-    EXPECT_DOUBLE_EQ( face_velocities[quad_dimension * local_node + z_component], velocity_z[local_node] );
+    EXPECT_DOUBLE_EQ( face_coordinates[quad_dim * local_node + x_component], x[local_node] );
+    EXPECT_DOUBLE_EQ( face_coordinates[quad_dim * local_node + y_component], y[local_node] );
+    EXPECT_DOUBLE_EQ( face_coordinates[quad_dim * local_node + z_component], z[local_node] );
+    EXPECT_DOUBLE_EQ( face_velocities[quad_dim * local_node + x_component], velocity_x[local_node] );
+    EXPECT_DOUBLE_EQ( face_velocities[quad_dim * local_node + y_component], velocity_y[local_node] );
+    EXPECT_DOUBLE_EQ( face_velocities[quad_dim * local_node + z_component], velocity_z[local_node] );
   }
 
   const auto surface_node_ids = mesh.sortSurfaceNodeIds();

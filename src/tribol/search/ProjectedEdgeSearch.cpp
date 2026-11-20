@@ -10,7 +10,7 @@
 
 #include "tribol/search/ProjectedEdgeSearch.hpp"
 
-#include "axom/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 #include "tribol/common/Atomics.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/search/InterfacePairChecks.hpp"
@@ -20,7 +20,7 @@ namespace tribol {
 ArrayT<InterfacePair> ProjectedEdgeSearch::filterCandidatePairs( const ArrayT<InterfacePair>& candidate_pairs,
                                                                  MeshData::Viewer mesh1, MeshData::Viewer mesh2 ) const
 {
-  SLIC_ERROR_ROOT_IF( mesh1.spatialDimension() != 2 || mesh2.spatialDimension() != 2,
+  SLIC_ERROR_ROOT_IF( mesh1.spatialDim() != 2 || mesh2.spatialDim() != 2,
                       "Projected-edge search requires two-dimensional meshes." );
   SLIC_ASSERT_MSG(
       mesh1.getAllocatorId() == mesh2.getAllocatorId() && candidate_pairs.getAllocatorID() == mesh1.getAllocatorId(),
@@ -74,8 +74,8 @@ ArrayT<InterfacePair> ProjectedEdgeSearch::filterCandidatePairs( const ArrayT<In
                 retained_pairs_view[retained_index] = candidates[candidate_index];
               } );
 
-  SLIC_INFO( "Projected-edge search retained " << retained_pairs.size() << " of " << candidate_count
-                                               << " spatial candidate pairs." );
+  SLIC_DEBUG( "Projected-edge search retained " << retained_pairs.size() << " of " << candidate_count
+                                                << " spatial candidate pairs." );
   return retained_pairs;
 }
 

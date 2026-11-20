@@ -5,7 +5,8 @@
 
 #include "tribol.hpp"
 
-#include <stdexcept>
+#include <cmath>
+#include "axom/slic/interface/slic.hpp"
 
 // Tribol includes
 #include "tribol/common/Parameters.hpp"
@@ -14,24 +15,18 @@
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 
-// #include "tribol/geom/CompGeom.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
-
 #include "tribol/physics/Physics.hpp"
+#include "tribol/integ/QuadratureRuleGeneratorFactory.hpp"
 
 #include "tribol/search/InterfacePairFinder.hpp"
 
-#include "tribol/utils/Math.hpp"
-
 // Axom includes
-#include "axom/core.hpp"
-#include "axom/slic.hpp"
+#include "axom/core/utilities/FileUtilities.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 
 // C/C++ includes
 
 #include <string>
-#include <unordered_map>
-#include <fstream>
 
 //------------------------------------------------------------------------------
 // Interface Implementation
@@ -72,11 +67,14 @@ void setPenaltyOptions( IndexT cs_id, PenaltyConstraintType pen_enfrc_option,
   // get access to struct on coupling scheme holding penalty options
   EnforcementOptions& enforcement_options = cs->getEnforcementOptions();
   PenaltyEnforcementOptions& penalty_options = enforcement_options.penalty_options;
+  bool configuration_changed = false;
 
   // check that penalty enforcement option is valid
   if ( !in_range( pen_enfrc_option, NUM_PENALTY_OPTIONS ) ) {
     SLIC_WARNING_ROOT( "tribol::setPenaltyOptions(): penalty enforcement option not available." );
   } else {
+    configuration_changed = configuration_changed || !penalty_options.constraint_type_set ||
+                            penalty_options.constraint_type != pen_enfrc_option;
     penalty_options.constraint_type = pen_enfrc_option;
     penalty_options.constraint_type_set = true;
   }
@@ -85,6 +83,8 @@ void setPenaltyOptions( IndexT cs_id, PenaltyConstraintType pen_enfrc_option,
   if ( !in_range( kinematic_calc, NUM_KINEMATIC_PENALTY_CALCULATION ) ) {
     SLIC_WARNING_ROOT( "tribol::setPenaltyOptions(): kinematic penalty calculation not available." );
   } else {
+    configuration_changed = configuration_changed || !penalty_options.kinematic_calc_set ||
+                            penalty_options.kinematic_calculation != kinematic_calc;
     penalty_options.kinematic_calculation = kinematic_calc;
     penalty_options.kinematic_calc_set = true;
   }
@@ -93,8 +93,14 @@ void setPenaltyOptions( IndexT cs_id, PenaltyConstraintType pen_enfrc_option,
   if ( !in_range( rate_calc, NUM_RATE_PENALTY_CALCULATION ) ) {
     SLIC_WARNING_ROOT( "tribol::setPenaltyOptions(): rate penalty calculation not available." );
   } else {
+    configuration_changed =
+        configuration_changed || !penalty_options.rate_calc_set || penalty_options.rate_calculation != rate_calc;
     penalty_options.rate_calculation = rate_calc;
     penalty_options.rate_calc_set = true;
+  }
+
+  if ( configuration_changed && cs->usesContactFormulation() ) {
+    cs->invalidateContactFormulation();
   }
 
 }  // end setPenaltyOptions()
@@ -181,22 +187,44 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location )
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnforcementLocation(): call tribol::registerCouplingScheme() "
                                << "prior to calling this routine." );
 
-  cs->getParameters().enforcement_location = location;
-
-  // Automatically rebuild the formulation to reflect the new setting
-  cs->updateContactFormulation();
+  if ( cs->getParameters().use_common_plane_formulation && location != EnforcementLocation::QuadraturePoint ) {
+    SLIC_ERROR_ROOT( "Common Plane requires quadrature-point enforcement." );
+    return;
+  }
+  if ( location != EnforcementLocation::Nodal && location != EnforcementLocation::QuadraturePoint ) {
+    SLIC_ERROR_ROOT( "Unsupported enforcement location." );
+    return;
+  }
+  if ( cs->getContactMethod() == ENERGY_MORTAR && location == EnforcementLocation::QuadraturePoint &&
+       cs->getEnforcementMethod() != PENALTY ) {
+    SLIC_ERROR_ROOT( "Quadrature-point Energy Mortar requires penalty enforcement." );
+    return;
+  }
+  if ( cs->getParameters().enforcement_location != location ) {
+    cs->getParameters().enforcement_location = location;
+    if ( cs->usesContactFormulation() ) {
+      cs->invalidateContactFormulation();
+    }
+  }
 }
 
 //------------------------------------------------------------------------------
 void setQuadratureOrder( IndexT cs_id, int order )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-  if ( !cs || cs->getContactMethod() != ENERGY_MORTAR || order < 0 || order > 5 ) {
-    throw std::invalid_argument(
-        "setQuadratureOrder requires a registered ENERGY_MORTAR scheme and an order from 0 through 5." );
+  if ( !cs ||
+       ( cs->getContactMethod() != ENERGY_MORTAR &&
+         !( cs->getContactMethod() == COMMON_PLANE && cs->getParameters().use_common_plane_formulation ) ) ||
+       order < minimum_supported_quadrature_order || order > maximum_supported_quadrature_order ) {
+    SLIC_ERROR_ROOT( "setQuadratureOrder requires ENERGY_MORTAR or opted-in COMMON_PLANE and an order from "
+                     << minimum_supported_quadrature_order << " through " << maximum_supported_quadrature_order
+                     << "." );
+    return;
   }
-  cs->getParameters().quadrature_order = order;
-  if ( cs->hasContactFormulation() ) cs->updateContactFormulation();
+  if ( cs->getParameters().quadrature_order != order ) {
+    cs->getParameters().quadrature_order = order;
+    cs->invalidateContactFormulation();
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -362,9 +390,11 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale )
         "Setting binning proximity to less than 2.0 can lead to missed contact pairs.  Resetting to 2.0." );
   }
 
-  cs->getParameters().binning_proximity_scale = binning_proximity_scale;
-  if ( cs->hasContactFormulation() ) {
-    cs->updateContactFormulation();
+  if ( cs->getParameters().binning_proximity_scale != binning_proximity_scale ) {
+    cs->getParameters().binning_proximity_scale = binning_proximity_scale;
+    if ( cs->usesContactFormulation() ) {
+      cs->invalidateContactFormulation();
+    }
   }
 
 }  // end setBinningProximityScale()
@@ -377,11 +407,16 @@ void setResidualGap( IndexT cs_id, RealT residual_gap )
   // check to see if coupling scheme exists
   SLIC_ERROR_ROOT_IF(
       !cs, "tribol::setResidualGap(): call tribol::registerCouplingScheme() " << "prior to calling this routine." );
-  SLIC_ERROR_ROOT_IF( residual_gap < 0.0, "tribol::setResidualGap(): residual gap must be nonnegative." );
+  if ( !std::isfinite( residual_gap ) || residual_gap < 0.0 ) {
+    SLIC_ERROR_ROOT( "tribol::setResidualGap(): residual gap must be nonnegative and finite." );
+    return;
+  }
 
-  cs->getParameters().residual_gap = residual_gap;
-  if ( cs->hasContactFormulation() ) {
-    cs->updateContactFormulation();
+  if ( cs->getParameters().residual_gap != residual_gap ) {
+    cs->getParameters().residual_gap = residual_gap;
+    if ( cs->usesContactFormulation() ) {
+      cs->invalidateContactFormulation();
+    }
   }
 
 }  // end setResidualGap()
@@ -438,7 +473,7 @@ void registerNodalDisplacements( IndexT mesh_id, const RealT* dx, const RealT* d
     mesh->getNodalFields().m_is_nodal_displacement_set = false;
   }
 
-  if ( mesh->spatialDimension() == 3 ) {
+  if ( mesh->spatialDim() == 3 ) {
     if ( dz == nullptr ) {
       mesh->getNodalFields().m_is_nodal_displacement_set = false;
     }
@@ -461,7 +496,7 @@ void registerNodalVelocities( IndexT mesh_id, const RealT* vx, const RealT* vy, 
     mesh->getNodalFields().m_is_velocity_set = false;
   }
 
-  if ( mesh->spatialDimension() == 3 ) {
+  if ( mesh->spatialDim() == 3 ) {
     if ( vz == nullptr ) {
       mesh->getNodalFields().m_is_velocity_set = false;
     }
@@ -494,7 +529,7 @@ void registerNodalResponse( IndexT mesh_id, RealT* rx, RealT* ry, RealT* rz )
     mesh->getNodalFields().m_is_nodal_response_set = false;
   }
 
-  if ( mesh->spatialDimension() == 3 ) {
+  if ( mesh->spatialDim() == 3 ) {
     if ( rz == nullptr ) {
       mesh->getNodalFields().m_is_nodal_response_set = false;
     }
@@ -837,7 +872,7 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setInterfacePairs(): invalid coupling scheme index." );
 
   // Formulations own pair search and filtering so externally supplied pairs cannot bypass method-specific checks.
-  if ( cs->hasContactFormulation() || cs->getContactMethod() == ENERGY_MORTAR ) {
+  if ( cs->usesContactFormulation() ) {
     SLIC_ERROR_ROOT( "tribol::setInterfacePairs() is not supported for formulation-backed contact methods." );
     return;
   }

@@ -22,6 +22,16 @@ ParVector::ParVector( std::unique_ptr<mfem::HypreParVector> vec )
 {
 }
 
+ParVector::ParVector( const mfem::HypreParVector& vec ) : ParVectorView( nullptr ), owned_vec_( nullptr )
+{
+  const auto memory_space = vec.UseDevice() ? ParVectorMemory::Device : ParVectorMemory::Host;
+  detail::HypreMemoryLocationGuard memory_guard( memory_space );
+  vec.HypreRead();
+  owned_vec_ = std::make_unique<mfem::HypreParVector>( vec );
+  owned_vec_->UseDevice( memory_space == ParVectorMemory::Device );
+  vec_ = owned_vec_.get();
+}
+
 ParVector::ParVector( ParVector&& other ) noexcept
     : ParVectorView( other.owned_vec_.get() ), owned_vec_( std::move( other.owned_vec_ ) )
 {
@@ -38,25 +48,13 @@ ParVector& ParVector::operator=( ParVector&& other ) noexcept
   return *this;
 }
 
-ParVector::ParVector( const ParVector& other ) : ParVectorView( nullptr ), owned_vec_( nullptr )
-{
-  HYPRE_MemoryLocation old_hypre_mem_location;
-  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
-  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
-  owned_vec_ = std::make_unique<mfem::HypreParVector>( *other.vec_ );
-  HYPRE_SetMemoryLocation( old_hypre_mem_location );
-  vec_ = owned_vec_.get();
-}
+ParVector::ParVector( const ParVector& other ) : ParVector( other.get() ) {}
 
 ParVector& ParVector::operator=( const ParVector& other )
 {
   if ( this != &other ) {
-    HYPRE_MemoryLocation old_hypre_mem_location;
-    HYPRE_GetMemoryLocation( &old_hypre_mem_location );
-    HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
-    owned_vec_ = std::make_unique<mfem::HypreParVector>( *other.vec_ );
-    HYPRE_SetMemoryLocation( old_hypre_mem_location );
-    vec_ = owned_vec_.get();
+    ParVector copy( other );
+    *this = std::move( copy );
   }
   return *this;
 }

@@ -137,7 +137,15 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
  * \param [in] cs_id coupling scheme id
  * \param [in] location contact enforcement location
  *
- * \note Quadrature-point computation is only supported with penalty enforcement.
+ * @note This setting selects nodal or quadrature-point enforcement only for ENERGY_MORTAR. Other contact methods do
+ * not provide a configurable enforcement location; CommonPlaneFormulation always uses quadrature points.
+ * @note Quadrature-point ENERGY_MORTAR is only supported with penalty enforcement.
+ *
+ * ENERGY_MORTAR creates scalar submesh transfer data only for nodal enforcement. Switching locations releases the
+ * previous formulation and its cached outputs and initializes the selected transfer data on any existing decomposition.
+ * References to previous contact results must not be retained across this call.
+ * @note Reports a SLIC error, leaving the coupling scheme unchanged, if the value is not a supported location,
+ * Common Plane was given nodal enforcement, or quadrature-point Energy Mortar was given non-penalty enforcement.
  */
 void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
 
@@ -152,8 +160,8 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
  * also depend on overlap geometry and subdivision. This does not promise exact integration of a curved physical
  * mapping or a nonpolynomial contact integrand.
  *
- * Currently supported for ENERGY_MORTAR linear edges and orders 0-5: orders 0-1 use one Gauss-Legendre point, 2-3 use
- * two, and 4-5 use three. The default is order 5, preserving three-point integration.
+ * Supported for ENERGY_MORTAR and ContactFormulation-based COMMON_PLANE linear edges, with orders 0-5: orders 0-1 use
+ * one Gauss-Legendre point, 2-3 use two, and 4-5 use three. The default is order 5, preserving three-point integration.
  * An existing formulation is rebuilt. Unsupported orders or methods are rejected without changing the scheme.
  */
 void setQuadratureOrder( IndexT cs_id, int order );
@@ -252,6 +260,7 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
  *
  * @note Configure the residual gap after registering the coupling scheme and before its first update. For MFEM
  * coupling schemes, this must precede the first call to updateMfemParallelDecomposition().
+ * @note Reports a SLIC error, leaving the coupling scheme unchanged, if the residual gap is negative or nonfinite.
  */
 void setResidualGap( IndexT cs_id, RealT residual_gap );
 
@@ -550,6 +559,8 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* mesh_id1, I
  * \param [in/out] dt the simulation timestep input with Tribol timestep vote output
  *
  * \return rc return code, a non-zero return code indicates an error.
+ * @note Reports a SLIC error if Energy Mortar penalty settings are incomplete; no contact is calculated for that
+ * scheme.
  */
 int update( int cycle, RealT t, RealT& dt );
 

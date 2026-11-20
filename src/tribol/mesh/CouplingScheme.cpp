@@ -12,14 +12,15 @@
 #include "mfem.hpp"
 
 // Axom includes
-#include "axom/slic.hpp"
+#include "axom/slic/core/MessageLevel.hpp"
+#include "axom/slic/interface/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 
 // Tribol includes
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/Atomics.hpp"
 #include "tribol/geom/ElementNormal.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/utils/ContactPlaneOutput.hpp"
@@ -314,6 +315,7 @@ CouplingScheme::CouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, 
       m_mesh_id1( mesh_id1 ),
       m_mesh_id2( mesh_id2 ),
       m_given_exec_mode( given_exec_mode ),
+      m_exec_mode( given_exec_mode ),
       m_numTotalNodes( 0 ),
       m_fixedBinning( false ),
       m_isBinned( false ),
@@ -338,6 +340,9 @@ CouplingScheme::CouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, 
   m_contactModel = static_cast<ContactModel>( contact_model ),
   m_enforcementMethod = static_cast<EnforcementMethod>( enforcement_method );
   m_binningMethod = static_cast<BinningMethod>( binning_method );
+  if ( m_contactMethod == ENERGY_MORTAR ) {
+    m_formulation_state = ContactFormulationState::NeedsBuild;
+  }
 
   m_couplingSchemeErrors.cs_mode_error = NO_MODE_ERROR;
   m_couplingSchemeErrors.cs_case_error = NO_CASE_ERROR;
@@ -565,7 +570,7 @@ bool CouplingScheme::isValidMethod()
     return false;
   }
 
-  int dim = this->spatialDimension();
+  int dim = this->spatialDim();
 
   // check all methods for basic validity issues for non-null meshes
   if ( !this->m_nullMeshes ) {
@@ -990,9 +995,11 @@ int CouplingScheme::checkExecutionModeData()
   }
   this->m_allocator_id = this->m_mesh1->getAllocatorId();
 
-  if ( m_contactMethod != COMMON_PLANE ) {
+  if ( m_contactMethod != COMMON_PLANE && m_contactMethod != ENERGY_MORTAR ) {
     if ( m_exec_mode != ExecutionMode::Sequential ) {
-      SLIC_WARNING_ROOT( "Only sequential execution on host supported for contact methods other than COMMON_PLANE." );
+      SLIC_WARNING_ROOT(
+          "Only sequential execution on host supported for contact methods other than COMMON_PLANE and "
+          "ENERGY_MORTAR." );
       this->m_couplingSchemeErrors.cs_execution_mode_error = ExecutionModeError::INCOMPATIBLE_METHOD;
       err = 1;
     }
@@ -1033,11 +1040,23 @@ void CouplingScheme::performBinning()
 //------------------------------------------------------------------------------
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
+  if ( usesContactFormulation() && !m_formulation ) {
+    SLIC_ERROR_ROOT( "Contact formulation is not ready; call update() after changing its configuration." );
+    return 1;
+  }
   if ( m_formulation ) {
-    // The formulation performs the search and gap calculations needed to compute forces from the current mesh data.
-    m_formulation->updateNodalForces( getMesh1().getView(), getMesh2().getView() );
-    if ( m_formulation->hasTimeStepCalculation() ) {
-      dt = m_formulation->computeTimeStep();
+    if ( m_parameters.use_common_plane_formulation &&
+         !detail::validateCommonPlaneFormulation( *this, m_parameters.common_plane_compute_jacobian ) ) {
+      return 1;
+    }
+    // The formulation performs the search and gap calculations needed to compute the residual from the current mesh.
+    ContactFormulationInputs inputs;
+#ifdef BUILD_REDECOMP
+    inputs.multiplier = m_contact_multiplier.get();
+#endif
+    m_formulation_result = m_formulation->computeNodalResiduals( getMesh1().getView(), getMesh2().getView(), inputs );
+    if ( m_formulation_result.time_step ) {
+      dt = *m_formulation_result.time_step;
     }
     return 0;
   }
@@ -1147,44 +1166,140 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 }  // end CouplingScheme::apply()
 
 //------------------------------------------------------------------------------
-void CouplingScheme::updateContactFormulation()
+void CouplingScheme::setContactFormulation( std::unique_ptr<ContactFormulation> formulation )
 {
-  if ( m_contactMethod == ENERGY_MORTAR ) {
-    // Formulation construction captures search configuration, so valid current meshes are required before invoking
-    // the factory. Setters that change search configuration update its derived values before rebuilding here.
-    // Status 2 selects a usable but nonoptimal execution mode, so only status 1 prevents formulation construction.
+  m_formulation = std::move( formulation );
+  m_formulation_result = {};
+  m_formulation_state = m_formulation              ? ContactFormulationState::Current
+                        : usesContactFormulation() ? ContactFormulationState::NeedsBuild
+                                                   : ContactFormulationState::Disabled;
+#ifdef BUILD_REDECOMP
+  if ( m_formulation ) {
+    updateContactMultiplier();
+  }
+#endif
+}
+
+#ifdef BUILD_REDECOMP
+void CouplingScheme::updateContactMultiplier()
+{
+  if ( m_enforcementMethod != LAGRANGE_MULTIPLIER || m_parameters.enforcement_location != EnforcementLocation::Nodal ||
+       !hasMfemSubmeshData() ) {
+    return;
+  }
+  auto* fes = const_cast<mfem::ParFiniteElementSpace*>( &getMfemSubmeshData()->GetSubmeshFESpace() );
+  if ( !m_contact_multiplier || m_contact_multiplier->Size() != fes->GetTrueVSize() ) {
+    shared::ParVector multiplier( fes );
+    multiplier.fill( 0.0 );
+    m_contact_multiplier.reset( multiplier.release() );
+  }
+}
+
+mfem::HypreParVector& CouplingScheme::getContactMultiplier()
+{
+  if ( !m_contact_multiplier && m_contactMethod == ENERGY_MORTAR && m_enforcementMethod == LAGRANGE_MULTIPLIER &&
+       m_parameters.enforcement_location == EnforcementLocation::Nodal && hasMfemData() ) {
+    // LM values are caller inputs for the first update, so prepare their transfer space without constructing the
+    // contact formulation early.
     if ( !setMeshPointers() || checkExecutionModeData() == 1 ) {
-      SLIC_ERROR_ROOT( "ENERGY_MORTAR formulation configuration requires valid registered meshes." );
+      SLIC_ERROR_ROOT( "Contact multiplier input requires valid registered meshes." );
+    }
+    updateEnergyMortarTransferData();
+  }
+  if ( !m_contact_multiplier ) {
+    SLIC_ERROR_ROOT( "No contact multiplier input is available." );
+  }
+  return *m_contact_multiplier;
+}
+
+void CouplingScheme::updateEnergyMortarTransferData()
+{
+  const bool nodal = m_parameters.enforcement_location == EnforcementLocation::Nodal;
+  if ( hasMfemJacobianData() && hasMfemSubmeshData() == nodal ) {
+    updateContactMultiplier();
+    return;
+  }
+  auto& mesh_data = *getMfemMeshData();
+  std::unique_ptr<MfemSubmeshData> dual_data;
+  if ( nodal ) {
+    if ( m_contactModel != FRICTIONLESS ) {
+      SLIC_ERROR_ROOT( "Nodal Energy Mortar requires frictionless contact." );
       return;
     }
-    this->setContactFormulation( createContactFormulation( this ) );
-  } else {
-    SLIC_WARNING_ROOT(
-        "tribol::CouplingScheme::updateContactFormulation(): rebuilding is only supported for ENERGY_MORTAR at this "
-        "time." );
+    const auto* parent_fes = mesh_data.GetParentCoords().ParFESpace();
+    auto pressure_fec = std::make_unique<mfem::H1_FECollection>( parent_fes->FEColl()->GetOrder(),
+                                                                 parent_fes->GetParMesh()->SpaceDimension() );
+    dual_data = std::make_unique<MfemSubmeshData>( mesh_data.GetSubmesh(), mesh_data.GetLORMesh(),
+                                                   std::move( pressure_fec ), 1, isOnDevice( m_exec_mode ) );
+    if ( mesh_data.HasRedecompMesh() ) {
+      dual_data->UpdateMfemSubmeshData( mesh_data.GetRedecompMesh(), true );
+    }
+  }
+  auto jacobian_data = nodal ? std::make_unique<MfemJacobianData>( mesh_data, *dual_data )
+                             : std::make_unique<MfemJacobianData>( mesh_data );
+  if ( mesh_data.HasRedecompMesh() ) {
+    jacobian_data->UpdateJacobianXfer();
+  }
+
+  // Release outputs and formulations before the transfer spaces they reference.
+  setContactFormulation( nullptr );
+  setMfemJacobianData( nullptr );
+  setMfemSubmeshData( std::move( dual_data ) );
+  setMfemJacobianData( std::move( jacobian_data ) );
+  updateContactMultiplier();
+}
+#endif
+
+//------------------------------------------------------------------------------
+void CouplingScheme::buildContactFormulation()
+{
+  if ( !usesContactFormulation() ) {
+    SLIC_ERROR_ROOT( "Contact formulation construction requires Energy Mortar or opted-in Common Plane." );
+    return;
+  }
+#ifdef BUILD_REDECOMP
+  if ( m_contactMethod == ENERGY_MORTAR && hasMfemData() ) {
+    updateEnergyMortarTransferData();
+  }
+#endif
+  setContactFormulation( createContactFormulation( this ) );
+  if ( !m_formulation ) {
+    SLIC_ERROR_ROOT( ( m_contactMethod == ENERGY_MORTAR
+                           ? "Configure Energy Mortar penalty settings before calling update()."
+                           : "The enabled contact formulation could not be constructed." ) );
   }
 }
 
 //------------------------------------------------------------------------------
 bool CouplingScheme::init()
 {
-  if ( m_formulation ) {
-    // validity checks are done in the constructors of ContactFormulations
+  if ( usesContactFormulation() ) {
+    // ContactFormulation constructors validate method-specific settings. Meshes and the execution mode must be current
+    // first because the factory captures both in the formulation's search objects.
     this->m_isValid = true;
-    // the validity checks also set mesh pointers and allocator id, so these calls are still needed
     // Status 2 selects a usable but nonoptimal execution mode, so only status 1 prevents initialization.
     if ( !setMeshPointers() || checkExecutionModeData() == 1 ) {
-      // TODO: consider design; should these checks be specific to a contact formulation or are they specific to
-      // ENERGY_MORTAR?
       return false;
     }
+    if ( m_formulation_state != ContactFormulationState::Current || !m_formulation ) {
+      buildContactFormulation();
+    }
   } else {
+    if ( m_formulation_state != ContactFormulationState::Disabled || m_formulation ) {
+      setContactFormulation( nullptr );
+    }
     this->m_isValid = this->isValidCouplingScheme();
   }
 
   if ( this->m_isValid ) {
     // set individual coupling scheme logging level
     this->setSlicLoggingLevel();
+
+    // Formulations compute pair geometry and assemble their outputs without legacy face or method data.
+    if ( m_formulation ) {
+      m_numTotalNodes = m_mesh1->numberOfNodes();
+      return true;
+    }
 
     // compute the face data
     // different element normals for enzyme + mortar (matching Puso and Laursen)
@@ -1344,7 +1459,7 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 
   RealT proj_ratio = m_parameters.timestep_pen_frac;
   // int num_sides = 2; // always 2 sides in a single coupling scheme
-  int dim = spatialDimension();
+  int dim = spatialDim();
 
   // Loop over each contact plane. Even if pair is not in contact, we still do a
   // velocity projection for that proximate face-pair to see if interpenetration
@@ -1711,7 +1826,7 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 void CouplingScheme::writeInterfaceOutput( const std::string& dir, const VisType v_type, const int cycle,
                                            const RealT t )
 {
-  int dim = this->spatialDimension();
+  int dim = this->spatialDim();
   if ( m_parameters.vis_cycle_incr > 0 && !( cycle % m_parameters.vis_cycle_incr ) ) {
     switch ( m_contactMethod ) {
       case SINGLE_MORTAR:

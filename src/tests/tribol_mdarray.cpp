@@ -11,8 +11,6 @@
 
 #include "tribol/common/MdArray.hpp"
 
-namespace {
-
 TEST( MdArray, owns_fixed_extent_row_major_data )
 {
   // MdArray must own only its fixed-size elements while exposing the same compile-time shape and row-major layout as
@@ -60,8 +58,6 @@ TEST( MdArray, owns_fixed_extent_row_major_data )
   EXPECT_EQ( values( 0, 1 ), 1.0 );
   EXPECT_EQ( copied_values( 0, 1 ), 8.0 );
 }
-
-}  // namespace
 
 int main( int argc, char* argv[] )
 {

@@ -15,6 +15,16 @@
 
 #include "shared/math/ParVector.hpp"
 
+#if defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP )
+namespace {
+void setDeviceValues( shared::ParVector& vector )
+{
+  auto* values = vector.get().Write( true );
+  mfem::forall( vector.size(), [=] MFEM_HOST_DEVICE( int index ) { values[index] = index + 1.0; } );
+}
+}  // namespace
+#endif
+
 class ParVectorTest : public ::testing::Test {
  protected:
   mfem::Array<HYPRE_BigInt> GetRowStarts( MPI_Comm comm, HYPRE_BigInt global_size )
@@ -83,6 +93,45 @@ TEST_F( ParVectorTest, Construction )
   shared::ParVector pv3( MPI_COMM_WORLD, size, row_starts_array.GetData() );
   EXPECT_EQ( pv3.size(), local_size );
 }
+
+#if defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP )
+// Device construction and copies retain device preference while restoring HYPRE's process-wide allocation setting.
+TEST_F( ParVectorTest, DeviceConstructionAndCopyPreserveMemorySpace )
+{
+  auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
+
+  // Start from host allocation so device construction must temporarily change HYPRE's process-wide location. Save the
+  // original location because other tests may rely on the device configuration selected in main().
+  HYPRE_MemoryLocation initial_hypre_location;
+  HYPRE_GetMemoryLocation( &initial_hypre_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
+
+  shared::ParVector device_vector( shared::ParVectorMemory::Device, MPI_COMM_WORLD, 10, row_starts.GetData() );
+  EXPECT_EQ( device_vector.memorySpace(), shared::ParVectorMemory::Device );
+
+  // Constructing a device vector must not leave later HYPRE allocations on the device.
+  HYPRE_MemoryLocation restored_hypre_location;
+  HYPRE_GetMemoryLocation( &restored_hypre_location );
+  EXPECT_EQ( restored_hypre_location, HYPRE_MEMORY_HOST );
+
+  setDeviceValues( device_vector );
+  shared::ParVector copied_vector( device_vector );
+  EXPECT_EQ( copied_vector.memorySpace(), shared::ParVectorMemory::Device );
+  EXPECT_EQ( copied_vector.max(), device_vector.size() );
+
+  shared::ParVector assigned_vector( MPI_COMM_WORLD, 10, row_starts.GetData() );
+  assigned_vector = device_vector;
+  EXPECT_EQ( assigned_vector.memorySpace(), shared::ParVectorMemory::Device );
+  EXPECT_EQ( assigned_vector.max(), device_vector.size() );
+
+  // Device-preserving copies also allocate through HYPRE and must restore the caller's allocation location.
+  HYPRE_GetMemoryLocation( &restored_hypre_location );
+  EXPECT_EQ( restored_hypre_location, HYPRE_MEMORY_HOST );
+
+  // Restore the process state that existed before this test.
+  HYPRE_SetMemoryLocation( initial_hypre_location );
+}
+#endif
 
 // Test View
 TEST_F( ParVectorTest, View )
@@ -329,6 +378,12 @@ int main( int argc, char* argv[] )
   MPI_Init( &argc, &argv );
 
   ::testing::InitGoogleTest( &argc, argv );
+
+#if defined( TRIBOL_USE_CUDA )
+  mfem::Device device( "cuda" );
+#elif defined( TRIBOL_USE_HIP )
+  mfem::Device device( "hip" );
+#endif
 
   axom::slic::SimpleLogger logger;
 

@@ -6,7 +6,7 @@
 #ifndef SRC_TRIBOL_GEOM_COMPGEOM_HPP_
 #define SRC_TRIBOL_GEOM_COMPGEOM_HPP_
 
-#include "axom/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/mesh/MeshData.hpp"
@@ -957,7 +957,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePairByMethod(
     InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, const Parameters& params,
     ContactCase TRIBOL_UNUSED_PARAM( cCase ), CompGeom::Viewer& cg, IndexT* plane_ct )
 {
-  auto dim = mesh1.spatialDimension();
+  auto dim = mesh1.spatialDim();
   T my_plane( &pair, params, dim );
   FaceGeomException face_err = NO_FACE_GEOM_EXCEPTION;
   if ( dim == 3 ) {

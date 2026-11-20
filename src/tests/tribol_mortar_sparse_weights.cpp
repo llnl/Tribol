@@ -15,7 +15,8 @@
 #include "tribol/mesh/MeshData.hpp"
 
 // Axom includes
-#include "axom/slic.hpp"
+#include "axom/slic/core/SimpleLogger.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 
 // MFEM includes
 #include "mfem.hpp"
@@ -32,7 +33,7 @@ using RealT = tribol::RealT;
 
 void computeGapsFromSparseWts( tribol::CouplingScheme* cs, RealT* gaps )
 {
-  int const dim = cs->spatialDimension();
+  int const dim = cs->spatialDim();
 
   ////////////////////////////////////////////////////////////////////////
   //

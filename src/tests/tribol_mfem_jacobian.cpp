@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include "tribol/config.hpp"
+#include "tribol/config.hpp"  // IWYU pragma: keep
 #include "tribol/common/BasicTypes.hpp"
 
 #include <gtest/gtest.h>
@@ -17,7 +17,7 @@
 // MFEM includes
 #include "mfem.hpp"
 
-#include "axom/slic.hpp"
+#include "axom/slic/core/SimpleLogger.hpp"
 
 #include "shared/mesh/MeshBuilder.hpp"
 
@@ -952,47 +952,51 @@ TEST_P( MfemLorTransferParamTest, lor_transfer_matches_mfem )
     tribol::setMfemLORFactor( cs_id, p.lor_factor );
   }
 
-  tribol::updateMfemParallelDecomposition( n_ranks, true );
-
   auto* submesh_data = cs->getMfemSubmeshData();
   ASSERT_NE( submesh_data, nullptr );
+
+  const mfem::ParFiniteElementSpace* ho_fes = nullptr;
+  const mfem::ParFiniteElementSpace* lor_fes = nullptr;
+  if ( p.field == FieldKind::Displacement ) {
+    ho_fes = &mesh_data->GetSubmeshFESpace();
+    lor_fes = mesh_data->GetLORMeshFESpace();
+  } else {
+    ho_fes = &submesh_data->GetSubmeshFESpace();
+    lor_fes = submesh_data->GetLORMeshFESpace();
+  }
+  ASSERT_NE( ho_fes, nullptr );
+  ASSERT_NE( lor_fes, nullptr );
+
+  // Capture MFEM's reference operator before updateMfemParallelDecomposition() overwrites the LOR nodal grid
+  // function with projected coordinates, matching the geometry used by SubmeshLORTransfer and MfemJacobianData.
+  auto& ho_fes_nc = const_cast<mfem::ParFiniteElementSpace&>( *ho_fes );
+  auto& lor_fes_nc = const_cast<mfem::ParFiniteElementSpace&>( *lor_fes );
+  mfem::L2ProjectionGridTransfer mfem_xfer( ho_fes_nc, lor_fes_nc );
+  mfem_xfer.UseEA( false );
+  const mfem::Operator& F = mfem_xfer.ForwardOperator();
+
+  tribol::updateMfemParallelDecomposition( n_ranks, true );
 
   cs->setMfemJacobianData( std::make_unique<tribol::MfemJacobianData>( *mesh_data, *submesh_data ) );
   auto* jac_data = cs->getMfemJacobianData();
   ASSERT_NE( jac_data, nullptr );
   jac_data->UpdateJacobianXfer();
 
-  const mfem::ParFiniteElementSpace* ho_fes = nullptr;
-  const mfem::ParFiniteElementSpace* lor_fes = nullptr;
   const shared::ParSparseMat* T = nullptr;
 
   if ( p.field == FieldKind::Displacement ) {
-    ho_fes = &mesh_data->GetSubmeshFESpace();
-    lor_fes = mesh_data->GetLORMeshFESpace();
-    ASSERT_NE( lor_fes, nullptr );
     ASSERT_EQ( jac_data->ParentPath().surface_fes, lor_fes );
     // ParentPath(): [P_parent, parent->submesh, submesh->lor]
     ASSERT_GE( jac_data->ParentPath().owned_ops.size(), 2u );
     T = jac_data->ParentPath().owned_ops.back().get();
   } else {
-    ho_fes = &submesh_data->GetSubmeshFESpace();
-    lor_fes = submesh_data->GetLORMeshFESpace();
-    ASSERT_NE( lor_fes, nullptr );
     ASSERT_EQ( jac_data->SubmeshPath().surface_fes, lor_fes );
     // SubmeshPath(): [P_dual, submesh->lor]
     ASSERT_GE( jac_data->SubmeshPath().owned_ops.size(), 1u );
     T = jac_data->SubmeshPath().owned_ops.back().get();
   }
 
-  ASSERT_NE( ho_fes, nullptr );
-  ASSERT_NE( lor_fes, nullptr );
   ASSERT_NE( T, nullptr );
-
-  auto& ho_fes_nc = const_cast<mfem::ParFiniteElementSpace&>( *ho_fes );
-  auto& lor_fes_nc = const_cast<mfem::ParFiniteElementSpace&>( *lor_fes );
-  mfem::L2ProjectionGridTransfer mfem_xfer( ho_fes_nc, lor_fes_nc );
-  mfem_xfer.UseEA( false );
-  const mfem::Operator& F = mfem_xfer.ForwardOperator();
 
   CompareHoToLorTransfers( F, T->get(), *ho_fes, *lor_fes );
 }
@@ -1067,8 +1071,10 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
 
   auto* cs = tribol::CouplingSchemeManager::getInstance().findData( cs_id );
   ASSERT_NE( cs, nullptr );
-  EXPECT_TRUE( cs->getMesh1().getNodalFields().m_is_node_gap_set );
-  EXPECT_TRUE( cs->getMesh1().getNodalFields().m_is_node_pressure_set );
+  // Quadrature-point Energy Mortar assembles the displacement Jacobian without pressure or nodal-gap fields.
+  EXPECT_FALSE( cs->hasMfemSubmeshData() );
+  EXPECT_FALSE( cs->getMesh1().getNodalFields().m_is_node_gap_set );
+  EXPECT_FALSE( cs->getMesh1().getNodalFields().m_is_node_pressure_set );
   EXPECT_FALSE( cs->getMesh2().getNodalFields().m_is_node_gap_set );
   EXPECT_FALSE( cs->getMesh2().getNodalFields().m_is_node_pressure_set );
 
@@ -1084,24 +1090,25 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
     }
   }
 
-  // Changing penalties after the first force calculation must scale forces at unchanged coordinates.
+  // Changing penalties after the first residual calculation must scale residuals at unchanged coordinates.
   // Use unequal mesh penalties to check that their average supplies the stiffness.
   constexpr tribol::RealT updated_mesh1_penalty = 2.0;
   constexpr tribol::RealT updated_mesh2_penalty = 4.0;
   constexpr tribol::RealT stiffness_ratio = 0.5 * ( updated_mesh1_penalty + updated_mesh2_penalty ) / initial_penalty;
-  constexpr tribol::RealT relative_force_tolerance = 1.0e-10;
-  const auto initial_force = tribol::getMfemContactForce( cs_id );
-  const tribol::RealT initial_force_norm =
-      std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, initial_force, initial_force ) );
-  ASSERT_GT( initial_force_norm, 0.0 );
+  constexpr tribol::RealT relative_residual_tolerance = 1.0e-10;
+  const auto initial_residual = tribol::getMfemContactResidual( cs_id );
+  const tribol::RealT initial_residual_norm =
+      std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, initial_residual, initial_residual ) );
+  ASSERT_GT( initial_residual_norm, 0.0 );
 
   tribol::setMfemKinematicConstantPenalty( cs_id, updated_mesh1_penalty, updated_mesh2_penalty );
   tribol::update( 2, 2.0, dt );
 
-  auto force_error = tribol::getMfemContactForce( cs_id );
-  force_error.Add( -stiffness_ratio, initial_force );
-  const tribol::RealT force_error_norm = std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, force_error, force_error ) );
-  EXPECT_LE( force_error_norm, relative_force_tolerance * stiffness_ratio * initial_force_norm );
+  auto residual_error = tribol::getMfemContactResidual( cs_id );
+  residual_error.Add( -stiffness_ratio, initial_residual );
+  const tribol::RealT residual_error_norm =
+      std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, residual_error, residual_error ) );
+  EXPECT_LE( residual_error_norm, relative_residual_tolerance * stiffness_ratio * initial_residual_norm );
 }
 
 #endif

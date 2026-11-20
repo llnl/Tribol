@@ -6,7 +6,14 @@
 
 - Tribol uses a 120-character column width. Wrap prose comments and documentation near 120 columns rather than the
   common 80-column convention.
+- Always enclose `if` and `for` statement bodies in braces, including single-statement bodies.
 - Run `clang-format-19 -i` on every C or C++ source and header file changed before finalizing the work.
+
+## Naming
+
+- For ContactFormulation code, tests, and documentation, read
+  [the glossary](docs/contact-formulation-glossary.md). Prefer existing terminology; add a term only when necessary.
+- Preserve external API names and surrounding legacy conventions.
 
 ## Numeric literals
 

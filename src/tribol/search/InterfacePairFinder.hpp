@@ -44,7 +44,7 @@ TRIBOL_HOST_DEVICE inline bool geomFilter( const CouplingScheme::Viewer& cs_view
     return false;
   }
 
-  int dim = mesh1.spatialDimension();
+  int dim = mesh1.spatialDim();
 
   /// CHECK #2: Auto-contact precludes faces that share a common
   ///           node(s). We want to preclude two adjacent faces from interacting

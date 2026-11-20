@@ -12,8 +12,6 @@
 
 #include "tribol/common/MdSpan.hpp"
 
-namespace {
-
 TEST( MdSpan, provides_a_fixed_extent_row_major_view )
 {
   // MdSpan must provide compile-time shape and const-correct views while remaining pointer-sized for inexpensive
@@ -74,8 +72,6 @@ TEST( MdSpan, provides_a_fixed_extent_row_major_view )
   EXPECT_EQ( vector_values[1], 12.0 );
   EXPECT_EQ( scalar_value, 13.0 );
 }
-
-}  // namespace
 
 int main( int argc, char* argv[] )
 {

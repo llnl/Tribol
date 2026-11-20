@@ -8,9 +8,18 @@
 #------------------------------------------------------------------------------
 # Add single source tests
 #------------------------------------------------------------------------------
+if(CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA")
+  # NVCC's device pass reports GoogleTest registration data and host-only concept test types in anonymous namespaces as
+  # unused. The host compiler still checks unused test code, so suppress this device-pass false positive for GoogleTest
+  # consumers without changing production warning diagnostics.
+  target_compile_options(gtest INTERFACE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=177>")
+endif()
+
 set( tribol_tests
+     tribol_energy_mortar_pair_evaluation.cpp
      tribol_basis_function.cpp
      tribol_check_tpl.cpp
+     tribol_common_plane_pair_evaluation.cpp
      tribol_common_plane_penalty.cpp
      tribol_common_plane_gap_rate.cpp
      tribol_common_plane_gpu.cpp
@@ -75,6 +84,12 @@ foreach( test ${tribol_tests} )
   endif()
 
 endforeach()
+
+if(TRIBOL_USE_ENZYME)
+  # Enzyme rejects the aggregate-heavy edge geometry IR produced at -O0. Both tests differentiate pair functions.
+  target_compile_options(tribol_energy_mortar_pair_evaluation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
+  target_compile_options(tribol_common_plane_pair_evaluation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
+endif()
 
 #------------------------------------------------------------------------------
 # Add shared tests
@@ -152,7 +167,6 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
     endforeach()
 
     if (ENABLE_CUDA)
-      set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
       target_compile_options(${test_name}_test PRIVATE
         $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>>:-G>
       )
@@ -167,6 +181,8 @@ endif()
 if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 
   set( combined_tests
+      tribol_mfem_residual_and_jacobian_assembly.cpp
+      tribol_mfem_common_plane_formulation.cpp
       tribol_mfem_data.cpp
       tribol_mfem_common_plane.cpp
       tribol_mfem_mortar_lm.cpp
@@ -206,6 +222,16 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 
   endforeach()
 
+  blt_add_test(NAME tribol_mfem_residual_and_jacobian_assembly
+      COMMAND tribol_mfem_residual_and_jacobian_assembly_test NUM_MPI_TASKS 1)
+  if(TRIBOL_USE_ENZYME)
+    # Direct residual evaluators instantiate Enzyme's geometry derivatives in this translation unit.
+    target_compile_options(tribol_mfem_common_plane_formulation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
+  endif()
+
+  blt_add_test(NAME tribol_mfem_common_plane_formulation
+      COMMAND tribol_mfem_common_plane_formulation_test NUM_MPI_TASKS 1)
+
 endif()
 
 #------------------------------------------------------------------------------
@@ -219,10 +245,9 @@ if( TRIBOL_USE_ENZYME )
       tribol_enzyme_nodal_normal.cpp
       tribol_enzyme_mortar_assembled.cpp
       tribol_enzyme_poly_intersect.cpp
-      tribol_energy_mortar_quadrature_settings.cpp
+      tribol_mfem_energy_mortar_formulation.cpp
       tribol_energy_mortar_patch.cpp
       tribol_energy_mortar_patch_LM.cpp
-      tribol_finite_diff_energy_mortar.cpp
       )
 
   set(combined_test_depends tribol gtest)
@@ -241,10 +266,6 @@ if( TRIBOL_USE_ENZYME )
     blt_add_test( NAME ${test_name}
                   COMMAND ${test_name}_test )
 
-    if (ENABLE_CUDA)
-      set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
-    endif()
-    
     if (ENABLE_HIP)
       target_compile_options(${test_name}_test PRIVATE
           $<$<CONFIG:Debug>:
@@ -254,6 +275,9 @@ if( TRIBOL_USE_ENZYME )
     endif()
 
   endforeach()
+
+  # Enzyme rejects the aggregate-heavy edge geometry IR produced at -O0.
+  target_compile_options(tribol_mfem_energy_mortar_formulation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
 
 endif()
 
@@ -277,6 +301,11 @@ if( MFEM_FOUND )
 endif()
 
 if( TRIBOL_USE_ENZYME )
+
+  if( TRIBOL_USE_MPI )
+    blt_add_test(NAME tribol_mfem_energy_mortar_formulation_2rank
+        COMMAND tribol_mfem_energy_mortar_formulation_test NUM_MPI_TASKS 2)
+  endif()
 
   set(enzyme_smoke_depends ClangEnzymeFlags gtest)
   blt_add_executable(

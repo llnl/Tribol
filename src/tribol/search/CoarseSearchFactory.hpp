@@ -19,13 +19,13 @@ namespace tribol {
  * Grid search requested on a device falls back to BVH. Cartesian-product binning is unsupported because its legacy
  * implementation fuses candidate generation with formulation-specific filtering.
  *
- * @param spatial_dimension Spatial dimension of the meshes (2 or 3)
+ * @param spatial_dim Spatial dimension of the meshes (2 or 3)
  * @param binning_method Spatial binning algorithm
  * @param execution_mode Execution mode used by BVH; Grid runs sequentially
  * @param binning_proximity_scale Element-size multiplier used to expand coarse-search bounds
  * @param residual_gap Additional physical distance added to each bounding-box expansion
  */
-std::unique_ptr<CoarseSearch> createCoarseSearch( int spatial_dimension, BinningMethod binning_method,
+std::unique_ptr<CoarseSearch> createCoarseSearch( int spatial_dim, BinningMethod binning_method,
                                                   ExecutionMode execution_mode, RealT binning_proximity_scale,
                                                   RealT residual_gap );
 

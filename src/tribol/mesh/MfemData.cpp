@@ -5,6 +5,7 @@
 
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/mesh/MfemData.hpp"
+#include "axom/slic/interface/slic.hpp"
 
 #include "tribol/config.hpp"
 
@@ -91,7 +92,9 @@ shared::ParSparseMat BuildTrueDofExtract( const mfem::ParFiniteElementSpace& vec
   auto* I = new int[nrows + 1];
   auto* J = new int[nrows];
   auto* data = new RealT[nrows];
-  for ( int i = 0; i < nrows + 1; ++i ) I[i] = i;
+  for ( int i = 0; i < nrows + 1; ++i ) {
+    I[i] = i;
+  }
   for ( int r = 0; r < nrows; ++r ) {
     J[r] = tdofs_list[r];
     data[r] = 1.0;
@@ -129,10 +132,14 @@ shared::ParSparseMat BuildTrueDofInject( const mfem::ParFiniteElementSpace& vec_
   const int nnz = I[nrows];
   auto* J = new int[nnz];
   auto* data = new RealT[nnz];
-  for ( int k = 0; k < nnz; ++k ) data[k] = 1.0;
+  for ( int k = 0; k < nnz; ++k ) {
+    data[k] = 1.0;
+  }
 
   std::vector<int> next( static_cast<size_t>( nrows ), 0 );
-  for ( int r = 0; r < nrows; ++r ) next[static_cast<size_t>( r )] = I[r];
+  for ( int r = 0; r < nrows; ++r ) {
+    next[static_cast<size_t>( r )] = I[r];
+  }
 
   for ( int c = 0; c < ncols; ++c ) {
     const int r = tdofs_list[c];
@@ -394,12 +401,43 @@ shared::ParSparseMat JacobianAssembler::Assemble( shared::ParSparseMat lor_or_su
   return assembled;
 }
 
-SubmeshLORTransfer::SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh, bool use_ea )
-    : lor_gridfn_{ CreateLORGridFunction(
+SubmeshLORTransfer::SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh, bool use_ea,
+                                        bool retains_jacobian_transfer )
+    : submesh_fes_{ submesh_fes },
+      lor_gridfn_{ CreateLORGridFunction(
           lor_mesh, std::make_unique<mfem::H1_FECollection>( 1, lor_mesh.SpaceDimension() ), submesh_fes.GetVDim() ) },
       lor_xfer_{ submesh_fes, *lor_gridfn_->ParFESpace() }
 {
   lor_xfer_.UseEA( use_ea );
+  if ( retains_jacobian_transfer ) {
+    AssembleJacobianTransfer();
+  }
+}
+
+void SubmeshLORTransfer::AssembleJacobianTransfer()
+{
+  if ( transfer_mat_ ) {
+    return;
+  }
+  // Build the transfer operator and assemble its matching matrix while lor_mesh still holds the refined coordinates;
+  // UpdateMfemMeshData() later overwrites those nodal coordinates with L2-projected values.
+  (void)lor_xfer_.ForwardOperator();
+  auto& submesh_fes = submesh_fes_;
+  auto& lor_fes = *lor_gridfn_->ParFESpace();
+  if ( submesh_fes.GetOrdering() == mfem::Ordering::byNODES && lor_fes.GetOrdering() == mfem::Ordering::byNODES ) {
+    if ( submesh_fes.GetVDim() == 1 ) {
+      HoToLorTransferMat builder( submesh_fes, lor_fes, submesh_fes, lor_fes );
+      transfer_mat_ = std::make_unique<shared::ParSparseMat>( builder.Assemble() );
+    } else {
+      mfem::ParFiniteElementSpace ho_scalar_fes( submesh_fes.GetParMesh(), submesh_fes.FEColl(), 1,
+                                                 submesh_fes.GetOrdering() );
+      mfem::ParFiniteElementSpace lor_scalar_fes( lor_fes.GetParMesh(), lor_fes.FEColl(), 1, lor_fes.GetOrdering() );
+      HoToLorTransferMat builder( submesh_fes, lor_fes, ho_scalar_fes, lor_scalar_fes );
+      transfer_mat_ = std::make_unique<shared::ParSparseMat>( builder.Assemble() );
+    }
+    transfer_mat_->get().CopyRowStarts();
+    transfer_mat_->get().CopyColStarts();
+  }
 }
 
 void SubmeshLORTransfer::TransferToLORGridFn( const mfem::ParGridFunction& submesh_src )
@@ -675,7 +713,7 @@ PressureField::UpdateData::UpdateData( SubmeshRedecompTransfer& submesh_redecomp
 MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParMesh& parent_mesh,
                             const mfem::ParGridFunction& current_coords, std::set<int>&& attributes_1,
                             std::set<int>&& attributes_2, ExecutionMode exec_mode, MemorySpace mem_space,
-                            bool transfers_fields_through_lor )
+                            bool transfers_fields_through_lor, bool retains_lor_jacobian_transfer )
     : mesh_id_1_{ mesh_id_1 },
       mesh_id_2_{ mesh_id_2 },
       parent_mesh_{ parent_mesh },
@@ -684,6 +722,7 @@ MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParM
       submesh_{ CreateSubmesh( parent_mesh_, attributes_1_, attributes_2_ ) },
       coords_{ current_coords },
       transfers_fields_through_lor_{ transfers_fields_through_lor },
+      retains_lor_jacobian_transfer_{ retains_lor_jacobian_transfer },
       lor_factor_{ 0 },
       exec_mode_{ exec_mode },
       mem_space_{ mem_space },
@@ -939,8 +978,26 @@ void MfemMeshData::SetLORFactor( int lor_factor )
   lor_mesh_ = std::make_unique<mfem::ParMesh>(
       mfem::ParMesh::MakeRefined( submesh_, lor_factor, mfem::BasisType::ClosedUniform ) );
   lor_mesh_->EnsureNodes();
-  submesh_lor_xfer_ =
-      std::make_unique<SubmeshLORTransfer>( *submesh_xfer_gridfn_.ParFESpace(), *lor_mesh_, use_device_ );
+  submesh_lor_xfer_ = std::make_unique<SubmeshLORTransfer>( *submesh_xfer_gridfn_.ParFESpace(), *lor_mesh_, use_device_,
+                                                            retains_lor_jacobian_transfer_ );
+}
+
+void MfemMeshData::EnableLORJacobianTransfer()
+{
+  retains_lor_jacobian_transfer_ = true;
+  if ( !submesh_lor_xfer_ || submesh_lor_xfer_->GetTransferMatrix() ) {
+    return;
+  }
+  if ( update_data_ ) {
+    // A decomposition replaces the refined mesh coordinates with projected current coordinates. Build the matrix on
+    // a temporary freshly refined mesh so switching from force-only evaluation does not invalidate decomposition data.
+    auto pristine_lor_mesh = mfem::ParMesh::MakeRefined( submesh_, lor_factor_, mfem::BasisType::ClosedUniform );
+    pristine_lor_mesh.EnsureNodes();
+    SubmeshLORTransfer pristine_xfer( *submesh_xfer_gridfn_.ParFESpace(), pristine_lor_mesh, use_device_, true );
+    submesh_lor_xfer_->transfer_mat_ = std::move( pristine_xfer.transfer_mat_ );
+    return;
+  }
+  submesh_lor_xfer_->AssembleJacobianTransfer();
 }
 
 void MfemMeshData::ComputeElementThicknesses()
@@ -1259,6 +1316,21 @@ void MfemSubmeshData::GetSubmeshGap( mfem::Vector& g ) const
   GetPressureTransfer().RedecompToSubmesh( redecomp_gap_, g );
 }
 
+mfem::GridFunction MfemSubmeshData::TransferTrueDofsToRedecomp( const mfem::Vector& true_dofs ) const
+{
+  auto* fes = const_cast<mfem::ParFiniteElementSpace*>( &GetSubmeshFESpace() );
+  mfem::GridFunction result( const_cast<mfem::FiniteElementSpace*>( &GetRedecompFESpace() ) );
+  result = 0.0;
+  if ( fes->GetVDim() != 1 || true_dofs.Size() != fes->GetTrueVSize() ) {
+    SLIC_ERROR( "Scalar field vector length must match the submesh true DOFs." );
+    return result;
+  }
+  mfem::ParGridFunction field( fes );
+  field.SetFromTrueDofs( true_dofs );
+  GetPressureTransfer().SubmeshToRedecomp( field, result );
+  return result;
+}
+
 MfemSubmeshData::UpdateData::UpdateData( mfem::ParFiniteElementSpace& submesh_fes, SubmeshLORTransfer* submesh_lor_xfer,
                                          redecomp::RedecompMesh& redecomp_mesh )
     : pressure_xfer_{ submesh_fes, submesh_lor_xfer, redecomp_mesh }
@@ -1278,12 +1350,21 @@ const MfemSubmeshData::UpdateData& MfemSubmeshData::GetUpdateData() const
 }
 
 MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data )
-    : parent_data_{ parent_data }, submesh_data_{ submesh_data }
+    : MfemJacobianData( parent_data )
+{
+  submesh_data_ = &submesh_data;
+  if ( parent_data.GetParentCoords().ParFESpace()->FEColl()->GetOrder() > 1 ) {
+    SLIC_ERROR_ROOT_IF( submesh_data.GetLORMeshFESpace() == nullptr,
+                        "Higher order Jacobian support requires a dual LOR finite element space." );
+  }
+}
+
+MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data ) : parent_data_{ parent_data }
 {
   if ( parent_data.GetParentCoords().ParFESpace()->FEColl()->GetOrder() > 1 ) {
     SLIC_ERROR_ROOT_IF( parent_data.GetLORMesh() == nullptr,
                         "Higher order Jacobian support requires an LOR mesh (call MfemMeshData::SetLORFactor)." );
-    SLIC_ERROR_ROOT_IF( parent_data.GetLORMeshFESpace() == nullptr || submesh_data.GetLORMeshFESpace() == nullptr,
+    SLIC_ERROR_ROOT_IF( parent_data.GetLORMeshFESpace() == nullptr,
                         "Higher order Jacobian support requires LOR finite element spaces." );
   }
 
@@ -1305,7 +1386,7 @@ void MfemJacobianData::UpdateJacobianXfer()
   update_data_ = std::make_unique<UpdateData>( parent_data_, submesh_data_, submesh2parent_vdof_list_ );
 }
 
-MfemJacobianData::UpdateData::UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data,
+MfemJacobianData::UpdateData::UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData* dual_data,
                                           const mfem::Array<HYPRE_BigInt>& submesh2parent_vdof_list )
 {
   // Build cached pathways that map final true dofs into the selected surface DOF layouts.
@@ -1329,41 +1410,40 @@ MfemJacobianData::UpdateData::UpdateData( const MfemMeshData& parent_data, const
 
   if ( parent_data.GetLORMesh() ) {
     parent_path_.surface_fes = parent_data.GetLORMeshFESpace();
-    auto primary_ho_scalar_fes = std::make_unique<mfem::ParFiniteElementSpace>(
-        parent_data.GetSubmeshFESpace().GetParMesh(), parent_data.GetSubmeshFESpace().FEColl(), 1,
-        parent_data.GetSubmeshFESpace().GetOrdering() );
-    auto primary_lor_scalar_fes = std::make_unique<mfem::ParFiniteElementSpace>(
-        parent_data.GetLORMeshFESpace()->GetParMesh(), parent_data.GetLORMeshFESpace()->FEColl(), 1,
-        parent_data.GetLORMeshFESpace()->GetOrdering() );
-    HoToLorTransferMat primary_ho_to_lor( parent_data.GetSubmeshFESpace(), *parent_data.GetLORMeshFESpace(),
-                                          *primary_ho_scalar_fes, *primary_lor_scalar_fes );
-    auto ho_to_lor_mat = primary_ho_to_lor.Assemble();
-    parent_path_.owned_ops.push_back( std::make_unique<shared::ParSparseMat>( std::move( ho_to_lor_mat ) ) );
+    const auto* lor_xfer = parent_data.GetSubmeshLORTransfer();
+    SLIC_ERROR_ROOT_IF( lor_xfer == nullptr || lor_xfer->GetTransferMatrix() == nullptr,
+                        "Missing SubmeshLORTransfer matrix for primary LOR Jacobian pathway." );
+    auto ho_to_lor_mat = std::make_unique<shared::ParSparseMat>(
+        std::make_unique<mfem::HypreParMatrix>( lor_xfer->GetTransferMatrix()->get() ) );
+    ho_to_lor_mat->get().CopyRowStarts();
+    ho_to_lor_mat->get().CopyColStarts();
+    parent_path_.owned_ops.push_back( std::move( ho_to_lor_mat ) );
     parent_path_.ops.emplace_back( &parent_path_.owned_ops.back()->get() );
   } else {
     parent_path_.surface_fes = &parent_data.GetSubmeshFESpace();
   }
 
-  submesh_path_.final_fes = &submesh_data.GetSubmeshFESpace();
-  submesh_path_.owned_ops.clear();
-  submesh_path_.ops.clear();
-  submesh_path_.ops.emplace_back( submesh_path_.final_fes->Dof_TrueDof_Matrix() );
+  if ( dual_data ) {
+    const auto& submesh_data = *dual_data;
+    submesh_path_.final_fes = &submesh_data.GetSubmeshFESpace();
+    submesh_path_.owned_ops.clear();
+    submesh_path_.ops.clear();
+    submesh_path_.ops.emplace_back( submesh_path_.final_fes->Dof_TrueDof_Matrix() );
 
-  if ( parent_data.GetLORMesh() ) {
-    submesh_path_.surface_fes = submesh_data.GetLORMeshFESpace();
-    auto lm_ho_scalar_fes = std::make_unique<mfem::ParFiniteElementSpace>(
-        submesh_data.GetSubmeshFESpace().GetParMesh(), submesh_data.GetSubmeshFESpace().FEColl(), 1,
-        submesh_data.GetSubmeshFESpace().GetOrdering() );
-    auto lm_lor_scalar_fes = std::make_unique<mfem::ParFiniteElementSpace>(
-        submesh_data.GetLORMeshFESpace()->GetParMesh(), submesh_data.GetLORMeshFESpace()->FEColl(), 1,
-        submesh_data.GetLORMeshFESpace()->GetOrdering() );
-    HoToLorTransferMat dual_ho_to_lor( submesh_data.GetSubmeshFESpace(), *submesh_data.GetLORMeshFESpace(),
-                                       *lm_ho_scalar_fes, *lm_lor_scalar_fes );
-    auto ho_to_lor_mat = dual_ho_to_lor.Assemble();
-    submesh_path_.owned_ops.push_back( std::make_unique<shared::ParSparseMat>( std::move( ho_to_lor_mat ) ) );
-    submesh_path_.ops.emplace_back( &submesh_path_.owned_ops.back()->get() );
-  } else {
-    submesh_path_.surface_fes = &submesh_data.GetSubmeshFESpace();
+    if ( parent_data.GetLORMesh() ) {
+      submesh_path_.surface_fes = submesh_data.GetLORMeshFESpace();
+      const auto* lor_xfer = submesh_data.GetSubmeshLORTransfer();
+      SLIC_ERROR_ROOT_IF( lor_xfer == nullptr || lor_xfer->GetTransferMatrix() == nullptr,
+                          "Missing SubmeshLORTransfer matrix for dual LOR Jacobian pathway." );
+      auto ho_to_lor_mat = std::make_unique<shared::ParSparseMat>(
+          std::make_unique<mfem::HypreParMatrix>( lor_xfer->GetTransferMatrix()->get() ) );
+      ho_to_lor_mat->get().CopyRowStarts();
+      ho_to_lor_mat->get().CopyColStarts();
+      submesh_path_.owned_ops.push_back( std::move( ho_to_lor_mat ) );
+      submesh_path_.ops.emplace_back( &submesh_path_.owned_ops.back()->get() );
+    } else {
+      submesh_path_.surface_fes = &submesh_data.GetSubmeshFESpace();
+    }
   }
 }
 
@@ -1388,6 +1468,7 @@ const MfemJacobianPath& MfemJacobianData::ParentPath() const
 const MfemJacobianPath& MfemJacobianData::SubmeshPath() const
 {
   SLIC_ERROR_ROOT_IF( !update_data_, "SubmeshPath() requires UpdateJacobianXfer() to have been called." );
+  SLIC_ERROR_ROOT_IF( submesh_data_ == nullptr, "SubmeshPath() requires pressure/gap transfer data." );
   return update_data_->submesh_path_;
 }
 
@@ -1400,7 +1481,8 @@ shared::ParSparseMat MfemJacobianData::GetMfemJacobian(
   SLIC_ERROR_ROOT_IF( !update_data_, "GetMfemJacobian() requires UpdateJacobianXfer() to have been called." );
 
   const mfem::ParFiniteElementSpace* parent_fes = parent_data_.GetParentCoords().ParFESpace();
-  const mfem::ParFiniteElementSpace* multiplier_submesh_fes = &submesh_data_.GetSubmeshFESpace();
+  const mfem::ParFiniteElementSpace* multiplier_submesh_fes =
+      submesh_data_ ? &submesh_data_->GetSubmeshFESpace() : nullptr;
 
   const MfemJacobianPath* row_path = nullptr;
   const MfemJacobianPath* col_path = nullptr;

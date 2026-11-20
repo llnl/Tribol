@@ -11,21 +11,40 @@ endif()
 ## list of headers
 set(tribol_headers
 
+    assembly/AssemblePairs.hpp
+    assembly/ElementBlockStorage.hpp
+    assembly/EnzymePairDerivative.hpp
+    assembly/EvaluatePairs.hpp
+    assembly/MfemMatrixAssembler.hpp
+    assembly/MfemVectorAssembler.hpp
+    assembly/PairBuffers.hpp
+    assembly/PairDerivativeData.hpp
+    assembly/PairFunctionData.hpp
+
     common/ArrayTypes.hpp
     common/Atomics.hpp
     common/BasicTypes.hpp
     common/Containers.hpp
     common/Enzyme.hpp
     common/ExecModel.hpp
+    common/GlobalScalarAssembler.hpp
     common/LoopExec.hpp
     common/MdArray.hpp
     common/MdSpan.hpp
     common/Parameters.hpp
+    common/Reductions.hpp
+
+    enforcement/PenaltyEnergy.hpp
+    enforcement/PenaltyStiffness.hpp
 
     geom/CompGeom.hpp
     geom/ElementNormal.hpp
     geom/GeomUtilities.hpp
     geom/Hyperplane.hpp
+    geom/OpposingNormalGap.hpp
+    geom/OffsetGap.hpp
+    geom/CommonPlaneEdgeMapping.hpp
+    geom/CommonPlaneGap.hpp
     geom/LinearEdgeGeometry.hpp
     geom/NodalNormal.hpp
     geom/SmoothedProjectedEdgeMapping.hpp
@@ -34,9 +53,9 @@ set(tribol_headers
     integ/EdgeQuadratureRuleGenerator.hpp
     integ/FE.hpp
     integ/Integration.hpp
-    integ/PairQuadratureRule.hpp
+    integ/PairQuadratureRuleGenerator.hpp
     integ/QuadratureCommon.hpp
-    integ/QuadratureRuleFactory.hpp
+    integ/QuadratureRuleGeneratorFactory.hpp
 
     interface/mfem_tribol.hpp
     interface/simple_tribol.hpp
@@ -48,13 +67,16 @@ set(tribol_headers
     mesh/MethodCouplingData.hpp
     mesh/MfemData.hpp
 
+    physics/integrals/PairIntegrals.hpp
+    
     physics/AlignedMortar.hpp
     physics/CommonPlane.hpp
+    physics/CommonPlaneFormulation.hpp
     physics/ContactFormulation.hpp
     physics/ContactFormulationFactory.hpp
     physics/Mortar.hpp
-    physics/EnergyMortar.hpp
-    physics/EnergyMortarAdapter.hpp
+    physics/NodalEnergyMortar.hpp
+    physics/QuadraturePointEnergyMortar.hpp
     physics/Physics.hpp
 
     search/CoarseSearch.hpp
@@ -65,6 +87,7 @@ set(tribol_headers
     search/InterfacePairFinder.hpp
     search/RefinedSearch.hpp
     search/ProjectedEdgeSearch.hpp
+    search/PairListBuilder.hpp
 
     utils/Algorithm.hpp
     utils/ContactPlaneOutput.hpp
@@ -76,6 +99,9 @@ set(tribol_headers
 
 ## list of sources
 set(tribol_sources
+
+    assembly/MfemMatrixAssembler.cpp
+    assembly/MfemVectorAssembler.cpp
      
     geom/CompGeom.cpp
     geom/GeomUtilities.cpp
@@ -83,6 +109,7 @@ set(tribol_sources
 
     integ/FE.cpp
     integ/Integration.cpp
+    integ/QuadratureCommon.cpp
 
     interface/mfem_tribol.cpp
     interface/simple_tribol.cpp
@@ -97,8 +124,7 @@ set(tribol_sources
     physics/CommonPlane.cpp
     physics/ContactFormulationFactory.cpp
     physics/Mortar.cpp
-    physics/EnergyMortar.cpp
-    physics/EnergyMortarAdapter.cpp
+    physics/NodalEnergyMortar.cpp
     physics/Physics.cpp
      
     search/CoarseSearchFactory.cpp
@@ -139,8 +165,9 @@ message(STATUS "Tribol library dependencies: ${tribol_depends}")
 
 if(TRIBOL_USE_ENZYME)
     # At -O0, Enzyme rejects Clang 19's aggregate-heavy IR or silently generates incorrect fixed-rule derivatives.
-    # Optimize only the translation unit that generates those derivatives so every other Debug source remains at -O0.
-    set_property(SOURCE physics/EnergyMortar.cpp APPEND PROPERTY COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")
+    # Optimize the translation units that generate those derivatives; other Debug sources remain at -O0.
+    set_property(SOURCE physics/ContactFormulationFactory.cpp APPEND PROPERTY COMPILE_OPTIONS
+        "$<$<CONFIG:Debug>:-O2>")
 endif()
 
 ## create the library

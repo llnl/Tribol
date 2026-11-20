@@ -77,8 +77,12 @@ static_assert( std::is_same_v<RealT, mfem::real_t>, "tribol::RealT and mfem::rea
 #define TRIBOL_HOST_DEVICE
 #endif
 
-// Execution space identifier for defaulted constructors and destructors
-#if defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP )
+// nvcc 12.9 infers execution spaces for explicitly defaulted special members and warns that explicit annotations are
+// ignored. Other CUDA versions, Clang CUDA, and HIP retain the annotations required by their device compilation.
+#if defined( TRIBOL_USE_CUDA ) && defined( __NVCC__ ) && __CUDACC_VER_MAJOR__ == 12 && __CUDACC_VER_MINOR__ == 9
+#define TRIBOL_DEFAULT_DEVICE
+#define TRIBOL_DEFAULT_HOST_DEVICE
+#elif defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP )
 #define TRIBOL_DEFAULT_DEVICE __device__
 #define TRIBOL_DEFAULT_HOST_DEVICE __host__ __device__
 #else

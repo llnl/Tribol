@@ -12,26 +12,30 @@
 #ifdef BUILD_REDECOMP
 
 // C++ includes
+#include <functional>
+#include <memory>
 #include <set>
-#include <utility>
 #include <vector>
 
 // MFEM includes
 #include "mfem.hpp"
 
 // Axom includes
-#include "axom/core.hpp"
+#include "axom/core/ArrayView.hpp"
 
 // Shared includes
 #include "shared/math/ParSparseMat.hpp"
 
 // Redecomp includes
-#include "redecomp/redecomp.hpp"
+#include "redecomp/RedecompMesh.hpp"
+#include "redecomp/RedecompTransfer.hpp"
+#include "redecomp/transfer/MatrixTransfer.hpp"
 
 // Tribol includes
+#include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/BasicTypes.hpp"
+#include "tribol/common/ExecModel.hpp"
 #include "tribol/common/Parameters.hpp"
-#include "tribol/mesh/MethodCouplingData.hpp"
 
 namespace tribol {
 
@@ -50,6 +54,8 @@ namespace tribol {
  * through the GetLORGridFn() method.
  */
 class SubmeshLORTransfer {
+  friend class MfemMeshData;
+
  public:
   /**
    * @brief Construct a new SubmeshLORTransfer object
@@ -58,8 +64,17 @@ class SubmeshLORTransfer {
    * boundary submesh
    * @param lor_mesh LOR mesh
    * @param use_ea Whether to use device-friendly element assembly for the transfer (default: false)
+   * @param retains_jacobian_transfer Whether to assemble and retain the matching HO-to-LOR Jacobian matrix.
    */
-  SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh, bool use_ea = false );
+  SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh, bool use_ea = false,
+                      bool retains_jacobian_transfer = true );
+
+  /**
+   * @brief Assemble and retain the HO-to-LOR matrix needed by Jacobian transfer.
+   *
+   * Calling this repeatedly leaves the existing matrix unchanged.
+   */
+  void AssembleJacobianTransfer();
 
   /**
    * @brief Transfers data from a higher-order grid function on a parent-linked
@@ -119,7 +134,17 @@ class SubmeshLORTransfer {
    */
   const mfem::Vector& GetLORVector() const { return *lor_gridfn_; }
 
+  /**
+   * @brief Access the assembled HO->LOR DOF transfer matrix captured at construction time.
+   *
+   * @return const shared::ParSparseMat*
+   */
+  const shared::ParSparseMat* GetTransferMatrix() const { return transfer_mat_.get(); }
+
  private:
+  /** @brief Higher-order finite element space used by both transfer representations. */
+  mfem::ParFiniteElementSpace& submesh_fes_;
+
   /**
    * @brief Create low-order grid function on the LOR mesh
    *
@@ -140,6 +165,11 @@ class SubmeshLORTransfer {
    * @brief Low-order refined <-> higher-order coarse transfer object
    */
   mutable mfem::L2ProjectionGridTransfer lor_xfer_;
+
+  /**
+   * @brief Cached HO->LOR DOF transfer matrix matching lor_xfer_ at construction time.
+   */
+  std::unique_ptr<shared::ParSparseMat> transfer_mat_;
 };
 
 /**
@@ -612,10 +642,13 @@ class MfemMeshData {
    * @param transfers_fields_through_lor When true, higher-order fields transfer through a low-order refined mesh. When
    * false, the redecomp mesh uses the higher-order boundary submesh directly and redecomp fields retain the source
    * finite element order.
+   * @param retains_lor_jacobian_transfer Whether higher-order construction should retain an assembled Jacobian
+   * transfer matrix.
    */
   MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParMesh& parent_mesh,
                 const mfem::ParGridFunction& current_coords, std::set<int>&& attributes_1, std::set<int>&& attributes_2,
-                ExecutionMode exec_mode, MemorySpace mem_space, bool transfers_fields_through_lor = true );
+                ExecutionMode exec_mode, MemorySpace mem_space, bool transfers_fields_through_lor = true,
+                bool retains_lor_jacobian_transfer = true );
 
   /**
    * @brief Get coordinate grid function on the parent mesh
@@ -717,7 +750,7 @@ class MfemMeshData {
   int GetNumNodes() const { return GetUpdateData().num_nodes_; }
 
   /**
-   * @brief Get the number of finite-element nodes in each contact element
+   * @brief Get the number of finite-element nodes in each surface element
    *
    * @return int
    */
@@ -1060,6 +1093,18 @@ class MfemMeshData {
    */
   const mfem::ParMesh* GetLORMesh() const { return lor_mesh_.get(); }
 
+  /// Whether a decomposition exists and newly created transfer data can be initialized immediately.
+  /// @return True after UpdateMfemMeshData() has created the current Redecomp mesh, including on empty ranks.
+  bool HasRedecompMesh() const { return update_data_ != nullptr; }
+
+  /**
+   * @brief Enable the assembled HO-to-LOR matrix required by higher-order Jacobians.
+   *
+   * When decomposition has changed the live LOR coordinates, the matrix is assembled on a temporary freshly refined
+   * mesh so the current decomposition remains valid.
+   */
+  void EnableLORJacobianTransfer();
+
   /**
    * @brief Get the redecomp mesh containing redecomposed contact surfaces
    *
@@ -1102,6 +1147,11 @@ class MfemMeshData {
   {
     return submesh_lor_xfer_ ? submesh_lor_xfer_->GetLORGridFn().ParFESpace() : nullptr;
   }
+
+  /**
+   * @brief Get the submesh to LOR transfer object, or nullptr if LOR is inactive.
+   */
+  const SubmeshLORTransfer* GetSubmeshLORTransfer() const { return submesh_lor_xfer_.get(); }
 
   /**
    * @brief Get the LOR factor
@@ -1160,8 +1210,8 @@ class MfemMeshData {
     /**
      * @brief Construct a new UpdateData object
      *
-     * @param submesh Parent-linked boundary submesh of contact elements
-     * @param lor_mesh LOR mesh of contact elements (if using LOR; nullptr otherwise)
+     * @param submesh Parent-linked boundary submesh of surface elements
+     * @param lor_mesh LOR mesh of surface elements (if using LOR; nullptr otherwise)
      * @param parent_fes Vector finite element space on the original parent mesh
      * @param submesh_gridfn Grid function on the parent-linked boundary submesh used to temporarily store variables
      *        being transferred
@@ -1335,6 +1385,9 @@ class MfemMeshData {
    * use matching element and DOF lists.
    */
   const bool transfers_fields_through_lor_;
+
+  /** @brief Whether new LOR transfer objects also retain an assembled Jacobian matrix. */
+  bool retains_lor_jacobian_transfer_;
 
   /**
    * @brief Refinement factor for refined mesh
@@ -1629,6 +1682,16 @@ class MfemSubmeshData {
   void GetSubmeshGap( mfem::Vector& g ) const;
 
   /**
+   * @brief Transfer a scalar submesh true-DOF field onto the current Redecomp finite-element space.
+   * @param true_dofs Field on this submesh's scalar true DOFs.
+   * @return Owned Redecomp grid function with values at all local field DOFs; the associated spaces must remain alive.
+   * @pre UpdateMfemSubmeshData() has initialized the current transfer and Redecomp space.
+   * @note Reports a SLIC error if the field space is nonscalar or the vector length does not match, then returns a
+   * zero field.
+   */
+  mfem::GridFunction TransferTrueDofsToRedecomp( const mfem::Vector& true_dofs ) const;
+
+  /**
    * @brief Get the parent-linked boundary submesh to redecomp mesh pressure
    * transfer object
    *
@@ -1644,6 +1707,13 @@ class MfemSubmeshData {
   const mfem::ParFiniteElementSpace& GetSubmeshFESpace() const { return *submesh_pressure_.ParFESpace(); }
 
   /**
+   * @brief Get the current Redecomp finite-element space for fields transferred through this submesh.
+   * @return Reference to the field space, valid until the decomposition is rebuilt.
+   * @pre UpdateMfemSubmeshData() has initialized the current decomposition.
+   */
+  const mfem::FiniteElementSpace& GetRedecompFESpace() const { return *pressure_.GetRedecompGridFn().FESpace(); }
+
+  /**
    * @brief Get the finite element space on the LOR mesh
    *
    * @return const mfem::ParFiniteElementSpace* or nullptr if no LOR mesh
@@ -1653,6 +1723,11 @@ class MfemSubmeshData {
   {
     return submesh_lor_xfer_ ? submesh_lor_xfer_->GetLORGridFn().ParFESpace() : nullptr;
   }
+
+  /**
+   * @brief Get the submesh to LOR transfer object, or nullptr if LOR is inactive.
+   */
+  const SubmeshLORTransfer* GetSubmeshLORTransfer() const { return submesh_lor_xfer_.get(); }
 
  private:
   /**
@@ -1873,7 +1948,7 @@ struct PackedPairJacobianContribs {
   }
 
   /**
-   * @brief Reserve packed storage for a batch of element contributions
+   * @brief Reserve packed storage for a set of element contributions
    *
    * @param n_pairs Number of element-pair contributions that will be appended.
    * @param n_jacobian_scalar_values Total number of scalar Jacobian values that will be appended across all pairs.
@@ -2031,6 +2106,11 @@ class MfemJacobianTransfer {
 class MfemJacobianData {
  public:
   /**
+   * @brief Construct displacement-only Jacobian transfer without pressure or gap fields.
+   * @param parent_data Displacement mesh and transfer data; must outlive this object.
+   */
+  explicit MfemJacobianData( const MfemMeshData& parent_data );
+  /**
    * @brief Construct a new MfemJacobianData object
    *
    * @param parent_data MFEM data associated with displacement and velocity
@@ -2052,7 +2132,7 @@ class MfemJacobianData {
    *
    * @note @p row_final_fes and @p col_final_fes must be one of:
    * - parent FE space (parent_data_.GetParentCoords().ParFESpace())
-   * - multiplier submesh FE space (submesh_data_.GetSubmeshFESpace())
+   * - multiplier submesh FE space, when constructed with pressure/gap data
    */
   shared::ParSparseMat GetMfemJacobian( const mfem::ParFiniteElementSpace* row_final_fes,
                                         const mfem::ParFiniteElementSpace* col_final_fes,
@@ -2068,7 +2148,7 @@ class MfemJacobianData {
   const MfemJacobianPath& ParentPath() const;
 
   /**
-   * @brief Access the transfer pathway for submesh-final Jacobians
+   * @brief Access the transfer pathway for submesh-final Jacobians (requires pressure/gap data)
    *
    * This maps from the multiplier submesh true dofs into the selected dual surface DOF space (LOR if active, otherwise
    * submesh).
@@ -2086,10 +2166,10 @@ class MfemJacobianData {
      * @brief Construct a new UpdateData object
      *
      * @param parent_data MFEM data associated with displacement and velocity
-     * @param submesh_data MFEM data associated with pressure and gap
+     * @param submesh_data Optional pressure/gap data; null builds only the displacement path.
      * @param submesh2parent_vdof_list Global parent vdof for each local submesh vdof
      */
-    UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data,
+    UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData* submesh_data,
                 const mfem::Array<HYPRE_BigInt>& submesh2parent_vdof_list );
 
     /**
@@ -2123,9 +2203,9 @@ class MfemJacobianData {
   const MfemMeshData& parent_data_;
 
   /**
-   * @brief MFEM and transfer data associated with pressure and gap
+   * @brief Pointer to pressure/gap transfer data; null for displacement-only formulations.
    */
-  const MfemSubmeshData& submesh_data_;
+  const MfemSubmeshData* submesh_data_{ nullptr };
 
   /**
    * @brief List giving global parent vdof given the submesh vdof

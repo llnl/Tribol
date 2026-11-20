@@ -249,7 +249,7 @@ class MfemMortarEnergyPatchTest
       ASSERT_TRUE( A_cont_ptr != nullptr );
       shared::ParSparseMat A_cont( std::move( A_cont_ptr ) );
 
-      auto f_contact = tribol::getMfemContactForce( cs_id );
+      auto f_contact = tribol::getMfemContactResidual( cs_id );
       f_contact.Neg();
 
       // Inhomogeneous Dirichlet: rhs = f_contact - K * u_prescribed

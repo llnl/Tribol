@@ -52,6 +52,8 @@ if(NOT TRIBOL_FOUND)
   #----------------------------------------------------------------------------
   include(CMakeFindDependencyMacro)
 
+  get_filename_component(TRIBOL_CMAKE_CONFIG_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
+
   # Enable various find commands to look in non-default paths
   set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB32_PATHS TRUE)
   set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS TRUE)
@@ -82,6 +84,9 @@ if(NOT TRIBOL_FOUND)
       set(ENZYME_DIR "${TRIBOL_ENZYME_DIR}")
     endif()
     find_dependency(Enzyme REQUIRED PATHS "${ENZYME_DIR}")
+    # Downstream GPU translation units that instantiate Tribol's header-only Enzyme kernels need Tribol's flags.
+    include(${TRIBOL_CMAKE_CONFIG_DIR}/TribolEnzymeFlags.cmake)
+    tribol_add_enzyme_gpu_flags(USE_CUDA "${TRIBOL_USE_CUDA}" USE_HIP "${TRIBOL_USE_HIP}")
   endif()
 
   # Caliper is optional
@@ -116,8 +121,6 @@ if(NOT TRIBOL_FOUND)
                         DEPENDS_ON "@MFEM_LIBRARIES@")
   else()
   endif()
-
-  get_filename_component(TRIBOL_CMAKE_CONFIG_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
 
   #----------------------------------------------------------------------------
   # Include targets installed by BLT
