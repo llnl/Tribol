@@ -654,6 +654,9 @@ mfem::HypreParVector getMfemContactResidual( IndexT cs_id )
     SLIC_ERROR_ROOT( "No contact residual is available; call update() first." );
     return {};
   }
+  // MFEM device operators update the vector's MFEM memory. Refresh HYPRE's pointer before its copy constructor reads
+  // it.
+  residual->HypreRead();
   return *residual;
 }
 
@@ -840,6 +843,9 @@ mfem::HypreParVector getMfemContactGap( IndexT cs_id )
     SLIC_ERROR_ROOT( "No nodal contact gap is available." );
     return {};
   }
+  // MFEM device operators update the vector's MFEM memory. Refresh HYPRE's pointer before its copy constructor reads
+  // it.
+  gap->HypreRead();
   return *gap;
 }
 
