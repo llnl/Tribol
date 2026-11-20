@@ -46,7 +46,15 @@ shared::ParVector MfemVectorAssembler::assemble() const
   mfem::Vector local( final_fes->GetVSize() );
   local = 0.0;
   space_.transfer( redecomp_values_, local );
-  final_fes->GetProlongationMatrix()->MultTranspose( local, result.get() );
+  // The Redecomp transfer and shared::ParVector output are host-backed. When HYPRE defaults to device memory, keep the
+  // transpose multiply on the host so it updates the output that getMfemContactResidual() returns.
+  auto* prolongation = final_fes->Dof_TrueDof_Matrix();
+  HYPRE_MemoryLocation old_hypre_memory_location;
+  HYPRE_GetMemoryLocation( &old_hypre_memory_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
+  prolongation->HostRead();
+  prolongation->MultTranspose( local, result.get() );
+  HYPRE_SetMemoryLocation( old_hypre_memory_location );
   return result;
 }
 

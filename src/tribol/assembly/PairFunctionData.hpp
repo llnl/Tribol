@@ -55,7 +55,7 @@ class PairResidualValue {
   static constexpr IndexT size_values = size_geom1_values + size_geom2_values;     ///< Total residual extent.
 
   /** @brief Construct a zero residual with default quadrature state and no active points. */
-  TRIBOL_HOST_DEVICE PairResidualValue() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE PairResidualValue() = default;
 
   QuadratureMetadata quadrature_metadata{};  ///< Failed quadrature output must not be consumed.
   bool has_active_points =
@@ -138,7 +138,7 @@ class PairNodalGapValue {
   static constexpr IndexT num_fields = 2;  ///< Number of nodal integral fields.
 
   /** @brief Construct zero nodal integrals with default quadrature state and no active points. */
-  TRIBOL_HOST_DEVICE PairNodalGapValue() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE PairNodalGapValue() = default;
 
   /**
    * @brief Return a field's flattened value index.
@@ -189,6 +189,11 @@ class PairNodalGapValue {
   MdArray<RealT, size_values> values_{};  ///< Weighted gaps followed by tributary areas in local-node order.
 };
 
+/** @brief Result type returned by a pair function's evaluate() operation. @tparam PairFunction Pair function type. */
+template <typename PairFunction>
+using PairFunctionValue = std::remove_cvref_t<decltype( std::declval<const PairFunction&>().evaluate(
+    std::declval<typename PairFunction::Coords1>(), std::declval<typename PairFunction::Coords2>() ) )>;
+
 /**
  * @brief Require two fixed-size coordinate views and a const evaluation with values, quadrature status, and activation.
  *
@@ -216,10 +221,9 @@ concept PairFunctionType =
       requires( PairFunction::size_coords == PairFunction::size_geom1_coords + PairFunction::size_geom2_coords );
       requires std::same_as<typename PairFunction::Coords1::value_type, const RealT>;
       requires std::same_as<typename PairFunction::Coords2::value_type, const RealT>;
-    } &&
-    requires( const PairFunction& pair_function, const RealT* data1, const RealT* data2,
-              typename PairFunction::Coords1 coords1, typename PairFunction::Coords2 coords2,
-              const std::remove_cvref_t<decltype( pair_function.evaluate( coords1, coords2 ) )>& pair_values_struct ) {
+    } && requires( const PairFunction& pair_function, const RealT* data1, const RealT* data2,
+                   typename PairFunction::Coords1 coords1, typename PairFunction::Coords2 coords2,
+                   const PairFunctionValue<PairFunction>& pair_values_struct ) {
       {
         typename PairFunction::Coords1( data1, PairFunction::size_geom1_coords )
       } -> std::same_as<typename PairFunction::Coords1>;
@@ -231,11 +235,6 @@ concept PairFunctionType =
                             QuadratureMetadata>;
       requires std::same_as<std::remove_cvref_t<decltype( pair_values_struct.has_active_points )>, bool>;
     };
-
-/** @brief Result type returned by a pair function's evaluate() operation. @tparam PairFunction Pair function type. */
-template <typename PairFunction>
-using PairFunctionValue = std::remove_cvref_t<decltype( std::declval<const PairFunction&>().evaluate(
-    std::declval<typename PairFunction::Coords1>(), std::declval<typename PairFunction::Coords2>() ) )>;
 
 /**
  * @brief Require writable flattened values in addition to the read-only pair-function interface.
