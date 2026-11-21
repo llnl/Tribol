@@ -33,7 +33,7 @@ struct CommonPlaneGap {
    * @return (point1-point2).normal, negative in compression under the Common Plane orientation convention.
    * @pre Both edges are nondegenerate and their directed normals oppose each other.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT operator()( const LinearEdgeGeometry::Point& point1,
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT computeGap( const LinearEdgeGeometry::Point& point1,
                                                             const LinearEdgeGeometry::Point& point2,
                                                             const CommonPlaneEdgeMapping::CommonPlaneLine& line ) const
   {
@@ -50,7 +50,7 @@ struct CommonPlaneGap {
    * @return Separation along normal, negative in compression.
    */
   template <typename Point, typename Vector>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT operator()( const Point& point1, const Point& point2,
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT computeGap( const Point& point1, const Point& point2,
                                                             const Vector& normal ) const
   {
     return Vector( point2, point1 ).dot( normal );

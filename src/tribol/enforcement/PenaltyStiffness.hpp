@@ -48,7 +48,7 @@ struct AveragePenaltyStiffness {
    * @pre Both stiffnesses are positive and finite; the caller validates its inputs and applies any mesh scales.
    * @return 0.5 * (stiffness1 + stiffness2). This operation performs no validation or allocation.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT operator()( RealT stiffness1, RealT stiffness2 ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT computeEffectiveStiffness( RealT stiffness1, RealT stiffness2 ) const
   {
     return 0.5 * ( stiffness1 + stiffness2 );
   }
@@ -63,7 +63,7 @@ struct SeriesPenaltyStiffness {
    * @pre Both stiffnesses are positive and finite; the caller validates its inputs and applies any mesh scales.
    * @return stiffness1 * stiffness2 / (stiffness1 + stiffness2). No validation or allocation is performed.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT operator()( RealT stiffness1, RealT stiffness2 ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT computeEffectiveStiffness( RealT stiffness1, RealT stiffness2 ) const
   {
     return stiffness1 * stiffness2 / ( stiffness1 + stiffness2 );
   }

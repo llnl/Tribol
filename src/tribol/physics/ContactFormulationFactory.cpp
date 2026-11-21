@@ -14,6 +14,7 @@
 #include "tribol/search/ProjectedEdgeSearch.hpp"
 #include "tribol/integ/QuadratureRuleGeneratorFactory.hpp"
 #include "tribol/integ/SubdividedPairQuadratureRuleGenerator.hpp"
+#include "tribol/geom/QuadraticEdgeGeometry.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 
 #include <utility>
@@ -189,7 +190,8 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
       detail::checkedPenaltyStiffness( *data.GetMesh1KinematicConstantPenalty() * ( scale1 ? *scale1 : 1.0 ) );
   const RealT penalty2 =
       detail::checkedPenaltyStiffness( *data.GetMesh2KinematicConstantPenalty() * ( scale2 ? *scale2 : 1.0 ) );
-  const RealT penalty = detail::checkedPenaltyStiffness( SeriesPenaltyStiffness{}( penalty1, penalty2 ) );
+  const RealT penalty =
+      detail::checkedPenaltyStiffness( SeriesPenaltyStiffness{}.computeEffectiveStiffness( penalty1, penalty2 ) );
   const int coordinate_order = data.GetParentCoords().ParFESpace()->FEColl()->GetOrder();
   const bool uses_quadratic_subdivision = coordinate_order == 2 && cs->getParameters().use_quadrature_subdivision;
   return createWithQuadratureRuleGenerator(
@@ -222,7 +224,7 @@ std::unique_ptr<ContactFormulation> createEnergyMortarForRuleGenerator( Coupling
   const bool use_penalty = cs->getEnforcementMethod() == PENALTY;
   const auto& data = *cs->getMfemMeshData();
   const RealT penalty = use_penalty
-                            ? detail::checkedPenaltyStiffness( AveragePenaltyStiffness{}(
+                            ? detail::checkedPenaltyStiffness( AveragePenaltyStiffness{}.computeEffectiveStiffness(
                                   detail::checkedPenaltyStiffness( *data.GetMesh1KinematicConstantPenalty() ),
                                   detail::checkedPenaltyStiffness( *data.GetMesh2KinematicConstantPenalty() ) ) )
                             : 0.0;

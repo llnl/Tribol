@@ -447,8 +447,10 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
   const bool uses_formulation = cs->usesContactFormulation();
   if ( uses_formulation ) {
     const RealT effective_penalty = cs->getContactMethod() == ENERGY_MORTAR
-                                        ? AveragePenaltyStiffness{}( mesh1_penalty, mesh2_penalty )
-                                        : SeriesPenaltyStiffness{}( mesh1_penalty, mesh2_penalty );
+                                        ? AveragePenaltyStiffness{}.computeEffectiveStiffness( mesh1_penalty,
+                                                                                               mesh2_penalty )
+                                        : SeriesPenaltyStiffness{}.computeEffectiveStiffness( mesh1_penalty,
+                                                                                              mesh2_penalty );
     if ( !detail::isValidPenaltyStiffness( mesh1_penalty ) || !detail::isValidPenaltyStiffness( mesh2_penalty ) ||
          !detail::isValidPenaltyStiffness( effective_penalty ) ) {
       SLIC_ERROR_ROOT( "Contact penalty stiffness must be positive and finite." );
@@ -555,7 +557,8 @@ void setMfemKinematicPenaltyScale( IndexT cs_id, RealT mesh1_scale, RealT mesh2_
     const RealT penalty1 = *data.GetMesh1KinematicConstantPenalty() * mesh1_scale;
     const RealT penalty2 = *data.GetMesh2KinematicConstantPenalty() * mesh2_scale;
     if ( !detail::isValidPenaltyStiffness( penalty1 ) || !detail::isValidPenaltyStiffness( penalty2 ) ||
-         !detail::isValidPenaltyStiffness( SeriesPenaltyStiffness{}( penalty1, penalty2 ) ) ) {
+         !detail::isValidPenaltyStiffness(
+             SeriesPenaltyStiffness{}.computeEffectiveStiffness( penalty1, penalty2 ) ) ) {
       SLIC_ERROR_ROOT( "Contact penalty stiffness must be positive and finite." );
       return;
     }

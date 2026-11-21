@@ -7,12 +7,11 @@
 #ifndef SRC_TRIBOL_PHYSICS_COMMONPLANEFORMULATION_HPP_
 #define SRC_TRIBOL_PHYSICS_COMMONPLANEFORMULATION_HPP_
 
+#include <cmath>
 #include <utility>
 
 #include "tribol/config.hpp"
-#include "tribol/geom/CommonPlaneEdgeMapping.hpp"
 #include "tribol/geom/CommonPlaneGap.hpp"
-#include "tribol/geom/QuadraticEdgeGeometry.hpp"
 #include "tribol/integ/BasisFunction.hpp"
 #include "tribol/assembly/AssemblePairs.hpp"
 #include "tribol/physics/integrals/PairIntegrals.hpp"
@@ -29,79 +28,50 @@ struct CommonPlanePenaltyTraction {
   RealT penalty;        ///< Fixed penalty stiffness per area.
   GapDefinition gap{};  ///< Owned gap configuration.
 
-  /** @brief Compute the common line once for the current pair.
-   * @param geometry1 First current edge.
-   * @param geometry2 Second current edge.
-   * @return Common line used for both gap evaluation and traction direction.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE auto computePairGeometryData( const LinearEdgeGeometry& geometry1,
-                                                                        const LinearEdgeGeometry& geometry2 ) const
-  {
-    return gap.computePairGeometryData( geometry1, geometry2 );
-  }
-
-  /** @brief Own both quadratic edges so local normals can be evaluated at each paired point. */
-  struct QuadraticPairGeometryData {
-    QuadraticEdgeGeometry geometry1;  ///< First current quadratic edge.
-    QuadraticEdgeGeometry geometry2;  ///< Second current quadratic edge.
+  /** @brief Own both element geometries so local normals can be evaluated at each paired point. */
+  template <typename Geometry1, typename Geometry2>
+  struct PairGeometryData {
+    Geometry1 geometry1;  ///< First current surface-element geometry.
+    Geometry2 geometry2;  ///< Second current surface-element geometry.
   };
 
   /**
-   * @brief Retain quadratic geometry for pointwise normal evaluation.
-   * @param geometry1 First current quadratic edge.
-   * @param geometry2 Second current quadratic edge.
-   * @return Owning copies used after quadrature generation.
+   * @brief Retain both geometries for pointwise normal evaluation.
+   * @tparam Geometry1 First surface-element geometry type providing unitNormal().
+   * @tparam Geometry2 Second surface-element geometry type providing unitNormal().
+   * @param geometry1 First current surface-element geometry.
+   * @param geometry2 Second current surface-element geometry.
+   * @return Owning copies used at each quadrature point.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadraticPairGeometryData
-  computePairGeometryData( const QuadraticEdgeGeometry& geometry1, const QuadraticEdgeGeometry& geometry2 ) const
+  template <typename Geometry1, typename Geometry2>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairGeometryData<Geometry1, Geometry2> computePairGeometryData(
+      const Geometry1& geometry1, const Geometry2& geometry2 ) const
   {
     return { geometry1, geometry2 };
   }
 
-  /** @brief Compute penalty traction at one quadrature point; zero gap retains the compressive-side derivative.
-   * @param point1 Physical point on geometry1.
-   * @param point2 Physical point on geometry2.
-   * @param parametric_coords1 Geometry1 parametric point, unused by this penalty law.
-   * @param parametric_coords2 Geometry2 parametric point, unused by this penalty law.
-   * @param line Common line prepared for this pair.
-   * @return Penalty traction and active=true for nonpositive gap; zero traction and inactive state for opening.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadraturePointValue<MdArray<RealT, LinearEdgeGeometry::spatial_dim>>
-  operator()( const LinearEdgeGeometry::Point& point1, const LinearEdgeGeometry::Point& point2,
-              MdSpan<const RealT, LinearEdgeGeometry::parametric_dim> TRIBOL_UNUSED_PARAM( parametric_coords1 ),
-              MdSpan<const RealT, LinearEdgeGeometry::parametric_dim> TRIBOL_UNUSED_PARAM( parametric_coords2 ),
-              const CommonPlaneEdgeMapping::CommonPlaneLine& line ) const
-  {
-    const RealT scalar_gap = gap( point1, point2, line );
-    if ( scalar_gap > 0.0 ) {
-      return {};
-    }
-    QuadraturePointValue<MdArray<RealT, LinearEdgeGeometry::spatial_dim>> result;
-    result.active = true;
-    const RealT pressure = penalty * scalar_gap;
-    for ( IndexT spatial_dim = 0; spatial_dim < LinearEdgeGeometry::spatial_dim; ++spatial_dim ) {
-      result.value[spatial_dim] = pressure * line.normal[spatial_dim];
-    }
-    return result;
-  }
-
   /**
-   * @brief Compute penalty traction using true quadratic positions and pointwise averaged normals.
+   * @brief Compute penalty traction using physical positions and pointwise averaged normals; zero gap retains the
+   * compressive-side derivative.
+   * @tparam Geometry1 First surface-element geometry type.
+   * @tparam Geometry2 Second surface-element geometry type.
    * @param point1 Physical point on geometry1.
    * @param point2 Physical point on geometry2.
-   * @param parametric_coords1 Parent coordinate on geometry1.
-   * @param parametric_coords2 Parent coordinate on geometry2.
-   * @param pair_geometry_data Quadratic edges retained for local tangent evaluation.
-   * @return Active compressive traction; unusable or nonopposing local normals return inactive.
+   * @param parametric_coords1 Element parametric coordinate on geometry1.
+   * @param parametric_coords2 Element parametric coordinate on geometry2.
+   * @param pair_geometry_data Element geometries retained for local normal evaluation.
+   * @return Active compressive traction; unusable, nonopposing, or separated points return inactive.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadraturePointValue<MdArray<RealT, QuadraticEdgeGeometry::spatial_dim>>
-  operator()( const QuadraticEdgeGeometry::Point& point1, const QuadraticEdgeGeometry::Point& point2,
-              MdSpan<const RealT, QuadraticEdgeGeometry::parametric_dim> parametric_coords1,
-              MdSpan<const RealT, QuadraticEdgeGeometry::parametric_dim> parametric_coords2,
-              const QuadraticPairGeometryData& pair_geometry_data ) const
+  template <typename Geometry1, typename Geometry2>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadraturePointValue<MdArray<RealT, Geometry1::spatial_dim>>
+  computeTractionAtQuadraturePoint( const typename Geometry1::Point& point1, const typename Geometry2::Point& point2,
+                                    MdSpan<const RealT, Geometry1::parametric_dim> parametric_coords1,
+                                    MdSpan<const RealT, Geometry2::parametric_dim> parametric_coords2,
+                                    const PairGeometryData<Geometry1, Geometry2>& pair_geometry_data ) const
   {
-    QuadraticEdgeGeometry::Vector normal1;
-    QuadraticEdgeGeometry::Vector normal2;
+    static_assert( Geometry1::spatial_dim == Geometry2::spatial_dim );
+    typename Geometry1::Vector normal1;
+    typename Geometry2::Vector normal2;
     if ( !pair_geometry_data.geometry1.unitNormal( parametric_coords1, normal1 ) ||
          !pair_geometry_data.geometry2.unitNormal( parametric_coords2, normal2 ) || normal1.dot( normal2 ) >= 0.0 ) {
       return {};
@@ -112,14 +82,14 @@ struct CommonPlanePenaltyTraction {
       return {};
     }
     normal /= normal_length;
-    const RealT scalar_gap = gap( point1, point2, normal );
+    const RealT scalar_gap = gap.computeGap( point1, point2, normal );
     if ( scalar_gap > 0.0 ) {
       return {};
     }
-    QuadraturePointValue<MdArray<RealT, QuadraticEdgeGeometry::spatial_dim>> result;
+    QuadraturePointValue<MdArray<RealT, Geometry1::spatial_dim>> result;
     result.active = true;
     const RealT pressure = penalty * scalar_gap;
-    for ( IndexT component = 0; component < QuadraticEdgeGeometry::spatial_dim; ++component ) {
+    for ( IndexT component = 0; component < Geometry1::spatial_dim; ++component ) {
       result.value[component] = pressure * normal[component];
     }
     return result;

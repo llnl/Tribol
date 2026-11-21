@@ -39,7 +39,7 @@ struct OpposingNormalGap {
    * @return (point2-point1).normal2 times min(normal1.normal2,0).
    * @pre Normals come from nondegenerate current geometry.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT operator()( const LinearEdgeGeometry::Point& point1,
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT computeGap( const LinearEdgeGeometry::Point& point1,
                                                             const LinearEdgeGeometry::Point& point2,
                                                             const Normals& normals ) const
   {

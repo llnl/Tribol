@@ -360,7 +360,8 @@ TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
             auto projected_edge_search = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
             return std::make_unique<
                 CommonPlaneFormulation<Exec, decltype( rule_generator ), CommonPlaneGap, ResidualAndJacobian>>(
-                std::move( rule_generator ), AveragePenaltyStiffness{}( lower_mesh_penalty, upper_mesh_penalty ),
+                std::move( rule_generator ),
+                AveragePenaltyStiffness{}.computeEffectiveStiffness( lower_mesh_penalty, upper_mesh_penalty ),
                 CommonPlaneGap{},
                 ResidualAndJacobian{ *couplingScheme().getMfemMeshData(), *couplingScheme().getMfemJacobianData() },
                 PairListBuilder{ std::move( coarse_search ), std::move( projected_edge_search ) } );

@@ -110,6 +110,24 @@ class LinearEdgeGeometry {
     return result;
   }
 
+  /**
+   * @brief Evaluate the directed unit normal when the edge is nondegenerate.
+   * @param parametric_coords Element parametric coordinate, unused for a straight edge.
+   * @param[out] out_normal Unit normal oriented (dy,-dx) when true; zero when false.
+   * @return Whether the edge has finite coordinates and nonzero length.
+   */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE bool unitNormal( MdSpan<const RealT, parametric_dim>,
+                                                           Vector& out_normal ) const
+  {
+    if ( !std::isfinite( edge_[0] ) || !std::isfinite( edge_[1] ) || !std::isfinite( length_squared_ ) ||
+         length_squared_ <= 0.0 ) {
+      out_normal = Vector{};
+      return false;
+    }
+    out_normal = normal();
+    return true;
+  }
+
  private:
   Point origin_;          ///< Owned first endpoint of the current edge.
   Point end_;             ///< Owned second endpoint, preserving interpolation at the input coordinates.

@@ -20,6 +20,7 @@
 #include "tribol/physics/CommonPlane.hpp"
 #include "tribol/physics/CommonPlaneFormulation.hpp"
 #include "tribol/geom/OffsetGap.hpp"
+#include "tribol/geom/QuadraticEdgeGeometry.hpp"
 #include "tribol/integ/BasisFunction.hpp"
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
 #include "tribol/integ/PairQuadratureRuleGenerator.hpp"
@@ -230,7 +231,7 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
           const auto point2 = geometry2.position( { &quadrature_rule.geom2_parametric_coords( point, 0 ), 1 } );
           overlap_results_view[0].x1[point] = point1[0];
           overlap_results_view[0].x2[point] = point2[0];
-          overlap_results_view[0].gaps[point] = CommonPlaneGap{}( point1, point2, line );
+          overlap_results_view[0].gaps[point] = CommonPlaneGap{}.computeGap( point1, point2, line );
           overlap_results_view[0].weights[point] = quadrature_rule.weights[point];
         }
       } );
@@ -452,7 +453,7 @@ struct NodalPressureTraction {
    * @param normal Current unit traction direction.
    * @return Active, unweighted vector traction.
    */
-  TRIBOL_HOST_DEVICE QuadraturePointValue<MdArray<RealT, 2>> operator()(
+  TRIBOL_HOST_DEVICE QuadraturePointValue<MdArray<RealT, 2>> computeTractionAtQuadraturePoint(
       const LinearEdgeGeometry::Point& TRIBOL_UNUSED_PARAM( point1 ),
       const LinearEdgeGeometry::Point& TRIBOL_UNUSED_PARAM( point2 ),
       MdSpan<const RealT, 1> TRIBOL_UNUSED_PARAM( parametric_coords1 ), MdSpan<const RealT, 1> parametric_coords2,
@@ -558,9 +559,10 @@ TEST( QuadraticCommonPlaneTraction, uses_true_local_normals_for_gap_and_activati
   const CommonPlanePenaltyTraction<CommonPlaneGap> traction{ 1.0 };
   const auto evaluateMidpointTraction = [&]( const QuadraticCoordinates& edge2 ) {
     const QuadraticEdgeGeometry geometry2( edge2.view() );
-    return traction( geometry1.position( midpoint_coordinate.view() ), geometry2.position( midpoint_coordinate.view() ),
-                     midpoint_coordinate.view(), midpoint_coordinate.view(),
-                     traction.computePairGeometryData( geometry1, geometry2 ) );
+    return traction.computeTractionAtQuadraturePoint( geometry1.position( midpoint_coordinate.view() ),
+                                                      geometry2.position( midpoint_coordinate.view() ),
+                                                      midpoint_coordinate.view(), midpoint_coordinate.view(),
+                                                      traction.computePairGeometryData( geometry1, geometry2 ) );
   };
 
   const auto interpenetrated = evaluateMidpointTraction( interpenetrated_edge2 );

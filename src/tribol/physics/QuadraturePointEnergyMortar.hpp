@@ -57,11 +57,11 @@ struct PenaltyEnergyDensity {
    */
   template <typename Point1, typename Point2, typename ParametricCoords1, typename ParametricCoords2,
             typename GeometryData>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadraturePointValue<RealT> operator()(
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadraturePointValue<RealT> computeEnergyAtQuadraturePoint(
       const Point1& point1, const Point2& point2, ParametricCoords1 TRIBOL_UNUSED_PARAM( parametric_coords1 ),
       ParametricCoords2 TRIBOL_UNUSED_PARAM( parametric_coords2 ), const GeometryData& pair_geometry_data ) const
   {
-    const RealT separation = gap( point1, point2, pair_geometry_data );
+    const RealT separation = gap.computeGap( point1, point2, pair_geometry_data );
     if ( separation > 0.0 ) {
       return {};
     }
