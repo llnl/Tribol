@@ -556,20 +556,20 @@ TEST( QuadraticCommonPlaneTraction, uses_true_local_normals_for_gap_and_activati
   const QuadraticEdgeGeometry geometry1( edge1.view() );
   const MdArray<RealT, 1> midpoint_coordinate{ 0.0 };
   const CommonPlanePenaltyTraction<CommonPlaneGap> traction{ 1.0 };
-  const auto evaluate = [&]( const QuadraticCoordinates& edge2 ) {
+  const auto evaluateMidpointTraction = [&]( const QuadraticCoordinates& edge2 ) {
     const QuadraticEdgeGeometry geometry2( edge2.view() );
     return traction( geometry1.position( midpoint_coordinate.view() ), geometry2.position( midpoint_coordinate.view() ),
                      midpoint_coordinate.view(), midpoint_coordinate.view(),
                      traction.computePairGeometryData( geometry1, geometry2 ) );
   };
 
-  const auto interpenetrated = evaluate( interpenetrated_edge2 );
+  const auto interpenetrated = evaluateMidpointTraction( interpenetrated_edge2 );
   ASSERT_TRUE( interpenetrated.active );
   EXPECT_NEAR( interpenetrated.value[0], 0.0, tolerance );
   EXPECT_NEAR( interpenetrated.value[1], -0.1, tolerance );
-  EXPECT_FALSE( evaluate( separated_edge2 ).active );
-  EXPECT_FALSE( evaluate( nonopposing_edge2 ).active );
-  EXPECT_FALSE( evaluate( zero_tangent_edge2 ).active );
+  EXPECT_FALSE( evaluateMidpointTraction( separated_edge2 ).active );
+  EXPECT_FALSE( evaluateMidpointTraction( nonopposing_edge2 ).active );
+  EXPECT_FALSE( evaluateMidpointTraction( zero_tangent_edge2 ).active );
 }
 
 // A gap offset opens the centroid while leaving one of two Gauss points compressive. Only that point contributes.
