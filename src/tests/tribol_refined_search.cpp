@@ -144,13 +144,13 @@ TEST_P( RefinedSearchTest, retains_pairs_without_projected_overlap )
              ( PairIds{ { 0, 0 } } ) );
 }
 
-// Quadratic endpoint chords can have the same orientation even when curved child segments oppose. Keep the pair so
+// Quadratic endpoint chords can have the same orientation even when curved subelements oppose. Keep the pair so
 // subdivision quadrature can perform the local orientation and overlap checks.
 TEST_P( RefinedSearchTest, retains_quadratic_pairs_with_nonopposing_endpoint_chords )
 {
   // Mesh1 is a straight quadratic edge from (0, 0) to (1, 0) with midpoint (0.5, 0). Mesh2 shares the same endpoint
   // direction from (0, edge_gap) to (1, edge_gap), but its midpoint at (-1, edge_gap) reverses the first half so a
-  // subdivided child segment still opposes mesh1.
+  // subdivided subelement still opposes mesh1.
   const auto x = copyToExecutionSpace<tribol::RealT>( { 0.0, 1.0, 0.5, 0.0, 1.0, -1.0 } );
   const auto y = copyToExecutionSpace<tribol::RealT>( { 0.0, 0.0, 0.0, edge_gap, edge_gap, edge_gap } );
   const auto integration_conn = copyToExecutionSpace<tribol::IndexT>( { 0, 1, 2 } );

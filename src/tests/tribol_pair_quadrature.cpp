@@ -52,22 +52,22 @@ static_assert( PairRuleGenerator<QuadraticCommonPlaneRule> );
 static_assert( QuadraticCommonPlaneRule::max_num_points ==
                max_num_quadrature_subdivisions * max_num_quadrature_subdivisions );
 
-/** @brief Return one fixed point for every usable linear child pair. */
-struct FixedChildPairRuleGenerator {
-  using Geometry1 = LinearEdgeGeometry;                   ///< First child chord geometry.
-  using Geometry2 = LinearEdgeGeometry;                   ///< Second child chord geometry.
-  static constexpr int max_num_points = 1;                ///< One point emitted for each child pair.
+/** @brief Return one fixed point for every usable linear subelement pair. */
+struct FixedSubelementPairRuleGenerator {
+  using Geometry1 = LinearEdgeGeometry;                   ///< First subelement chord geometry.
+  using Geometry2 = LinearEdgeGeometry;                   ///< Second subelement chord geometry.
+  static constexpr int max_num_points = 1;                ///< One point emitted for each subelement pair.
   static constexpr int polynomial_order = 0;              ///< Fixed rule has no polynomial exactness claim.
-  using Rule = PairQuadratureRule<1, 1, max_num_points>;  ///< Local child-pair rule.
+  using Rule = PairQuadratureRule<1, 1, max_num_points>;  ///< Local subelement-pair rule.
 
   QuadratureStatus status = QuadratureStatus::Success;  ///< Configured result for failure-forwarding tests.
   IndexT required_points = max_num_points;              ///< Point count reported with the configured status.
 
   /**
-   * @brief Generate one asymmetric child coordinate and a recognizable physical weight.
-   * @param geometry1 First child geometry, unused after the wrapper validates its chord.
-   * @param geometry2 Second child geometry, unused after the wrapper validates its chord.
-   * @return Configured status or one initialized child-pair point.
+   * @brief Generate one asymmetric subelement coordinate and a recognizable physical weight.
+   * @param geometry1 First subelement geometry, unused after the wrapper validates its chord.
+   * @param geometry2 Second subelement geometry, unused after the wrapper validates its chord.
+   * @return Configured status or one initialized subelement-pair point.
    */
   TRIBOL_HOST_DEVICE Rule generate( const Geometry1& TRIBOL_UNUSED_PARAM( geometry1 ),
                                     const Geometry2& TRIBOL_UNUSED_PARAM( geometry2 ) ) const
@@ -83,10 +83,10 @@ struct FixedChildPairRuleGenerator {
   }
 };
 
-using FixedSubdividedRule = SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, FixedChildPairRuleGenerator,
+using FixedSubdividedRule = SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, FixedSubelementPairRuleGenerator,
                                                                   max_num_quadrature_subdivisions>;
 static_assert( PairRuleGenerator<FixedSubdividedRule> );
-static_assert( FixedSubdividedRule::polynomial_order == FixedChildPairRuleGenerator::polynomial_order );
+static_assert( FixedSubdividedRule::polynomial_order == FixedSubelementPairRuleGenerator::polynomial_order );
 
 // QuadraticEdgeGeometry must interpolate endpoint and midpoint positions and return the local tangent and outward
 // unit normal at the midpoint.
@@ -135,12 +135,12 @@ TEST( QuadraticEdgeGeometry, rejects_zero_and_nonfinite_tangents )
       QuadraticEdgeGeometry( nonfinite_tangent_coords.view() ).unitNormal( midpoint_coordinate.view(), normal ) );
 }
 
-// SubdividedPairQuadratureRuleGenerator must visit every child-chord pair across supported subdivision counts, map
-// asymmetric child coordinates back to parent [-1, 1] space, and keep inner physical weights unchanged.
-TEST( SubdividedPairQuadrature, evaluates_every_child_pair_and_preserves_inner_weights )
+// SubdividedPairQuadratureRuleGenerator must visit every subelement-chord pair across supported subdivision counts,
+// map asymmetric subelement coordinates back to element [-1, 1] space, and keep inner physical weights unchanged.
+TEST( SubdividedPairQuadrature, evaluates_every_subelement_pair_and_preserves_inner_weights )
 {
   // Two curved, oppositely directed quadratic edges on x in [-1, 1] with bowed midpoints at (0, 0.2) and (0, 0.3) so
-  // every subdivided child chord is nondegenerate.
+  // every subdivided subelement chord is nondegenerate.
   const MdArray<RealT, 3, 2> coords1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 },
                                       MdArray<RealT, 2>{ 0.0, 0.2 } };
   const MdArray<RealT, 3, 2> coords2{ MdArray<RealT, 2>{ 1.0, 0.1 }, MdArray<RealT, 2>{ -1.0, 0.1 },
@@ -153,11 +153,11 @@ TEST( SubdividedPairQuadrature, evaluates_every_child_pair_and_preserves_inner_w
     const IndexT expected_num_points = num_subdivisions * num_subdivisions;
     ASSERT_EQ( rule.metadata.status, QuadratureStatus::Success );
     ASSERT_EQ( rule.metadata.num_required_points, expected_num_points );
-    for ( int child1 = 0; child1 < num_subdivisions; ++child1 ) {
-      for ( int child2 = 0; child2 < num_subdivisions; ++child2 ) {
-        const IndexT point = child1 * num_subdivisions + child2;
-        const RealT expected_coordinate1 = -1.0 + ( 2.0 * static_cast<RealT>( child1 ) + 0.5 ) / num_subdivisions;
-        const RealT expected_coordinate2 = -1.0 + ( 2.0 * static_cast<RealT>( child2 ) + 1.5 ) / num_subdivisions;
+    for ( int subelement1 = 0; subelement1 < num_subdivisions; ++subelement1 ) {
+      for ( int subelement2 = 0; subelement2 < num_subdivisions; ++subelement2 ) {
+        const IndexT point = subelement1 * num_subdivisions + subelement2;
+        const RealT expected_coordinate1 = -1.0 + ( 2.0 * static_cast<RealT>( subelement1 ) + 0.5 ) / num_subdivisions;
+        const RealT expected_coordinate2 = -1.0 + ( 2.0 * static_cast<RealT>( subelement2 ) + 1.5 ) / num_subdivisions;
         EXPECT_NEAR( rule.geom1_parametric_coords( point, 0 ), expected_coordinate1, tolerance );
         EXPECT_NEAR( rule.geom2_parametric_coords( point, 0 ), expected_coordinate2, tolerance );
         EXPECT_EQ( rule.weights[point], 7.0 );
@@ -169,25 +169,26 @@ TEST( SubdividedPairQuadrature, evaluates_every_child_pair_and_preserves_inner_w
 // A non-Success status and required point count from the inner linear rule generator must be forwarded directly.
 TEST( SubdividedPairQuadrature, forwards_inner_failure_status_and_required_count )
 {
-  // Two valid, oppositely directed horizontal quadratic edges on x in [-1, 1] at y=0.0 and y=0.1 so child chords pass
-  // validation and reach the inner rule generator.
+  // Two valid, oppositely directed horizontal quadratic edges on x in [-1, 1] at y=0.0 and y=0.1 so subelement chords
+  // pass validation and reach the inner rule generator.
   const MdArray<RealT, 3, 2> coords1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 },
                                       MdArray<RealT, 2>{ 0.0, 0.0 } };
   const MdArray<RealT, 3, 2> coords2{ MdArray<RealT, 2>{ 1.0, 0.1 }, MdArray<RealT, 2>{ -1.0, 0.1 },
                                       MdArray<RealT, 2>{ 0.0, 0.1 } };
   constexpr IndexT inner_required_points = 4;
   const auto rule = FixedSubdividedRule{ default_num_quadrature_subdivisions,
-                                         FixedChildPairRuleGenerator{ QuadratureStatus::InsufficientCapacity,
-                                                                      inner_required_points } }
+                                         FixedSubelementPairRuleGenerator{ QuadratureStatus::InsufficientCapacity,
+                                                                           inner_required_points } }
                         .generate( QuadraticEdgeGeometry( coords1.view() ), QuadraticEdgeGeometry( coords2.view() ) );
   EXPECT_EQ( rule.metadata.status, QuadratureStatus::InsufficientCapacity );
   EXPECT_EQ( rule.metadata.num_required_points, inner_required_points );
 }
 
-// When every subdivided child chord on both edges is degenerate, rule generation must return Success with zero points.
-TEST( SubdividedPairQuadrature, returns_successful_empty_rule_when_all_children_are_unusable )
+// When every subdivided subelement chord on both edges is degenerate, rule generation must return Success with zero
+// points.
+TEST( SubdividedPairQuadrature, returns_successful_empty_rule_when_all_subelements_are_unusable )
 {
-  // Collapsed quadratic edges with all three nodes at the origin so every child chord has zero length.
+  // Collapsed quadratic edges with all three nodes at the origin so every subelement chord has zero length.
   const MdArray<RealT, 3, 2> collapsed_coords{};
   const auto rule = FixedSubdividedRule{ default_num_quadrature_subdivisions }.generate(
       QuadraticEdgeGeometry( collapsed_coords.view() ), QuadraticEdgeGeometry( collapsed_coords.view() ) );
@@ -195,9 +196,9 @@ TEST( SubdividedPairQuadrature, returns_successful_empty_rule_when_all_children_
   EXPECT_EQ( rule.metadata.num_required_points, 0 );
 }
 
-// Subdivided common-plane quadrature must map linear child points back to matching physical locations on both
-// quadratic parent edges and sum weights to the full overlap length.
-TEST( SubdividedPairQuadrature, maps_linear_child_rules_back_to_quadratic_parents )
+// Subdivided common-plane quadrature must map linear subelement points back to matching physical locations on both
+// quadratic surface elements and sum weights to the full overlap length.
+TEST( SubdividedPairQuadrature, maps_linear_subelement_rules_back_to_quadratic_elements )
 {
   // Two straight, oppositely directed quadratic edges spanning x in [-1, 1] at y=0.0 and y=-0.1 (overlap length 2.0).
   const MdArray<RealT, 3, 2> coords1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 },
@@ -212,20 +213,20 @@ TEST( SubdividedPairQuadrature, maps_linear_child_rules_back_to_quadratic_parent
   ASSERT_EQ( rule.metadata.num_required_points, default_num_quadrature_subdivisions );
   RealT total_weight = 0.0;
   for ( IndexT point = 0; point < rule.metadata.num_required_points; ++point ) {
-    const MdArray<RealT, 1> parent_coordinate1{ rule.geom1_parametric_coords( point, 0 ) };
-    const MdArray<RealT, 1> parent_coordinate2{ rule.geom2_parametric_coords( point, 0 ) };
-    EXPECT_NEAR( geometry1.position( parent_coordinate1.view() )[0], geometry2.position( parent_coordinate2.view() )[0],
-                 tolerance );
+    const MdArray<RealT, 1> element_coordinate1{ rule.geom1_parametric_coords( point, 0 ) };
+    const MdArray<RealT, 1> element_coordinate2{ rule.geom2_parametric_coords( point, 0 ) };
+    EXPECT_NEAR( geometry1.position( element_coordinate1.view() )[0],
+                 geometry2.position( element_coordinate2.view() )[0], tolerance );
     total_weight += rule.weights[point];
   }
   EXPECT_NEAR( total_weight, 2.0, tolerance );
 }
 
-// A degenerate child segment on one edge must be skipped without discarding valid overlap on the remaining children.
-TEST( SubdividedPairQuadrature, skips_degenerate_children_and_keeps_remaining_overlap )
+// A degenerate subelement on one edge must be skipped without discarding valid overlap on the remaining subelements.
+TEST( SubdividedPairQuadrature, skips_degenerate_subelements_and_keeps_remaining_overlap )
 {
-  // Geometry1's first endpoint and midpoint coincide, so its first child is unusable. The second child still spans the
-  // complete physical interval and must be paired with both valid children from geometry2.
+  // Geometry1's first endpoint and midpoint coincide, so its first subelement is unusable. The second subelement still
+  // spans the complete physical interval and must be paired with both valid subelements from geometry2.
   const MdArray<RealT, 3, 2> coords1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 },
                                       MdArray<RealT, 2>{ 0.0, 0.0 } };
   const MdArray<RealT, 3, 2> coords2{ MdArray<RealT, 2>{ 2.0, -0.1 }, MdArray<RealT, 2>{ 0.0, -0.1 },

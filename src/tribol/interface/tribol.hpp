@@ -167,11 +167,11 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
 void setQuadratureOrder( IndexT cs_id, int order );
 
 /**
- * @brief Enable or disable uniform parent-element quadrature subdivision and set the number of subdivisions.
+ * @brief Enable or disable uniform surface-element quadrature subdivision and set the number of subdivisions.
  * @param cs_id Registered coupling scheme ID.
  * @param enabled True to use pair-local quadrature subdivision directly on quadratic elements (disabling LOR); false to
  * disable subdivision and restore LOR transfer.
- * @param num_subdivisions Number of child intervals on each parent element when enabled.
+ * @param num_subdivisions Number of uniform subelements on each surface element when enabled.
  * @note Requires opted-in quadratic MFEM COMMON_PLANE contact. Energy Mortar retains its current quadrature path.
  * Reports a SLIC error for other methods, non-quadratic coordinate orders, or subdivision counts outside the supported
  * range when enabled.
