@@ -20,35 +20,35 @@ namespace tribol {
  * @brief Generate parent-edge quadrature by applying a linear rule to every pair of uniform child chords.
  * @tparam ParentGeometry Current parent geometry evaluated in one parametric coordinate.
  * @tparam InnerPairRuleGenerator Rule generator operating on two linear child edges.
- * @tparam MaxSubdivisionCount Largest accepted number of children on either parent.
+ * @tparam MaxNumSubdivisions Largest accepted number of children on either parent.
  */
-template <typename ParentGeometry, PairRuleGenerator InnerPairRuleGenerator, int MaxSubdivisionCount>
+template <typename ParentGeometry, PairRuleGenerator InnerPairRuleGenerator, int MaxNumSubdivisions>
   requires( ParentGeometry::parametric_dim == 1 && InnerPairRuleGenerator::Geometry1::parametric_dim == 1 &&
             InnerPairRuleGenerator::Geometry2::parametric_dim == 1 &&
             requires { typename std::integral_constant<int, InnerPairRuleGenerator::max_num_points>; } )
 class SubdividedPairQuadratureRuleGenerator {
  public:
-  using Geometry1 = ParentGeometry;                                  ///< First parent-element geometry.
-  using Geometry2 = ParentGeometry;                                  ///< Second parent-element geometry.
-  static constexpr int max_subdivision_count = MaxSubdivisionCount;  ///< Fixed child count bound.
+  using Geometry1 = ParentGeometry;                              ///< First parent-element geometry.
+  using Geometry2 = ParentGeometry;                              ///< Second parent-element geometry.
+  static constexpr int max_num_subdivisions = MaxNumSubdivisions;  ///< Fixed upper bound on uniform children.
   static constexpr int max_num_points =
-      MaxSubdivisionCount * MaxSubdivisionCount * InnerPairRuleGenerator::max_num_points;  ///< Fixed point capacity.
+      MaxNumSubdivisions * MaxNumSubdivisions * InnerPairRuleGenerator::max_num_points;  ///< Fixed point capacity.
   static constexpr int polynomial_order = InnerPairRuleGenerator::polynomial_order;  ///< Inner-rule exactness order.
   using Rule = PairQuadratureRule<Geometry1::parametric_dim, Geometry2::parametric_dim,
                                   max_num_points>;  ///< Fixed-capacity parent-coordinate rule.
 
-  static_assert( MaxSubdivisionCount > 0 );
+  static_assert( MaxNumSubdivisions > 0 );
   static_assert( std::same_as<typename InnerPairRuleGenerator::Geometry1, LinearEdgeGeometry> );
   static_assert( std::same_as<typename InnerPairRuleGenerator::Geometry2, LinearEdgeGeometry> );
 
   /**
-   * @brief Store the uniform child count and configured inner generator.
-   * @param subdivision_count Number of children on each parent edge.
+   * @brief Store the number of uniform children and configured inner generator.
+   * @param num_subdivisions Number of children on each parent edge.
    * @param inner_generator Linear child-pair rule generator.
    */
-  TRIBOL_HOST_DEVICE explicit SubdividedPairQuadratureRuleGenerator( int subdivision_count,
+  TRIBOL_HOST_DEVICE explicit SubdividedPairQuadratureRuleGenerator( int num_subdivisions,
                                                                      InnerPairRuleGenerator inner_generator = {} )
-      : subdivision_count_( subdivision_count ), inner_generator_( std::move( inner_generator ) )
+      : num_subdivisions_( num_subdivisions ), inner_generator_( std::move( inner_generator ) )
   {
   }
 
@@ -61,13 +61,13 @@ class SubdividedPairQuadratureRuleGenerator {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Rule generate( const Geometry1& geometry1, const Geometry2& geometry2 ) const
   {
     Rule output{};
-    if ( subdivision_count_ < 1 || subdivision_count_ > MaxSubdivisionCount ) {
+    if ( num_subdivisions_ < 1 || num_subdivisions_ > MaxNumSubdivisions ) {
       output.metadata = { QuadratureStatus::InvalidGeometry, 0 };
       return output;
     }
 
     IndexT output_point = 0;
-    for ( int child1 = 0; child1 < subdivision_count_; ++child1 ) {
+    for ( int child1 = 0; child1 < num_subdivisions_; ++child1 ) {
       const RealT lower1 = parentBound( child1 );
       const RealT upper1 = parentBound( child1 + 1 );
       MdArray<RealT, LinearEdgeGeometry::num_vertices, LinearEdgeGeometry::spatial_dim> child_coords1{};
@@ -76,7 +76,7 @@ class SubdividedPairQuadratureRuleGenerator {
       }
       const LinearEdgeGeometry child_geometry1( child_coords1.view() );
 
-      for ( int child2 = 0; child2 < subdivision_count_; ++child2 ) {
+      for ( int child2 = 0; child2 < num_subdivisions_; ++child2 ) {
         const RealT lower2 = parentBound( child2 );
         const RealT upper2 = parentBound( child2 + 1 );
         MdArray<RealT, LinearEdgeGeometry::num_vertices, LinearEdgeGeometry::spatial_dim> child_coords2{};
@@ -116,7 +116,7 @@ class SubdividedPairQuadratureRuleGenerator {
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT parentBound( int boundary ) const
   {
-    return -1.0 + 2.0 * static_cast<RealT>( boundary ) / static_cast<RealT>( subdivision_count_ );
+    return -1.0 + 2.0 * static_cast<RealT>( boundary ) / static_cast<RealT>( num_subdivisions_ );
   }
 
   /**
@@ -160,7 +160,7 @@ class SubdividedPairQuadratureRuleGenerator {
     return std::isfinite( squared_length ) && squared_length > 0.0;
   }
 
-  int subdivision_count_;                   ///< Number of uniform children on each parent.
+  int num_subdivisions_;                    ///< Number of uniform children on each parent.
   InnerPairRuleGenerator inner_generator_;  ///< Linear child-pair quadrature generator.
 };
 

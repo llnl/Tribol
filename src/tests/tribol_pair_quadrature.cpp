@@ -47,10 +47,10 @@ static_assert( !PairRuleGenerator<PairGeneratorWithoutPairGeneration> );
 
 using LinearCommonPlaneRule = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<1>>;
 using QuadraticCommonPlaneRule = SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, LinearCommonPlaneRule,
-                                                                       maximum_quadrature_subdivision_count>;
+                                                                       max_num_quadrature_subdivisions>;
 static_assert( PairRuleGenerator<QuadraticCommonPlaneRule> );
 static_assert( QuadraticCommonPlaneRule::max_num_points ==
-               maximum_quadrature_subdivision_count * maximum_quadrature_subdivision_count );
+               max_num_quadrature_subdivisions * max_num_quadrature_subdivisions );
 
 /** @brief Return one fixed point for every usable linear child pair. */
 struct FixedChildPairRuleGenerator {
@@ -84,7 +84,7 @@ struct FixedChildPairRuleGenerator {
 };
 
 using FixedSubdividedRule = SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, FixedChildPairRuleGenerator,
-                                                                  maximum_quadrature_subdivision_count>;
+                                                                  max_num_quadrature_subdivisions>;
 static_assert( PairRuleGenerator<FixedSubdividedRule> );
 static_assert( FixedSubdividedRule::polynomial_order == FixedChildPairRuleGenerator::polynomial_order );
 
@@ -147,17 +147,17 @@ TEST( SubdividedPairQuadrature, evaluates_every_child_pair_and_preserves_inner_w
                                       MdArray<RealT, 2>{ 0.0, 0.3 } };
   const QuadraticEdgeGeometry geometry1( coords1.view() );
   const QuadraticEdgeGeometry geometry2( coords2.view() );
-  for ( const int subdivision_count : { minimum_quadrature_subdivision_count, default_quadrature_subdivision_count,
-                                        maximum_quadrature_subdivision_count } ) {
-    const auto rule = FixedSubdividedRule{ subdivision_count }.generate( geometry1, geometry2 );
-    const IndexT expected_point_count = subdivision_count * subdivision_count;
+  for ( const int num_subdivisions : { min_num_quadrature_subdivisions, default_num_quadrature_subdivisions,
+                                        max_num_quadrature_subdivisions } ) {
+    const auto rule = FixedSubdividedRule{ num_subdivisions }.generate( geometry1, geometry2 );
+    const IndexT expected_num_points = num_subdivisions * num_subdivisions;
     ASSERT_EQ( rule.metadata.status, QuadratureStatus::Success );
-    ASSERT_EQ( rule.metadata.num_required_points, expected_point_count );
-    for ( int child1 = 0; child1 < subdivision_count; ++child1 ) {
-      for ( int child2 = 0; child2 < subdivision_count; ++child2 ) {
-        const IndexT point = child1 * subdivision_count + child2;
-        const RealT expected_coordinate1 = -1.0 + ( 2.0 * static_cast<RealT>( child1 ) + 0.5 ) / subdivision_count;
-        const RealT expected_coordinate2 = -1.0 + ( 2.0 * static_cast<RealT>( child2 ) + 1.5 ) / subdivision_count;
+    ASSERT_EQ( rule.metadata.num_required_points, expected_num_points );
+    for ( int child1 = 0; child1 < num_subdivisions; ++child1 ) {
+      for ( int child2 = 0; child2 < num_subdivisions; ++child2 ) {
+        const IndexT point = child1 * num_subdivisions + child2;
+        const RealT expected_coordinate1 = -1.0 + ( 2.0 * static_cast<RealT>( child1 ) + 0.5 ) / num_subdivisions;
+        const RealT expected_coordinate2 = -1.0 + ( 2.0 * static_cast<RealT>( child2 ) + 1.5 ) / num_subdivisions;
         EXPECT_NEAR( rule.geom1_parametric_coords( point, 0 ), expected_coordinate1, tolerance );
         EXPECT_NEAR( rule.geom2_parametric_coords( point, 0 ), expected_coordinate2, tolerance );
         EXPECT_EQ( rule.weights[point], 7.0 );
@@ -176,7 +176,7 @@ TEST( SubdividedPairQuadrature, forwards_inner_failure_status_and_required_count
   const MdArray<RealT, 3, 2> coords2{ MdArray<RealT, 2>{ 1.0, 0.1 }, MdArray<RealT, 2>{ -1.0, 0.1 },
                                       MdArray<RealT, 2>{ 0.0, 0.1 } };
   constexpr IndexT inner_required_points = 4;
-  const auto rule = FixedSubdividedRule{ default_quadrature_subdivision_count,
+  const auto rule = FixedSubdividedRule{ default_num_quadrature_subdivisions,
                                          FixedChildPairRuleGenerator{ QuadratureStatus::InsufficientCapacity,
                                                                       inner_required_points } }
                         .generate( QuadraticEdgeGeometry( coords1.view() ), QuadraticEdgeGeometry( coords2.view() ) );
@@ -189,7 +189,7 @@ TEST( SubdividedPairQuadrature, returns_successful_empty_rule_when_all_children_
 {
   // Collapsed quadratic edges with all three nodes at the origin so every child chord has zero length.
   const MdArray<RealT, 3, 2> collapsed_coords{};
-  const auto rule = FixedSubdividedRule{ default_quadrature_subdivision_count }.generate(
+  const auto rule = FixedSubdividedRule{ default_num_quadrature_subdivisions }.generate(
       QuadraticEdgeGeometry( collapsed_coords.view() ), QuadraticEdgeGeometry( collapsed_coords.view() ) );
   EXPECT_EQ( rule.metadata.status, QuadratureStatus::Success );
   EXPECT_EQ( rule.metadata.num_required_points, 0 );
@@ -206,10 +206,10 @@ TEST( SubdividedPairQuadrature, maps_linear_child_rules_back_to_quadratic_parent
                                       MdArray<RealT, 2>{ 0.0, -0.1 } };
   const QuadraticEdgeGeometry geometry1( coords1.view() );
   const QuadraticEdgeGeometry geometry2( coords2.view() );
-  const auto rule = QuadraticCommonPlaneRule{ default_quadrature_subdivision_count }.generate( geometry1, geometry2 );
+  const auto rule = QuadraticCommonPlaneRule{ default_num_quadrature_subdivisions }.generate( geometry1, geometry2 );
 
   ASSERT_EQ( rule.metadata.status, QuadratureStatus::Success );
-  ASSERT_EQ( rule.metadata.num_required_points, default_quadrature_subdivision_count );
+  ASSERT_EQ( rule.metadata.num_required_points, default_num_quadrature_subdivisions );
   RealT total_weight = 0.0;
   for ( IndexT point = 0; point < rule.metadata.num_required_points; ++point ) {
     const MdArray<RealT, 1> parent_coordinate1{ rule.geom1_parametric_coords( point, 0 ) };
@@ -230,11 +230,11 @@ TEST( SubdividedPairQuadrature, skips_degenerate_children_and_keeps_remaining_ov
                                       MdArray<RealT, 2>{ 0.0, 0.0 } };
   const MdArray<RealT, 3, 2> coords2{ MdArray<RealT, 2>{ 2.0, -0.1 }, MdArray<RealT, 2>{ 0.0, -0.1 },
                                       MdArray<RealT, 2>{ 1.0, -0.1 } };
-  const auto rule = QuadraticCommonPlaneRule{ default_quadrature_subdivision_count }.generate(
+  const auto rule = QuadraticCommonPlaneRule{ default_num_quadrature_subdivisions }.generate(
       QuadraticEdgeGeometry( coords1.view() ), QuadraticEdgeGeometry( coords2.view() ) );
 
   ASSERT_EQ( rule.metadata.status, QuadratureStatus::Success );
-  ASSERT_EQ( rule.metadata.num_required_points, default_quadrature_subdivision_count );
+  ASSERT_EQ( rule.metadata.num_required_points, default_num_quadrature_subdivisions );
   for ( IndexT point = 0; point < rule.metadata.num_required_points; ++point ) {
     EXPECT_GE( rule.geom1_parametric_coords( point, 0 ), 0.0 );
   }

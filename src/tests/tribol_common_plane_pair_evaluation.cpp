@@ -504,7 +504,7 @@ TEST_P( CommonPlaneTest, integrates_penalty_traction_with_quadratic_geometry_and
 {
   using LinearRule = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<1>>;
   using RuleGenerator =
-      SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, LinearRule, maximum_quadrature_subdivision_count>;
+      SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, LinearRule, max_num_quadrature_subdivisions>;
   using Integral = PairTractionIntegral<RuleGenerator, CommonPlanePenaltyTraction<CommonPlaneGap>,
                                         BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
   static_assert( PairFunctionType<Integral> );
@@ -518,14 +518,14 @@ TEST_P( CommonPlaneTest, integrates_penalty_traction_with_quadratic_geometry_and
                                       MdArray<RealT, 2>{ 0.0, 0.0 } };
     const MdArray<RealT, 3, 2> edge2{ MdArray<RealT, 2>{ 1.0, 0.1 }, MdArray<RealT, 2>{ -1.0, 0.1 },
                                       MdArray<RealT, 2>{ 0.0, 0.1 } };
-    const Integral pair_integral{ RuleGenerator{ default_quadrature_subdivision_count }, { 1.0 } };
+    const Integral pair_integral{ RuleGenerator{ default_num_quadrature_subdivisions }, { 1.0 } };
     pair_residuals_view[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
   } );
 
   const ArrayT<Integral::PairResidual, 1, MemorySpace::Host> host_pair_residuals( pair_residuals );
   const auto& residual = host_pair_residuals[0];
   ASSERT_EQ( residual.quadrature_metadata.status, QuadratureStatus::Success );
-  ASSERT_EQ( residual.quadrature_metadata.num_required_points, default_quadrature_subdivision_count );
+  ASSERT_EQ( residual.quadrature_metadata.num_required_points, default_num_quadrature_subdivisions );
   ASSERT_TRUE( residual.has_active_points );
   const MdArray<RealT, 3> expected_geometry1_y{ -0.025, -0.025, -0.15 };
   for ( IndexT node = 0; node < expected_geometry1_y.size(); ++node ) {
@@ -821,7 +821,7 @@ TEST( CommonPlaneJacobian, matches_finite_differences )
 
   using LinearRule = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<1>>;
   using RuleGenerator =
-      SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, LinearRule, maximum_quadrature_subdivision_count>;
+      SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, LinearRule, max_num_quadrature_subdivisions>;
   using QuadraticPairIntegral = PairTractionIntegral<RuleGenerator, CommonPlanePenaltyTraction<CommonPlaneGap>,
                                                      BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
   // Two curved, non-parallel, interpenetrating quadratic edges whose midpoints are bowed upward and shifted so every
@@ -830,7 +830,7 @@ TEST( CommonPlaneJacobian, matches_finite_differences )
                                     MdArray<RealT, 2>{ 0.0, 0.25 } };
   const QuadraticCoordinates edge2{ MdArray<RealT, 2>{ 1.3, 0.35 }, MdArray<RealT, 2>{ -1.1, 0.4 },
                                     MdArray<RealT, 2>{ 0.15, 0.55 } };
-  const QuadraticPairIntegral pair_integral{ RuleGenerator{ default_quadrature_subdivision_count }, { 2.5 } };
+  const QuadraticPairIntegral pair_integral{ RuleGenerator{ default_num_quadrature_subdivisions }, { 2.5 } };
   ASSERT_TRUE( pair_integral.evaluate( edge1.view(), edge2.view() ).has_active_points );
   checkPairJacobian( pair_integral, edge1, edge2, 3.0e-7 );
 }

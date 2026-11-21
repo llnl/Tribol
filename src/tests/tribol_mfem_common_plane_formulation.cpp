@@ -8,8 +8,8 @@
  * @brief Verify public Common Plane formulation configuration and assembly with MFEM meshes.
  *
  * Tests cover formulation selection and rebuilding, residual and Jacobian modes, quadrature and penalty settings,
- * direct quadratic coordinates, reversible low-order refinement, and MPI ranks without contact elements.
- * Pair-level quadrature and derivatives are tested separately.
+ * quadratic 2D meshes evaluated without low-order refinement (and restoring LOR when disabled), and MPI ranks without
+ * contact elements. Pair-level quadrature and derivatives are tested separately.
  */
 #include <cmath>
 #include <limits>
@@ -782,8 +782,11 @@ TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
   setResidualGap( coupling_scheme_id, 0.0 );
   constexpr int unsupported_quadrature_order = 3;
   EXPECT_SLIC_ERROR( setQuadratureOrder( coupling_scheme_id, unsupported_quadrature_order ) );
-  EXPECT_SLIC_ERROR( setQuadratureSubdivisionCount( coupling_scheme_id, default_quadrature_subdivision_count ) );
+  EXPECT_SLIC_ERROR(
+      enableQuadratureSubdivision( coupling_scheme_id, true, default_num_quadrature_subdivisions ) );
   enable( false );
+  EXPECT_SLIC_ERROR(
+      enableQuadratureSubdivision( coupling_scheme_id, true, default_num_quadrature_subdivisions ) );
   for ( int order = minimum_supported_quadrature_order; order <= maximum_supported_quadrature_order; ++order ) {
     setQuadratureOrder( coupling_scheme_id, order );
     EXPECT_FALSE( scheme().hasContactFormulation() );
@@ -841,15 +844,16 @@ TEST( CommonPlaneSelection, rejects_unsupported_methods_models_and_cases )
   }
 }
 
-// Coordinate orders above quadratic and three-dimensional parent meshes are rejected before selection.
-TEST( CommonPlaneSelection, rejects_unsupported_order_and_three_dimensional_geometry )
+// Curved 2D coordinate spaces without LOR subdivision and three-dimensional parent meshes are rejected before
+// selection.
+TEST( CommonPlaneSelection, rejects_higher_order_without_lor_and_three_dimensional_geometry )
 {
   constexpr int spatial_dim = 2;
   constexpr int three_dimensional = 3;
   for ( const int geometry_dim : { spatial_dim, three_dimensional } ) {
     constexpr int linear_order = 1;
-    constexpr int unsupported_order = 3;
-    const int coordinate_order = geometry_dim == spatial_dim ? unsupported_order : linear_order;
+    constexpr int quadratic_order = 2;
+    const int coordinate_order = geometry_dim == spatial_dim ? quadratic_order : linear_order;
     constexpr int horizontal_element_count = 1;
     constexpr int vertical_element_count = 1;
     mfem::ParMesh parent_mesh = shared::ParMeshBuilder(
@@ -872,6 +876,12 @@ TEST( CommonPlaneSelection, rejects_unsupported_order_and_three_dimensional_geom
     constexpr RealT upper_mesh_penalty = 6.0;
     setMfemKinematicConstantPenalty( coupling_scheme_id, lower_mesh_penalty, upper_mesh_penalty );
     auto& coupling_scheme = CouplingSchemeManager::getInstance().at( coupling_scheme_id );
+    if ( geometry_dim == spatial_dim ) {
+      // Disable LOR transfer on the quadratic 2D mesh so Common Plane sees an unrefined higher-order surface.
+      coupling_scheme.setMfemMeshData( std::make_unique<MfemMeshData>(
+          lower_mesh_id, upper_mesh_id, parent_mesh, coordinates, std::set<int>{ mesh_boundary_attribute_1 },
+          std::set<int>{ mesh_boundary_attribute_2 }, ExecutionMode::Sequential, MemorySpace::Host, false ) );
+    }
     EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false ) );
     EXPECT_FALSE( coupling_scheme.hasContactFormulation() );
     EXPECT_FALSE( coupling_scheme.hasMfemJacobianData() );
@@ -879,9 +889,9 @@ TEST( CommonPlaneSelection, rejects_unsupported_order_and_three_dimensional_geom
   }
 }
 
-// Quadratic 2D coordinates disable LOR while the Common Plane formulation is active, evaluate direct quadratic
-// residuals and finite-difference-verified Jacobians on parent-mesh true DOFs, and restore LOR when disabled.
-TEST( CommonPlaneSelection, evaluates_quadratic_residuals_and_jacobians_without_lor )
+// Higher-order 2D coordinates transferred through an LOR mesh match legacy one-point residuals and finite-difference
+// checks of the residual Jacobian on parent-mesh displacement true DOFs.
+TEST( CommonPlaneSelection, evaluates_residuals_and_jacobians_with_lor_subdivision )
 {
   constexpr int lower_boundary_edge_count = 2;
   constexpr int upper_boundary_edge_count = 3;
@@ -920,14 +930,7 @@ TEST( CommonPlaneSelection, evaluates_quadratic_residuals_and_jacobians_without_
   constexpr RealT upper_mesh_penalty = 6.0;
   setMfemKinematicConstantPenalty( coupling_scheme_id, lower_mesh_penalty, upper_mesh_penalty );
 
-  auto& coupling_scheme = CouplingSchemeManager::getInstance().at( coupling_scheme_id );
-  setQuadratureSubdivisionCount( coupling_scheme_id, minimum_quadrature_subdivision_count );
-  EXPECT_EQ( coupling_scheme.getParameters().quadrature_subdivision_count, minimum_quadrature_subdivision_count );
-  setQuadratureSubdivisionCount( coupling_scheme_id, maximum_quadrature_subdivision_count );
-  EXPECT_EQ( coupling_scheme.getParameters().quadrature_subdivision_count, maximum_quadrature_subdivision_count );
-  EXPECT_SLIC_ERROR( setQuadratureSubdivisionCount( coupling_scheme_id, minimum_quadrature_subdivision_count - 1 ) );
-  EXPECT_SLIC_ERROR( setQuadratureSubdivisionCount( coupling_scheme_id, maximum_quadrature_subdivision_count + 1 ) );
-  setQuadratureSubdivisionCount( coupling_scheme_id, default_quadrature_subdivision_count );
+  const auto& coupling_scheme = CouplingSchemeManager::getInstance().at( coupling_scheme_id );
   ASSERT_NE( coupling_scheme.getMfemMeshData()->GetLORMesh(), nullptr );
   EXPECT_EQ( coupling_scheme.getMfemMeshData()->GetLORFactor(), quadratic_order );
   EXPECT_TRUE( coupling_scheme.getMfemMeshData()->IsLORFieldTransferEnabled() );
@@ -949,9 +952,138 @@ TEST( CommonPlaneSelection, evaluates_quadratic_residuals_and_jacobians_without_
   ASSERT_GT( norm( legacy_true_residual ), 0.0 );
 
   setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false );
+  EXPECT_NE( coupling_scheme.getMfemMeshData()->GetLORMesh(), nullptr );
+  EXPECT_EQ( coupling_scheme.getMfemMeshData()->GetLORFactor(), quadratic_order );
+  EXPECT_TRUE( coupling_scheme.getMfemMeshData()->IsLORFieldTransferEnabled() );
+  setQuadratureOrder( coupling_scheme_id, one_point_polynomial_order );
+  evaluate();
+  EXPECT_EQ( getMfemDfDx( coupling_scheme_id ), nullptr );
+  auto residual_difference = getMfemContactResidual( coupling_scheme_id );
+  residual_difference += legacy_true_residual;
+  constexpr RealT residual_tolerance = 1.0e-11;
+  EXPECT_LT( norm( residual_difference ), residual_tolerance );
+
+#ifdef TRIBOL_USE_ENZYME
+  // Enable the Jacobian, then override the LOR factor while the formulation is active and verify the residual Jacobian
+  // on parent-mesh displacement true DOFs via finite differences.
+  constexpr int overridden_lor_factor = 3;
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, true );
+  setMfemLORFactor( coupling_scheme_id, overridden_lor_factor );
+  EXPECT_FALSE( coupling_scheme.hasContactFormulation() );
+  EXPECT_TRUE( coupling_scheme.hasMfemJacobianData() );
+  EXPECT_EQ( coupling_scheme.getMfemMeshData()->GetLORFactor(), overridden_lor_factor );
+  evaluate();
+  auto assembled_jacobian = getMfemDfDx( coupling_scheme_id );
+  ASSERT_NE( assembled_jacobian, nullptr );
+
+  const mfem::ParGridFunction original_coordinates( coordinates );
+  mfem::VectorFunctionCoefficient coordinate_direction_coefficient( spatial_dim,
+                                                                    []( const mfem::Vector& x, mfem::Vector& v ) {
+                                                                      v.SetSize( spatial_dim );
+                                                                      v[0] = 0.03 * x[0] + 0.01 * x[1];
+                                                                      v[1] = 0.02 * x[0] - 0.04 * x[1];
+                                                                    } );
+  mfem::ParGridFunction coordinate_direction( &coordinate_space );
+  coordinate_direction.ProjectCoefficient( coordinate_direction_coefficient );
+  mfem::Vector coordinate_true_direction;
+  coordinate_direction.GetTrueDofs( coordinate_true_direction );
+  mfem::Vector jacobian_action( coordinate_true_direction.Size() );
+  assembled_jacobian->Mult( coordinate_true_direction, jacobian_action );
+  ASSERT_GT( norm( jacobian_action ), 0.0 );
+  const RealT jacobian_action_norm = norm( jacobian_action );
+
+  constexpr RealT finite_difference_step = 1.0e-6;
+  constexpr RealT finite_difference_tolerance = 1.0e-7;
+  coordinates = original_coordinates;
+  coordinates.Add( finite_difference_step, coordinate_direction );
+  evaluate();
+  const auto increased_coordinate_residual = getMfemContactResidual( coupling_scheme_id );
+  coordinates = original_coordinates;
+  coordinates.Add( -finite_difference_step, coordinate_direction );
+  evaluate();
+  auto finite_difference_error = getMfemContactResidual( coupling_scheme_id );
+  finite_difference_error.Neg();
+  finite_difference_error += increased_coordinate_residual;
+  finite_difference_error /= 2.0 * finite_difference_step;
+  finite_difference_error -= jacobian_action;
+  EXPECT_LT( norm( finite_difference_error ), finite_difference_tolerance * ( 1.0 + jacobian_action_norm ) );
+#endif
+
+  finalize();
+}
+
+// Opting into quadrature subdivision on a quadratic 2D mesh disables LOR, evaluates direct quadratic residuals and
+// finite-difference-verified Jacobians on parent-mesh true DOFs, and restores LOR when disabled.
+TEST( CommonPlaneSelection, evaluates_quadratic_residuals_and_jacobians_with_subdivision )
+{
+  constexpr int lower_boundary_edge_count = 2;
+  constexpr int upper_boundary_edge_count = 3;
+  constexpr int vertical_element_count = 1;
+  constexpr int upper_contact_boundary_attribute = 5;
+  constexpr int upper_noncontact_boundary_attribute = 6;
+  constexpr int upper_body_attribute = 2;
+  // Two quadratic unit-square bodies: lower has 2 contact edges on y=1.0, upper has 3 contact edges on y=0.99 shifted
+  // right by 0.13 so overlap endpoints do not coincide under coordinate perturbations.
+  mfem::ParMesh parent_mesh = shared::ParMeshBuilder(
+      MPI_COMM_WORLD, shared::MeshBuilder::Unify(
+                          { shared::MeshBuilder::SquareMesh( lower_boundary_edge_count, vertical_element_count ),
+                            shared::MeshBuilder::SquareMesh( upper_boundary_edge_count, vertical_element_count )
+                                .translate( { 0.13, 0.99 } )
+                                .updateBdrAttrib( 1, upper_contact_boundary_attribute )
+                                .updateBdrAttrib( 3, upper_noncontact_boundary_attribute )
+                                .updateAttrib( 1, upper_body_attribute ) } ) );
+  constexpr int spatial_dim = 2;
+  constexpr int quadratic_order = 2;
+  parent_mesh.SetCurvature( quadratic_order, /*discont=*/false, /*space_dim=*/spatial_dim, mfem::Ordering::byVDIM );
+  auto* parent_mesh_nodes = dynamic_cast<mfem::ParGridFunction*>( parent_mesh.GetNodes() );
+  ASSERT_NE( parent_mesh_nodes, nullptr );
+  auto& coordinate_space = *parent_mesh_nodes->ParFESpace();
+  mfem::ParGridFunction coordinates( &coordinate_space );
+  coordinates = *parent_mesh_nodes;
+
+  constexpr IndexT coupling_scheme_id = 0;
+  constexpr IndexT lower_mesh_id = 0;
+  constexpr IndexT upper_mesh_id = 1;
+  constexpr int lower_contact_boundary_attribute = 3;
+  registerMfemCouplingScheme( coupling_scheme_id, lower_mesh_id, upper_mesh_id, parent_mesh, coordinates,
+                              { lower_contact_boundary_attribute }, { upper_contact_boundary_attribute },
+                              SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE, FRICTIONLESS, PENALTY, BINNING_GRID,
+                              ExecutionMode::Sequential );
+  constexpr RealT lower_mesh_penalty = 2.0;
+  constexpr RealT upper_mesh_penalty = 6.0;
+  setMfemKinematicConstantPenalty( coupling_scheme_id, lower_mesh_penalty, upper_mesh_penalty );
+
+  auto& coupling_scheme = CouplingSchemeManager::getInstance().at( coupling_scheme_id );
+  // Subdivision requires opted-in Common Plane; calls before selection must fail without disabling LOR.
+  EXPECT_SLIC_ERROR(
+      enableQuadratureSubdivision( coupling_scheme_id, true, default_num_quadrature_subdivisions ) );
+  ASSERT_NE( coupling_scheme.getMfemMeshData()->GetLORMesh(), nullptr );
+  EXPECT_EQ( coupling_scheme.getMfemMeshData()->GetLORFactor(), quadratic_order );
+  EXPECT_TRUE( coupling_scheme.getMfemMeshData()->IsLORFieldTransferEnabled() );
+
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false );
+  enableQuadratureSubdivision( coupling_scheme_id, true, min_num_quadrature_subdivisions );
+  EXPECT_TRUE( coupling_scheme.getParameters().use_quadrature_subdivision );
+  EXPECT_EQ( coupling_scheme.getParameters().num_quadrature_subdivisions, min_num_quadrature_subdivisions );
+  enableQuadratureSubdivision( coupling_scheme_id, true, max_num_quadrature_subdivisions );
+  EXPECT_EQ( coupling_scheme.getParameters().num_quadrature_subdivisions, max_num_quadrature_subdivisions );
+  EXPECT_SLIC_ERROR(
+      enableQuadratureSubdivision( coupling_scheme_id, true, min_num_quadrature_subdivisions - 1 ) );
+  EXPECT_SLIC_ERROR(
+      enableQuadratureSubdivision( coupling_scheme_id, true, max_num_quadrature_subdivisions + 1 ) );
+  enableQuadratureSubdivision( coupling_scheme_id, true, default_num_quadrature_subdivisions );
   EXPECT_EQ( coupling_scheme.getMfemMeshData()->GetLORMesh(), nullptr );
   EXPECT_EQ( coupling_scheme.getMfemMeshData()->GetLORFactor(), 0 );
   EXPECT_FALSE( coupling_scheme.getMfemMeshData()->IsLORFieldTransferEnabled() );
+
+  const auto norm = []( const mfem::Vector& v ) { return std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, v, v ) ); };
+  const auto evaluate = [&]() {
+    constexpr int contact_rank_count = 1;
+    updateMfemParallelDecomposition( contact_rank_count, true );
+    RealT dt = 1.0;
+    ASSERT_EQ( update( coupling_scheme_id, 0.0, dt ), 0 );
+  };
+
   setQuadratureOrder( coupling_scheme_id, one_point_polynomial_order );
   evaluate();
   EXPECT_EQ( getMfemDfDx( coupling_scheme_id ), nullptr );
@@ -961,12 +1093,12 @@ TEST( CommonPlaneSelection, evaluates_quadratic_residuals_and_jacobians_without_
 #ifdef TRIBOL_USE_ENZYME
   // Enable the Jacobian, then change pair-local subdivision and verify the residual Jacobian on parent-mesh
   // displacement true DOFs via finite differences.
-  constexpr int overridden_subdivision_count = 3;
+  constexpr int overridden_num_subdivisions = 3;
   setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, true );
-  setQuadratureSubdivisionCount( coupling_scheme_id, overridden_subdivision_count );
+  enableQuadratureSubdivision( coupling_scheme_id, true, overridden_num_subdivisions );
   EXPECT_FALSE( coupling_scheme.hasContactFormulation() );
   EXPECT_TRUE( coupling_scheme.hasMfemJacobianData() );
-  EXPECT_EQ( coupling_scheme.getParameters().quadrature_subdivision_count, overridden_subdivision_count );
+  EXPECT_EQ( coupling_scheme.getParameters().num_quadrature_subdivisions, overridden_num_subdivisions );
   EXPECT_EQ( coupling_scheme.getMfemMeshData()->GetLORMesh(), nullptr );
   evaluate();
   auto assembled_jacobian = getMfemDfDx( coupling_scheme_id );
@@ -1005,7 +1137,18 @@ TEST( CommonPlaneSelection, evaluates_quadratic_residuals_and_jacobians_without_
   EXPECT_LT( norm( finite_difference_error ), finite_difference_tolerance * ( 1.0 + jacobian_action_norm ) );
 #endif
 
+  // Disabling quadrature subdivision restores LOR while keeping Common Plane active.
+  enableQuadratureSubdivision( coupling_scheme_id, false );
+  EXPECT_FALSE( coupling_scheme.getParameters().use_quadrature_subdivision );
+  EXPECT_NE( coupling_scheme.getMfemMeshData()->GetLORMesh(), nullptr );
+  EXPECT_EQ( coupling_scheme.getMfemMeshData()->GetLORFactor(), quadratic_order );
+  EXPECT_TRUE( coupling_scheme.getMfemMeshData()->IsLORFieldTransferEnabled() );
+
+  // Re-enabling subdivision and then disabling Common Plane must also reset subdivision and restore LOR.
+  enableQuadratureSubdivision( coupling_scheme_id, true, default_num_quadrature_subdivisions );
+  EXPECT_EQ( coupling_scheme.getMfemMeshData()->GetLORMesh(), nullptr );
   setMfemUseCommonPlaneFormulation( coupling_scheme_id, false );
+  EXPECT_FALSE( coupling_scheme.getParameters().use_quadrature_subdivision );
   EXPECT_NE( coupling_scheme.getMfemMeshData()->GetLORMesh(), nullptr );
   EXPECT_EQ( coupling_scheme.getMfemMeshData()->GetLORFactor(), quadratic_order );
   EXPECT_TRUE( coupling_scheme.getMfemMeshData()->IsLORFieldTransferEnabled() );

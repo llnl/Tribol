@@ -354,9 +354,11 @@ void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_
   if ( !enabled ) {
     if ( cs->getParameters().use_common_plane_formulation ) {
       cs->getParameters().use_common_plane_formulation = false;
+      const bool restore_lor = cs->getParameters().use_quadrature_subdivision;
+      cs->getParameters().use_quadrature_subdivision = false;
       cs->invalidateContactFormulation();
       cs->setMfemJacobianData( nullptr );
-      if ( cs->getMfemMeshData()->GetParentCoords().ParFESpace()->FEColl()->GetOrder() == 2 ) {
+      if ( restore_lor ) {
         cs->getMfemMeshData()->SetLORFieldTransferEnabled( true );
       }
       // Mesh re-registration can change pair indices while the formulation is active. Search again before using
@@ -373,13 +375,10 @@ void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_
        cs->getParameters().common_plane_compute_jacobian == compute_jacobian ) {
     return;
   }
-  // The current formulation and its outputs can reference transfer data that direct higher-order setup replaces.
+  // A Jacobian-enabled formulation retains MfemJacobianData by reference. Destroy it before replacing transfer data,
+  // then let the next update construct one formulation from the completed configuration.
   cs->invalidateContactFormulation();
-  const bool uses_quadratic_coordinates =
-      cs->getMfemMeshData()->GetParentCoords().ParFESpace()->FEColl()->GetOrder() == 2;
-  if ( uses_quadratic_coordinates ) {
-    cs->getMfemMeshData()->SetLORFieldTransferEnabled( false );
-  } else if ( compute_jacobian ) {
+  if ( compute_jacobian && !cs->getParameters().use_quadrature_subdivision ) {
     cs->getMfemMeshData()->EnableLORJacobianTransfer();
   }
   auto jacobian = compute_jacobian ? std::make_unique<MfemJacobianData>( *cs->getMfemMeshData() ) : nullptr;

@@ -167,14 +167,17 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
 void setQuadratureOrder( IndexT cs_id, int order );
 
 /**
- * @brief Set the uniform parent-element subdivision count used by supported contact quadrature.
+ * @brief Enable or disable uniform parent-element quadrature subdivision and set the number of subdivisions.
  * @param cs_id Registered coupling scheme ID.
- * @param count Number of child intervals on each parent element.
- * @note This release applies subdivision only to quadratic composed Common Plane contact. Energy Mortar retains its
- * current quadrature path. Reports a SLIC error for other methods, coordinate orders, or counts outside the supported
- * range.
+ * @param enabled True to use pair-local quadrature subdivision directly on quadratic elements (disabling LOR); false to
+ * disable subdivision and restore LOR transfer.
+ * @param num_subdivisions Number of child intervals on each parent element when enabled.
+ * @note Requires opted-in quadratic MFEM COMMON_PLANE contact. Energy Mortar retains its current quadrature path.
+ * Reports a SLIC error for other methods, non-quadratic coordinate orders, or subdivision counts outside the supported
+ * range when enabled.
  */
-void setQuadratureSubdivisionCount( IndexT cs_id, int count );
+void enableQuadratureSubdivision( IndexT cs_id, bool enabled,
+                                  int num_subdivisions = default_num_quadrature_subdivisions );
 
 /*!
  *

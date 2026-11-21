@@ -93,9 +93,12 @@ bool validateCommonPlaneFormulation( CouplingScheme& cs, bool compute_jacobian )
   }
   const auto& data = *cs.getMfemMeshData();
   const int order = data.GetParentCoords().ParFESpace()->FEColl()->GetOrder();
+  const bool uses_quadratic_subdivision = order == 2 && cs.getParameters().use_quadrature_subdivision;
   if ( data.GetParentCoords().ParFESpace()->GetParMesh()->SpaceDimension() != 2 ||
-       data.GetParentCoords().ParFESpace()->GetVDim() != 2 || order < 1 || order > 2 ) {
-    SLIC_ERROR_ROOT( "Common Plane supports only 2D linear or quadratic coordinates." );
+       data.GetParentCoords().ParFESpace()->GetVDim() != 2 || order < 1 ||
+       ( order > 1 && !uses_quadratic_subdivision && data.GetLORMesh() == nullptr ) ) {
+    SLIC_ERROR_ROOT( "Common Plane supports only 2D linear, LOR-subdivided higher-order, or subdivided quadratic "
+                     "coordinates." );
     return false;
   }
   const auto* penalty1 = data.GetMesh1KinematicConstantPenalty();
@@ -104,12 +107,12 @@ bool validateCommonPlaneFormulation( CouplingScheme& cs, bool compute_jacobian )
        *penalty2 <= 0.0 || cs.getParameters().residual_gap != 0.0 ||
        cs.getParameters().quadrature_order < minimum_supported_quadrature_order ||
        cs.getParameters().quadrature_order > maximum_supported_quadrature_order ||
-       cs.getParameters().quadrature_subdivision_count < minimum_quadrature_subdivision_count ||
-       cs.getParameters().quadrature_subdivision_count > maximum_quadrature_subdivision_count ) {
+       cs.getParameters().num_quadrature_subdivisions < min_num_quadrature_subdivisions ||
+       cs.getParameters().num_quadrature_subdivisions > max_num_quadrature_subdivisions ) {
     SLIC_ERROR_ROOT( "Common Plane requires positive finite mesh penalties, zero residual gap, quadrature order "
                      << minimum_supported_quadrature_order << "-" << maximum_supported_quadrature_order
-                     << ", and quadrature subdivision count " << minimum_quadrature_subdivision_count << "-"
-                     << maximum_quadrature_subdivision_count << "." );
+                     << ", and num_quadrature_subdivisions " << min_num_quadrature_subdivisions << "-"
+                     << max_num_quadrature_subdivisions << "." );
     return false;
   }
   return true;
@@ -188,19 +191,20 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
       detail::checkedPenaltyStiffness( *data.GetMesh2KinematicConstantPenalty() * ( scale2 ? *scale2 : 1.0 ) );
   const RealT penalty = detail::checkedPenaltyStiffness( SeriesPenaltyStiffness{}( penalty1, penalty2 ) );
   const int coordinate_order = data.GetParentCoords().ParFESpace()->FEColl()->GetOrder();
+  const bool uses_quadratic_subdivision = coordinate_order == 2 && cs->getParameters().use_quadrature_subdivision;
   return createWithQuadratureRuleGenerator(
       cs->getParameters().quadrature_order, CommonPlaneEdgeMapping{},
       [&]( auto linear_rule_generator ) -> std::unique_ptr<ContactFormulation> {
-        if ( coordinate_order == 1 ) {
+        if ( !uses_quadratic_subdivision ) {
           return createCommonPlaneForRuleGenerator<Exec, BasisFunction<EDGE, LINEAR_LAGRANGE>>(
               cs, std::move( linear_rule_generator ), penalty );
         }
         using SubdividedRuleGenerator =
             SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, decltype( linear_rule_generator ),
-                                                  maximum_quadrature_subdivision_count>;
+                                                  max_num_quadrature_subdivisions>;
         return createCommonPlaneForRuleGenerator<Exec, BasisFunction<EDGE, QUADRATIC_LAGRANGE>>(
             cs,
-            SubdividedRuleGenerator{ cs->getParameters().quadrature_subdivision_count,
+            SubdividedRuleGenerator{ cs->getParameters().num_quadrature_subdivisions,
                                      std::move( linear_rule_generator ) },
             penalty );
       } );
