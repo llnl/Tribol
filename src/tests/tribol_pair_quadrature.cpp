@@ -52,7 +52,14 @@ static_assert( PairRuleGenerator<QuadraticCommonPlaneRule> );
 static_assert( QuadraticCommonPlaneRule::max_num_points ==
                max_num_quadrature_subdivisions * max_num_quadrature_subdivisions );
 
-/** @brief Return one fixed point for every usable linear subelement pair. */
+/**
+ * @brief Stub inner rule generator that emits one fixed asymmetric point (or a configured failure) for every usable
+ * linear subelement pair.
+ *
+ * Used to test SubdividedPairQuadratureRuleGenerator behavior that CommonPlaneEdgeMapping cannot isolate on its own:
+ * forwarding non-Success inner statuses, visiting all N*N subelement pairs with asymmetric coordinates and unscaled
+ * sentinel weights, and verifying degenerate subelements are skipped without calling the inner generator.
+ */
 struct FixedSubelementPairRuleGenerator {
   using Geometry1 = LinearEdgeGeometry;                   ///< First subelement chord geometry.
   using Geometry2 = LinearEdgeGeometry;                   ///< Second subelement chord geometry.
