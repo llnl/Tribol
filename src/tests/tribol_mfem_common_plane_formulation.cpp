@@ -879,8 +879,8 @@ TEST( CommonPlaneSelection, rejects_unsupported_order_and_three_dimensional_geom
   }
 }
 
-// Higher-order 2D coordinates transferred through an LOR mesh match legacy one-point residuals and finite-difference
-// checks of the residual Jacobian on parent-mesh displacement true DOFs.
+// Quadratic 2D coordinates disable LOR while the Common Plane formulation is active, evaluate direct quadratic
+// residuals and finite-difference-verified Jacobians on parent-mesh true DOFs, and restore LOR when disabled.
 TEST( CommonPlaneSelection, evaluates_quadratic_residuals_and_jacobians_without_lor )
 {
   constexpr int lower_boundary_edge_count = 2;

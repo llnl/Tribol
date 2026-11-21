@@ -498,6 +498,8 @@ TEST_P( CommonPlaneTest, integrates_supplied_traction_with_independent_bases )
   }
 }
 
+// Subdivided common-plane quadrature must integrate quadratic penalty tractions onto the quadratic basis on every
+// enabled execution backend.
 TEST_P( CommonPlaneTest, integrates_penalty_traction_with_quadratic_geometry_and_basis )
 {
   using LinearRule = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<1>>;
@@ -510,6 +512,8 @@ TEST_P( CommonPlaneTest, integrates_penalty_traction_with_quadratic_geometry_and
   ArrayT<Integral::PairResidual> pair_residuals( 1, 1, allocatorId() );
   const auto pair_residuals_view = pair_residuals.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
+    // Two straight, oppositely directed quadratic edges spanning x in [-1, 1] at y=0.0 and y=0.1 (penetration 0.1),
+    // giving closed-form nodal loads under two 1-point subdivisions.
     const MdArray<RealT, 3, 2> edge1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 },
                                       MdArray<RealT, 2>{ 0.0, 0.0 } };
     const MdArray<RealT, 3, 2> edge2{ MdArray<RealT, 2>{ 1.0, 0.1 }, MdArray<RealT, 2>{ -1.0, 0.1 },
@@ -532,14 +536,19 @@ TEST_P( CommonPlaneTest, integrates_penalty_traction_with_quadratic_geometry_and
   }
 }
 
+// Quadratic penalty traction must compute the local gap and activation from pointwise normals, returning active
+// compressive traction only when the local normals are valid, opposing, and interpenetrating.
 TEST( QuadraticCommonPlaneTraction, uses_true_local_normals_for_gap_and_activation )
 {
+  // Baseline horizontal edge on x in [-1, 1] at y=0.0, paired at the midpoint (xi=0) against four edge2 variants:
+  // interpenetrated (opposing at y=0.1), separated (opposing at y=-0.1), nonopposing (same direction at y=0.1), and
+  // degenerate (both endpoints at (0, 0.1) with midpoint at (1, 0.1), giving a zero tangent at xi=0).
   const QuadraticCoordinates edge1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 },
                                     MdArray<RealT, 2>{ 0.0, 0.0 } };
-  const QuadraticCoordinates compressed_edge2{ MdArray<RealT, 2>{ 1.0, 0.1 }, MdArray<RealT, 2>{ -1.0, 0.1 },
-                                               MdArray<RealT, 2>{ 0.0, 0.1 } };
-  const QuadraticCoordinates open_edge2{ MdArray<RealT, 2>{ 1.0, -0.1 }, MdArray<RealT, 2>{ -1.0, -0.1 },
-                                         MdArray<RealT, 2>{ 0.0, -0.1 } };
+  const QuadraticCoordinates interpenetrated_edge2{ MdArray<RealT, 2>{ 1.0, 0.1 }, MdArray<RealT, 2>{ -1.0, 0.1 },
+                                                    MdArray<RealT, 2>{ 0.0, 0.1 } };
+  const QuadraticCoordinates separated_edge2{ MdArray<RealT, 2>{ 1.0, -0.1 }, MdArray<RealT, 2>{ -1.0, -0.1 },
+                                              MdArray<RealT, 2>{ 0.0, -0.1 } };
   const QuadraticCoordinates nonopposing_edge2{ MdArray<RealT, 2>{ -1.0, 0.1 }, MdArray<RealT, 2>{ 1.0, 0.1 },
                                                 MdArray<RealT, 2>{ 0.0, 0.1 } };
   const QuadraticCoordinates zero_tangent_edge2{ MdArray<RealT, 2>{ 0.0, 0.1 }, MdArray<RealT, 2>{ 0.0, 0.1 },
@@ -554,11 +563,11 @@ TEST( QuadraticCommonPlaneTraction, uses_true_local_normals_for_gap_and_activati
                      traction.computePairGeometryData( geometry1, geometry2 ) );
   };
 
-  const auto compressed = evaluate( compressed_edge2 );
-  ASSERT_TRUE( compressed.active );
-  EXPECT_NEAR( compressed.value[0], 0.0, tolerance );
-  EXPECT_NEAR( compressed.value[1], -0.1, tolerance );
-  EXPECT_FALSE( evaluate( open_edge2 ).active );
+  const auto interpenetrated = evaluate( interpenetrated_edge2 );
+  ASSERT_TRUE( interpenetrated.active );
+  EXPECT_NEAR( interpenetrated.value[0], 0.0, tolerance );
+  EXPECT_NEAR( interpenetrated.value[1], -0.1, tolerance );
+  EXPECT_FALSE( evaluate( separated_edge2 ).active );
   EXPECT_FALSE( evaluate( nonopposing_edge2 ).active );
   EXPECT_FALSE( evaluate( zero_tangent_edge2 ).active );
 }
@@ -698,7 +707,55 @@ TEST_P( CommonPlaneTest, value_evaluation_returns_forces_and_quadrature_without_
 INSTANTIATE_TEST_SUITE_P( execution, CommonPlaneTest, tribol::detail::enabledExecutionModes() );
 
 #ifdef TRIBOL_USE_ENZYME
-/** @brief Compare active-geometry Jacobians with central differences. @tparam NumPoints Gauss point count. */
+/** @brief Compare primal values and all coordinate derivatives of a pair integral against central differences. */
+template <typename PairIntegral, typename Coords>
+void checkPairJacobian( const PairIntegral& pair_integral, const Coords& edge1, const Coords& edge2,
+                        RealT derivative_tolerance )
+{
+  // Small enough to resolve derivatives without crossing active-gap or overlap-endpoint branches.
+  constexpr RealT step = 2.0e-7;
+  const auto pair_coordinates = packPairCoordinates( edge1.view(), edge2.view() );
+  const auto reference_residual = pair_integral.evaluate( edge1.view(), edge2.view() );
+  const auto differentiated_residual =
+      EnzymePairDerivative<PairIntegral>::valuesAndJacobian( edge1.view(), edge2.view(), pair_integral );
+  ASSERT_EQ( differentiated_residual.pair_value.quadrature_metadata.status, QuadratureStatus::Success );
+  EXPECT_EQ( differentiated_residual.pair_value.quadrature_metadata.num_required_points,
+             reference_residual.quadrature_metadata.num_required_points );
+  EXPECT_EQ( differentiated_residual.pair_value.has_active_points, reference_residual.has_active_points );
+  const auto reference_residual_values = reference_residual.values();
+  const auto differentiated_residual_values = differentiated_residual.pair_value.values();
+  for ( IndexT row = 0; row < PairIntegral::size_values; ++row ) {
+    EXPECT_DOUBLE_EQ( differentiated_residual_values[row], reference_residual_values[row] );
+  }
+  for ( int column = 0; column < PairIntegral::size_coords; ++column ) {
+    auto increased_coordinate_pair = pair_coordinates;
+    auto decreased_coordinate_pair = pair_coordinates;
+    increased_coordinate_pair[column] += step;
+    decreased_coordinate_pair[column] -= step;
+    const auto increased_coordinate_residual = pair_integral.evaluate(
+        { increased_coordinate_pair.data(), PairIntegral::size_geom1_coords },
+        { increased_coordinate_pair.data() + PairIntegral::size_geom1_coords, PairIntegral::size_geom2_coords } );
+    const auto decreased_coordinate_residual = pair_integral.evaluate(
+        { decreased_coordinate_pair.data(), PairIntegral::size_geom1_coords },
+        { decreased_coordinate_pair.data() + PairIntegral::size_geom1_coords, PairIntegral::size_geom2_coords } );
+    ASSERT_EQ( increased_coordinate_residual.quadrature_metadata.status, QuadratureStatus::Success );
+    ASSERT_EQ( decreased_coordinate_residual.quadrature_metadata.status, QuadratureStatus::Success );
+    ASSERT_EQ( increased_coordinate_residual.quadrature_metadata.num_required_points,
+               differentiated_residual.pair_value.quadrature_metadata.num_required_points );
+    ASSERT_EQ( decreased_coordinate_residual.quadrature_metadata.num_required_points,
+               differentiated_residual.pair_value.quadrature_metadata.num_required_points );
+    const auto increased_values = increased_coordinate_residual.values();
+    const auto decreased_values = decreased_coordinate_residual.values();
+    for ( int row = 0; row < PairIntegral::size_values; ++row ) {
+      EXPECT_NEAR( differentiated_residual.derivatives.jacobian( row, column ),
+                   ( increased_values[row] - decreased_values[row] ) / ( 2.0 * step ), derivative_tolerance )
+          << "row=" << row << ", column=" << column;
+    }
+  }
+}
+
+/** @brief Compare active-geometry linear Jacobians with central differences and check zero-gap and invalid cases.
+ * @tparam NumPoints Gauss point count. */
 template <int NumPoints>
 void checkJacobian()
 {
@@ -706,8 +763,6 @@ void checkJacobian()
       PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>,
                            CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
   const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>> rule_generator;
-  constexpr RealT step =
-      2.0e-7;  // Small enough to resolve derivatives without changing the active or overlap branches.
   // The longer second edge in the offset case keeps the limiting overlap endpoint unchanged under perturbation.
   const Coordinates edge1_cases[] = { Coordinates{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.2 } },
                                       Coordinates{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 } },
@@ -717,42 +772,13 @@ void checkJacobian()
                                       Coordinates{ MdArray<RealT, 2>{ 1.2, -0.3 }, MdArray<RealT, 2>{ -1.2, 0.3 } } };
   const MdArray<RealT, 3> residual_gaps{ 0.03, 0.03, -0.3 };
   for ( int case_index = 0; case_index < residual_gaps.size(); ++case_index ) {
+    SCOPED_TRACE( testing::Message() << "points=" << NumPoints << ", case=" << case_index );
     const PairIntegral pair_integral{ rule_generator,
                                       { 2.5, OffsetGap{ CommonPlaneGap{}, residual_gaps[case_index] } } };
-    const auto pair_coordinates = packPairCoordinates( edge1_cases[case_index].view(), edge2_cases[case_index].view() );
-    const auto reference_residual =
-        pair_integral.evaluate( edge1_cases[case_index].view(), edge2_cases[case_index].view() );
-    const auto differentiated_residual = EnzymePairDerivative<PairIntegral>::valuesAndJacobian(
-        edge1_cases[case_index].view(), edge2_cases[case_index].view(), pair_integral );
-    const auto reference_residual_values = reference_residual.values();
-    ASSERT_EQ( differentiated_residual.pair_value.quadrature_metadata.status, QuadratureStatus::Success );
-    EXPECT_EQ( differentiated_residual.pair_value.quadrature_metadata.num_required_points, NumPoints );
-    EXPECT_EQ( differentiated_residual.pair_value.has_active_points, reference_residual.has_active_points );
-    const auto differentiated_residual_values = differentiated_residual.pair_value.values();
-    for ( IndexT row = 0; row < PairIntegral::size_values; ++row ) {
-      EXPECT_DOUBLE_EQ( differentiated_residual_values[row], reference_residual_values[row] );
-    }
-    for ( int column = 0; column < PairIntegral::size_coords; ++column ) {
-      auto increased_coordinate_pair = pair_coordinates;
-      auto decreased_coordinate_pair = pair_coordinates;
-      increased_coordinate_pair[column] += step;
-      decreased_coordinate_pair[column] -= step;
-      const auto increased_coordinate_residual = pair_integral.evaluate(
-          { increased_coordinate_pair.data(), PairIntegral::size_geom1_coords },
-          { increased_coordinate_pair.data() + PairIntegral::size_geom1_coords, PairIntegral::size_geom2_coords } );
-      const auto decreased_coordinate_residual = pair_integral.evaluate(
-          { decreased_coordinate_pair.data(), PairIntegral::size_geom1_coords },
-          { decreased_coordinate_pair.data() + PairIntegral::size_geom1_coords, PairIntegral::size_geom2_coords } );
-      ASSERT_EQ( increased_coordinate_residual.quadrature_metadata.status, QuadratureStatus::Success );
-      ASSERT_EQ( decreased_coordinate_residual.quadrature_metadata.status, QuadratureStatus::Success );
-      const auto increased_coordinate_values = increased_coordinate_residual.values();
-      const auto decreased_coordinate_values = decreased_coordinate_residual.values();
-      for ( int row = 0; row < PairIntegral::size_values; ++row ) {
-        EXPECT_NEAR( differentiated_residual.derivatives.jacobian( row, column ),
-                     ( increased_coordinate_values[row] - decreased_coordinate_values[row] ) / ( 2.0 * step ), 2.0e-7 )
-            << "points=" << NumPoints << ", case=" << case_index << ", row=" << row << ", column=" << column;
-      }
-    }
+    EXPECT_EQ( pair_integral.evaluate( edge1_cases[case_index].view(), edge2_cases[case_index].view() )
+                   .quadrature_metadata.num_required_points,
+               NumPoints );
+    checkPairJacobian( pair_integral, edge1_cases[case_index], edge2_cases[case_index], 2.0e-7 );
   }
   const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
   const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, 0.0 }, MdArray<RealT, 2>{ 0.0, 0.0 } };
@@ -785,53 +811,6 @@ void checkJacobian()
   }
 }
 
-/** @brief Compare all quadratic pair-residual coordinate derivatives with central differences. */
-void checkQuadraticJacobian()
-{
-  using LinearRule = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<1>>;
-  using RuleGenerator =
-      SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, LinearRule, maximum_quadrature_subdivision_count>;
-  using PairIntegral = PairTractionIntegral<RuleGenerator, CommonPlanePenaltyTraction<CommonPlaneGap>,
-                                            BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
-  const QuadraticCoordinates edge1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.1 },
-                                    MdArray<RealT, 2>{ 0.0, 0.25 } };
-  const QuadraticCoordinates edge2{ MdArray<RealT, 2>{ 1.3, 0.35 }, MdArray<RealT, 2>{ -1.1, 0.4 },
-                                    MdArray<RealT, 2>{ 0.15, 0.55 } };
-  const PairIntegral pair_integral{ RuleGenerator{ default_quadrature_subdivision_count }, { 2.5 } };
-  const auto pair_coordinates = packPairCoordinates( edge1.view(), edge2.view() );
-  const auto differentiated_residual =
-      EnzymePairDerivative<PairIntegral>::valuesAndJacobian( edge1.view(), edge2.view(), pair_integral );
-  ASSERT_EQ( differentiated_residual.pair_value.quadrature_metadata.status, QuadratureStatus::Success );
-  ASSERT_TRUE( differentiated_residual.pair_value.has_active_points );
-  constexpr RealT step = 2.0e-7;
-  constexpr RealT derivative_tolerance = 3.0e-7;
-  for ( int column = 0; column < PairIntegral::size_coords; ++column ) {
-    auto increased_coordinate_pair = pair_coordinates;
-    auto decreased_coordinate_pair = pair_coordinates;
-    increased_coordinate_pair[column] += step;
-    decreased_coordinate_pair[column] -= step;
-    const auto increased_coordinate_residual = pair_integral.evaluate(
-        { increased_coordinate_pair.data(), PairIntegral::size_geom1_coords },
-        { increased_coordinate_pair.data() + PairIntegral::size_geom1_coords, PairIntegral::size_geom2_coords } );
-    const auto decreased_coordinate_residual = pair_integral.evaluate(
-        { decreased_coordinate_pair.data(), PairIntegral::size_geom1_coords },
-        { decreased_coordinate_pair.data() + PairIntegral::size_geom1_coords, PairIntegral::size_geom2_coords } );
-    ASSERT_EQ( increased_coordinate_residual.quadrature_metadata.status, QuadratureStatus::Success );
-    ASSERT_EQ( decreased_coordinate_residual.quadrature_metadata.status, QuadratureStatus::Success );
-    ASSERT_EQ( increased_coordinate_residual.quadrature_metadata.num_required_points,
-               differentiated_residual.pair_value.quadrature_metadata.num_required_points );
-    ASSERT_EQ( decreased_coordinate_residual.quadrature_metadata.num_required_points,
-               differentiated_residual.pair_value.quadrature_metadata.num_required_points );
-    const auto increased_values = increased_coordinate_residual.values();
-    const auto decreased_values = decreased_coordinate_residual.values();
-    for ( int row = 0; row < PairIntegral::size_values; ++row ) {
-      EXPECT_NEAR( differentiated_residual.derivatives.jacobian( row, column ),
-                   ( increased_values[row] - decreased_values[row] ) / ( 2.0 * step ), derivative_tolerance )
-          << "row=" << row << ", column=" << column;
-    }
-  }
-}
-
 // All rules differentiate current normals, interval bounds, edge lengths, and pointwise pressure. A shifted gap
 // checks mixed open/compressive quadrature points without crossing their activation boundaries under perturbation.
 TEST( CommonPlaneJacobian, matches_finite_differences )
@@ -839,7 +818,21 @@ TEST( CommonPlaneJacobian, matches_finite_differences )
   checkJacobian<1>();
   checkJacobian<2>();
   checkJacobian<3>();
-  checkQuadraticJacobian();
+
+  using LinearRule = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<1>>;
+  using RuleGenerator =
+      SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, LinearRule, maximum_quadrature_subdivision_count>;
+  using QuadraticPairIntegral = PairTractionIntegral<RuleGenerator, CommonPlanePenaltyTraction<CommonPlaneGap>,
+                                                     BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
+  // Two curved, non-parallel, interpenetrating quadratic edges whose midpoints are bowed upward and shifted so every
+  // nodal coordinate contributes to the subdivided overlap bounds, local normals, and pointwise gaps.
+  const QuadraticCoordinates edge1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.1 },
+                                    MdArray<RealT, 2>{ 0.0, 0.25 } };
+  const QuadraticCoordinates edge2{ MdArray<RealT, 2>{ 1.3, 0.35 }, MdArray<RealT, 2>{ -1.1, 0.4 },
+                                    MdArray<RealT, 2>{ 0.15, 0.55 } };
+  const QuadraticPairIntegral pair_integral{ RuleGenerator{ default_quadrature_subdivision_count }, { 2.5 } };
+  ASSERT_TRUE( pair_integral.evaluate( edge1.view(), edge2.view() ).has_active_points );
+  checkPairJacobian( pair_integral, edge1, edge2, 3.0e-7 );
 }
 #endif
 }  // namespace

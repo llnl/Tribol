@@ -88,8 +88,12 @@ using FixedSubdividedRule = SubdividedPairQuadratureRuleGenerator<QuadraticEdgeG
 static_assert( PairRuleGenerator<FixedSubdividedRule> );
 static_assert( FixedSubdividedRule::polynomial_order == FixedChildPairRuleGenerator::polynomial_order );
 
+// QuadraticEdgeGeometry must interpolate endpoint and midpoint positions and return the local tangent and outward
+// unit normal at the midpoint.
 TEST( QuadraticEdgeGeometry, evaluates_position_tangent_and_normal )
 {
+  // Parabolic arc on x in [-1, 1] with endpoints on y=0 and midpoint raised to (0, 0.5), giving a horizontal tangent
+  // (1, 0) and downward outward normal (0, -1) at xi=0.
   const MdArray<RealT, 3, 2> coords{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 },
                                      MdArray<RealT, 2>{ 0.0, 0.5 } };
   const QuadraticEdgeGeometry geometry( coords.view() );
@@ -114,8 +118,11 @@ TEST( QuadraticEdgeGeometry, evaluates_position_tangent_and_normal )
   EXPECT_NEAR( normal[1], -1.0, tolerance );
 }
 
+// QuadraticEdgeGeometry::unitNormal must fail when the local tangent has zero length or nonfinite coordinates.
 TEST( QuadraticEdgeGeometry, rejects_zero_and_nonfinite_tangents )
 {
+  // Coincident endpoints at (0, 0) with midpoint (1, 0) produce a zero tangent at xi=0; an infinite endpoint produces
+  // a nonfinite tangent.
   const MdArray<RealT, 3, 2> zero_tangent_coords{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 0.0, 0.0 },
                                                   MdArray<RealT, 2>{ 1.0, 0.0 } };
   const MdArray<RealT, 3, 2> nonfinite_tangent_coords{ MdArray<RealT, 2>{ 0.0, 0.0 },
@@ -128,8 +135,12 @@ TEST( QuadraticEdgeGeometry, rejects_zero_and_nonfinite_tangents )
       QuadraticEdgeGeometry( nonfinite_tangent_coords.view() ).unitNormal( midpoint_coordinate.view(), normal ) );
 }
 
+// SubdividedPairQuadratureRuleGenerator must visit every child-chord pair across supported subdivision counts, map
+// asymmetric child coordinates back to parent [-1, 1] space, and keep inner physical weights unchanged.
 TEST( SubdividedPairQuadrature, evaluates_every_child_pair_and_preserves_inner_weights )
 {
+  // Two curved, oppositely directed quadratic edges on x in [-1, 1] with bowed midpoints at (0, 0.2) and (0, 0.3) so
+  // every subdivided child chord is nondegenerate.
   const MdArray<RealT, 3, 2> coords1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 },
                                       MdArray<RealT, 2>{ 0.0, 0.2 } };
   const MdArray<RealT, 3, 2> coords2{ MdArray<RealT, 2>{ 1.0, 0.1 }, MdArray<RealT, 2>{ -1.0, 0.1 },
@@ -155,8 +166,11 @@ TEST( SubdividedPairQuadrature, evaluates_every_child_pair_and_preserves_inner_w
   }
 }
 
+// A non-Success status and required point count from the inner linear rule generator must be forwarded directly.
 TEST( SubdividedPairQuadrature, forwards_inner_failure_status_and_required_count )
 {
+  // Two valid, oppositely directed horizontal quadratic edges on x in [-1, 1] at y=0.0 and y=0.1 so child chords pass
+  // validation and reach the inner rule generator.
   const MdArray<RealT, 3, 2> coords1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 },
                                       MdArray<RealT, 2>{ 0.0, 0.0 } };
   const MdArray<RealT, 3, 2> coords2{ MdArray<RealT, 2>{ 1.0, 0.1 }, MdArray<RealT, 2>{ -1.0, 0.1 },
@@ -170,8 +184,10 @@ TEST( SubdividedPairQuadrature, forwards_inner_failure_status_and_required_count
   EXPECT_EQ( rule.metadata.num_required_points, inner_required_points );
 }
 
+// When every subdivided child chord on both edges is degenerate, rule generation must return Success with zero points.
 TEST( SubdividedPairQuadrature, returns_successful_empty_rule_when_all_children_are_unusable )
 {
+  // Collapsed quadratic edges with all three nodes at the origin so every child chord has zero length.
   const MdArray<RealT, 3, 2> collapsed_coords{};
   const auto rule = FixedSubdividedRule{ default_quadrature_subdivision_count }.generate(
       QuadraticEdgeGeometry( collapsed_coords.view() ), QuadraticEdgeGeometry( collapsed_coords.view() ) );
@@ -179,8 +195,11 @@ TEST( SubdividedPairQuadrature, returns_successful_empty_rule_when_all_children_
   EXPECT_EQ( rule.metadata.num_required_points, 0 );
 }
 
+// Subdivided common-plane quadrature must map linear child points back to matching physical locations on both
+// quadratic parent edges and sum weights to the full overlap length.
 TEST( SubdividedPairQuadrature, maps_linear_child_rules_back_to_quadratic_parents )
 {
+  // Two straight, oppositely directed quadratic edges spanning x in [-1, 1] at y=0.0 and y=-0.1 (overlap length 2.0).
   const MdArray<RealT, 3, 2> coords1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 },
                                       MdArray<RealT, 2>{ 0.0, 0.0 } };
   const MdArray<RealT, 3, 2> coords2{ MdArray<RealT, 2>{ 1.0, -0.1 }, MdArray<RealT, 2>{ -1.0, -0.1 },
@@ -202,6 +221,7 @@ TEST( SubdividedPairQuadrature, maps_linear_child_rules_back_to_quadratic_parent
   EXPECT_NEAR( total_weight, 2.0, tolerance );
 }
 
+// A degenerate child segment on one edge must be skipped without discarding valid overlap on the remaining children.
 TEST( SubdividedPairQuadrature, skips_degenerate_children_and_keeps_remaining_overlap )
 {
   // Geometry1's first endpoint and midpoint coincide, so its first child is unusable. The second child still spans the
