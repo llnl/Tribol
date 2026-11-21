@@ -22,7 +22,7 @@ class QuadraticEdgeGeometry {
  public:
   using Basis = BasisFunction<EDGE, QUADRATIC_LAGRANGE>;        ///< Basis defining interpolation and node ordering.
   static constexpr int num_nodes = Basis::size_basis;           ///< Number of finite-element nodes.
-  static constexpr int parametric_dim = Basis::parametric_dim;  ///< Number of parent coordinates.
+  static constexpr int parametric_dim = Basis::parametric_dim;  ///< Number of parametric coordinates.
   static constexpr int spatial_dim = Basis::spatial_dim;        ///< Number of physical coordinates.
   using Point = axom::primal::Point<RealT, spatial_dim>;        ///< Physical point on the edge.
   using Vector = axom::primal::Vector<RealT, spatial_dim>;      ///< Physical tangent or normal.
@@ -38,7 +38,8 @@ class QuadraticEdgeGeometry {
     }
   }
 
-  /** @brief Evaluate the quadratic map. @param parametric_coords Parent coordinate in [-1,1]. @return Current point. */
+  /** @brief Evaluate the quadratic map. @param parametric_coords Element parametric coordinate in [-1, 1].
+   * @return Current point. */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Point position( MdSpan<const RealT, parametric_dim> parametric_coords ) const
   {
     MdArray<RealT, num_nodes> values{};
@@ -53,8 +54,8 @@ class QuadraticEdgeGeometry {
     return point;
   }
 
-  /** @brief Evaluate the physical tangent dx/dxi. @param parametric_coords Parent coordinate. @return Current tangent.
-   */
+  /** @brief Evaluate the physical tangent dx/dxi. @param parametric_coords Element parametric coordinate.
+   * @return Current tangent. */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Vector tangent( MdSpan<const RealT, parametric_dim> parametric_coords ) const
   {
     MdArray<RealT, num_nodes, parametric_dim> derivatives{};
@@ -71,7 +72,7 @@ class QuadraticEdgeGeometry {
 
   /**
    * @brief Evaluate the directed unit normal when the local tangent is usable.
-   * @param parametric_coords Parent coordinate.
+   * @param parametric_coords Element parametric coordinate.
    * @param[out] normal Unit normal oriented (dy,-dx) when true; zero when false.
    * @return Whether the tangent has finite components and nonzero length.
    */
