@@ -26,7 +26,7 @@ inline bool in_range( int target, int N )
 constexpr int ANY_MESH = -1;
 
 inline constexpr int min_num_quadrature_subdivisions = 1;  ///< Smallest accepted number of uniform subelements.
-inline constexpr int max_num_quadrature_subdivisions = 8;  ///< Fixed-capacity bound on uniform subelements.
+inline constexpr int max_num_quadrature_subdivisions = 4;  ///< Fixed-capacity bound on uniform subelements.
 inline constexpr int default_num_quadrature_subdivisions = 2;  ///< Default for quadratic edge geometry.
 
 /*!
