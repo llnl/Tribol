@@ -446,11 +446,10 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the penalty." );
   const bool uses_formulation = cs->usesContactFormulation();
   if ( uses_formulation ) {
-    const RealT effective_penalty = cs->getContactMethod() == ENERGY_MORTAR
-                                        ? AveragePenaltyStiffness{}.computeEffectiveStiffness( mesh1_penalty,
-                                                                                               mesh2_penalty )
-                                        : SeriesPenaltyStiffness{}.computeEffectiveStiffness( mesh1_penalty,
-                                                                                              mesh2_penalty );
+    const RealT effective_penalty =
+        cs->getContactMethod() == ENERGY_MORTAR
+            ? AveragePenaltyStiffness{}.computeEffectiveStiffness( mesh1_penalty, mesh2_penalty )
+            : SeriesPenaltyStiffness{}.computeEffectiveStiffness( mesh1_penalty, mesh2_penalty );
     if ( !detail::isValidPenaltyStiffness( mesh1_penalty ) || !detail::isValidPenaltyStiffness( mesh2_penalty ) ||
          !detail::isValidPenaltyStiffness( effective_penalty ) ) {
       SLIC_ERROR_ROOT( "Contact penalty stiffness must be positive and finite." );

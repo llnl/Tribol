@@ -90,8 +90,9 @@ struct FixedSubelementPairRuleGenerator {
   }
 };
 
-using FixedSubdividedRule = SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, FixedSubelementPairRuleGenerator,
-                                                                  max_num_quadrature_subdivisions>;
+using FixedSubdividedRule =
+    SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, FixedSubelementPairRuleGenerator,
+                                          max_num_quadrature_subdivisions>;
 static_assert( PairRuleGenerator<FixedSubdividedRule> );
 static_assert( FixedSubdividedRule::polynomial_order == FixedSubelementPairRuleGenerator::polynomial_order );
 
@@ -154,8 +155,8 @@ TEST( SubdividedPairQuadrature, evaluates_every_subelement_pair_and_preserves_in
                                       MdArray<RealT, 2>{ 0.0, 0.3 } };
   const QuadraticEdgeGeometry geometry1( coords1.view() );
   const QuadraticEdgeGeometry geometry2( coords2.view() );
-  for ( const int num_subdivisions : { min_num_quadrature_subdivisions, default_num_quadrature_subdivisions,
-                                        max_num_quadrature_subdivisions } ) {
+  for ( const int num_subdivisions :
+        { min_num_quadrature_subdivisions, default_num_quadrature_subdivisions, max_num_quadrature_subdivisions } ) {
     const auto rule = FixedSubdividedRule{ num_subdivisions }.generate( geometry1, geometry2 );
     const IndexT expected_num_points = num_subdivisions * num_subdivisions;
     ASSERT_EQ( rule.metadata.status, QuadratureStatus::Success );

@@ -300,8 +300,8 @@ TEST_P( MfemCommonPlaneTest, matches_analytic_boundary_loads_for_uniform_penetra
     EXPECT_EQ( couplingScheme().getMesh1().numberOfElements() + couplingScheme().getMesh2().numberOfElements(), 0 );
   }
   EXPECT_FALSE( couplingScheme().getContactFormulationResult().energy.has_value() );
-  EXPECT_SLIC_ERROR( couplingScheme().getContactFormulation()->computeNodalGaps( couplingScheme().getMesh1().getView(),
-                                                                         couplingScheme().getMesh2().getView() ) );
+  EXPECT_SLIC_ERROR( couplingScheme().getContactFormulation()->computeNodalGaps(
+      couplingScheme().getMesh1().getView(), couplingScheme().getMesh2().getView() ) );
 }
 
 // Jacobian getters return independent copies, so repeated calls must not consume the cached result.
@@ -786,11 +786,9 @@ TEST_P( MfemCommonPlaneTest, rejects_unsupported_settings_before_selection )
   setResidualGap( coupling_scheme_id, 0.0 );
   constexpr int unsupported_quadrature_order = 3;
   EXPECT_SLIC_ERROR( setQuadratureOrder( coupling_scheme_id, unsupported_quadrature_order ) );
-  EXPECT_SLIC_ERROR(
-      enableQuadratureSubdivision( coupling_scheme_id, true, default_num_quadrature_subdivisions ) );
+  EXPECT_SLIC_ERROR( enableQuadratureSubdivision( coupling_scheme_id, true, default_num_quadrature_subdivisions ) );
   enableCommonPlaneFormulation( false );
-  EXPECT_SLIC_ERROR(
-      enableQuadratureSubdivision( coupling_scheme_id, true, default_num_quadrature_subdivisions ) );
+  EXPECT_SLIC_ERROR( enableQuadratureSubdivision( coupling_scheme_id, true, default_num_quadrature_subdivisions ) );
   for ( int order = minimum_supported_quadrature_order; order <= maximum_supported_quadrature_order; ++order ) {
     setQuadratureOrder( coupling_scheme_id, order );
     EXPECT_FALSE( couplingScheme().hasContactFormulation() );
@@ -1061,8 +1059,7 @@ TEST( CommonPlaneSelection, evaluates_quadratic_residuals_and_jacobians_with_sub
 
   auto& coupling_scheme = CouplingSchemeManager::getInstance().at( coupling_scheme_id );
   // Subdivision requires opted-in Common Plane; calls before selection must fail without disabling LOR.
-  EXPECT_SLIC_ERROR(
-      enableQuadratureSubdivision( coupling_scheme_id, true, default_num_quadrature_subdivisions ) );
+  EXPECT_SLIC_ERROR( enableQuadratureSubdivision( coupling_scheme_id, true, default_num_quadrature_subdivisions ) );
   ASSERT_NE( coupling_scheme.getMfemMeshData()->GetLORMesh(), nullptr );
   EXPECT_EQ( coupling_scheme.getMfemMeshData()->GetLORFactor(), quadratic_order );
   EXPECT_TRUE( coupling_scheme.getMfemMeshData()->IsLORFieldTransferEnabled() );
@@ -1073,10 +1070,8 @@ TEST( CommonPlaneSelection, evaluates_quadratic_residuals_and_jacobians_with_sub
   EXPECT_EQ( coupling_scheme.getParameters().num_quadrature_subdivisions, min_num_quadrature_subdivisions );
   enableQuadratureSubdivision( coupling_scheme_id, true, max_num_quadrature_subdivisions );
   EXPECT_EQ( coupling_scheme.getParameters().num_quadrature_subdivisions, max_num_quadrature_subdivisions );
-  EXPECT_SLIC_ERROR(
-      enableQuadratureSubdivision( coupling_scheme_id, true, min_num_quadrature_subdivisions - 1 ) );
-  EXPECT_SLIC_ERROR(
-      enableQuadratureSubdivision( coupling_scheme_id, true, max_num_quadrature_subdivisions + 1 ) );
+  EXPECT_SLIC_ERROR( enableQuadratureSubdivision( coupling_scheme_id, true, min_num_quadrature_subdivisions - 1 ) );
+  EXPECT_SLIC_ERROR( enableQuadratureSubdivision( coupling_scheme_id, true, max_num_quadrature_subdivisions + 1 ) );
   enableQuadratureSubdivision( coupling_scheme_id, true, default_num_quadrature_subdivisions );
   EXPECT_EQ( coupling_scheme.getMfemMeshData()->GetLORMesh(), nullptr );
   EXPECT_EQ( coupling_scheme.getMfemMeshData()->GetLORFactor(), 0 );

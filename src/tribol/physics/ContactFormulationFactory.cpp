@@ -98,8 +98,9 @@ bool validateCommonPlaneFormulation( CouplingScheme& cs, bool compute_jacobian )
   if ( data.GetParentCoords().ParFESpace()->GetParMesh()->SpaceDimension() != 2 ||
        data.GetParentCoords().ParFESpace()->GetVDim() != 2 || order < 1 ||
        ( order > 1 && !uses_quadratic_subdivision && data.GetLORMesh() == nullptr ) ) {
-    SLIC_ERROR_ROOT( "Common Plane supports only 2D linear, LOR-subdivided higher-order, or subdivided quadratic "
-                     "coordinates." );
+    SLIC_ERROR_ROOT(
+        "Common Plane supports only 2D linear, LOR-subdivided higher-order, or subdivided quadratic "
+        "coordinates." );
     return false;
   }
   const auto* penalty1 = data.GetMesh1KinematicConstantPenalty();

@@ -243,10 +243,10 @@ void enableQuadratureSubdivision( IndexT cs_id, bool enabled, int num_subdivisio
   const bool valid_num_subdivisions = !enabled || ( num_subdivisions >= min_num_quadrature_subdivisions &&
                                                     num_subdivisions <= max_num_quadrature_subdivisions );
   if ( !has_opted_in_quadratic_common_plane || !valid_num_subdivisions ) {
-    SLIC_ERROR_ROOT( "enableQuadratureSubdivision requires opted-in quadratic MFEM COMMON_PLANE contact and "
-                     "num_subdivisions from "
-                     << min_num_quadrature_subdivisions << " through " << max_num_quadrature_subdivisions
-                     << " when enabled." );
+    SLIC_ERROR_ROOT(
+        "enableQuadratureSubdivision requires opted-in quadratic MFEM COMMON_PLANE contact and "
+        "num_subdivisions from "
+        << min_num_quadrature_subdivisions << " through " << max_num_quadrature_subdivisions << " when enabled." );
     return;
   }
   const bool mode_changed = cs->getParameters().use_quadrature_subdivision != enabled;

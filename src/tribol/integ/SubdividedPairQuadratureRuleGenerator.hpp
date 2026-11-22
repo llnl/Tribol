@@ -28,8 +28,8 @@ template <typename ElementGeometry, PairRuleGenerator SubelementPairRuleGenerato
             requires { typename std::integral_constant<int, SubelementPairRuleGenerator::max_num_points>; } )
 class SubdividedPairQuadratureRuleGenerator {
  public:
-  using Geometry1 = ElementGeometry;                             ///< First surface-element geometry.
-  using Geometry2 = ElementGeometry;                             ///< Second surface-element geometry.
+  using Geometry1 = ElementGeometry;                               ///< First surface-element geometry.
+  using Geometry2 = ElementGeometry;                               ///< Second surface-element geometry.
   static constexpr int max_num_subdivisions = MaxNumSubdivisions;  ///< Fixed upper bound on uniform subelements.
   static constexpr int max_num_points =
       MaxNumSubdivisions * MaxNumSubdivisions * SubelementPairRuleGenerator::max_num_points;  ///< Fixed point capacity.

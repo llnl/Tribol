@@ -82,19 +82,18 @@ concept PairTractionFunction =
  * @tparam Generator Pair quadrature generator defining both element geometries.
  */
 template <typename Function, typename Generator>
-concept PairEnergyFunction =
-    PairRuleGenerator<Generator> &&
-    requires( const Function& function, const typename Generator::Geometry1& geometry1,
-              const typename Generator::Geometry2& geometry2,
-              MdSpan<const RealT, Generator::Geometry1::parametric_dim> parametric_coords1,
-              MdSpan<const RealT, Generator::Geometry2::parametric_dim> parametric_coords2,
-              const detail::PairGeometryData<Function, Generator>& pair_geometry_data ) {
-      {
-        function.computeEnergyAtQuadraturePoint( geometry1.position( parametric_coords1 ),
-                                                 geometry2.position( parametric_coords2 ), parametric_coords1,
-                                                 parametric_coords2, pair_geometry_data )
-      } -> std::same_as<QuadraturePointValue<RealT>>;
-    };
+concept PairEnergyFunction = PairRuleGenerator<Generator> &&
+                             requires( const Function& function, const typename Generator::Geometry1& geometry1,
+                                       const typename Generator::Geometry2& geometry2,
+                                       MdSpan<const RealT, Generator::Geometry1::parametric_dim> parametric_coords1,
+                                       MdSpan<const RealT, Generator::Geometry2::parametric_dim> parametric_coords2,
+                                       const detail::PairGeometryData<Function, Generator>& pair_geometry_data ) {
+                               {
+                                 function.computeEnergyAtQuadraturePoint(
+                                     geometry1.position( parametric_coords1 ), geometry2.position( parametric_coords2 ),
+                                     parametric_coords1, parametric_coords2, pair_geometry_data )
+                               } -> std::same_as<QuadraturePointValue<RealT>>;
+                             };
 
 /**
  * @brief Requires pair geometry preparation and scalar gap evaluation at one paired quadrature point.

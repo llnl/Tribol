@@ -396,8 +396,8 @@ TEST_P( MfemEnergyMortarFormulationTest, accepts_series_penalty_stiffness )
                   *coupling_scheme.getMfemMeshData(), *coupling_scheme.getMfemSubmeshData(),
                   *coupling_scheme.getMfemJacobianData(), std::move( rule_generator ),
                   OffsetGap{ OpposingNormalGap{}, 0.0 },
-                  NodalPenaltyEnforcement{ SeriesPenaltyStiffness{}.computeEffectiveStiffness( first_series_penalty,
-                                                                                               second_series_penalty ) },
+                  NodalPenaltyEnforcement{ SeriesPenaltyStiffness{}.computeEffectiveStiffness(
+                      first_series_penalty, second_series_penalty ) },
                   std::move( pair_builder ) );
             }
             return std::make_unique<
