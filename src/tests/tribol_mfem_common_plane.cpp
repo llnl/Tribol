@@ -58,6 +58,7 @@ struct MfemCommonPlaneParameters {
   tribol::KinematicPenaltyCalculation penalty_calculation;
   CommonPlaneImplementation implementation;
   CommonPlaneProblem problem;
+  bool use_quadrature_subdivision = false;
 };
 
 std::string commonPlaneParameterName( const testing::TestParamInfo<MfemCommonPlaneParameters>& parameter_info )
@@ -67,8 +68,10 @@ std::string commonPlaneParameterName( const testing::TestParamInfo<MfemCommonPla
       parameters.penalty_calculation == tribol::KINEMATIC_CONSTANT ? "Constant" : "Element";
   const std::string implementation_name =
       parameters.implementation == CommonPlaneImplementation::Legacy ? "Legacy" : "Formulation";
+  const std::string subdivision_name = parameters.use_quadrature_subdivision ? "Subdivided" : "";
   const std::string problem_name = parameters.problem == CommonPlaneProblem::Blocks2D ? "2D" : "3D";
-  return "Order" + std::to_string( parameters.order ) + penalty_name + implementation_name + problem_name;
+  return "Order" + std::to_string( parameters.order ) + penalty_name + implementation_name + subdivision_name +
+         problem_name;
 }
 
 class MfemCommonPlaneTest : public testing::TestWithParam<MfemCommonPlaneParameters> {
@@ -221,6 +224,9 @@ class MfemCommonPlaneTest : public testing::TestWithParam<MfemCommonPlaneParamet
       constexpr bool enable_formulation = true;
       constexpr bool compute_jacobian = false;
       tribol::setMfemUseCommonPlaneFormulation( coupling_scheme_id, enable_formulation, compute_jacobian );
+      if ( parameters.use_quadrature_subdivision ) {
+        tribol::enableQuadratureSubdivision( coupling_scheme_id, true );
+      }
       // One point matches the legacy constant-traction integration for this flat overlap.
       constexpr int one_point_quadrature_order = 1;
       tribol::setQuadratureOrder( coupling_scheme_id, one_point_quadrature_order );
@@ -289,7 +295,10 @@ INSTANTIATE_TEST_SUITE_P(
                                                 CommonPlaneProblem::Blocks2D },
                      MfemCommonPlaneParameters{ 2, tribol::KINEMATIC_CONSTANT,
                                                 CommonPlaneImplementation::ContactFormulation,
-                                                CommonPlaneProblem::Blocks2D } ),
+                                                CommonPlaneProblem::Blocks2D },
+                     MfemCommonPlaneParameters{ 2, tribol::KINEMATIC_CONSTANT,
+                                                CommonPlaneImplementation::ContactFormulation,
+                                                CommonPlaneProblem::Blocks2D, true } ),
     commonPlaneParameterName );
 
 //------------------------------------------------------------------------------

@@ -1007,6 +1007,9 @@ void MfemMeshData::SetLORFieldTransferEnabled( bool enabled )
   }
 
   const int coordinate_order = coords_.GetParentGridFn().FESpace()->FEColl()->GetOrder();
+  if ( coordinate_order <= 1 ) {
+    return;
+  }
   const int restored_lor_factor = lor_factor_ > 1 ? lor_factor_ : coordinate_order;
   SetLORFactor( restored_lor_factor );
 }
