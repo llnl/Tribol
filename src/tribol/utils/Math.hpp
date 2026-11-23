@@ -8,6 +8,7 @@
 
 // C++ includes
 #include <cmath>
+#include <limits>
 
 // Axom includes
 #include "axom/slic.hpp"
@@ -16,6 +17,16 @@
 #include "tribol/common/BasicTypes.hpp"
 
 namespace tribol {
+
+/**
+ * @brief Base tolerance for guarding against division by zero.
+ *
+ * Chosen as 1e4 * epsilon so that when an O(1) numerator and denominator are guarded at this threshold, at least ~4
+ * significant digits of precision remain above roundoff. Callers working with dimensional quantities that have a known
+ * characteristic scale (such as element length) should scale this tolerance by that characteristic magnitude where
+ * appropriate.
+ */
+inline constexpr RealT zero_div_tol = RealT{ 1.0e4 } * std::numeric_limits<RealT>::epsilon();
 
 /// returns the magnitude of a 3-vector
 TRIBOL_HOST_DEVICE inline RealT magnitude( RealT const vx,  ///< [in] x-component of the input vector

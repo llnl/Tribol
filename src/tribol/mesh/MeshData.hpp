@@ -38,6 +38,7 @@ struct MeshNodalData {
   /////////////////////////
 
   bool m_is_velocity_set{ false };            ///< true if nodal velocities have been registered
+  bool m_is_inverse_mass_set{ false };        ///< true if component-wise inverse diagonal masses have been registered
   bool m_is_nodal_displacement_set{ false };  ///< true if nodal displacements have been registered
   bool m_is_nodal_response_set{ false };      ///< true if the nodal responses have been registered
 
@@ -271,6 +272,32 @@ class MeshData {
     TRIBOL_HOST_DEVICE const MultiViewArrayView<const RealT>& getVelocity() const { return m_vel; }
 
     /**
+     * @brief Is the component-wise inverse diagonal mass vector populated?
+     *
+     * @return true if non-empty; false otherwise
+     */
+    TRIBOL_HOST_DEVICE bool hasInverseMass() const { return !m_inv_mass.empty(); }
+
+    /**
+     * @brief Get the component-wise nodal inverse diagonal mass array views
+     *
+     * @return array view of the nodal inverse mass arrays
+     */
+    TRIBOL_HOST_DEVICE const MultiViewArrayView<const RealT>& getInverseMass() const { return m_inv_mass; }
+
+    /**
+     * @brief Get one component of the inverse diagonal mass for a node
+     *
+     * @param node_id Global node index in this mesh
+     * @param component Spatial component index (0 <= component < spatialDim())
+     * @return Inverse diagonal mass entry
+     */
+    TRIBOL_HOST_DEVICE RealT getInverseMass( IndexT node_id, int component ) const
+    {
+      return m_inv_mass[component][node_id];
+    }
+
+    /**
      * @brief Is the nodal response vector populated?
      *
      * @return true if non-empty; false otherwise
@@ -453,6 +480,9 @@ class MeshData {
 
     /// Array of views of nodal velocity data
     const MultiViewArrayView<const RealT> m_vel;
+
+    /// Array of views of component-wise nodal inverse diagonal mass data
+    const MultiViewArrayView<const RealT> m_inv_mass;
 
     /// Array of views of nodal response data
     const MultiViewArrayView<RealT> m_response;
@@ -668,6 +698,23 @@ class MeshData {
   bool hasVelocity() const { return !m_vel.empty(); }
 
   /**
+   * @brief Set the pointers to the component-wise nodal inverse diagonal mass data
+   *
+   * @param inv_mx array of x-components of the nodal inverse diagonal mass
+   * @param inv_my array of y-components of the nodal inverse diagonal mass
+   * @param inv_mz array of z-components of the nodal inverse diagonal mass (3D only)
+   */
+  void setInverseMass( const RealT* inv_mx, const RealT* inv_my, const RealT* inv_mz );
+
+  /**
+   * @brief Is the component-wise inverse diagonal mass vector populated?
+   *
+   * @return true vector is non-empty
+   * @return false vector is empty
+   */
+  bool hasInverseMass() const { return !m_inv_mass.empty(); }
+
+  /**
    * @brief Set the pointers to the nodal response data
    *
    * @param rx array of x-components of the nodal response
@@ -735,6 +782,7 @@ class MeshData {
   MultiArrayView<const RealT> m_ref_position;  ///< Reference coordinates of nodes in mesh
   MultiArrayView<const RealT> m_disp;          ///< Nodal displacements
   MultiArrayView<const RealT> m_vel;           ///< Nodal velocity
+  MultiArrayView<const RealT> m_inv_mass;      ///< Component-wise nodal inverse diagonal mass
   MultiArrayView<RealT> m_response;            ///< Nodal responses (forces)
 
   ArrayT<RealT, 2> m_node_n;  ///< Outward unit node normals

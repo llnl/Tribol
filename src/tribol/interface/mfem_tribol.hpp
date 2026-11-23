@@ -78,7 +78,7 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
  * or quadratic coordinates with pair-local quadrature subdivision enabled via enableQuadratureSubdivision().
  * Use getMfemContactResidual() and, when requested, getMfemDfDx() after update(), rather than getMfemResponse(). The
  * returned vector is a contact residual; its negative is the physical force returned by legacy Common Plane. Nodal
- * gaps, energy, and timestep output are unsupported.
+ * gaps and energy output are unsupported.
  */
 void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_jacobian = true );
 
@@ -251,6 +251,18 @@ void updateMfemMaterialModulus( IndexT cs_id, mfem::Coefficient& modulus_coeffic
  * @param [in] v MFEM velocity ParGridFunction defined over the parent mesh
  */
 void registerMfemVelocity( IndexT cs_id, const mfem::ParGridFunction& v );
+
+/**
+ * @brief Registers component-wise inverse diagonal mass on an MFEM coupling scheme.
+ *
+ * The field must use the parent coordinate vector finite-element space. Zero entries represent constrained velocity
+ * degrees of freedom with infinite effective mass.
+ *
+ * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme().
+ * @param [in] cs_id The ID of the coupling scheme with the MFEM mesh
+ * @param [in] inverse_mass Component-wise inverse diagonal mass ParGridFunction on the parent mesh
+ */
+void registerMfemInverseMass( IndexT cs_id, const mfem::ParGridFunction& inverse_mass );
 
 /**
  * @brief Registers a reference coord field on a MFEM mesh-defined coupling scheme

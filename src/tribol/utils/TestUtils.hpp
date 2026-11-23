@@ -50,7 +50,7 @@ struct TestControlParameters {
         const_penalty( 1.0 ),
         enable_timestep_vote( false ),
         timestep_pen_frac( 0.30 ),
-        timestep_scale( 1.0 )
+        explicit_integrator_stability_factor( 2.0 )
   {
   }
 
@@ -71,7 +71,8 @@ struct TestControlParameters {
   RealT const_penalty;
   bool enable_timestep_vote;
   RealT timestep_pen_frac;
-  RealT timestep_scale;
+  RealT explicit_integrator_stability_factor;  ///< Explicit integrator stability factor for CFL criteria.
+  TimestepCriteria timestep_criteria{};        ///< Active timestep criteria when enable_timestep_vote is true.
 };
 
 /*!
@@ -256,6 +257,15 @@ class TestMesh {
    *
    */
   void allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY, RealT valZ = 0. );
+
+  /**
+   * @brief Allocates and sets uniform component-wise inverse diagonal nodal masses for the specified mesh.
+   * @param mesh_id ID of the registered contact mesh.
+   * @param inv_mx Uniform x-component inverse diagonal nodal mass.
+   * @param inv_my Uniform y-component inverse diagonal nodal mass.
+   * @param inv_mz Uniform z-component inverse diagonal nodal mass (3D only).
+   */
+  void allocateAndSetNodalInverseMass( IndexT mesh_id, RealT inv_mx, RealT inv_my, RealT inv_mz = 0. );
 
   /*!
    * \brief allocates and sets bulk modulus arrays on mesh
@@ -453,6 +463,14 @@ class TestMesh {
 
   bool registered_velocities1{ false };
   bool registered_velocities2{ false };
+  bool registered_inverse_mass1{ false };  ///< True if inverse diagonal masses were allocated for mesh 1.
+  bool registered_inverse_mass2{ false };  ///< True if inverse diagonal masses were allocated for mesh 2.
+  std::vector<RealT> inv_mx1;              ///< Mesh 1 x-component inverse diagonal nodal masses.
+  std::vector<RealT> inv_my1;              ///< Mesh 1 y-component inverse diagonal nodal masses.
+  std::vector<RealT> inv_mz1;              ///< Mesh 1 z-component inverse diagonal nodal masses.
+  std::vector<RealT> inv_mx2;              ///< Mesh 2 x-component inverse diagonal nodal masses.
+  std::vector<RealT> inv_my2;              ///< Mesh 2 y-component inverse diagonal nodal masses.
+  std::vector<RealT> inv_mz2;              ///< Mesh 2 z-component inverse diagonal nodal masses.
   bool mesh_constructed{ false };
 
  public:

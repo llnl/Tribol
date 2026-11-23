@@ -1159,6 +1159,119 @@ TEST( CommonPlaneSelection, evaluates_quadratic_residuals_and_jacobians_with_sub
   finalize();
 }
 
+// CommonPlaneFormulation computes allowable timesteps for Gershgorin CFL, pair spring-mass CFL, velocity projection,
+// and combined criteria, and reports a SLIC error when an enabled criterion is missing its required fields.
+TEST( MfemCommonPlaneTimestepTest, computes_composable_cfl_and_velocity_timesteps )
+{
+  constexpr IndexT coupling_scheme_id = 0;
+  constexpr int lower_mesh_id = 0;
+  constexpr int upper_mesh_id = 1;
+  constexpr int lower_contact_attribute = 1;
+  constexpr int upper_contact_attribute = 2;
+  constexpr int spatial_dim = 2;
+  constexpr int linear_order = 1;
+
+  // Build two 1x1 2D quads overlapping by 0.02 along y (lower y in [0, 1.01], upper y in [0.99, 2.0]).
+  mfem::Mesh serial_mesh( spatial_dim, 8, 2, 2 );
+  serial_mesh.AddVertex( 0.0, 0.0 );
+  serial_mesh.AddVertex( 1.0, 0.0 );
+  serial_mesh.AddVertex( 1.0, 1.01 );
+  serial_mesh.AddVertex( 0.0, 1.01 );
+  serial_mesh.AddVertex( 0.0, 0.99 );
+  serial_mesh.AddVertex( 1.0, 0.99 );
+  serial_mesh.AddVertex( 1.0, 2.0 );
+  serial_mesh.AddVertex( 0.0, 2.0 );
+  const int lower_quad[4] = { 0, 1, 2, 3 };
+  const int upper_quad[4] = { 4, 5, 6, 7 };
+  serial_mesh.AddQuad( lower_quad, 1 );
+  serial_mesh.AddQuad( upper_quad, 2 );
+  const int lower_edge[2] = { 3, 2 };
+  const int upper_edge[2] = { 4, 5 };
+  serial_mesh.AddBdrSegment( lower_edge, lower_contact_attribute );
+  serial_mesh.AddBdrSegment( upper_edge, upper_contact_attribute );
+  serial_mesh.FinalizeQuadMesh( 1, 0, true );
+
+  mfem::ParMesh parallel_mesh( MPI_COMM_WORLD, serial_mesh );
+  mfem::H1_FECollection fe_collection( linear_order, spatial_dim );
+  mfem::ParFiniteElementSpace coord_space( &parallel_mesh, &fe_collection, spatial_dim, mfem::Ordering::byNODES );
+  mfem::ParGridFunction coords( &coord_space );
+  parallel_mesh.GetNodes( coords );
+
+  // Uniform inverse diagonal mass = 0.25 on both blocks (sqrt(inv_m) = 0.5).
+  mfem::ParGridFunction inv_mass( &coord_space );
+  inv_mass = 0.25;
+
+  // Approaching velocities: lower block (attribute 1) +vy = 10.0, upper block (attribute 2) -vy = -10.0.
+  mfem::ParGridFunction velocity( &coord_space );
+  mfem::Vector lower_vel( { 0.0, 10.0 } );
+  mfem::Vector upper_vel( { 0.0, -10.0 } );
+  mfem::VectorConstantCoefficient lower_vel_coeff( lower_vel );
+  mfem::VectorConstantCoefficient upper_vel_coeff( upper_vel );
+  mfem::PWVectorCoefficient vel_coeff( spatial_dim );
+  vel_coeff.UpdateCoefficient( 1, lower_vel_coeff );
+  vel_coeff.UpdateCoefficient( 2, upper_vel_coeff );
+  velocity.ProjectCoefficient( vel_coeff );
+
+  registerMfemCouplingScheme( coupling_scheme_id, lower_mesh_id, upper_mesh_id, parallel_mesh, coords,
+                              { lower_contact_attribute }, { upper_contact_attribute }, SURFACE_TO_SURFACE, NO_CASE,
+                              COMMON_PLANE, FRICTIONLESS, PENALTY, BINNING_GRID, ExecutionMode::Sequential );
+  // Series penalty = 8 * 8 / (8 + 8) = 4.0.
+  setMfemKinematicConstantPenalty( coupling_scheme_id, 8.0, 8.0 );
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false );
+  setQuadratureOrder( coupling_scheme_id, 1 );  // Single midpoint quadrature point (phi = 0.5 on both endpoints).
+
+  // Enabling gershgorin_cfl without registering inverse mass must report a SLIC error.
+  enableTimestepVote( coupling_scheme_id, true );
+  setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ false, false, true, false } );
+  updateMfemParallelDecomposition( 1, true );
+  RealT dt = 10.0;
+  EXPECT_SLIC_ERROR( update( coupling_scheme_id, 0.0, dt ) );
+
+  // Register inverse mass and verify exact analytical Gershgorin CFL timestep (returned unclamped even when dt_in <
+  // dt_vote).
+  registerMfemInverseMass( coupling_scheme_id, inv_mass );
+  setExplicitIntegratorStabilityFactor( coupling_scheme_id, 2.0 );
+  updateMfemParallelDecomposition( 1, true );
+  dt = 0.5;
+  ASSERT_EQ( update( coupling_scheme_id, 0.0, dt ), 0 );
+  // Single midpoint quadrature on 2-node edges: w = 1.0, k_pen = 4.0, phi = 0.5 at all 4 nodes, sqrt(inv_m) = 0.5.
+  // normal_abs_sum = 4 * (0.5 * 0.5) = 1.0. Each y-DOF row sum = (1.0 * 4.0) * (0.5 * 0.5) * 1.0 = 1.0.
+  // dt_gershgorin = 2.0 / sqrt(1.0) = 2.0.
+  EXPECT_NEAR( dt, 2.0, 1.0e-10 );
+
+  // Switch to pair_spring_mass_cfl only: each 2-node edge has total mass = 2 * (1/0.25) = 8.0 -> inv_m = 0.125.
+  // stiffness_bound = 4.0 * 1.0 * (0.125 + 0.125) = 1.0 -> dt = 2.0 / sqrt(1.0) = 2.0.
+  setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ false, false, false, true } );
+  dt = 0.5;
+  ASSERT_EQ( update( coupling_scheme_id, 0.0, dt ), 0 );
+  EXPECT_NEAR( dt, 2.0, 1.0e-10 );
+
+  // When voting is enabled but no criteria are active, dt must be set to +infinity.
+  setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ false, false, false, false } );
+  dt = 1.0;
+  ASSERT_EQ( update( coupling_scheme_id, 0.0, dt ), 0 );
+  EXPECT_TRUE( std::isinf( dt ) );
+
+  // Register velocity and enable current_gap + velocity_projection + gershgorin_cfl; velocity projection (dt ~ 0.03)
+  // is tighter than Gershgorin CFL (dt = 2.0) and must govern.
+  registerMfemVelocity( coupling_scheme_id, velocity );
+  setTimestepPenFrac( coupling_scheme_id, 0.3 );
+  setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ true, true, true, false } );
+  updateMfemParallelDecomposition( 1, true );
+  dt = 10.0;
+  ASSERT_EQ( update( coupling_scheme_id, 0.0, dt ), 0 );
+  // Element thickness is ~1.01 on both blocks; relative closing speed is 20.0 -> dt_vel = 0.3 * 1.01 / 20.0 = 0.01515.
+  EXPECT_NEAR( dt, 0.3 * 1.01 / 20.0, 1.0e-3 );
+
+  // Verify disabling timestep voting leaves dt unchanged.
+  enableTimestepVote( coupling_scheme_id, false );
+  dt = 10.0;
+  ASSERT_EQ( update( coupling_scheme_id, 0.0, dt ), 0 );
+  EXPECT_EQ( dt, 10.0 );
+
+  finalize();
+}
+
 INSTANTIATE_TEST_SUITE_P( quadrature, MfemCommonPlaneTest,
                           testing::Values( one_point_polynomial_order, two_point_polynomial_order,
                                            three_point_polynomial_order ) );

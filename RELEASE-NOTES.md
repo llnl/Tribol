@@ -8,6 +8,12 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added explicit penalty CFL timestep limits for Common Plane (both legacy `COMMON_PLANE` and opted-in
+  `CommonPlaneFormulation`), including an assembled DOF-level Gershgorin CFL bound (enabled by default) and an optional
+  pair-local spring-mass CFL estimate. Added `TimestepCriteria`, `setTimestepCriteria()`,
+  `setExplicitIntegratorStabilityFactor()`, `registerNodalInverseMass()`, and `registerMfemInverseMass()`, and enabled
+  timestep voting for `CommonPlaneFormulation` via `ContactFormulationInputs::dt` and
+  `ContactFormulationResult::dt_vote`.
 - Added a flexible `ContactFormulation` interface for developing energy- or residual-based contact methods with shared
   search, differentiation, and assembly. Pair evaluation and assembly support Sequential, OpenMP, CUDA, and HIP;
   CUDA differentiation requires Clang-CUDA. Common Plane and Energy Mortar use this interface alongside legacy methods.
@@ -73,6 +79,17 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- **Breaking changes to Common Plane timestep voting**:
+  - Removed `setTimestepScale()` and `Parameters::timestep_scale`; callers should apply any safety factor to the
+    returned timestep directly, or set the explicit CFL stability factor via `setExplicitIntegratorStabilityFactor()`.
+  - Enabled `gershgorin_cfl` by default when `enableTimestepVote()` is active. Schemes with timestep voting enabled must
+    now register component-wise inverse diagonal nodal masses via `registerNodalInverseMass()` or
+    `registerMfemInverseMass()`, or disable `gershgorin_cfl` through `setTimestepCriteria()`. Missing required fields
+    now report a `SLIC_ERROR` instead of returning a negative timestep vote.
+  - Current-gap and velocity-projection timestep criteria now use the frame-invariant relative closing velocity along
+    the contact normal and the minimum element thickness of the contacting pair rather than per-side velocities and
+    normals. Stationary or separating pairs no longer vote a finite timestep, and `update()` no longer caps votes at
+    `1.0e6` or rejects votes below `1.0e-8` (when no criterion votes, `dt` is left unchanged).
 - Renamed `getMfemContactForce()` to `getMfemContactResidual()` to distinguish the contact residual from physical force.
 - Numerical coordinates, fields, matrix entries, and parameters consistently use `RealT` across Tribol, shared helpers,
   Redecomp, examples, and tests. Public C++ declarations retain their existing types because `RealT` aliases `double`;

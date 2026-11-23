@@ -201,18 +201,24 @@ class PairTractionIntegral {
       MdArray<RealT, Basis2::size_basis> basis2{};
       Basis1::eval( parametric_coords1, basis1.view() );
       Basis2::eval( parametric_coords2, basis2.view() );
-      for ( IndexT spatial_dim = 0; spatial_dim < Geometry1::spatial_dim; ++spatial_dim ) {
-        const RealT weighted_traction = points.weights[point] * traction.value[spatial_dim];
+      for ( IndexT d = 0; d < Geometry1::spatial_dim; ++d ) {
+        const RealT weighted_traction = points.weights[point] * traction.value[d];
         for ( IndexT basis_index = 0; basis_index < Basis1::size_basis; ++basis_index ) {
-          pair_residual.geometry1( basis_index, spatial_dim ) += basis1[basis_index] * weighted_traction;
+          pair_residual.geometry1( basis_index, d ) += basis1[basis_index] * weighted_traction;
         }
         for ( IndexT basis_index = 0; basis_index < Basis2::size_basis; ++basis_index ) {
-          pair_residual.geometry2( basis_index, spatial_dim ) -= basis2[basis_index] * weighted_traction;
+          pair_residual.geometry2( basis_index, d ) -= basis2[basis_index] * weighted_traction;
         }
       }
     }
     return pair_residual;
   }
+
+  /** @brief Return the owned pair quadrature rule generator. */
+  TRIBOL_HOST_DEVICE const RuleGenerator& ruleGenerator() const { return rule_generator_; }
+
+  /** @brief Return the owned point traction calculation. */
+  TRIBOL_HOST_DEVICE const TractionFunction& tractionFunction() const { return traction_function_; }
 
  private:
   RuleGenerator rule_generator_;        ///< Owned quadrature generator.

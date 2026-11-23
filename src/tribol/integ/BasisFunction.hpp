@@ -514,13 +514,13 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline void computeMappingJacobian(
     MdSpan<const RealT, Basis::size_basis, Basis::spatial_dim> coords,
     MdSpan<RealT, Basis::spatial_dim, Basis::parametric_dim> jacobian )
 {
-  for ( int spatial_dim = 0; spatial_dim < Basis::spatial_dim; ++spatial_dim ) {
+  for ( int d = 0; d < Basis::spatial_dim; ++d ) {
     for ( int parametric_dim = 0; parametric_dim < Basis::parametric_dim; ++parametric_dim ) {
       RealT derivative = 0.0;
       for ( int node = 0; node < Basis::size_basis; ++node ) {
-        derivative += coords( node, spatial_dim ) * parametric_derivatives( node, parametric_dim );
+        derivative += coords( node, d ) * parametric_derivatives( node, parametric_dim );
       }
-      jacobian( spatial_dim, parametric_dim ) = derivative;
+      jacobian( d, parametric_dim ) = derivative;
     }
   }
 }
@@ -561,8 +561,8 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline RealT computeJacobianWeight(
 {
   if constexpr ( Basis::parametric_dim == 1 ) {
     RealT metric = 0.0;
-    for ( int spatial_dim = 0; spatial_dim < Basis::spatial_dim; ++spatial_dim ) {
-      const RealT derivative = jacobian( spatial_dim, 0 );
+    for ( int d = 0; d < Basis::spatial_dim; ++d ) {
+      const RealT derivative = jacobian( d, 0 );
       metric += derivative * derivative;
     }
     return std::sqrt( metric );
@@ -570,9 +570,9 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline RealT computeJacobianWeight(
     RealT metric_00 = 0.0;
     RealT metric_01 = 0.0;
     RealT metric_11 = 0.0;
-    for ( int spatial_dim = 0; spatial_dim < Basis::spatial_dim; ++spatial_dim ) {
-      const RealT derivative_0 = jacobian( spatial_dim, 0 );
-      const RealT derivative_1 = jacobian( spatial_dim, 1 );
+    for ( int d = 0; d < Basis::spatial_dim; ++d ) {
+      const RealT derivative_0 = jacobian( d, 0 );
+      const RealT derivative_1 = jacobian( d, 1 );
       metric_00 += derivative_0 * derivative_0;
       metric_01 += derivative_0 * derivative_1;
       metric_11 += derivative_1 * derivative_1;
@@ -643,16 +643,16 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline bool computePhysicalDerivatives(
     MdSpan<RealT, Basis::size_basis, Basis::spatial_dim> physical_derivatives )
 {
   for ( int node = 0; node < Basis::size_basis; ++node ) {
-    for ( int spatial_dim = 0; spatial_dim < Basis::spatial_dim; ++spatial_dim ) {
-      physical_derivatives( node, spatial_dim ) = 0.0;
+    for ( int d = 0; d < Basis::spatial_dim; ++d ) {
+      physical_derivatives( node, d ) = 0.0;
     }
   }
 
   RealT inverse_metric[4] = { 0.0, 0.0, 0.0, 0.0 };
   if constexpr ( Basis::parametric_dim == 1 ) {
     RealT metric = 0.0;
-    for ( int spatial_dim = 0; spatial_dim < Basis::spatial_dim; ++spatial_dim ) {
-      metric += jacobian( spatial_dim, 0 ) * jacobian( spatial_dim, 0 );
+    for ( int d = 0; d < Basis::spatial_dim; ++d ) {
+      metric += jacobian( d, 0 ) * jacobian( d, 0 );
     }
     if ( metric <= 0.0 ) {
       return false;
@@ -662,9 +662,9 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline bool computePhysicalDerivatives(
     RealT metric_00 = 0.0;
     RealT metric_01 = 0.0;
     RealT metric_11 = 0.0;
-    for ( int spatial_dim = 0; spatial_dim < Basis::spatial_dim; ++spatial_dim ) {
-      const RealT derivative_0 = jacobian( spatial_dim, 0 );
-      const RealT derivative_1 = jacobian( spatial_dim, 1 );
+    for ( int d = 0; d < Basis::spatial_dim; ++d ) {
+      const RealT derivative_0 = jacobian( d, 0 );
+      const RealT derivative_1 = jacobian( d, 1 );
       metric_00 += derivative_0 * derivative_0;
       metric_01 += derivative_0 * derivative_1;
       metric_11 += derivative_1 * derivative_1;
@@ -687,10 +687,10 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline bool computePhysicalDerivatives(
             inverse_metric[Basis::parametric_dim * row + column] * parametric_derivatives( node, column );
       }
     }
-    for ( int spatial_dim = 0; spatial_dim < Basis::spatial_dim; ++spatial_dim ) {
+    for ( int d = 0; d < Basis::spatial_dim; ++d ) {
       for ( int parametric_dim = 0; parametric_dim < Basis::parametric_dim; ++parametric_dim ) {
-        physical_derivatives( node, spatial_dim ) +=
-            jacobian( spatial_dim, parametric_dim ) * metric_transformed_derivative[parametric_dim];
+        physical_derivatives( node, d ) +=
+            jacobian( d, parametric_dim ) * metric_transformed_derivative[parametric_dim];
       }
     }
   }

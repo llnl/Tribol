@@ -149,10 +149,10 @@ class SubdividedPairQuadratureRuleGenerator {
     const auto lower_point = geometry.position( lower_coordinate.view() );
     const auto upper_point = geometry.position( upper_coordinate.view() );
     bool finite = true;
-    for ( IndexT component = 0; component < LinearEdgeGeometry::spatial_dim; ++component ) {
-      coords( 0, component ) = lower_point[component];
-      coords( 1, component ) = upper_point[component];
-      if ( !std::isfinite( lower_point[component] ) || !std::isfinite( upper_point[component] ) ) {
+    for ( IndexT d = 0; d < LinearEdgeGeometry::spatial_dim; ++d ) {
+      coords( 0, d ) = lower_point[d];
+      coords( 1, d ) = upper_point[d];
+      if ( !std::isfinite( lower_point[d] ) || !std::isfinite( upper_point[d] ) ) {
         finite = false;
       }
     }

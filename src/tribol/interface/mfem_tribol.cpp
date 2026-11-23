@@ -578,11 +578,7 @@ void updateMfemElemThickness( IndexT cs_id )
                               cs_id ) );
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
-                      "Create the coupling scheme using registerMfemCouplingScheme() to set the penalty." );
-  auto penalty_opts = cs->getEnforcementOptions().penalty_options;
-  SLIC_ERROR_ROOT_IF(
-      !penalty_opts.kinematic_calc_set && penalty_opts.kinematic_calculation != KINEMATIC_ELEMENT,
-      "Thickness can only be updated when kinematic penalty has been set using setMfemKinematicElementPenalty()." );
+                      "Create the coupling scheme using registerMfemCouplingScheme() to update element thickness." );
   cs->getMfemMeshData()->ComputeElementThicknesses();
 }
 
@@ -614,6 +610,19 @@ void registerMfemVelocity( IndexT cs_id, const mfem::ParGridFunction& v )
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to register a velocity." );
   cs->getMfemMeshData()->SetParentVelocity( v );
+}
+
+void registerMfemInverseMass( IndexT cs_id, const mfem::ParGridFunction& inverse_mass )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
+                      "Coupling scheme does not contain MFEM data. "
+                      "Create the coupling scheme using registerMfemCouplingScheme() to register inverse mass." );
+  cs->getMfemMeshData()->SetParentInverseMass( inverse_mass );
 }
 
 void registerMfemReferenceCoords( IndexT cs_id, const mfem::ParGridFunction& reference_coords )
@@ -933,6 +942,10 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         effective_binning_proximity *= static_cast<RealT>( mfem_data->GetLORFactor() );
       }
       auto residual_gap = cs.getParameters().residual_gap;
+      if ( cs.getParameters().enable_timestep_vote && cs.getParameters().timestep_criteria.requiresElementThickness() &&
+           !mfem_data->HasElemThickness() ) {
+        mfem_data->ComputeElementThicknesses();
+      }
       // creates a new redecomp mesh based on updated coordinates (if criteria is met) and updates transfer operators
       // and displacement, velocity, and response grid functions based on new redecomp mesh
       auto new_redecomp =
@@ -956,6 +969,15 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         auto v_ptrs = mfem_data->GetRedecompVelocityPtrs();
         registerNodalVelocities( mesh_ids[0], v_ptrs[0], v_ptrs[1], v_ptrs[2] );
         registerNodalVelocities( mesh_ids[1], v_ptrs[0], v_ptrs[1], v_ptrs[2] );
+      }
+      if ( mfem_data->HasInverseMass() ) {
+        auto inv_m_ptrs = mfem_data->GetRedecompInverseMassPtrs();
+        registerNodalInverseMass( mesh_ids[0], inv_m_ptrs[0], inv_m_ptrs[1], inv_m_ptrs[2] );
+        registerNodalInverseMass( mesh_ids[1], inv_m_ptrs[0], inv_m_ptrs[1], inv_m_ptrs[2] );
+      }
+      if ( mfem_data->HasElemThickness() ) {
+        registerRealElementField( mesh_ids[0], ELEMENT_THICKNESS, mfem_data->GetRedecompElemThickness1() );
+        registerRealElementField( mesh_ids[1], ELEMENT_THICKNESS, mfem_data->GetRedecompElemThickness2() );
       }
       if ( mfem_data->HasReferenceCoords() ) {
         auto xref_ptrs = mfem_data->GetRedecompReferenceCoordsPtrs();
@@ -986,15 +1008,13 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
       auto& penalty_opts = cs.getEnforcementOptions().penalty_options;
       if ( penalty_opts.kinematic_calc_set ) {
         if ( penalty_opts.kinematic_calculation == KINEMATIC_ELEMENT ) {
-          SLIC_ERROR_ROOT_IF( !mfem_data->GetRedecompElemThickness1() || !mfem_data->GetRedecompElemThickness2(),
+          SLIC_ERROR_ROOT_IF( !mfem_data->HasElemThickness(),
                               "No element thickness data available.  Call setMfemKinematicElementPenalty()." );
           SLIC_ERROR_ROOT_IF(
-              !mfem_data->GetRedecompMaterialModulus1() || !mfem_data->GetRedecompMaterialModulus2(),
+              !mfem_data->HasMaterialModulus(),
               "Material modulus data has not been registered.  Call setMfemKinematicElementPenalty()." );
-          setKinematicElementPenalty( mesh_ids[0], mfem_data->GetRedecompMaterialModulus1(),
-                                      mfem_data->GetRedecompElemThickness1() );
-          setKinematicElementPenalty( mesh_ids[1], mfem_data->GetRedecompMaterialModulus2(),
-                                      mfem_data->GetRedecompElemThickness2() );
+          registerRealElementField( mesh_ids[0], BULK_MODULUS, mfem_data->GetRedecompMaterialModulus1() );
+          registerRealElementField( mesh_ids[1], BULK_MODULUS, mfem_data->GetRedecompMaterialModulus2() );
         } else if ( penalty_opts.kinematic_calculation == KINEMATIC_CONSTANT ) {
           SLIC_ERROR_ROOT_IF(
               !mfem_data->GetMesh1KinematicConstantPenalty() || !mfem_data->GetMesh2KinematicConstantPenalty(),

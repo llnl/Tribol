@@ -475,6 +475,38 @@ struct EnforcementOptions {
   LagrangeMultiplierImplicitOptions lm_implicit_options;
 };
 
+/**
+ * @brief Selects which allowable-timestep criteria are active during timestep voting.
+ */
+struct TimestepCriteria {
+  bool current_gap = true;            ///< Limit timestep when current interpenetration exceeds pen_frac * thickness.
+  bool velocity_projection = true;    ///< Limit timestep when velocity-projected gap exceeds pen_frac * thickness.
+  bool gershgorin_cfl = true;         ///< Assembled DOF-level Gershgorin bound on M^{-1/2} K M^{-1/2} (and damping).
+  bool pair_spring_mass_cfl = false;  ///< Pair-local spring-mass CFL from face inverse masses and overlap measure.
+
+  /** @brief Return true if at least one timestep criterion is enabled. */
+  TRIBOL_HOST_DEVICE constexpr bool anyEnabled() const
+  {
+    return current_gap || velocity_projection || gershgorin_cfl || pair_spring_mass_cfl;
+  }
+
+  /** @brief Return true if any enabled criterion reads nodal velocities. */
+  TRIBOL_HOST_DEVICE constexpr bool requiresVelocity() const { return current_gap || velocity_projection; }
+
+  /** @brief Return true if any enabled criterion reads element thicknesses. */
+  TRIBOL_HOST_DEVICE constexpr bool requiresElementThickness() const { return current_gap || velocity_projection; }
+
+  /** @brief Return true if any enabled criterion reads component-wise inverse diagonal masses. */
+  TRIBOL_HOST_DEVICE constexpr bool requiresInverseMass() const { return gershgorin_cfl || pair_spring_mass_cfl; }
+
+  /** @brief Compare two criterion selections for equality. */
+  TRIBOL_HOST_DEVICE constexpr bool operator==( const TimestepCriteria& other ) const
+  {
+    return current_gap == other.current_gap && velocity_projection == other.velocity_projection &&
+           gershgorin_cfl == other.gershgorin_cfl && pair_spring_mass_cfl == other.pair_spring_mass_cfl;
+  }
+};
+
 /*!
  * \brief Coupling scheme parameters struct
  */
@@ -490,8 +522,9 @@ struct Parameters {
       0.95;  ///! Max allowable interpenetration as percent of element thickness for contact candidacy
   RealT timestep_pen_frac =
       3.0e-1;  ///! Max allowable interpenetration as percent of element thickness prior to triggering timestep vote
-  RealT timestep_scale =
-      1.0;  ///! Scale factor (>0) applied to the timestep vote giving users some control over the vote
+  ///! Dimensionless explicit-integrator stability factor for CFL limits (2.0 for central difference).
+  RealT explicit_integrator_stability_factor = 2.0;
+  TimestepCriteria timestep_criteria{};  ///! Active timestep criteria when enable_timestep_vote is true.
 
   int vis_cycle_incr = 100;           ///! Frequency for visualizations dumps
   VisType vis_type = VIS_NONE;        ///! Type of interface physics visualization output

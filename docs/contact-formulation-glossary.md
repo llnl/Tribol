@@ -53,7 +53,7 @@ each basis-function index in a 2D displacement field has two associated scalar D
 | Numerical extent | An array length or matrix row/column size. Use `Size...` / `size_...`, such as `SizeValues`, `size_coords`, and `size_geom1_basis`. For example, `size_coords` is the number of scalar entries in a coordinate input array. |
 | Entity count | `Num...` / `num_...`, such as `num_pairs`, `num_nodes`, `num_fields`, and `num_required_points`. |
 | Multiplicity | `Num...` / `num_...` for values per basis or node. |
-| Dimension | `Dim` / `dim` in identifiers, including `spatial_dim` and `parametric_dim`. Spell out "dimension" in prose. |
+| Dimension | `Dim` / `dim` in identifiers, including `spatial_dim` and `parametric_dim`. Use `d` for a spatial-dimension loop index. Spell out "dimension" in prose. |
 | Rank | The number of array dimensions, returned by `rank()`. |
 | Extent | The size along one array dimension, returned by `extent<Dim>()`. |
 | Size | The number of entries, returned by `size()`. Fixed numerical sizes may be compile-time constants. |

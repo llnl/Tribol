@@ -180,13 +180,6 @@ class CouplingScheme {
     TRIBOL_HOST_DEVICE inline ContactPlanePair& getContactPlanePair( IndexT id ) const;
 
     /**
-     * @brief Get the timestep scale
-     *
-     * @return timestep scale
-     */
-    TRIBOL_HOST_DEVICE RealT getTimestepScale() const { return m_parameters.timestep_scale; }
-
-    /**
      * @brief Get the gap tolerance that determines in contact face-pairs
      *
      * @return the gap tolerance for the common plane method

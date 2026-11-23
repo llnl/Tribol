@@ -155,12 +155,23 @@ std::unique_ptr<ContactFormulation> createCommonPlaneForRuleGenerator( CouplingS
                                                                        PairRuleGenerator rule_generator, RealT penalty )
 {
   auto pair_builder = makePairListBuilder<Exec>( *cs );
+  std::optional<TimestepSettings> timestep_settings;
+  if ( cs->getParameters().enable_timestep_vote ) {
+    TimestepSettings settings;
+    settings.active_criteria = cs->getParameters().timestep_criteria;
+    settings.pen_frac = cs->getParameters().timestep_pen_frac;
+    settings.explicit_integrator_stability_factor = cs->getParameters().explicit_integrator_stability_factor;
+    settings.communicator = cs->getMfemMeshData()->GetParentCoords().ParFESpace()->GetComm();
+    settings.use_mpi = true;
+    timestep_settings = settings;
+  }
   if ( cs->getParameters().common_plane_compute_jacobian ) {
 #ifdef TRIBOL_USE_ENZYME
     return std::make_unique<
         CommonPlaneFormulation<Exec, PairRuleGenerator, CommonPlaneGap, ResidualAndJacobian, ResidualBasis>>(
         std::move( rule_generator ), penalty, CommonPlaneGap{},
-        ResidualAndJacobian{ *cs->getMfemMeshData(), *cs->getMfemJacobianData() }, std::move( pair_builder ) );
+        ResidualAndJacobian{ *cs->getMfemMeshData(), *cs->getMfemJacobianData() }, std::move( pair_builder ),
+        timestep_settings );
 #else
     SLIC_ERROR_ROOT( "Common Plane Jacobian calculation requires Enzyme." );
     return nullptr;
@@ -168,7 +179,7 @@ std::unique_ptr<ContactFormulation> createCommonPlaneForRuleGenerator( CouplingS
   }
   return std::make_unique<CommonPlaneFormulation<Exec, PairRuleGenerator, CommonPlaneGap, ResidualOnly, ResidualBasis>>(
       std::move( rule_generator ), penalty, CommonPlaneGap{}, ResidualOnly{ *cs->getMfemMeshData() },
-      std::move( pair_builder ) );
+      std::move( pair_builder ), timestep_settings );
 }
 
 /**
