@@ -1506,7 +1506,7 @@ struct LegacyCommonPlaneTimestepVisitor {
         }
       }
 
-      if ( criteria.gershgorin_cfl ) {
+      if ( criteria.nodal_penalty_cfl ) {
         const int num_nodes_per_face1 = static_cast<int>( m1.numberOfNodesPerElement() );
         const int num_nodes_per_face2 = static_cast<int>( m2.numberOfNodesPerElement() );
 
@@ -1539,38 +1539,38 @@ struct LegacyCommonPlaneTimestepVisitor {
         RealT phi2[max_nodes_per_elem]{ 0.0, 0.0, 0.0, 0.0 };
         EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( cntctElem, phi1, phi2 );
 
-        TimestepGershgorinPointData g_point;
-        g_point.integration_weight = plane.m_area;
-        g_point.penalty_stiffness = penalty_stiff_per_area;
+        TimestepNodalPenaltyPointData cfl_point;
+        cfl_point.integration_weight = plane.m_area;
+        cfl_point.penalty_stiffness = penalty_stiff_per_area;
         if ( pen_options.constraint_type == KINEMATIC_AND_RATE && plane.m_velGap <= 0.0 ) {
-          g_point.normal_rate_penalty =
+          cfl_point.normal_rate_penalty =
               detail::computeCommonPlaneRatePenalty( m1, m2, penalty_stiff_per_area, pen_options.rate_calculation );
         }
         if ( include_tangential_damping ) {
-          g_point.tangential_viscous_coeff =
+          cfl_point.tangential_viscous_coeff =
               0.5 * ( m1.getElementData().m_viscous_damping_coeff + m2.getElementData().m_viscous_damping_coeff );
         }
-        g_point.contact_normal = overlap_normal;
-        g_point.spatial_dim = dim;
-        g_point.size_basis[0] = num_nodes_per_face1;
-        g_point.size_basis[1] = num_nodes_per_face2;
+        cfl_point.contact_normal = overlap_normal;
+        cfl_point.spatial_dim = dim;
+        cfl_point.size_basis[0] = num_nodes_per_face1;
+        cfl_point.size_basis[1] = num_nodes_per_face2;
         for ( int a = 0; a < num_nodes_per_face1; ++a ) {
-          g_point.basis_values[0][a] = phi1[a];
+          cfl_point.basis_values[0][a] = phi1[a];
           const IndexT node_id = m1.getGlobalNodeId( index1, a );
           for ( int d = 0; d < dim; ++d ) {
-            g_point.inverse_mass[0][a][d] = m1.getInverseMass( node_id, d );
-            g_point.dof_indices[0][a][d] = node_id * dim + d;
+            cfl_point.inverse_mass[0][a][d] = m1.getInverseMass( node_id, d );
+            cfl_point.dof_indices[0][a][d] = node_id * dim + d;
           }
         }
         for ( int b = 0; b < num_nodes_per_face2; ++b ) {
-          g_point.basis_values[1][b] = phi2[b];
+          cfl_point.basis_values[1][b] = phi2[b];
           const IndexT node_id = m2.getGlobalNodeId( index2, b );
           for ( int d = 0; d < dim; ++d ) {
-            g_point.inverse_mass[1][b][d] = m2.getInverseMass( node_id, d );
-            g_point.dof_indices[1][b][d] = second_dof_offset + node_id * dim + d;
+            cfl_point.inverse_mass[1][b][d] = m2.getInverseMass( node_id, d );
+            cfl_point.dof_indices[1][b][d] = second_dof_offset + node_id * dim + d;
           }
         }
-        collector.recordGershgorinPoint( g_point );
+        collector.recordNodalPenaltyPoint( cfl_point );
       }
     }
   }

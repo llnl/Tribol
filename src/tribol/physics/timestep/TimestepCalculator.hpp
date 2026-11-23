@@ -50,7 +50,7 @@ struct QuadraturePointTimestepData {
  */
 struct TimestepComputeConfig {
   IndexT num_pairs{ 0 };          ///< Number of local contact pairs to visit.
-  IndexT num_dofs{ 0 };           ///< Number of local DOF slots for Gershgorin row-sum accumulation.
+  IndexT num_dofs{ 0 };           ///< Number of local DOF slots for nodal penalty CFL row-sum accumulation.
   int allocator_id{ 0 };          ///< Umpire allocator ID matching the execution space (0 without Umpire).
   RealT current_dt{ 0.0 };        ///< Incoming simulation timestep for velocity projection (<= 0 disables it).
   bool include_damping{ false };  ///< True if the contact method may supply normal rate or tangential viscous damping.
@@ -84,7 +84,7 @@ struct PairTractionIntegralTimestepVisitor {
    * @brief Evaluate one interface pair's quadrature points and forward point and CFL data to the collector.
    * @tparam Collector Device-callable TimestepPairCollector type.
    * @param pair_index Index into pairs.
-   * @param collector Collector recording allowable timestep votes and Gershgorin row-sum contributions.
+   * @param collector Collector recording allowable timestep votes and nodal penalty CFL row-sum contributions.
    */
   template <typename Collector>
   TRIBOL_HOST_DEVICE void visitPair( IndexT pair_index, const Collector& collector ) const
@@ -176,33 +176,33 @@ struct PairTractionIntegralTimestepVisitor {
         active_overlap_measure += points.weights[point];
         weighted_penalty_stiffness += points.weights[point] * qp_data.penalty_stiffness;
         weighted_normal += points.weights[point] * qp_data.contact_normal;
-        if ( criteria.gershgorin_cfl ) {
-          TimestepGershgorinPointData g_point;
-          g_point.integration_weight = points.weights[point];
-          g_point.penalty_stiffness = qp_data.penalty_stiffness;
-          g_point.normal_rate_penalty = qp_data.normal_rate_penalty;
-          g_point.tangential_viscous_coeff = qp_data.tangential_viscous_coeff;
-          g_point.contact_normal = qp_data.contact_normal;
-          g_point.spatial_dim = spatial_dim;
-          g_point.size_basis[0] = static_cast<int>( size_basis1 );
-          g_point.size_basis[1] = static_cast<int>( size_basis2 );
+        if ( criteria.nodal_penalty_cfl ) {
+          TimestepNodalPenaltyPointData cfl_point;
+          cfl_point.integration_weight = points.weights[point];
+          cfl_point.penalty_stiffness = qp_data.penalty_stiffness;
+          cfl_point.normal_rate_penalty = qp_data.normal_rate_penalty;
+          cfl_point.tangential_viscous_coeff = qp_data.tangential_viscous_coeff;
+          cfl_point.contact_normal = qp_data.contact_normal;
+          cfl_point.spatial_dim = spatial_dim;
+          cfl_point.size_basis[0] = static_cast<int>( size_basis1 );
+          cfl_point.size_basis[1] = static_cast<int>( size_basis2 );
           for ( IndexT basis_index = 0; basis_index < size_basis1; ++basis_index ) {
-            g_point.basis_values[0][basis_index] = basis1[basis_index];
+            cfl_point.basis_values[0][basis_index] = basis1[basis_index];
             const IndexT node1 = mesh1.getGlobalNodeId( elem1, basis_index );
             for ( int d = 0; d < spatial_dim; ++d ) {
-              g_point.inverse_mass[0][basis_index][d] = mesh1.getInverseMass( node1, d );
-              g_point.dof_indices[0][basis_index][d] = node1 * spatial_dim + d;
+              cfl_point.inverse_mass[0][basis_index][d] = mesh1.getInverseMass( node1, d );
+              cfl_point.dof_indices[0][basis_index][d] = node1 * spatial_dim + d;
             }
           }
           for ( IndexT basis_index = 0; basis_index < size_basis2; ++basis_index ) {
-            g_point.basis_values[1][basis_index] = basis2[basis_index];
+            cfl_point.basis_values[1][basis_index] = basis2[basis_index];
             const IndexT node2 = mesh2.getGlobalNodeId( elem2, basis_index );
             for ( int d = 0; d < spatial_dim; ++d ) {
-              g_point.inverse_mass[1][basis_index][d] = mesh2.getInverseMass( node2, d );
-              g_point.dof_indices[1][basis_index][d] = node2 * spatial_dim + d;
+              cfl_point.inverse_mass[1][basis_index][d] = mesh2.getInverseMass( node2, d );
+              cfl_point.dof_indices[1][basis_index][d] = node2 * spatial_dim + d;
             }
           }
-          collector.recordGershgorinPoint( g_point );
+          collector.recordNodalPenaltyPoint( cfl_point );
         }
       }
     }
@@ -242,7 +242,7 @@ template <ExecutionMode Exec>
 class TimestepPairCollector {
  public:
   /**
-   * @brief Construct a collector binding the calculator settings, Gershgorin buffers, and minimum-dt reducer.
+   * @brief Construct a collector binding the calculator settings, nodal penalty CFL buffers, and minimum-dt reducer.
    * @param calculator Timestep calculator holding active criteria and parameters.
    * @param current_dt Incoming simulation timestep for velocity projection (<= 0 disables velocity projection).
    * @param stiffness_row_sums Per-DOF stiffness row-sum accumulator.
@@ -267,10 +267,10 @@ class TimestepPairCollector {
   TRIBOL_HOST_DEVICE void recordPairSpringMassCfl( const TimestepPairSpringMassData& pair ) const;
 
   /**
-   * @brief Accumulate one integration point into the DOF-level Gershgorin row sums when gershgorin_cfl is enabled.
+   * @brief Accumulate one integration point into the nodal penalty CFL row sums when nodal_penalty_cfl is enabled.
    * @param point Integration point weights, penalties, normal, basis values, inverse masses, and DOF indices.
    */
-  TRIBOL_HOST_DEVICE void recordGershgorinPoint( const TimestepGershgorinPointData& point ) const;
+  TRIBOL_HOST_DEVICE void recordNodalPenaltyPoint( const TimestepNodalPenaltyPointData& point ) const;
 
   /** @brief Record that an invalid inverse mass entry was encountered on the executing backend. */
   TRIBOL_HOST_DEVICE void markInvalidMass() const { tribol::atomicMax( &invalid_mass_[0], 1 ); }
@@ -333,39 +333,40 @@ class TimestepCalculator {
   }
 
   /**
-   * @brief Accumulate one integration point into DOF-level Gershgorin row sums when gershgorin_cfl is enabled.
+   * @brief Accumulate one integration point into nodal penalty CFL row sums when nodal_penalty_cfl is enabled.
    * @param point Integration point data.
    * @param stiffness_row_sums Per-DOF stiffness row-sum accumulator.
    * @param damping_row_sums Optional per-DOF damping row-sum accumulator.
    * @param invalid_mass Single-element error flag.
    */
-  TRIBOL_HOST_DEVICE void accumulateGershgorinPoint( const TimestepGershgorinPointData& point,
-                                                     ArrayViewT<RealT> stiffness_row_sums,
-                                                     ArrayViewT<RealT> damping_row_sums,
-                                                     ArrayViewT<int> invalid_mass ) const
+  TRIBOL_HOST_DEVICE void accumulateNodalPenaltyPoint( const TimestepNodalPenaltyPointData& point,
+                                                       ArrayViewT<RealT> stiffness_row_sums,
+                                                       ArrayViewT<RealT> damping_row_sums,
+                                                       ArrayViewT<int> invalid_mass ) const
   {
-    if ( !settings_.active_criteria.gershgorin_cfl ) {
+    if ( !settings_.active_criteria.nodal_penalty_cfl ) {
       return;
     }
-    GershgorinCflTimestepCriterion::accumulatePoint( point, stiffness_row_sums, damping_row_sums, invalid_mass );
+    NodalPenaltyCflTimestepCriterion::accumulatePoint( point, stiffness_row_sums, damping_row_sums, invalid_mass );
   }
 
   /**
-   * @brief Finalize the Gershgorin CFL stability timestep from global stiffness and damping bounds.
+   * @brief Finalize the nodal penalty CFL stability timestep from global stiffness and damping bounds.
    * @param stiffness_bound Conservative upper bound on lambda_max(M^{-1/2} K M^{-1/2}).
    * @param damping_bound Conservative upper bound on lambda_max(M^{-1/2} C M^{-1/2}).
-   * @return Allowable timestep, or +infinity if gershgorin_cfl is disabled or no stiffness/damping was accumulated.
+   * @return Allowable timestep, or +infinity if nodal_penalty_cfl is disabled or no stiffness/damping was accumulated.
    */
-  TRIBOL_HOST_DEVICE RealT finalizeGershgorin( RealT stiffness_bound, RealT damping_bound ) const
+  TRIBOL_HOST_DEVICE RealT finalizeNodalPenaltyCfl( RealT stiffness_bound, RealT damping_bound ) const
   {
-    if ( !settings_.active_criteria.gershgorin_cfl ) {
+    if ( !settings_.active_criteria.nodal_penalty_cfl ) {
       return axom::numeric_limits<RealT>::infinity();
     }
-    return GershgorinCflTimestepCriterion::finalizeFromBounds( stiffness_bound, damping_bound, settings_ );
+    return NodalPenaltyCflTimestepCriterion::finalizeFromBounds( stiffness_bound, damping_bound, settings_ );
   }
 
   /**
-   * @brief Run collective field validation, parallel pair evaluation, Gershgorin row-sum reduction, and MPI assembly.
+   * @brief Run collective field validation, parallel pair evaluation, nodal penalty CFL row-sum reduction, and MPI
+   * assembly.
    *
    * This method is public and uses a single non-nested forAllExec<Exec>() kernel invoking pair_visitor.visitPair(),
    * avoiding nvcc extended-lambda restrictions on private enclosing functions, generic lambda parameters, and nested
@@ -392,10 +393,11 @@ class TimestepCalculator {
       return std::nullopt;
     }
 
-    const bool run_gershgorin = settings_.active_criteria.gershgorin_cfl && config.num_pairs > 0;
+    const bool run_nodal_penalty_cfl = settings_.active_criteria.nodal_penalty_cfl && config.num_pairs > 0;
     const IndexT size_stiffness_row_sums =
-        run_gershgorin ? axom::utilities::max( static_cast<IndexT>( 1 ), config.num_dofs ) : 0;
-    const IndexT size_damping_row_sums = ( run_gershgorin && config.include_damping ) ? size_stiffness_row_sums : 0;
+        run_nodal_penalty_cfl ? axom::utilities::max( static_cast<IndexT>( 1 ), config.num_dofs ) : 0;
+    const IndexT size_damping_row_sums =
+        ( run_nodal_penalty_cfl && config.include_damping ) ? size_stiffness_row_sums : 0;
 
     ArrayT<RealT> stiffness_row_sums_data( size_stiffness_row_sums, size_stiffness_row_sums, config.allocator_id );
     ArrayT<RealT> damping_row_sums_data( size_damping_row_sums, size_damping_row_sums, config.allocator_id );
@@ -417,7 +419,7 @@ class TimestepCalculator {
 
     RealT local_stiffness_bound = 0.0;
     RealT local_damping_bound = 0.0;
-    if ( run_gershgorin ) {
+    if ( run_nodal_penalty_cfl ) {
       ReduceMax<Exec, RealT> max_stiffness( 0.0 );
       ReduceMax<Exec, RealT> max_damping( 0.0 );
       const bool has_damping_sums = size_damping_row_sums > 0;
@@ -440,7 +442,7 @@ class TimestepCalculator {
 #ifdef TRIBOL_USE_MPI
     if ( settings_.use_mpi ) {
       MPI_Allreduce( MPI_IN_PLACE, &global_invalid_mass, 1, MPI_INT, MPI_MAX, settings_.communicator );
-      if ( settings_.active_criteria.gershgorin_cfl ) {
+      if ( settings_.active_criteria.nodal_penalty_cfl ) {
         RealT bounds[2]{ global_stiffness_bound, global_damping_bound };
         MPI_Allreduce( MPI_IN_PLACE, bounds, 2, MPI_DOUBLE, MPI_SUM, settings_.communicator );
         global_stiffness_bound = bounds[0];
@@ -455,10 +457,10 @@ class TimestepCalculator {
       return std::nullopt;
     }
 
-    if ( settings_.active_criteria.gershgorin_cfl ) {
-      const RealT gershgorin_dt = finalizeGershgorin( global_stiffness_bound, global_damping_bound );
-      if ( std::isfinite( gershgorin_dt ) && gershgorin_dt > 0.0 ) {
-        global_dt = std::min( global_dt, gershgorin_dt );
+    if ( settings_.active_criteria.nodal_penalty_cfl ) {
+      const RealT nodal_penalty_dt = finalizeNodalPenaltyCfl( global_stiffness_bound, global_damping_bound );
+      if ( std::isfinite( nodal_penalty_dt ) && nodal_penalty_dt > 0.0 ) {
+        global_dt = std::min( global_dt, nodal_penalty_dt );
       }
     }
 
@@ -667,11 +669,11 @@ TRIBOL_HOST_DEVICE inline void TimestepPairCollector<Exec>::recordPairSpringMass
 }
 
 template <ExecutionMode Exec>
-TRIBOL_HOST_DEVICE inline void TimestepPairCollector<Exec>::recordGershgorinPoint(
-    const TimestepGershgorinPointData& point ) const
+TRIBOL_HOST_DEVICE inline void TimestepPairCollector<Exec>::recordNodalPenaltyPoint(
+    const TimestepNodalPenaltyPointData& point ) const
 {
   TimestepCalculator( settings_ )
-      .accumulateGershgorinPoint( point, stiffness_row_sums_, damping_row_sums_, invalid_mass_ );
+      .accumulateNodalPenaltyPoint( point, stiffness_row_sums_, damping_row_sums_, invalid_mass_ );
 }
 
 }  // namespace tribol

@@ -39,11 +39,11 @@ using RealT = tribol::RealT;
 namespace {
 
 constexpr tribol::TimestepCriteria penetration_only_criteria{
-    .current_gap = true, .velocity_projection = true, .gershgorin_cfl = false, .pair_spring_mass_cfl = false };
-constexpr tribol::TimestepCriteria gershgorin_cfl_only_criteria{
-    .current_gap = false, .velocity_projection = false, .gershgorin_cfl = true, .pair_spring_mass_cfl = false };
+    .current_gap = true, .velocity_projection = true, .nodal_penalty_cfl = false, .pair_spring_mass_cfl = false };
+constexpr tribol::TimestepCriteria nodal_penalty_cfl_only_criteria{
+    .current_gap = false, .velocity_projection = false, .nodal_penalty_cfl = true, .pair_spring_mass_cfl = false };
 constexpr tribol::TimestepCriteria pair_spring_mass_cfl_only_criteria{
-    .current_gap = false, .velocity_projection = false, .gershgorin_cfl = false, .pair_spring_mass_cfl = true };
+    .current_gap = false, .velocity_projection = false, .nodal_penalty_cfl = false, .pair_spring_mass_cfl = true };
 
 }  // namespace
 
@@ -847,9 +847,9 @@ TEST_F( CommonPlaneTest, large_velocity_small_separation )
   tribol::finalize();
 }
 
-TEST_F( CommonPlaneTest, cfl_gershgorin_only_without_velocity )
+TEST_F( CommonPlaneTest, cfl_nodal_penalty_only_without_velocity )
 {
-  // Enabling only gershgorin_cfl must compute the analytical CFL timestep without registering velocities or
+  // Enabling only nodal_penalty_cfl must compute the analytical CFL timestep without registering velocities or
   // element thicknesses.
   this->m_mesh.mortarMeshId = 0;
   this->m_mesh.nonmortarMeshId = 1;
@@ -866,7 +866,7 @@ TEST_F( CommonPlaneTest, cfl_gershgorin_only_without_velocity )
   parameters.const_penalty = 8.0;  // Series penalty = 8 * 8 / (8 + 8) = 4.0.
   parameters.dt = 0.5;             // Smaller than dt_cfl to verify dt_vote is returned unclamped.
   parameters.enable_timestep_vote = true;
-  parameters.timestep_criteria = gershgorin_cfl_only_criteria;
+  parameters.timestep_criteria = nodal_penalty_cfl_only_criteria;
   parameters.explicit_integrator_stability_factor = 2.0;
 
   int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
@@ -915,7 +915,7 @@ TEST_F( CommonPlaneTest, cfl_pair_spring_mass_asymmetric_and_rigid )
 
 TEST_F( CommonPlaneTest, missing_inverse_mass_reports_slic_error )
 {
-  // Enabling gershgorin_cfl without registering inverse mass must report a SLIC error rather than silently skipping.
+  // Enabling nodal_penalty_cfl without registering inverse mass must report a SLIC error rather than silently skipping.
   this->m_mesh.mortarMeshId = 0;
   this->m_mesh.nonmortarMeshId = 1;
 
@@ -926,7 +926,7 @@ TEST_F( CommonPlaneTest, missing_inverse_mass_reports_slic_error )
   parameters.const_penalty = 8.0;
   parameters.dt = 1.0;
   parameters.enable_timestep_vote = true;
-  parameters.timestep_criteria = gershgorin_cfl_only_criteria;
+  parameters.timestep_criteria = nodal_penalty_cfl_only_criteria;
 
   EXPECT_SLIC_ERROR( this->m_mesh.tribolSetupAndUpdate( tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS,
                                                         tribol::NO_CASE, false, parameters ) );

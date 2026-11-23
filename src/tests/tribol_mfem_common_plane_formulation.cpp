@@ -1159,7 +1159,7 @@ TEST( CommonPlaneSelection, evaluates_quadratic_residuals_and_jacobians_with_sub
   finalize();
 }
 
-// CommonPlaneFormulation computes allowable timesteps for Gershgorin CFL, pair spring-mass CFL, velocity projection,
+// CommonPlaneFormulation computes allowable timesteps for nodal penalty CFL, pair spring-mass CFL, velocity projection,
 // and combined criteria, and reports a SLIC error when an enabled criterion is missing its required fields.
 TEST( MfemCommonPlaneTimestepTest, computes_composable_cfl_and_velocity_timesteps )
 {
@@ -1220,14 +1220,14 @@ TEST( MfemCommonPlaneTimestepTest, computes_composable_cfl_and_velocity_timestep
   setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false );
   setQuadratureOrder( coupling_scheme_id, 1 );  // Single midpoint quadrature point (phi = 0.5 on both endpoints).
 
-  // Enabling gershgorin_cfl without registering inverse mass must report a SLIC error.
+  // Enabling nodal_penalty_cfl without registering inverse mass must report a SLIC error.
   enableTimestepVote( coupling_scheme_id, true );
   setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ false, false, true, false } );
   updateMfemParallelDecomposition( 1, true );
   RealT dt = 10.0;
   EXPECT_SLIC_ERROR( update( coupling_scheme_id, 0.0, dt ) );
 
-  // Register inverse mass and verify exact analytical Gershgorin CFL timestep (returned unclamped even when dt_in <
+  // Register inverse mass and verify exact analytical nodal penalty CFL timestep (returned unclamped even when dt_in <
   // dt_vote).
   registerMfemInverseMass( coupling_scheme_id, inv_mass );
   setExplicitIntegratorStabilityFactor( coupling_scheme_id, 2.0 );
@@ -1236,7 +1236,7 @@ TEST( MfemCommonPlaneTimestepTest, computes_composable_cfl_and_velocity_timestep
   ASSERT_EQ( update( coupling_scheme_id, 0.0, dt ), 0 );
   // Single midpoint quadrature on 2-node edges: w = 1.0, k_pen = 4.0, phi = 0.5 at all 4 nodes, sqrt(inv_m) = 0.5.
   // normal_abs_sum = 4 * (0.5 * 0.5) = 1.0. Each y-DOF row sum = (1.0 * 4.0) * (0.5 * 0.5) * 1.0 = 1.0.
-  // dt_gershgorin = 2.0 / sqrt(1.0) = 2.0.
+  // dt_cfl = 2.0 / sqrt(1.0) = 2.0.
   EXPECT_NEAR( dt, 2.0, 1.0e-10 );
 
   // Switch to pair_spring_mass_cfl only: each 2-node edge has total mass = 2 * (1/0.25) = 8.0 -> inv_m = 0.125.
@@ -1252,8 +1252,8 @@ TEST( MfemCommonPlaneTimestepTest, computes_composable_cfl_and_velocity_timestep
   ASSERT_EQ( update( coupling_scheme_id, 0.0, dt ), 0 );
   EXPECT_TRUE( std::isinf( dt ) );
 
-  // Register velocity and enable current_gap + velocity_projection + gershgorin_cfl; velocity projection (dt ~ 0.03)
-  // is tighter than Gershgorin CFL (dt = 2.0) and must govern.
+  // Register velocity and enable current_gap + velocity_projection + nodal_penalty_cfl; velocity projection (dt ~
+  // 0.015) is tighter than nodal penalty CFL (dt = 2.0) and must govern.
   registerMfemVelocity( coupling_scheme_id, velocity );
   setTimestepPenFrac( coupling_scheme_id, 0.3 );
   setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ true, true, true, false } );

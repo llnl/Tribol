@@ -27,15 +27,15 @@ using tribol::ArrayT;
 using tribol::ArrayViewT;
 using tribol::CurrentGapTimestepCriterion;
 using tribol::ExecutionMode;
-using tribol::GershgorinCflTimestepCriterion;
 using tribol::IndexT;
 using tribol::MemorySpace;
+using tribol::NodalPenaltyCflTimestepCriterion;
 using tribol::PairSpringMassCflTimestepCriterion;
 using tribol::RealT;
 using tribol::ReduceMin;
 using tribol::TimestepCalculator;
 using tribol::TimestepCriteria;
-using tribol::TimestepGershgorinPointData;
+using tribol::TimestepNodalPenaltyPointData;
 using tribol::TimestepPairSpringMassData;
 using tribol::TimestepPointData;
 using tribol::TimestepSettings;
@@ -141,9 +141,9 @@ TEST( TimestepCalculatorTest, pair_spring_mass_cfl_matches_analytical_formula )
   EXPECT_TRUE( std::isinf( PairSpringMassCflTimestepCriterion::evaluate( pair, settings ) ) );
 }
 
-// GershgorinCflTimestepCriterion matches analytical stiffness/damping bounds with multi-point accumulation, signed
+// NodalPenaltyCflTimestepCriterion matches analytical stiffness/damping bounds with multi-point accumulation, signed
 // higher-order basis values, and constrained (zero inverse mass) DOFs.
-TEST( TimestepCalculatorTest, gershgorin_cfl_handles_signed_basis_damping_and_fixed_dofs )
+TEST( TimestepCalculatorTest, nodal_penalty_cfl_handles_signed_basis_damping_and_fixed_dofs )
 {
   TimestepSettings settings;
   settings.explicit_integrator_stability_factor = 1.8;
@@ -157,7 +157,7 @@ TEST( TimestepCalculatorTest, gershgorin_cfl_handles_signed_basis_damping_and_fi
   // 2D normal = (0, -1), signed basis on surface 0: { 0.75, -0.25 }, on surface 1: { 0.5, 0.5 }.
   // Surface 0 node 0 has inv_my = 4.0 (sqrt = 2.0), node 1 has inv_my = 0.0 (constrained DOF).
   // Surface 1 node 0 has inv_my = 1.0 (sqrt = 1.0), node 1 has inv_my = 1.0 (sqrt = 1.0).
-  TimestepGershgorinPointData pt;
+  TimestepNodalPenaltyPointData pt;
   pt.integration_weight = 0.5;
   pt.penalty_stiffness = 10.0;
   pt.normal_rate_penalty = 2.0;
@@ -190,10 +190,10 @@ TEST( TimestepCalculatorTest, gershgorin_cfl_handles_signed_basis_damping_and_fi
   pt.dof_indices[1][1][1] = 3;
 
   // Accumulate twice to verify multi-point accumulation into shared DOFs.
-  GershgorinCflTimestepCriterion::accumulatePoint( pt, stiffness_sums.view(), damping_sums.view(),
-                                                   invalid_mass.view() );
-  GershgorinCflTimestepCriterion::accumulatePoint( pt, stiffness_sums.view(), damping_sums.view(),
-                                                   invalid_mass.view() );
+  NodalPenaltyCflTimestepCriterion::accumulatePoint( pt, stiffness_sums.view(), damping_sums.view(),
+                                                     invalid_mass.view() );
+  NodalPenaltyCflTimestepCriterion::accumulatePoint( pt, stiffness_sums.view(), damping_sums.view(),
+                                                     invalid_mass.view() );
   EXPECT_EQ( invalid_mass[0], 0 );
   // Constrained DOF (slot 1) remains zero.
   EXPECT_EQ( stiffness_sums[1], 0.0 );
@@ -210,7 +210,7 @@ TEST( TimestepCalculatorTest, gershgorin_cfl_handles_signed_basis_damping_and_fi
   EXPECT_NEAR( max_k, 37.5, 1.0e-12 );
   EXPECT_NEAR( max_c, 7.5, 1.0e-12 );
 
-  const RealT dt_cfl = GershgorinCflTimestepCriterion::finalizeFromBounds( max_k, max_c, settings );
+  const RealT dt_cfl = NodalPenaltyCflTimestepCriterion::finalizeFromBounds( max_k, max_c, settings );
   const RealT expected_omega = std::sqrt( 37.5 + 0.25 * 7.5 * 7.5 ) + 0.5 * 7.5;
   EXPECT_NEAR( dt_cfl, 1.8 / expected_omega, 1.0e-12 );
 }
@@ -237,7 +237,7 @@ TEST( TimestepCalculatorTest, runtime_criteria_toggles_control_active_checks )
     EXPECT_FALSE( calc.anyEnabled() );
     EXPECT_TRUE( std::isinf( calc.evaluatePoint( point, 1.0 ) ) );
     EXPECT_TRUE( std::isinf( calc.evaluatePairSpringMassCfl( pair ) ) );
-    EXPECT_TRUE( std::isinf( calc.finalizeGershgorin( 100.0, 0.0 ) ) );
+    EXPECT_TRUE( std::isinf( calc.finalizeNodalPenaltyCfl( 100.0, 0.0 ) ) );
   }
 
   // Only pair_spring_mass_cfl enabled -> point check inactive, pair CFL active.

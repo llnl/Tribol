@@ -481,13 +481,13 @@ struct EnforcementOptions {
 struct TimestepCriteria {
   bool current_gap = true;            ///< Limit timestep when current interpenetration exceeds pen_frac * thickness.
   bool velocity_projection = true;    ///< Limit timestep when velocity-projected gap exceeds pen_frac * thickness.
-  bool gershgorin_cfl = true;         ///< Assembled DOF-level Gershgorin bound on M^{-1/2} K M^{-1/2} (and damping).
+  bool nodal_penalty_cfl = true;      ///< Assembled nodal penalty CFL bound on M^{-1/2} K M^{-1/2} (and damping).
   bool pair_spring_mass_cfl = false;  ///< Pair-local spring-mass CFL from face inverse masses and overlap measure.
 
   /** @brief Return true if at least one timestep criterion is enabled. */
   TRIBOL_HOST_DEVICE constexpr bool anyEnabled() const
   {
-    return current_gap || velocity_projection || gershgorin_cfl || pair_spring_mass_cfl;
+    return current_gap || velocity_projection || nodal_penalty_cfl || pair_spring_mass_cfl;
   }
 
   /** @brief Return true if any enabled criterion reads nodal velocities. */
@@ -497,13 +497,13 @@ struct TimestepCriteria {
   TRIBOL_HOST_DEVICE constexpr bool requiresElementThickness() const { return current_gap || velocity_projection; }
 
   /** @brief Return true if any enabled criterion reads component-wise inverse diagonal masses. */
-  TRIBOL_HOST_DEVICE constexpr bool requiresInverseMass() const { return gershgorin_cfl || pair_spring_mass_cfl; }
+  TRIBOL_HOST_DEVICE constexpr bool requiresInverseMass() const { return nodal_penalty_cfl || pair_spring_mass_cfl; }
 
   /** @brief Compare two criterion selections for equality. */
   TRIBOL_HOST_DEVICE constexpr bool operator==( const TimestepCriteria& other ) const
   {
     return current_gap == other.current_gap && velocity_projection == other.velocity_projection &&
-           gershgorin_cfl == other.gershgorin_cfl && pair_spring_mass_cfl == other.pair_spring_mass_cfl;
+           nodal_penalty_cfl == other.nodal_penalty_cfl && pair_spring_mass_cfl == other.pair_spring_mass_cfl;
   }
 };
 

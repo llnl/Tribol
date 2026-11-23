@@ -9,11 +9,11 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 
 ### Added
 - Added explicit penalty CFL timestep limits for Common Plane (both legacy `COMMON_PLANE` and opted-in
-  `CommonPlaneFormulation`), including an assembled DOF-level Gershgorin CFL bound (enabled by default) and an optional
+  `CommonPlaneFormulation`), including an assembled nodal penalty CFL bound (enabled by default) and an optional
   pair-local spring-mass CFL estimate. Added `TimestepCriteria`, `setTimestepCriteria()`,
   `setExplicitIntegratorStabilityFactor()`, `registerNodalInverseMass()`, and `registerMfemInverseMass()`, and enabled
   timestep voting for `CommonPlaneFormulation` via `ContactFormulationInputs::dt` and
-  `ContactFormulationResult::dt_vote`.
+  `ContactFormulationResult::time_step`.
 - Added a flexible `ContactFormulation` interface for developing energy- or residual-based contact methods with shared
   search, differentiation, and assembly. Pair evaluation and assembly support Sequential, OpenMP, CUDA, and HIP;
   CUDA differentiation requires Clang-CUDA. Common Plane and Energy Mortar use this interface alongside legacy methods.
@@ -82,9 +82,9 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - **Breaking changes to Common Plane timestep voting**:
   - Removed `setTimestepScale()` and `Parameters::timestep_scale`; callers should apply any safety factor to the
     returned timestep directly, or set the explicit CFL stability factor via `setExplicitIntegratorStabilityFactor()`.
-  - Enabled `gershgorin_cfl` by default when `enableTimestepVote()` is active. Schemes with timestep voting enabled must
-    now register component-wise inverse diagonal nodal masses via `registerNodalInverseMass()` or
-    `registerMfemInverseMass()`, or disable `gershgorin_cfl` through `setTimestepCriteria()`. Missing required fields
+  - Enabled `nodal_penalty_cfl` by default when `enableTimestepVote()` is active. Schemes with timestep voting enabled
+    must now register component-wise inverse diagonal nodal masses via `registerNodalInverseMass()` or
+    `registerMfemInverseMass()`, or disable `nodal_penalty_cfl` through `setTimestepCriteria()`. Missing required fields
     now report a `SLIC_ERROR` instead of returning a negative timestep vote.
   - Current-gap and velocity-projection timestep criteria now use the frame-invariant relative closing velocity along
     the contact normal and the minimum element thickness of the contacting pair rather than per-side velocities and

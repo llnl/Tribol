@@ -64,9 +64,9 @@ struct TimestepPairSpringMassData {
 };
 
 /**
- * @brief Point-level inputs for accumulating DOF-level Gershgorin stability row sums.
+ * @brief Point-level inputs for accumulating assembled nodal penalty CFL row sums.
  */
-struct TimestepGershgorinPointData {
+struct TimestepNodalPenaltyPointData {
   static constexpr int max_spatial_dim = 3;  ///< Maximum supported spatial dimension.
   static constexpr int max_size_basis = 9;   ///< Maximum basis size per surface element (up to Q2 quad).
 
@@ -238,10 +238,10 @@ struct PairSpringMassCflTimestepCriterion {
 };
 
 /**
- * @brief Assembled DOF-level Gershgorin / l-infinity stability criterion on M^{-1/2} K M^{-1/2} and M^{-1/2} C
- * M^{-1/2}.
+ * @brief Assembled nodal penalty CFL criterion bounding M^{-1/2} K M^{-1/2} and M^{-1/2} C M^{-1/2} via row sums
+ * (Gershgorin's circle theorem).
  */
-struct GershgorinCflTimestepCriterion {
+struct NodalPenaltyCflTimestepCriterion {
   /**
    * @brief Accumulate one active integration point's mass-normalized row-sum contributions into DOF buffers.
    * @param point Integration point weights, penalties, normal, basis values, inverse masses, and DOF indices.
@@ -249,7 +249,7 @@ struct GershgorinCflTimestepCriterion {
    * @param damping_row_sums Optional per-DOF damping row-sum accumulator (may be empty if undamped).
    * @param invalid_mass Single-element flag set to 1 if an invalid inverse mass or out-of-range DOF index is seen.
    */
-  TRIBOL_HOST_DEVICE static void accumulatePoint( const TimestepGershgorinPointData& point,
+  TRIBOL_HOST_DEVICE static void accumulatePoint( const TimestepNodalPenaltyPointData& point,
                                                   ArrayViewT<RealT> stiffness_row_sums,
                                                   ArrayViewT<RealT> damping_row_sums, ArrayViewT<int> invalid_mass )
   {
@@ -261,9 +261,10 @@ struct GershgorinCflTimestepCriterion {
         !damping_row_sums.empty() && ( point.normal_rate_penalty > 0.0 || point.tangential_viscous_coeff > 0.0 );
     const bool include_tangential = accumulate_damping && point.tangential_viscous_coeff > 0.0;
 
-    RealT sqrt_inv_mass[2][TimestepGershgorinPointData::max_size_basis][TimestepGershgorinPointData::max_spatial_dim]{};
+    RealT sqrt_inv_mass[2][TimestepNodalPenaltyPointData::max_size_basis]
+                       [TimestepNodalPenaltyPointData::max_spatial_dim]{};
     RealT normal_abs_sum = 0.0;
-    RealT tangential_abs_sums[TimestepGershgorinPointData::max_spatial_dim]{ 0.0, 0.0, 0.0 };
+    RealT tangential_abs_sums[TimestepNodalPenaltyPointData::max_spatial_dim]{ 0.0, 0.0, 0.0 };
 
     for ( int surface = 0; surface < 2; ++surface ) {
       for ( int basis_index = 0; basis_index < point.size_basis[surface]; ++basis_index ) {
