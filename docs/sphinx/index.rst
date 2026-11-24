@@ -42,7 +42,7 @@ After uberenv creates a host-config file, configure and build Tribol:
 Supported Platforms
 -------------------
 
-Tribol is tested on Ubuntu 24.04 LTS and TOSS 4. Platform-specific Spack environment files live
+Tribol is tested on Ubuntu 24.04 LTS, TOSS 4, and TOSS 4 Cray. Platform-specific Spack environment files live
 under ``scripts/spack/configs/``.
 
 Dependencies

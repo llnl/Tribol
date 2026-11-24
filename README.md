@@ -43,6 +43,7 @@ python3 scripts/uberenv/uberenv.py --help
 Tribol is tested on:
 - Ubuntu 24.04 LTS
 - TOSS 4
+- TOSS 4 Cray
 
 See `scripts/spack/packages/tribol/package.py` for possible variants in the spack spec. The file
 `scripts/spack/specs.json` lists spack specs which are known to build successfully on different platforms.  Note the
