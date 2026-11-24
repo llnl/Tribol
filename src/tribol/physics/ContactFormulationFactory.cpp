@@ -156,6 +156,7 @@ std::unique_ptr<ContactFormulation> createCommonPlaneForRuleGenerator( CouplingS
 {
   auto pair_builder = makePairListBuilder<Exec>( *cs );
   std::optional<TimestepSettings> timestep_settings;
+  std::optional<detail::MfemParentPenaltyCflData> parent_cfl_data;
   if ( cs->getParameters().enable_timestep_vote ) {
     TimestepSettings settings;
     settings.active_criteria = cs->getParameters().timestep_criteria;
@@ -164,6 +165,16 @@ std::unique_ptr<ContactFormulation> createCommonPlaneForRuleGenerator( CouplingS
     settings.communicator = cs->getMfemMeshData()->GetParentCoords().ParFESpace()->GetComm();
     settings.use_mpi = true;
     timestep_settings = settings;
+    auto& mesh_data = *cs->getMfemMeshData();
+    if ( settings.active_criteria.nodal_penalty_cfl && mesh_data.GetLORMesh() ) {
+      if ( !cs->hasMfemJacobianData() ) {
+        mesh_data.EnableLORJacobianTransfer();
+        auto transfer_data = std::make_unique<MfemJacobianData>( mesh_data );
+        transfer_data->UpdateJacobianXfer();
+        cs->setMfemJacobianData( std::move( transfer_data ) );
+      }
+      parent_cfl_data.emplace( mesh_data, *cs->getMfemJacobianData() );
+    }
   }
   if ( cs->getParameters().common_plane_compute_jacobian ) {
 #ifdef TRIBOL_USE_ENZYME
@@ -171,7 +182,7 @@ std::unique_ptr<ContactFormulation> createCommonPlaneForRuleGenerator( CouplingS
         CommonPlaneFormulation<Exec, PairRuleGenerator, CommonPlaneGap, ResidualAndJacobian, ResidualBasis>>(
         std::move( rule_generator ), penalty, CommonPlaneGap{},
         ResidualAndJacobian{ *cs->getMfemMeshData(), *cs->getMfemJacobianData() }, std::move( pair_builder ),
-        timestep_settings );
+        timestep_settings, parent_cfl_data );
 #else
     SLIC_ERROR_ROOT( "Common Plane Jacobian calculation requires Enzyme." );
     return nullptr;
@@ -179,7 +190,7 @@ std::unique_ptr<ContactFormulation> createCommonPlaneForRuleGenerator( CouplingS
   }
   return std::make_unique<CommonPlaneFormulation<Exec, PairRuleGenerator, CommonPlaneGap, ResidualOnly, ResidualBasis>>(
       std::move( rule_generator ), penalty, CommonPlaneGap{}, ResidualOnly{ *cs->getMfemMeshData() },
-      std::move( pair_builder ), timestep_settings );
+      std::move( pair_builder ), timestep_settings, parent_cfl_data );
 }
 
 /**

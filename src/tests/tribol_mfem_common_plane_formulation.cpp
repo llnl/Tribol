@@ -9,7 +9,8 @@
  *
  * Tests cover formulation selection and rebuilding, residual and Jacobian modes, quadrature and penalty settings,
  * quadratic 2D meshes evaluated without low-order refinement (and restoring LOR when disabled), and MPI ranks without
- * contact elements. Pair-level quadrature and derivatives are tested separately.
+ * contact elements. Timestep tests cover the parent-space penalty CFL limit for LOR contact. Pair-level quadrature
+ * and derivatives are tested separately.
  */
 #include <cmath>
 #include <limits>
@@ -1159,6 +1160,36 @@ TEST( CommonPlaneSelection, evaluates_quadratic_residuals_and_jacobians_with_sub
   finalize();
 }
 
+/** @brief Build two unit-width quadrilaterals with aligned opposing contact edges.
+ * @param penetration Positive normal overlap between the contact edges.
+ * @return Mesh with the lower body and its contact edge assigned attribute 1 and the upper body and edge attribute 2.
+ */
+mfem::Mesh makeFlatTimestepContactPatch( RealT penetration )
+{
+  constexpr int spatial_dim = 2;
+  const RealT lower_edge_y = 1.0 + 0.5 * penetration;
+  const RealT upper_edge_y = 1.0 - 0.5 * penetration;
+  mfem::Mesh serial_mesh( spatial_dim, 8, 2, 2 );
+  serial_mesh.AddVertex( 0.0, 0.0 );
+  serial_mesh.AddVertex( 1.0, 0.0 );
+  serial_mesh.AddVertex( 1.0, lower_edge_y );
+  serial_mesh.AddVertex( 0.0, lower_edge_y );
+  serial_mesh.AddVertex( 0.0, upper_edge_y );
+  serial_mesh.AddVertex( 1.0, upper_edge_y );
+  serial_mesh.AddVertex( 1.0, 2.0 );
+  serial_mesh.AddVertex( 0.0, 2.0 );
+  const int lower_quad[4] = { 0, 1, 2, 3 };
+  const int upper_quad[4] = { 4, 5, 6, 7 };
+  serial_mesh.AddQuad( lower_quad, 1 );
+  serial_mesh.AddQuad( upper_quad, 2 );
+  const int lower_edge[2] = { 3, 2 };
+  const int upper_edge[2] = { 4, 5 };
+  serial_mesh.AddBdrSegment( lower_edge, 1 );
+  serial_mesh.AddBdrSegment( upper_edge, 2 );
+  serial_mesh.FinalizeQuadMesh( 1, 0, true );
+  return serial_mesh;
+}
+
 // CommonPlaneFormulation computes allowable timesteps for nodal penalty CFL, pair spring-mass CFL, velocity projection,
 // and combined criteria, and reports a SLIC error when an enabled criterion is missing its required fields.
 TEST( MfemCommonPlaneTimestepTest, computes_composable_cfl_and_velocity_timesteps )
@@ -1171,26 +1202,7 @@ TEST( MfemCommonPlaneTimestepTest, computes_composable_cfl_and_velocity_timestep
   constexpr int spatial_dim = 2;
   constexpr int linear_order = 1;
 
-  // Build two 1x1 2D quads overlapping by 0.02 along y (lower y in [0, 1.01], upper y in [0.99, 2.0]).
-  mfem::Mesh serial_mesh( spatial_dim, 8, 2, 2 );
-  serial_mesh.AddVertex( 0.0, 0.0 );
-  serial_mesh.AddVertex( 1.0, 0.0 );
-  serial_mesh.AddVertex( 1.0, 1.01 );
-  serial_mesh.AddVertex( 0.0, 1.01 );
-  serial_mesh.AddVertex( 0.0, 0.99 );
-  serial_mesh.AddVertex( 1.0, 0.99 );
-  serial_mesh.AddVertex( 1.0, 2.0 );
-  serial_mesh.AddVertex( 0.0, 2.0 );
-  const int lower_quad[4] = { 0, 1, 2, 3 };
-  const int upper_quad[4] = { 4, 5, 6, 7 };
-  serial_mesh.AddQuad( lower_quad, 1 );
-  serial_mesh.AddQuad( upper_quad, 2 );
-  const int lower_edge[2] = { 3, 2 };
-  const int upper_edge[2] = { 4, 5 };
-  serial_mesh.AddBdrSegment( lower_edge, lower_contact_attribute );
-  serial_mesh.AddBdrSegment( upper_edge, upper_contact_attribute );
-  serial_mesh.FinalizeQuadMesh( 1, 0, true );
-
+  auto serial_mesh = makeFlatTimestepContactPatch( 0.02 );
   mfem::ParMesh parallel_mesh( MPI_COMM_WORLD, serial_mesh );
   mfem::H1_FECollection fe_collection( linear_order, spatial_dim );
   mfem::ParFiniteElementSpace coord_space( &parallel_mesh, &fe_collection, spatial_dim, mfem::Ordering::byNODES );
@@ -1271,6 +1283,88 @@ TEST( MfemCommonPlaneTimestepTest, computes_composable_cfl_and_velocity_timestep
 
   finalize();
 }
+
+/** @brief Run the parent-space LOR CFL case on each host execution mode. */
+class MfemCommonPlaneLorCflTest : public testing::TestWithParam<ExecutionMode> {};
+
+// Eight LOR elements per quadratic edge expose the difference between the LOR and parent CFL bounds. Unequal masses
+// exercise local and remote columns of the parent penalty matrix when the two bodies are on different MPI ranks.
+TEST_P( MfemCommonPlaneLorCflTest, computes_penalty_cfl_on_parent_true_dofs )
+{
+  constexpr IndexT coupling_scheme_id = 0;
+  constexpr int lower_mesh_id = 0;
+  constexpr int upper_mesh_id = 1;
+  constexpr int lower_attribute = 1;
+  constexpr int upper_attribute = 2;
+  constexpr int spatial_dim = 2;
+  constexpr int quadratic_order = 2;
+  constexpr int lor_factor = 8;
+  constexpr RealT stability_factor = 2.0;
+  constexpr RealT lower_inverse_mass = 1.0;
+  constexpr RealT upper_inverse_mass = 0.25;
+
+  auto serial_mesh = makeFlatTimestepContactPatch( 2.0e-6 );
+  mfem::ParMesh parallel_mesh( MPI_COMM_WORLD, serial_mesh );
+  parallel_mesh.SetCurvature( quadratic_order );
+  mfem::H1_FECollection fe_collection( quadratic_order, spatial_dim );
+  mfem::ParFiniteElementSpace coord_space( &parallel_mesh, &fe_collection, spatial_dim, mfem::Ordering::byNODES );
+  mfem::ParGridFunction coords( &coord_space );
+  parallel_mesh.GetNodes( coords );
+
+  mfem::ParGridFunction inverse_mass( &coord_space );
+  mfem::VectorConstantCoefficient lower_mass( mfem::Vector( { 0.0, lower_inverse_mass } ) );
+  mfem::VectorConstantCoefficient upper_mass( mfem::Vector( { 0.0, upper_inverse_mass } ) );
+  mfem::PWVectorCoefficient inverse_mass_coefficient( spatial_dim );
+  inverse_mass_coefficient.UpdateCoefficient( lower_attribute, lower_mass );
+  inverse_mass_coefficient.UpdateCoefficient( upper_attribute, upper_mass );
+  inverse_mass.ProjectCoefficient( inverse_mass_coefficient );
+
+  registerMfemCouplingScheme( coupling_scheme_id, lower_mesh_id, upper_mesh_id, parallel_mesh, coords,
+                              { lower_attribute }, { upper_attribute }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE,
+                              FRICTIONLESS, PENALTY, BINNING_GRID, GetParam() );
+  setMfemKinematicConstantPenalty( coupling_scheme_id, 8.0, 8.0 );
+  setMfemLORFactor( coupling_scheme_id, lor_factor );
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false );
+  setQuadratureOrder( coupling_scheme_id, three_point_polynomial_order );
+  registerMfemInverseMass( coupling_scheme_id, inverse_mass );
+  setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ false, false, true, false } );
+  setExplicitIntegratorStabilityFactor( coupling_scheme_id, stability_factor );
+  updateMfemParallelDecomposition( 1, true );
+
+  // Enable voting after decomposition to exercise construction of the matrix transfer in residual-only mode.
+  enableTimestepVote( coupling_scheme_id, true );
+  RealT dt = 10.0;
+  ASSERT_EQ( update( 0, 0.0, dt ), 0 );
+
+  // For one side, the signed matrix 4 * T^T M_LOR T has largest absolute row sum 185/72 at the midpoint.
+  // M_LOR integrates products of linear basis functions over the projected intervals. The endpoint intervals have
+  // length 1/12 and the six interior intervals length 1/8. T is the lumped L2 projection of the quadratic basis.
+  // Scaling the same-side and opposite-side blocks gives the lower midpoint the largest mass-normalized row sum.
+  constexpr RealT one_surface_row_sum = 185.0 / 72.0;
+  const RealT expected_bound = one_surface_row_sum * std::sqrt( lower_inverse_mass ) *
+                               ( std::sqrt( lower_inverse_mass ) + std::sqrt( upper_inverse_mass ) );
+  EXPECT_NEAR( dt, stability_factor / std::sqrt( expected_bound ), 1.0e-10 );
+  const auto& scheme = CouplingSchemeManager::getInstance().at( coupling_scheme_id );
+  EXPECT_EQ( scheme.getContactFormulationResult().df_dx, nullptr );
+
+  // With every parent DOF fixed, the mass-normalized operator is zero and the CFL criterion gives no finite vote.
+  inverse_mass = 0.0;
+  registerMfemInverseMass( coupling_scheme_id, inverse_mass );
+  updateMfemParallelDecomposition( 1 );
+  dt = 10.0;
+  ASSERT_EQ( update( 1, 0.0, dt ), 0 );
+  EXPECT_TRUE( std::isinf( dt ) ) << "Timestep vote was " << dt;
+
+  finalize();
+}
+
+INSTANTIATE_TEST_SUITE_P( execution_modes, MfemCommonPlaneLorCflTest,
+                          testing::Values( ExecutionMode::Sequential
+#ifdef TRIBOL_USE_OPENMP
+                                           ,
+                                           ExecutionMode::OpenMP
+#endif
+                                           ) );
 
 INSTANTIATE_TEST_SUITE_P( quadrature, MfemCommonPlaneTest,
                           testing::Values( one_point_polynomial_order, two_point_polynomial_order,

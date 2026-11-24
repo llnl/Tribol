@@ -267,11 +267,9 @@ void enableQuadratureSubdivision( IndexT cs_id, bool enabled, int num_subdivisio
   }
   if ( mode_changed ) {
     auto& mesh_data = *cs->getMfemMeshData();
-    const bool rebuild_jacobian = cs->hasMfemJacobianData();
-    if ( rebuild_jacobian ) {
-      cs->setMfemJacobianData( nullptr );
-    }
-    if ( !enabled && cs->getParameters().common_plane_compute_jacobian ) {
+    const bool rebuild_jacobian = cs->getParameters().common_plane_compute_jacobian;
+    cs->setMfemJacobianData( nullptr );
+    if ( !enabled && rebuild_jacobian ) {
       mesh_data.EnableLORJacobianTransfer();
     }
     mesh_data.SetLORFieldTransferEnabled( !enabled );

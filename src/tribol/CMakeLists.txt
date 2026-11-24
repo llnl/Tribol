@@ -131,6 +131,8 @@ set(tribol_sources
     physics/Mortar.cpp
     physics/NodalEnergyMortar.cpp
     physics/Physics.cpp
+
+    physics/timestep/TimestepCalculator.cpp
      
     search/CoarseSearchFactory.cpp
     search/InterfacePairFinder.cpp

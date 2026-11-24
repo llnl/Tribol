@@ -31,7 +31,34 @@
 #include <mpi.h>
 #endif
 
+#ifdef BUILD_REDECOMP
+#include "tribol/assembly/MfemMatrixAssembler.hpp"
+#endif
+
 namespace tribol {
+
+namespace detail {
+
+#ifdef BUILD_REDECOMP
+/** @brief MFEM data needed to calculate a nodal penalty CFL limit on parent true DOFs. */
+struct MfemParentPenaltyCflData {
+  const MfemMeshData& mesh_data;          ///< Supplies the registered parent inverse mass and Redecomp element maps.
+  const MfemJacobianData& transfer_data;  ///< Transfers the frozen penalty matrix to the parent true DOFs.
+};
+
+/**
+ * @brief Bound the mass-normalized frozen penalty matrix by its maximum absolute row sum across all ranks.
+ * @param penalty_matrix Signed penalty matrix assembled on parent true DOFs.
+ * @param mesh_data Supplies inverse diagonal mass on the parent mesh.
+ * @return The row-sum bound, including zero for a zero operator, or std::nullopt after reporting invalid mass data.
+ */
+std::optional<RealT> computeParentPenaltyRowSumBound( const mfem::HypreParMatrix& penalty_matrix,
+                                                      const MfemMeshData& mesh_data );
+#else
+struct MfemParentPenaltyCflData;
+#endif
+
+}  // namespace detail
 
 /**
  * @brief Contact normal, contact activation, and penalty stiffness at one quadrature point for timestep voting.
@@ -129,14 +156,19 @@ class TimestepCalculator {
    * @brief Collectively validate that all fields required by active criteria are registered on non-empty meshes.
    * @param mesh1 First surface mesh view.
    * @param mesh2 Second surface mesh view.
+   * @param use_parent_mass True when the nodal penalty criterion reads parent inverse mass separately.
    * @return True if all required fields are present; false after reporting a SLIC_ERROR listing every missing field.
    */
-  bool validateRequiredFields( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) const
+  bool validateRequiredFields( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+                               bool use_parent_mass = false ) const
   {
     const bool has_elements = mesh1.numberOfElements() > 0 && mesh2.numberOfElements() > 0;
-    int missing[3]{ ( has_elements && isMissingVelocity( mesh1, mesh2 ) ) ? 1 : 0,
-                    ( has_elements && isMissingElementThickness( mesh1, mesh2 ) ) ? 1 : 0,
-                    ( has_elements && isMissingInverseMass( mesh1, mesh2 ) ) ? 1 : 0 };
+    const auto criteria = settings_.active_criteria;
+    const bool needs_surface_mass = criteria.pair_spring_mass_cfl || ( criteria.nodal_penalty_cfl && !use_parent_mass );
+    int missing[3]{
+        ( has_elements && isMissingVelocity( mesh1, mesh2 ) ) ? 1 : 0,
+        ( has_elements && isMissingElementThickness( mesh1, mesh2 ) ) ? 1 : 0,
+        ( has_elements && needs_surface_mass && ( !mesh1.hasInverseMass() || !mesh2.hasInverseMass() ) ) ? 1 : 0 };
 #ifdef TRIBOL_USE_MPI
     if ( settings_.use_mpi ) {
       MPI_Allreduce( MPI_IN_PLACE, missing, 3, MPI_INT, MPI_MAX, settings_.communicator );
@@ -181,26 +213,33 @@ class TimestepCalculator {
    * computeTimestepDataAtQuadraturePoint().
    * @tparam Basis1 Residual basis on geometry1.
    * @tparam Basis2 Residual basis on geometry2.
-   * @param pairs Active candidate interface pairs in execution-accessible memory.
+   * @param pairs Refined candidate pairs in execution-accessible memory.
    * @param mesh1 First surface mesh view.
    * @param mesh2 Second surface mesh view.
    * @param pair_integral Configured pair traction integral supplying the rule generator and traction function.
    * @param current_dt Optional incoming simulation timestep used by velocity-projection voting.
    * @param include_damping True if the traction function may supply normal rate or tangential viscous damping.
-   * @return Unclamped global allowable timestep, or std::nullopt when no active criterion votes.
+   * @param parent_cfl_data Optional MFEM transfer and parent mass data for the normal kinematic penalty criterion.
+   * @return Unclamped global allowable timestep, or std::nullopt when no active criterion votes or inputs are invalid.
    */
   template <ExecutionMode Exec, PairRuleGenerator RuleGenerator, PairTractionFunction<RuleGenerator> TractionFunction,
             FiniteElementBasis Basis1, FiniteElementBasis Basis2>
   std::optional<RealT> compute(
       const ArrayT<InterfacePair>& pairs, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
       const PairTractionIntegral<RuleGenerator, TractionFunction, Basis1, Basis2>& pair_integral,
-      std::optional<RealT> current_dt = std::nullopt, bool include_damping = false ) const
+      std::optional<RealT> current_dt = std::nullopt, bool include_damping = false,
+      [[maybe_unused]] const detail::MfemParentPenaltyCflData* parent_cfl_data = nullptr ) const
   {
     if ( !settings_.active_criteria.anyEnabled() ) {
       return std::nullopt;
     }
 
-    if ( !validateRequiredFields( mesh1, mesh2 ) ) {
+#ifdef BUILD_REDECOMP
+    const bool use_parent_penalty_cfl = parent_cfl_data && settings_.active_criteria.nodal_penalty_cfl;
+#else
+    constexpr bool use_parent_penalty_cfl = false;
+#endif
+    if ( !validateRequiredFields( mesh1, mesh2, use_parent_penalty_cfl ) ) {
       return std::nullopt;
     }
 
@@ -218,10 +257,12 @@ class TimestepCalculator {
     const int allocator_id = pairs.getAllocatorID();
     const RealT dt_in = ( current_dt.has_value() && *current_dt > 0.0 ) ? *current_dt : 0.0;
 
-    const bool run_nodal_penalty_cfl = settings_.active_criteria.nodal_penalty_cfl && num_pairs > 0;
+    const bool use_surface_penalty_cfl = settings_.active_criteria.nodal_penalty_cfl && !use_parent_penalty_cfl;
+    const bool compute_local_surface_row_sums = use_surface_penalty_cfl && num_pairs > 0;
     const IndexT size_stiffness_row_sums =
-        run_nodal_penalty_cfl ? axom::utilities::max( static_cast<IndexT>( 1 ), num_dofs ) : 0;
-    const IndexT size_damping_row_sums = ( run_nodal_penalty_cfl && include_damping ) ? size_stiffness_row_sums : 0;
+        compute_local_surface_row_sums ? axom::utilities::max( static_cast<IndexT>( 1 ), num_dofs ) : 0;
+    const IndexT size_damping_row_sums =
+        ( compute_local_surface_row_sums && include_damping ) ? size_stiffness_row_sums : 0;
 
     ArrayT<RealT> stiffness_row_sums_data( size_stiffness_row_sums, size_stiffness_row_sums, allocator_id );
     ArrayT<RealT> damping_row_sums_data( size_damping_row_sums, size_damping_row_sums, allocator_id );
@@ -232,7 +273,20 @@ class TimestepCalculator {
     ArrayT<int> invalid_mass_data( { 0 }, allocator_id );
     ArrayViewT<int> invalid_mass = invalid_mass_data.view();
 
-    ReduceMin<Exec, RealT> min_dt( std::numeric_limits<RealT>::infinity() );
+#ifdef BUILD_REDECOMP
+    constexpr IndexT size_geom1_dofs = size_basis1 * spatial_dim;
+    constexpr IndexT size_geom2_dofs = size_basis2 * spatial_dim;
+    constexpr IndexT size_pair_dofs = size_geom1_dofs + size_geom2_dofs;
+    using PairPenaltyMatrix = MdArray<RealT, size_pair_dofs, size_pair_dofs>;
+    const IndexT num_pair_matrices = use_parent_penalty_cfl ? num_pairs : 0;
+    ArrayT<PairPenaltyMatrix> pair_penalty_matrix( axom::ArrayOptions::Uninitialized{}, num_pair_matrices,
+                                                   num_pair_matrices, allocator_id );
+    const auto pair_penalty_matrix_view = pair_penalty_matrix.view();
+#endif
+
+    // RAJA's minimum reduction starts each worker at the largest finite value, including workers with no vote.
+    constexpr RealT no_timestep_vote = std::numeric_limits<RealT>::max();
+    ReduceMin<Exec, RealT> min_dt( no_timestep_vote );
 
     const auto pairs_view = pairs.view();
     const auto rule_generator = pair_integral.ruleGenerator();
@@ -251,6 +305,11 @@ class TimestepCalculator {
       const Geometry2 geometry2( coords2.view() );
 
       const auto points = rule_generator.generate( geometry1, geometry2 );
+#ifdef BUILD_REDECOMP
+      if ( use_parent_penalty_cfl ) {
+        pair_penalty_matrix_view[pair_index] = PairPenaltyMatrix{};
+      }
+#endif
       if ( points.metadata.status != QuadratureStatus::Success || points.metadata.num_required_points == 0 ) {
         return;
       }
@@ -322,7 +381,29 @@ class TimestepCalculator {
           active_overlap_measure += points.weights[point];
           weighted_penalty_stiffness += points.weights[point] * qp_data.penalty_stiffness;
           weighted_normal += points.weights[point] * qp_data.contact_normal;
-          if ( criteria.nodal_penalty_cfl ) {
+#ifdef BUILD_REDECOMP
+          if ( use_parent_penalty_cfl ) {
+            // Keep the gap coefficients signed so the MFEM transfer can combine contributions to each parent DOF.
+            MdArray<RealT, size_pair_dofs> gap_row{};
+            for ( IndexT d = 0; d < spatial_dim; ++d ) {
+              for ( IndexT basis_index = 0; basis_index < size_basis1; ++basis_index ) {
+                gap_row[basis_index * spatial_dim + d] = basis1[basis_index] * qp_data.contact_normal[d];
+              }
+              for ( IndexT basis_index = 0; basis_index < size_basis2; ++basis_index ) {
+                gap_row[size_geom1_dofs + basis_index * spatial_dim + d] =
+                    -basis2[basis_index] * qp_data.contact_normal[d];
+              }
+            }
+            auto& penalty_matrix = pair_penalty_matrix_view[pair_index];
+            const RealT weighted_stiffness = points.weights[point] * qp_data.penalty_stiffness;
+            for ( IndexT row = 0; row < size_pair_dofs; ++row ) {
+              for ( IndexT column = 0; column < size_pair_dofs; ++column ) {
+                penalty_matrix( row, column ) += weighted_stiffness * gap_row[row] * gap_row[column];
+              }
+            }
+          }
+#endif
+          if ( use_surface_penalty_cfl ) {
             TimestepNodalPenaltyPointData cfl_point;
             cfl_point.integration_weight = points.weights[point];
             cfl_point.penalty_stiffness = qp_data.penalty_stiffness;
@@ -380,7 +461,7 @@ class TimestepCalculator {
 
     RealT local_stiffness_bound = 0.0;
     RealT local_damping_bound = 0.0;
-    if ( run_nodal_penalty_cfl ) {
+    if ( compute_local_surface_row_sums ) {
       ReduceMax<Exec, RealT> max_stiffness( 0.0 );
       ReduceMax<Exec, RealT> max_damping( 0.0 );
       const bool has_damping_sums = size_damping_row_sums > 0;
@@ -403,7 +484,7 @@ class TimestepCalculator {
 #ifdef TRIBOL_USE_MPI
     if ( settings_.use_mpi ) {
       MPI_Allreduce( MPI_IN_PLACE, &global_invalid_mass, 1, MPI_INT, MPI_MAX, settings_.communicator );
-      if ( settings_.active_criteria.nodal_penalty_cfl ) {
+      if ( use_surface_penalty_cfl ) {
         RealT bounds[2]{ global_stiffness_bound, global_damping_bound };
         MPI_Allreduce( MPI_IN_PLACE, bounds, 2, MPI_DOUBLE, MPI_SUM, settings_.communicator );
         global_stiffness_bound = bounds[0];
@@ -418,6 +499,23 @@ class TimestepCalculator {
       return std::nullopt;
     }
 
+#ifdef BUILD_REDECOMP
+    if ( use_parent_penalty_cfl ) {
+      // The same two-sided transfer as the residual Jacobian gives T^T K_LOR T on parent true DOFs.
+      auto assembler = detail::makeResidualJacobianAssembler(
+          parent_cfl_data->mesh_data, parent_cfl_data->transfer_data, mesh1, mesh2, num_pairs, allocator_id );
+      assembler.template addPairs<Exec, size_geom1_dofs, size_geom2_dofs, 4>(
+          pairs, [=] TRIBOL_HOST_DEVICE( IndexT pair_index, IndexT row, IndexT column ) {
+            return pair_penalty_matrix_view[pair_index]( row, column );
+          } );
+      const auto penalty_matrix = assembler.assemble();
+      const auto bound = detail::computeParentPenaltyRowSumBound( penalty_matrix.get(), parent_cfl_data->mesh_data );
+      if ( !bound ) {
+        return std::nullopt;
+      }
+      global_stiffness_bound = *bound;
+    }
+#endif
     if ( settings_.active_criteria.nodal_penalty_cfl ) {
       const RealT nodal_penalty_dt = finalizeNodalPenaltyCfl( global_stiffness_bound, global_damping_bound );
       if ( std::isfinite( nodal_penalty_dt ) && nodal_penalty_dt > 0.0 ) {
@@ -425,7 +523,7 @@ class TimestepCalculator {
       }
     }
 
-    if ( !std::isfinite( global_dt ) ) {
+    if ( global_dt == no_timestep_vote || !std::isfinite( global_dt ) ) {
       return std::nullopt;
     }
     return global_dt;
@@ -453,17 +551,6 @@ class TimestepCalculator {
   {
     return settings_.active_criteria.requiresElementThickness() &&
            ( !mesh1.getElementData().m_is_element_thickness_set || !mesh2.getElementData().m_is_element_thickness_set );
-  }
-
-  /**
-   * @brief Check whether enabled criteria require inverse diagonal masses that are missing on either mesh.
-   * @param mesh1 First surface mesh view.
-   * @param mesh2 Second surface mesh view.
-   * @return True when inverse diagonal masses are required and missing on mesh1 or mesh2.
-   */
-  bool isMissingInverseMass( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) const
-  {
-    return settings_.active_criteria.requiresInverseMass() && ( !mesh1.hasInverseMass() || !mesh2.hasInverseMass() );
   }
 
   TimestepSettings settings_{};  ///< Configured timestep settings and active criterion flags.

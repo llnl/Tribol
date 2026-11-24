@@ -870,6 +870,12 @@ class MfemMeshData {
    */
   bool HasInverseMass() const { return inverse_mass_ != nullptr; }
 
+  /** @brief Return the registered parent inverse diagonal mass, or nullptr if it has not been registered. */
+  const mfem::ParGridFunction* GetParentInverseMass() const
+  {
+    return inverse_mass_ ? &inverse_mass_->GetParentGridFn() : nullptr;
+  }
+
   /**
    * @brief Get pointers to component arrays of the inverse diagonal mass on the RedecompMesh
    *

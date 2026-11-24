@@ -14,6 +14,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   `setExplicitIntegratorStabilityFactor()`, `registerNodalInverseMass()`, and `registerMfemInverseMass()`, and enabled
   timestep voting for `CommonPlaneFormulation` via `ContactFormulationInputs::dt` and
   `ContactFormulationResult::time_step`.
+- For `CommonPlaneFormulation` on low-order-refined geometry, the nodal penalty CFL limit uses the signed penalty matrix
+  transferred to the parent true DOFs and the registered parent inverse diagonal mass.
 - Added a flexible `ContactFormulation` interface for developing energy- or residual-based contact methods with shared
   search, differentiation, and assembly. Pair evaluation and assembly support Sequential, OpenMP, CUDA, and HIP;
   CUDA differentiation requires Clang-CUDA. Common Plane and Energy Mortar use this interface alongside legacy methods.
