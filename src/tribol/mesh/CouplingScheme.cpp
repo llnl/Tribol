@@ -1686,7 +1686,10 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
   }
 
   const int dim = spatialDim();
-  const bool meshes_share_dofs = ( m_mesh_id1 == m_mesh_id2 ) || hasMfemData();
+  bool meshes_share_dofs = ( m_mesh_id1 == m_mesh_id2 );
+#ifdef BUILD_REDECOMP
+  meshes_share_dofs = meshes_share_dofs || hasMfemData();
+#endif
   const IndexT first_dof_count = mesh1.numberOfNodes() * dim;
   const IndexT second_dof_count = mesh2.numberOfNodes() * dim;
   const IndexT second_dof_offset = meshes_share_dofs ? 0 : first_dof_count;
