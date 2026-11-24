@@ -29,6 +29,7 @@
 #include "tribol/geom/QuadraticEdgeGeometry.hpp"
 #include "tribol/integ/QuadratureRuleGeneratorFactory.hpp"
 #include "tribol/integ/SubdividedPairQuadratureRuleGenerator.hpp"
+#include "tribol/geom/CommonPlaneQuadraticEdgeProjection.hpp"
 
 namespace {
 using namespace tribol;
@@ -49,6 +50,8 @@ using LinearCommonPlaneRule = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping
 using QuadraticCommonPlaneRule = SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, LinearCommonPlaneRule,
                                                                        max_num_quadrature_subdivisions>;
 static_assert( PairRuleGenerator<QuadraticCommonPlaneRule> );
+static_assert( SubelementPointProjection<CommonPlaneQuadraticEdgeProjection, QuadraticEdgeGeometry> );
+static_assert( SubelementPointProjection<AffineSubelementMapping, QuadraticEdgeGeometry> );
 static_assert( QuadraticCommonPlaneRule::max_num_points ==
                max_num_quadrature_subdivisions * max_num_quadrature_subdivisions );
 
@@ -124,6 +127,26 @@ TEST( QuadraticEdgeGeometry, evaluates_position_tangent_and_normal )
   EXPECT_NEAR( tangent[1], 0.0, tolerance );
   EXPECT_NEAR( normal[0], 0.0, tolerance );
   EXPECT_NEAR( normal[1], -1.0, tolerance );
+}
+
+// QuadraticEdgeGeometry::monomialCoefficients must reproduce the nodal interpolation at every parametric coordinate.
+TEST( QuadraticEdgeGeometry, monomial_coefficients_reproduce_position )
+{
+  // Asymmetric curved edge so every coefficient component is nonzero.
+  const MdArray<RealT, 3, 2> coords{ MdArray<RealT, 2>{ -1.0, 0.2 }, MdArray<RealT, 2>{ 1.5, -0.1 },
+                                     MdArray<RealT, 2>{ 0.3, 0.4 } };
+  const QuadraticEdgeGeometry geometry( coords.view() );
+  const auto coefficients = geometry.monomialCoefficients();
+  for ( const RealT xi : { -1.0, -0.3, 0.0, 0.6, 1.0 } ) {
+    SCOPED_TRACE( xi );
+    const MdArray<RealT, 1> parametric_coords{ xi };
+    const auto position = geometry.position( parametric_coords.view() );
+    for ( IndexT component = 0; component < QuadraticEdgeGeometry::spatial_dim; ++component ) {
+      EXPECT_NEAR( coefficients.constant[component] + xi * coefficients.linear[component] +
+                       xi * xi * coefficients.quadratic[component],
+                   position[component], tolerance );
+    }
+  }
 }
 
 // QuadraticEdgeGeometry::unitNormal must fail when the local tangent has zero length or nonfinite coordinates.
@@ -247,6 +270,62 @@ TEST( SubdividedPairQuadrature, skips_degenerate_subelements_and_keeps_remaining
   for ( IndexT point = 0; point < rule.metadata.num_required_points; ++point ) {
     EXPECT_GE( rule.geom1_parametric_coords( point, 0 ), 0.0 );
   }
+}
+
+// Closed-form projection must pair points on the curved edges along the subelement pair's common-plane normal, keeping
+// the linear rule's weights. The affine mapping evaluates curved points whose separation is not along that normal.
+TEST( SubdividedPairQuadrature, projects_paired_points_onto_curved_edges_along_common_normal )
+{
+  using LinearRule = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>>;
+  using AffineRule = SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, LinearRule,
+                                                           max_num_quadrature_subdivisions, AffineSubelementMapping>;
+  using ProjectedRule =
+      SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, LinearRule, max_num_quadrature_subdivisions,
+                                            CommonPlaneQuadraticEdgeProjection>;
+  // Edge1 bulges upward toward edge2, which is tilted and bulges downward, so the curved edges interpenetrate. One
+  // subdivision makes each edge's chord the only subelement, so the test can form the pairing normal directly.
+  const MdArray<RealT, 3, 2> coords1{ MdArray<RealT, 2>{ 1.0, 0.0 }, MdArray<RealT, 2>{ -1.0, 0.0 },
+                                      MdArray<RealT, 2>{ 0.05, 0.12 } };
+  const MdArray<RealT, 3, 2> coords2{ MdArray<RealT, 2>{ -0.9, 0.1 }, MdArray<RealT, 2>{ 0.9, 0.0 },
+                                      MdArray<RealT, 2>{ 0.1, -0.02 } };
+  constexpr int num_subdivisions = 1;
+  const QuadraticEdgeGeometry geometry1( coords1.view() );
+  const QuadraticEdgeGeometry geometry2( coords2.view() );
+  const MdArray<RealT, 2, 2> chord1{ MdArray<RealT, 2>{ coords1( 0, 0 ), coords1( 0, 1 ) },
+                                     MdArray<RealT, 2>{ coords1( 1, 0 ), coords1( 1, 1 ) } };
+  const MdArray<RealT, 2, 2> chord2{ MdArray<RealT, 2>{ coords2( 0, 0 ), coords2( 0, 1 ) },
+                                     MdArray<RealT, 2>{ coords2( 1, 0 ), coords2( 1, 1 ) } };
+  const auto normal = CommonPlaneEdgeMapping::computeCommonPlaneLine( LinearEdgeGeometry( chord1.view() ),
+                                                                      LinearEdgeGeometry( chord2.view() ) )
+                          .normal;
+
+  const auto projected = ProjectedRule{ num_subdivisions }.generate( geometry1, geometry2 );
+  const auto affine = AffineRule{ num_subdivisions }.generate( geometry1, geometry2 );
+  ASSERT_EQ( projected.metadata.status, QuadratureStatus::Success );
+  ASSERT_EQ( affine.metadata.status, QuadratureStatus::Success );
+  ASSERT_EQ( projected.metadata.num_required_points, affine.metadata.num_required_points );
+  ASSERT_GT( projected.metadata.num_required_points, 0 );
+
+  // Component of each pair's separation perpendicular to the pairing normal.
+  const auto tangentialSeparation = [&]( const auto& rule, IndexT point ) {
+    const MdArray<RealT, 1> parametric_coords1{ rule.geom1_parametric_coords( point, 0 ) };
+    const MdArray<RealT, 1> parametric_coords2{ rule.geom2_parametric_coords( point, 0 ) };
+    const QuadraticEdgeGeometry::Vector separation( geometry2.position( parametric_coords2.view() ),
+                                                    geometry1.position( parametric_coords1.view() ) );
+    return separation[0] * normal[1] - separation[1] * normal[0];
+  };
+  RealT max_affine_tangential_separation = 0.0;
+  for ( IndexT point = 0; point < projected.metadata.num_required_points; ++point ) {
+    SCOPED_TRACE( point );
+    EXPECT_NEAR( tangentialSeparation( projected, point ), 0.0, tolerance );
+    EXPECT_NEAR( projected.weights[point], affine.weights[point], tolerance );
+    max_affine_tangential_separation =
+        std::max( max_affine_tangential_separation, std::abs( tangentialSeparation( affine, point ) ) );
+  }
+  // The edge curvature offsets affine points by a few percent of the edge length; any visible offset shows the check
+  // above can detect a misaligned pairing.
+  constexpr RealT minimum_detectable_offset = 1.0e-3;
+  EXPECT_GT( max_affine_tangential_separation, minimum_detectable_offset );
 }
 
 /** @brief Run local rule calculations in memory accessible to the selected backend. */

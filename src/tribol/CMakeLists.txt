@@ -44,6 +44,7 @@ set(tribol_headers
     geom/OpposingNormalGap.hpp
     geom/OffsetGap.hpp
     geom/CommonPlaneEdgeMapping.hpp
+    geom/CommonPlaneQuadraticEdgeProjection.hpp
     geom/CommonPlaneGap.hpp
     geom/LinearEdgeGeometry.hpp
     geom/QuadraticEdgeGeometry.hpp

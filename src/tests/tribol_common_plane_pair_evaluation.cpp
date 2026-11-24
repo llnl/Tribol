@@ -10,6 +10,7 @@
  * Direct backend tests cover overlap mapping, physical integration weights, prescribed pressure, gap activation,
  * quadrature failures, and result ownership. Host finite differences check the complete pair residual Jacobian.
  */
+#include <algorithm>
 #include <cmath>
 #include "gtest/gtest.h"
 #include "SlicErrorTest.hpp"
@@ -19,6 +20,7 @@
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/physics/CommonPlane.hpp"
 #include "tribol/physics/CommonPlaneFormulation.hpp"
+#include "tribol/geom/CommonPlaneQuadraticEdgeProjection.hpp"
 #include "tribol/geom/OffsetGap.hpp"
 #include "tribol/geom/QuadraticEdgeGeometry.hpp"
 #include "tribol/integ/BasisFunction.hpp"
@@ -38,6 +40,69 @@ using CommonPlaneRuleGenerator = PairQuadratureRuleGenerator<CommonPlaneEdgeMapp
 using CommonPlaneTraction = CommonPlanePenaltyTraction<CommonPlaneGap>;
 using CommonPlaneResidualValue = PairTractionIntegral<CommonPlaneRuleGenerator, CommonPlaneTraction,
                                                       BasisFunction<EDGE, LINEAR_LAGRANGE>>::PairResidual;
+
+/**
+ * @brief Quadratic subdivided Common Plane rule generator with a chosen subelement point projection.
+ * @tparam NumPoints Number of Gauss points on each subelement-pair overlap.
+ * @tparam Projection Policy mapping paired subelement points onto both quadratic edges.
+ */
+template <int NumPoints, typename Projection>
+using QuadraticCommonPlaneRuleGenerator = SubdividedPairQuadratureRuleGenerator<
+    QuadraticEdgeGeometry, PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>,
+    max_num_quadrature_subdivisions, Projection>;
+
+/**
+ * @brief Quadratic subdivided Common Plane rule generator as configured by the formulation factory.
+ * @tparam NumPoints Number of Gauss points on each subelement-pair overlap.
+ */
+template <int NumPoints>
+using ProjectedQuadraticCommonPlaneRuleGenerator =
+    QuadraticCommonPlaneRuleGenerator<NumPoints, CommonPlaneQuadraticEdgeProjection>;
+
+/**
+ * @brief Quadratic Common Plane pair integral as configured by the formulation factory.
+ * @tparam NumPoints Number of Gauss points on each subelement-pair overlap.
+ */
+template <int NumPoints>
+using ProjectedQuadraticCommonPlaneIntegral =
+    PairTractionIntegral<ProjectedQuadraticCommonPlaneRuleGenerator<NumPoints>, ProjectedCommonPlanePenaltyTraction,
+                         BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
+
+static_assert( PairFunctionType<ProjectedQuadraticCommonPlaneIntegral<3>> );
+
+/** @brief Net force and net moment about the origin of one 2D pair residual. */
+struct NetForceAndMoment {
+  MdArray<RealT, 2> force{};   ///< Sum of nodal residual vectors on both edges.
+  RealT moment = 0.0;          ///< Sum of nodal position cross nodal residual on both edges.
+  RealT max_nodal_load = 0.0;  ///< Largest residual component, used to scale tolerances.
+};
+
+/**
+ * @brief Sum nodal residual vectors and their moments about the origin over both quadratic edges.
+ * @tparam PairResidual Pair residual with basis-indexed geometry1 and geometry2 entries.
+ * @param residual Pair residual whose basis indices match the nodes of coords1 and coords2.
+ * @param coords1 Nodal coordinates of geometry1.
+ * @param coords2 Nodal coordinates of geometry2.
+ * @return Net force, net moment, and largest residual component.
+ */
+template <typename PairResidual>
+NetForceAndMoment computeNetForceAndMoment( const PairResidual& residual, const QuadraticCoordinates& coords1,
+                                            const QuadraticCoordinates& coords2 )
+{
+  NetForceAndMoment result;
+  for ( IndexT node = 0; node < QuadraticEdgeGeometry::num_nodes; ++node ) {
+    for ( const bool first_geometry : { true, false } ) {
+      const QuadraticCoordinates& coords = first_geometry ? coords1 : coords2;
+      const RealT load_x = first_geometry ? residual.geometry1( node, 0 ) : residual.geometry2( node, 0 );
+      const RealT load_y = first_geometry ? residual.geometry1( node, 1 ) : residual.geometry2( node, 1 );
+      result.force[0] += load_x;
+      result.force[1] += load_y;
+      result.moment += coords( node, 0 ) * load_y - coords( node, 1 ) * load_x;
+      result.max_nodal_load = std::max( { result.max_nodal_load, std::abs( load_x ), std::abs( load_y ) } );
+    }
+  }
+  return result;
+}
 
 template <int NumPoints>
 struct InterpenetratingOverlapResult {
@@ -503,12 +568,8 @@ TEST_P( CommonPlaneTest, integrates_supplied_traction_with_independent_bases )
 // enabled execution backend.
 TEST_P( CommonPlaneTest, integrates_penalty_traction_with_quadratic_geometry_and_basis )
 {
-  using LinearRule = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<1>>;
-  using RuleGenerator =
-      SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, LinearRule, max_num_quadrature_subdivisions>;
-  using Integral = PairTractionIntegral<RuleGenerator, CommonPlanePenaltyTraction<CommonPlaneGap>,
-                                        BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
-  static_assert( PairFunctionType<Integral> );
+  using Integral = ProjectedQuadraticCommonPlaneIntegral<1>;
+  using RuleGenerator = ProjectedQuadraticCommonPlaneRuleGenerator<1>;
 
   ArrayT<Integral::PairResidual> pair_residuals( 1, 1, allocatorId() );
   const auto pair_residuals_view = pair_residuals.view();
@@ -534,6 +595,57 @@ TEST_P( CommonPlaneTest, integrates_penalty_traction_with_quadratic_geometry_and
     EXPECT_NEAR( residual.geometry1( node, 1 ), expected_geometry1_y[node], tolerance );
     EXPECT_NEAR( residual.geometry2( node, 0 ), 0.0, tolerance );
     EXPECT_NEAR( residual.geometry2( node, 1 ), -expected_geometry1_y[node], tolerance );
+  }
+}
+
+// Curved, tilted, interpenetrating quadratic edges must produce pair residuals with zero net force and zero net moment
+// for every subdivision count. The averaged-normal traction on affinely mapped points is checked to show the moment
+// test detects the defect that the projected configuration removes.
+TEST_P( CommonPlaneTest, conserves_linear_and_angular_momentum_on_curved_quadratic_edges )
+{
+  using Integral = ProjectedQuadraticCommonPlaneIntegral<3>;
+  using RuleGenerator = ProjectedQuadraticCommonPlaneRuleGenerator<3>;
+  using AffineRuleGenerator = QuadraticCommonPlaneRuleGenerator<3, AffineSubelementMapping>;
+  using AffineIntegral = PairTractionIntegral<AffineRuleGenerator, CommonPlanePenaltyTraction<CommonPlaneGap>,
+                                              BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
+  // Edge1 bulges upward; edge2 is rotated by 0.15 radians and bulges downward, so the curved edges interpenetrate with
+  // varying gap and the moment arm of each paired point differs from its neighbors'.
+  const QuadraticCoordinates edge1{ MdArray<RealT, 2>{ 1.0, 0.0 }, MdArray<RealT, 2>{ -1.0, 0.0 },
+                                    MdArray<RealT, 2>{ 0.05, 0.12 } };
+  const QuadraticCoordinates edge2{ MdArray<RealT, 2>{ -0.8, -0.085 }, MdArray<RealT, 2>{ 0.98, 0.184 },
+                                    MdArray<RealT, 2>{ 0.205, -0.025 } };
+  constexpr RealT penalty = 1.0;
+  // Exact balance leaves only roundoff relative to the largest nodal load.
+  constexpr RealT relative_balance_tolerance = 1.0e-12;
+  // The affine configuration's moment is a few percent of the largest nodal load at one subdivision.
+  constexpr RealT minimum_detectable_relative_moment = 1.0e-4;
+  for ( const int num_subdivisions : { 1, 2, max_num_quadrature_subdivisions } ) {
+    SCOPED_TRACE( num_subdivisions );
+    ArrayT<Integral::PairResidual> pair_residuals( 1, 1, allocatorId() );
+    const auto pair_residuals_view = pair_residuals.view();
+    forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
+      const Integral pair_integral{ RuleGenerator{ num_subdivisions }, { penalty } };
+      pair_residuals_view[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
+    } );
+    const ArrayT<Integral::PairResidual, 1, MemorySpace::Host> host_pair_residuals( pair_residuals );
+    const auto& residual = host_pair_residuals[0];
+    ASSERT_EQ( residual.quadrature_metadata.status, QuadratureStatus::Success );
+    ASSERT_TRUE( residual.has_active_points );
+    const auto balance = computeNetForceAndMoment( residual, edge1, edge2 );
+    ASSERT_GT( balance.max_nodal_load, 0.0 );
+    const RealT balance_tolerance = relative_balance_tolerance * balance.max_nodal_load;
+    EXPECT_NEAR( balance.force[0], 0.0, balance_tolerance );
+    EXPECT_NEAR( balance.force[1], 0.0, balance_tolerance );
+    EXPECT_NEAR( balance.moment, 0.0, balance_tolerance );
+
+    if ( num_subdivisions == 1 ) {
+      const AffineIntegral affine_integral{ AffineRuleGenerator{ num_subdivisions }, { penalty } };
+      const auto affine_residual = affine_integral.evaluate( edge1.view(), edge2.view() );
+      ASSERT_EQ( affine_residual.quadrature_metadata.status, QuadratureStatus::Success );
+      const auto affine_balance = computeNetForceAndMoment( affine_residual, edge1, edge2 );
+      EXPECT_GT( std::abs( affine_balance.moment ),
+                 minimum_detectable_relative_moment * affine_balance.max_nodal_load );
+    }
   }
 }
 
@@ -572,6 +684,23 @@ TEST( QuadraticCommonPlaneTraction, uses_true_local_normals_for_gap_and_activati
   EXPECT_FALSE( evaluateMidpointTraction( separated_edge2 ).active );
   EXPECT_FALSE( evaluateMidpointTraction( nonopposing_edge2 ).active );
   EXPECT_FALSE( evaluateMidpointTraction( zero_tangent_edge2 ).active );
+
+  // The projected traction penalizes the separation itself and uses the local normals only for activation.
+  const ProjectedCommonPlanePenaltyTraction projected_traction{ 1.0 };
+  const auto evaluateProjectedMidpointTraction = [&]( const QuadraticCoordinates& edge2 ) {
+    const QuadraticEdgeGeometry geometry2( edge2.view() );
+    return projected_traction.computeTractionAtQuadraturePoint(
+        geometry1.position( midpoint_coordinate.view() ), geometry2.position( midpoint_coordinate.view() ),
+        midpoint_coordinate.view(), midpoint_coordinate.view(),
+        projected_traction.computePairGeometryData( geometry1, geometry2 ) );
+  };
+  const auto projected_interpenetrated = evaluateProjectedMidpointTraction( interpenetrated_edge2 );
+  ASSERT_TRUE( projected_interpenetrated.active );
+  EXPECT_NEAR( projected_interpenetrated.value[0], 0.0, tolerance );
+  EXPECT_NEAR( projected_interpenetrated.value[1], -0.1, tolerance );
+  EXPECT_FALSE( evaluateProjectedMidpointTraction( separated_edge2 ).active );
+  EXPECT_FALSE( evaluateProjectedMidpointTraction( nonopposing_edge2 ).active );
+  EXPECT_FALSE( evaluateProjectedMidpointTraction( zero_tangent_edge2 ).active );
 }
 
 // A gap offset opens the centroid while leaving one of two Gauss points compressive. Only that point contributes.
@@ -821,11 +950,8 @@ TEST( CommonPlaneJacobian, matches_finite_differences )
   checkJacobian<2>();
   checkJacobian<3>();
 
-  using LinearRule = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<1>>;
-  using RuleGenerator =
-      SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, LinearRule, max_num_quadrature_subdivisions>;
-  using QuadraticPairIntegral = PairTractionIntegral<RuleGenerator, CommonPlanePenaltyTraction<CommonPlaneGap>,
-                                                     BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
+  using QuadraticPairIntegral = ProjectedQuadraticCommonPlaneIntegral<1>;
+  using RuleGenerator = ProjectedQuadraticCommonPlaneRuleGenerator<1>;
   // Two curved, non-parallel, interpenetrating quadratic edges whose midpoints are bowed upward and shifted so every
   // nodal coordinate contributes to the subdivided overlap bounds, local normals, and pointwise gaps.
   const QuadraticCoordinates edge1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.1 },

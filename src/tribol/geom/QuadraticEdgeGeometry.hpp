@@ -70,6 +70,35 @@ class QuadraticEdgeGeometry {
     return result;
   }
 
+  /** @brief Coefficients of the quadratic map x(xi) = constant + linear * xi + quadratic * xi^2. */
+  struct MonomialCoefficients {
+    Vector constant;   ///< Position at xi = 0.
+    Vector linear;     ///< Tangent dx/dxi at xi = 0.
+    Vector quadratic;  ///< Half of the constant second derivative d2x/dxi2.
+  };
+
+  /**
+   * @brief Convert the nodal coordinates to monomial coefficients in the element parametric coordinate.
+   * @return Coefficients reproducing position() exactly.
+   */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE MonomialCoefficients monomialCoefficients() const
+  {
+    // Node order follows Basis: endpoint at xi = -1, endpoint at xi = 1, then the midpoint at xi = 0.
+    constexpr IndexT first_endpoint = 0;
+    constexpr IndexT second_endpoint = 1;
+    constexpr IndexT midpoint = 2;
+    MonomialCoefficients coefficients;
+    for ( IndexT component = 0; component < spatial_dim; ++component ) {
+      const RealT first = coords_( first_endpoint, component );
+      const RealT second = coords_( second_endpoint, component );
+      const RealT middle = coords_( midpoint, component );
+      coefficients.constant[component] = middle;
+      coefficients.linear[component] = 0.5 * ( second - first );
+      coefficients.quadratic[component] = 0.5 * ( first + second ) - middle;
+    }
+    return coefficients;
+  }
+
   /**
    * @brief Evaluate the directed unit normal when the local tangent is usable.
    * @param parametric_coords Element parametric coordinate.
