@@ -74,7 +74,8 @@ struct SmoothedProjectedEdgeMapping {
    * @param edge1 Current non-mortar integration edge.
    * @param edge2 Current mortar projection edge.
    * @param integration_surface_rule Quadrature points and weights expressed in edge1's parametric coordinate.
-   * @param [out] output Parametric coordinates on both edges and physical integration weights.
+   * @param [out] output Parametric coordinates on both edges and physical integration weights. Normals are zero
+   * because points are not paired along a common direction.
    * @return Success with the initialized count, InsufficientCapacity with the full count, or InvalidGeometry with zero
    * points. Invalid geometry and insufficient capacity leave output untouched. Valid zero measure returns zero points.
    */
@@ -96,6 +97,9 @@ struct SmoothedProjectedEdgeMapping {
       output.geom1_parametric_coords( q, 0 ) = parametric_coord1;
       output.geom2_parametric_coords( q, 0 ) = edge2.parametricCoordinate( physical );
       output.weights[q] = integration_surface_rule.weights[q] * jacobian;
+      for ( IndexT component = 0; component < LinearEdgeGeometry::spatial_dim; ++component ) {
+        output.integration_surface_normals( q, component ) = 0.0;
+      }
     }
     return { QuadratureStatus::Success, count };
   }

@@ -46,8 +46,8 @@ template <int NumPoints>
 bool usesCommonPlaneRule( const ContactFormulation* formulation )
 {
   using RuleGenerator = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>;
-  using Expected = CommonPlaneFormulation<ExecutionMode::Sequential, RuleGenerator,
-                                          CommonPlanePenaltyTraction<CommonPlaneGap>, ResidualAndJacobian>;
+  using Expected =
+      CommonPlaneFormulation<ExecutionMode::Sequential, RuleGenerator, CommonPlaneGap, ResidualAndJacobian>;
   return dynamic_cast<const Expected*>( formulation ) != nullptr;
 }
 #endif
@@ -358,11 +358,11 @@ TEST_P( MfemCommonPlaneTest, accepts_average_penalty_stiffness )
                 createCoarseSearch( couplingScheme().spatialDim(), couplingScheme().getBinningMethod(), execution_mode,
                                     couplingScheme().getEffectiveBinningProximityScale(), 0.0 );
             auto projected_edge_search = std::make_unique<ProjectedEdgeSearch>( execution_mode, false );
-            return std::make_unique<CommonPlaneFormulation<
-                Exec, decltype( rule_generator ), CommonPlanePenaltyTraction<CommonPlaneGap>, ResidualAndJacobian>>(
+            return std::make_unique<
+                CommonPlaneFormulation<Exec, decltype( rule_generator ), CommonPlaneGap, ResidualAndJacobian>>(
                 std::move( rule_generator ),
-                CommonPlanePenaltyTraction<CommonPlaneGap>{
-                    AveragePenaltyStiffness{}.computeEffectiveStiffness( lower_mesh_penalty, upper_mesh_penalty ) },
+                AveragePenaltyStiffness{}.computeEffectiveStiffness( lower_mesh_penalty, upper_mesh_penalty ),
+                CommonPlaneGap{},
                 ResidualAndJacobian{ *couplingScheme().getMfemMeshData(), *couplingScheme().getMfemJacobianData() },
                 PairListBuilder{ std::move( coarse_search ), std::move( projected_edge_search ) } );
           } );

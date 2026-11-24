@@ -10,9 +10,10 @@
  * Each integral constructs current geometry inside evaluate(), so differentiation includes the geometry, mapping,
  * and physical weights. A point calculation computes pair geometry data once with computePairGeometryData(geometry1,
  * geometry2), then receives physical points, both element-parametric coordinate views, and that data at each quadrature
- * point. It returns a QuadraturePointValue, whose active flag must retain points with nonzero derivatives even at zero
- * value. The point calculation chooses activation; the traction and energy integrals impose no gap or pressure law.
- * Nodal gap integration retains opening gaps and applies no contact activation.
+ * point. Traction calculations also receive the generated rule's integration-surface normal at the point. It returns a
+ * QuadraturePointValue, whose active flag must retain points with nonzero derivatives even at zero value. The point
+ * calculation chooses activation; the traction and energy integrals impose no gap or pressure law. Nodal gap
+ * integration retains opening gaps and applies no contact activation.
  *
  * Supplied geometries provide Coords, spatial_dim, parametric_dim, and position(parametric_coords). Basis types supply
  * size_basis, parametric_dim, and eval(parametric_coords, values). Only the configured mappings, bases, and point
@@ -65,11 +66,12 @@ concept PairTractionFunction =
               const typename Generator::Geometry2& geometry2,
               MdSpan<const RealT, Generator::Geometry1::parametric_dim> parametric_coords1,
               MdSpan<const RealT, Generator::Geometry2::parametric_dim> parametric_coords2,
+              const typename Generator::Geometry1::Vector& normal,
               const detail::PairGeometryData<Function, Generator>& pair_geometry_data ) {
       {
         function.computeTractionAtQuadraturePoint( geometry1.position( parametric_coords1 ),
                                                    geometry2.position( parametric_coords2 ), parametric_coords1,
-                                                   parametric_coords2, pair_geometry_data )
+                                                   parametric_coords2, normal, pair_geometry_data )
       } -> std::same_as<QuadraturePointValue<MdArray<RealT, Generator::Geometry1::spatial_dim>>>;
     };
 
@@ -190,9 +192,12 @@ class PairTractionIntegral {
           &points.geom1_parametric_coords( point, 0 ), Geometry1::parametric_dim };
       const MdSpan<const RealT, Geometry2::parametric_dim> parametric_coords2{
           &points.geom2_parametric_coords( point, 0 ), Geometry2::parametric_dim };
+      static_assert( std::remove_cvref_t<decltype( points )>::spatial_dim == Geometry1::spatial_dim );
+      const typename Geometry1::Vector normal( &points.integration_surface_normals( point, 0 ),
+                                               Geometry1::spatial_dim );
       const auto traction = traction_function_.computeTractionAtQuadraturePoint(
           geometry1.position( parametric_coords1 ), geometry2.position( parametric_coords2 ), parametric_coords1,
-          parametric_coords2, pair_geometry_data );
+          parametric_coords2, normal, pair_geometry_data );
       if ( !traction.active ) {
         continue;
       }

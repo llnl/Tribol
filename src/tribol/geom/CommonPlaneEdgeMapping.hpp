@@ -114,7 +114,7 @@ struct CommonPlaneEdgeMapping {
    * @param edge1 First current edge.
    * @param edge2 Second current edge.
    * @param reference Physical tangent coordinates and line weights.
-   * @param[out] output Parametric coordinates and physical line weights.
+   * @param[out] output Parametric coordinates, physical line weights, and the common-line normal at every point.
    * @return Success with the initialized count; nonopposing normals give zero points. InvalidGeometry returns zero
    * points, and InsufficientCapacity reports the full required count. Either failure leaves output untouched.
    */
@@ -146,6 +146,9 @@ struct CommonPlaneEdgeMapping {
       output.geom2_parametric_coords( q, 0 ) =
           2.0 * Vector::cross_product( Vector( edge2.origin(), point ), line.normal )[2] / determinant2 - 1.0;
       output.weights[q] = reference.weights[q];
+      for ( IndexT component = 0; component < LinearEdgeGeometry::spatial_dim; ++component ) {
+        output.integration_surface_normals( q, component ) = line.normal[component];
+      }
     }
     return { QuadratureStatus::Success, num_points };
   }

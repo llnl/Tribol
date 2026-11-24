@@ -43,18 +43,19 @@ struct ProjectedElementCoords {
  * @brief Requires a policy mapping one paired subelement quadrature point onto both surface elements.
  *
  * The policy receives both current surface elements, the linear subelements whose rule produced the point, their
- * element parametric intervals, and the point's subelement parametric coordinates. It returns the element parametric
- * coordinates at which the integrand is evaluated.
+ * element parametric intervals, the point's subelement parametric coordinates, and the integration-surface normal along
+ * which the subelement rule paired the point. It returns the element parametric coordinates at which the integrand is
+ * evaluated.
  * @tparam Projection Policy type.
  * @tparam ElementGeometry Current surface-element geometry.
  */
 template <typename Projection, typename ElementGeometry>
 concept SubelementPointProjection =
     requires( const Projection& projection, const ElementGeometry& geometry, const LinearEdgeGeometry& subelement,
-              SubelementInterval interval, RealT subelement_coord ) {
+              SubelementInterval interval, RealT subelement_coord, const LinearEdgeGeometry::Vector& normal ) {
       {
         projection.mapToElements( geometry, geometry, subelement, subelement, interval, interval, subelement_coord,
-                                  subelement_coord )
+                                  subelement_coord, normal )
       } -> std::same_as<ProjectedElementCoords>;
     };
 
@@ -76,6 +77,7 @@ struct AffineSubelementMapping {
    * @param interval2 Element parametric interval of subelement2.
    * @param subelement_coord1 Point's parametric coordinate on subelement1.
    * @param subelement_coord2 Point's parametric coordinate on subelement2.
+   * @param normal Integration-surface normal of the subelement pair, unused.
    * @return Affinely mapped element coordinates, always valid.
    */
   template <typename ElementGeometry>
@@ -83,7 +85,8 @@ struct AffineSubelementMapping {
       const ElementGeometry& TRIBOL_UNUSED_PARAM( geometry1 ), const ElementGeometry& TRIBOL_UNUSED_PARAM( geometry2 ),
       const LinearEdgeGeometry& TRIBOL_UNUSED_PARAM( subelement1 ),
       const LinearEdgeGeometry& TRIBOL_UNUSED_PARAM( subelement2 ), SubelementInterval interval1,
-      SubelementInterval interval2, RealT subelement_coord1, RealT subelement_coord2 ) const
+      SubelementInterval interval2, RealT subelement_coord1, RealT subelement_coord2,
+      const LinearEdgeGeometry::Vector& TRIBOL_UNUSED_PARAM( normal ) ) const
   {
     return { interval1.mapToElement( subelement_coord1 ), interval2.mapToElement( subelement_coord2 ), true };
   }
@@ -135,8 +138,8 @@ class SubdividedPairQuadratureRuleGenerator {
    * @brief Generate all subelement-pair rules and express their coordinates in both surface elements.
    * @param geometry1 First current surface-element geometry.
    * @param geometry2 Second current surface-element geometry.
-   * @return Element-parametric points, unchanged physical subelement weights, and generation status. A point that
-   * the projection policy cannot map reports InvalidGeometry with zero points.
+   * @return Element-parametric points, unchanged physical subelement weights and integration-surface normals, and
+   * generation status. A point that the projection policy cannot map reports InvalidGeometry with zero points.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Rule generate( const Geometry1& geometry1, const Geometry2& geometry2 ) const
   {
@@ -170,11 +173,13 @@ class SubdividedPairQuadratureRuleGenerator {
           return output;
         }
         for ( IndexT point = 0; point < subelement_rule.metadata.num_required_points; ++point ) {
+          const LinearEdgeGeometry::Vector normal( &subelement_rule.integration_surface_normals( point, 0 ),
+                                                   LinearEdgeGeometry::spatial_dim );
           const auto element_coords = projection_.mapToElements(
               geometry1, geometry2, subelement_geometry1.geometry, subelement_geometry2.geometry,
               subelementInterval( subelement1 ), subelementInterval( subelement2 ),
-              subelement_rule.geom1_parametric_coords( point, 0 ),
-              subelement_rule.geom2_parametric_coords( point, 0 ) );
+              subelement_rule.geom1_parametric_coords( point, 0 ), subelement_rule.geom2_parametric_coords( point, 0 ),
+              normal );
           if ( !element_coords.valid ) {
             output.metadata = { QuadratureStatus::InvalidGeometry, 0 };
             return output;
@@ -182,6 +187,9 @@ class SubdividedPairQuadratureRuleGenerator {
           output.geom1_parametric_coords( output_point, 0 ) = element_coords.geom1_parametric_coord;
           output.geom2_parametric_coords( output_point, 0 ) = element_coords.geom2_parametric_coord;
           output.weights[output_point] = subelement_rule.weights[point];
+          for ( IndexT component = 0; component < LinearEdgeGeometry::spatial_dim; ++component ) {
+            output.integration_surface_normals( output_point, component ) = normal[component];
+          }
           ++output_point;
         }
       }

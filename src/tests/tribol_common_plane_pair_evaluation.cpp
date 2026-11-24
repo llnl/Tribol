@@ -65,8 +65,8 @@ using ProjectedQuadraticCommonPlaneRuleGenerator =
  */
 template <int NumPoints>
 using ProjectedQuadraticCommonPlaneIntegral =
-    PairTractionIntegral<ProjectedQuadraticCommonPlaneRuleGenerator<NumPoints>, ProjectedCommonPlanePenaltyTraction,
-                         BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
+    PairTractionIntegral<ProjectedQuadraticCommonPlaneRuleGenerator<NumPoints>,
+                         CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
 
 static_assert( PairFunctionType<ProjectedQuadraticCommonPlaneIntegral<3>> );
 
@@ -465,9 +465,11 @@ TEST_P( CommonPlaneTest, reports_geometry_and_capacity_without_writing )
     for ( int i = 0; i < point_storage_view.size(); ++i ) {
       point_storage_view[i] = unwritten;
     }
+    // Two points need four normal components, so the normals view starts at the beginning of the marked storage.
     const PairQuadratureRuleView<1, 1> limited_capacity_rule_view{ { point_storage_view.data() + 1, { 2, 1 } },
                                                                    { point_storage_view.data() + 1, { 2, 1 } },
-                                                                   { point_storage_view.data() + 1, 2 } };
+                                                                   { point_storage_view.data() + 1, 2 },
+                                                                   { point_storage_view.data(), { 2, 2 } } };
     quadrature_metadata_view[InsufficientCapacity] = rule_generator.generate(
         LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( edge2.view() ), limited_capacity_rule_view );
   } );
@@ -515,6 +517,7 @@ struct NodalPressureTraction {
    * @param point2 Second physical point, unused.
    * @param parametric_coords1 First parametric point, unused.
    * @param parametric_coords2 Point used to interpolate the fixed nodal pressures.
+   * @param integration_surface_normal Rule normal, unused because this traction follows geometry2's normal.
    * @param normal Current unit traction direction.
    * @return Active, unweighted vector traction.
    */
@@ -522,6 +525,7 @@ struct NodalPressureTraction {
       const LinearEdgeGeometry::Point& TRIBOL_UNUSED_PARAM( point1 ),
       const LinearEdgeGeometry::Point& TRIBOL_UNUSED_PARAM( point2 ),
       MdSpan<const RealT, 1> TRIBOL_UNUSED_PARAM( parametric_coords1 ), MdSpan<const RealT, 1> parametric_coords2,
+      const LinearEdgeGeometry::Vector& TRIBOL_UNUSED_PARAM( integration_surface_normal ),
       const LinearEdgeGeometry::Vector& normal ) const
   {
     const RealT xi = parametric_coords2[0];
@@ -599,8 +603,8 @@ TEST_P( CommonPlaneTest, integrates_penalty_traction_with_quadratic_geometry_and
 }
 
 // Curved, tilted, interpenetrating quadratic edges must produce pair residuals with zero net force and zero net moment
-// for every subdivision count. The averaged-normal traction on affinely mapped points is checked to show the moment
-// test detects the defect that the projected configuration removes.
+// for every subdivision count. The same traction on affinely mapped points is checked to show the moment test detects
+// the defect that the projection removes.
 TEST_P( CommonPlaneTest, conserves_linear_and_angular_momentum_on_curved_quadratic_edges )
 {
   using Integral = ProjectedQuadraticCommonPlaneIntegral<3>;
@@ -649,58 +653,39 @@ TEST_P( CommonPlaneTest, conserves_linear_and_angular_momentum_on_curved_quadrat
   }
 }
 
-// Quadratic penalty traction must compute the local gap and activation from pointwise normals, returning active
-// compressive traction only when the local normals are valid, opposing, and interpenetrating.
-TEST( QuadraticCommonPlaneTraction, uses_true_local_normals_for_gap_and_activation )
+// The penalty traction must follow the supplied integration-surface normal, activate only for nonpositive gaps, and
+// apply the configured gap offset along that normal.
+TEST( CommonPlaneTraction, applies_penalty_along_supplied_normal )
 {
-  // Baseline horizontal edge on x in [-1, 1] at y=0.0, paired at the midpoint (xi=0) against four edge2 variants:
-  // interpenetrated (opposing at y=0.1), separated (opposing at y=-0.1), nonopposing (same direction at y=0.1), and
-  // degenerate (both endpoints at (0, 0.1) with midpoint at (1, 0.1), giving a zero tangent at xi=0).
-  const QuadraticCoordinates edge1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 },
-                                    MdArray<RealT, 2>{ 0.0, 0.0 } };
-  const QuadraticCoordinates interpenetrated_edge2{ MdArray<RealT, 2>{ 1.0, 0.1 }, MdArray<RealT, 2>{ -1.0, 0.1 },
-                                                    MdArray<RealT, 2>{ 0.0, 0.1 } };
-  const QuadraticCoordinates separated_edge2{ MdArray<RealT, 2>{ 1.0, -0.1 }, MdArray<RealT, 2>{ -1.0, -0.1 },
-                                              MdArray<RealT, 2>{ 0.0, -0.1 } };
-  const QuadraticCoordinates nonopposing_edge2{ MdArray<RealT, 2>{ -1.0, 0.1 }, MdArray<RealT, 2>{ 1.0, 0.1 },
-                                                MdArray<RealT, 2>{ 0.0, 0.1 } };
-  const QuadraticCoordinates zero_tangent_edge2{ MdArray<RealT, 2>{ 0.0, 0.1 }, MdArray<RealT, 2>{ 0.0, 0.1 },
-                                                 MdArray<RealT, 2>{ 1.0, 0.1 } };
-  const QuadraticEdgeGeometry geometry1( edge1.view() );
-  const MdArray<RealT, 1> midpoint_coordinate{ 0.0 };
-  const CommonPlanePenaltyTraction<CommonPlaneGap> traction{ 1.0 };
-  const auto evaluateMidpointTraction = [&]( const QuadraticCoordinates& edge2 ) {
-    const QuadraticEdgeGeometry geometry2( edge2.view() );
-    return traction.computeTractionAtQuadraturePoint( geometry1.position( midpoint_coordinate.view() ),
-                                                      geometry2.position( midpoint_coordinate.view() ),
-                                                      midpoint_coordinate.view(), midpoint_coordinate.view(),
-                                                      traction.computePairGeometryData( geometry1, geometry2 ) );
-  };
+  // Point1 lies 0.1 above point2 along the downward unit normal's opposite, so the gap along the normal is -0.1.
+  const LinearEdgeGeometry::Point point1{ 0.3, 0.1 };
+  const LinearEdgeGeometry::Point point2{ 0.3, 0.0 };
+  const LinearEdgeGeometry::Vector downward_normal{ 0.0, -1.0 };
+  const LinearEdgeGeometry::Vector upward_normal{ 0.0, 1.0 };
+  const MdArray<RealT, 1> parametric_coords{ 0.0 };
+  constexpr RealT penalty = 2.0;
+  const CommonPlanePenaltyTraction<CommonPlaneGap> traction{ penalty };
+  const CommonPlanePenaltyTraction<CommonPlaneGap>::PairGeometryData pair_geometry_data{};
 
-  const auto interpenetrated = evaluateMidpointTraction( interpenetrated_edge2 );
-  ASSERT_TRUE( interpenetrated.active );
-  EXPECT_NEAR( interpenetrated.value[0], 0.0, tolerance );
-  EXPECT_NEAR( interpenetrated.value[1], -0.1, tolerance );
-  EXPECT_FALSE( evaluateMidpointTraction( separated_edge2 ).active );
-  EXPECT_FALSE( evaluateMidpointTraction( nonopposing_edge2 ).active );
-  EXPECT_FALSE( evaluateMidpointTraction( zero_tangent_edge2 ).active );
+  const auto compressive = traction.computeTractionAtQuadraturePoint(
+      point1, point2, parametric_coords.view(), parametric_coords.view(), downward_normal, pair_geometry_data );
+  ASSERT_TRUE( compressive.active );
+  // penalty * gap * normal = 2 * (-0.1) * (0, -1).
+  EXPECT_NEAR( compressive.value[0], 0.0, tolerance );
+  EXPECT_NEAR( compressive.value[1], 0.2, tolerance );
 
-  // The projected traction penalizes the separation itself and uses the local normals only for activation.
-  const ProjectedCommonPlanePenaltyTraction projected_traction{ 1.0 };
-  const auto evaluateProjectedMidpointTraction = [&]( const QuadraticCoordinates& edge2 ) {
-    const QuadraticEdgeGeometry geometry2( edge2.view() );
-    return projected_traction.computeTractionAtQuadraturePoint(
-        geometry1.position( midpoint_coordinate.view() ), geometry2.position( midpoint_coordinate.view() ),
-        midpoint_coordinate.view(), midpoint_coordinate.view(),
-        projected_traction.computePairGeometryData( geometry1, geometry2 ) );
-  };
-  const auto projected_interpenetrated = evaluateProjectedMidpointTraction( interpenetrated_edge2 );
-  ASSERT_TRUE( projected_interpenetrated.active );
-  EXPECT_NEAR( projected_interpenetrated.value[0], 0.0, tolerance );
-  EXPECT_NEAR( projected_interpenetrated.value[1], -0.1, tolerance );
-  EXPECT_FALSE( evaluateProjectedMidpointTraction( separated_edge2 ).active );
-  EXPECT_FALSE( evaluateProjectedMidpointTraction( nonopposing_edge2 ).active );
-  EXPECT_FALSE( evaluateProjectedMidpointTraction( zero_tangent_edge2 ).active );
+  EXPECT_FALSE( traction
+                    .computeTractionAtQuadraturePoint( point1, point2, parametric_coords.view(),
+                                                       parametric_coords.view(), upward_normal, pair_geometry_data )
+                    .active );
+
+  // An offset of -0.15 shifts the gap to 0.05 and opens the point.
+  const CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>> offset_traction{ penalty, { CommonPlaneGap{}, -0.15 } };
+  EXPECT_FALSE( offset_traction
+                    .computeTractionAtQuadraturePoint(
+                        point1, point2, parametric_coords.view(), parametric_coords.view(), downward_normal,
+                        CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>::PairGeometryData{} )
+                    .active );
 }
 
 // A gap offset opens the centroid while leaving one of two Gauss points compressive. Only that point contributes.

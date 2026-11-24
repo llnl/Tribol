@@ -142,36 +142,33 @@ PairListBuilder makePairListBuilder( CouplingScheme& cs )
 }
 
 /**
- * @brief Construct Common Plane after geometry, quadrature, traction, and residual basis selection.
+ * @brief Construct Common Plane after geometry, quadrature, and residual basis selection.
  * @tparam Exec Concrete execution mode for search, evaluation, and assembly.
  * @tparam ResidualBasis Basis used to distribute traction to both element residuals.
  * @tparam PairRuleGenerator Configured quadrature generator for the selected geometry.
- * @tparam TractionFunction Penalty traction consistent with how the rule generator pairs points.
  * @param cs Validated scheme owning MFEM transfer data and search settings.
  * @param rule_generator Quadrature generator retained by the formulation.
- * @param traction Penalty traction retained by the formulation.
+ * @param penalty Effective constant penalty stiffness.
  * @return Formulation configured for residual-only or residual-and-Jacobian output.
  */
-template <ExecutionMode Exec, typename ResidualBasis, typename PairRuleGenerator, typename TractionFunction>
+template <ExecutionMode Exec, typename ResidualBasis, typename PairRuleGenerator>
 std::unique_ptr<ContactFormulation> createCommonPlaneForRuleGenerator( CouplingScheme* cs,
-                                                                       PairRuleGenerator rule_generator,
-                                                                       TractionFunction traction )
+                                                                       PairRuleGenerator rule_generator, RealT penalty )
 {
   auto pair_builder = makePairListBuilder<Exec>( *cs );
   if ( cs->getParameters().common_plane_compute_jacobian ) {
 #ifdef TRIBOL_USE_ENZYME
     return std::make_unique<
-        CommonPlaneFormulation<Exec, PairRuleGenerator, TractionFunction, ResidualAndJacobian, ResidualBasis>>(
-        std::move( rule_generator ), std::move( traction ),
+        CommonPlaneFormulation<Exec, PairRuleGenerator, CommonPlaneGap, ResidualAndJacobian, ResidualBasis>>(
+        std::move( rule_generator ), penalty, CommonPlaneGap{},
         ResidualAndJacobian{ *cs->getMfemMeshData(), *cs->getMfemJacobianData() }, std::move( pair_builder ) );
 #else
     SLIC_ERROR_ROOT( "Common Plane Jacobian calculation requires Enzyme." );
     return nullptr;
 #endif
   }
-  return std::make_unique<
-      CommonPlaneFormulation<Exec, PairRuleGenerator, TractionFunction, ResidualOnly, ResidualBasis>>(
-      std::move( rule_generator ), std::move( traction ), ResidualOnly{ *cs->getMfemMeshData() },
+  return std::make_unique<CommonPlaneFormulation<Exec, PairRuleGenerator, CommonPlaneGap, ResidualOnly, ResidualBasis>>(
+      std::move( rule_generator ), penalty, CommonPlaneGap{}, ResidualOnly{ *cs->getMfemMeshData() },
       std::move( pair_builder ) );
 }
 
@@ -204,10 +201,10 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
       [&]( auto linear_rule_generator ) -> std::unique_ptr<ContactFormulation> {
         if ( !uses_quadratic_subdivision ) {
           return createCommonPlaneForRuleGenerator<Exec, BasisFunction<EDGE, LINEAR_LAGRANGE>>(
-              cs, std::move( linear_rule_generator ), CommonPlanePenaltyTraction<CommonPlaneGap>{ penalty } );
+              cs, std::move( linear_rule_generator ), penalty );
         }
-        // Pair points on the quadratic edges themselves so each pair is separated along its common-plane normal; the
-        // projected traction then conserves angular momentum.
+        // Pair points on the quadratic edges themselves so each pair is separated along its stored common-plane
+        // normal; the traction along that normal then conserves angular momentum.
         using SubdividedRuleGenerator =
             SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, decltype( linear_rule_generator ),
                                                   max_num_quadrature_subdivisions, CommonPlaneQuadraticEdgeProjection>;
@@ -215,7 +212,7 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
             cs,
             SubdividedRuleGenerator{ cs->getParameters().num_quadrature_subdivisions,
                                      std::move( linear_rule_generator ) },
-            ProjectedCommonPlanePenaltyTraction{ penalty } );
+            penalty );
       } );
 }
 

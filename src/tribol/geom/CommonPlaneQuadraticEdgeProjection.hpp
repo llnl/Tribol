@@ -9,7 +9,6 @@
 
 #include <cmath>
 
-#include "tribol/geom/CommonPlaneEdgeMapping.hpp"
 #include "tribol/geom/LinearEdgeGeometry.hpp"
 #include "tribol/geom/QuadraticEdgeGeometry.hpp"
 #include "tribol/integ/SubdividedPairQuadratureRuleGenerator.hpp"
@@ -17,12 +16,13 @@
 namespace tribol {
 
 /**
- * @brief Project each paired subelement point onto both quadratic edges along the subelement pair's common normal.
+ * @brief Project each paired subelement point onto both quadratic edges along the subelement pair's integration-surface
+ * normal.
  *
- * CommonPlaneEdgeMapping pairs two subelement points on a line parallel to the subelement pair's common-plane normal.
- * This policy intersects the same line with each quadratic edge, so the evaluated element points are separated exactly
- * along that normal. A traction parallel to their separation then produces no net moment. The intersection solves a
- * scalar quadratic equation in closed form.
+ * A Common Plane subelement rule pairs two subelement points on a line parallel to the subelement pair's common-plane
+ * normal and stores that normal with the point. This policy intersects the same line with each quadratic edge, so the
+ * evaluated element points are separated exactly along the stored normal. A traction along that normal then produces
+ * no net moment. The intersection solves a scalar quadratic equation in closed form.
  */
 struct CommonPlaneQuadraticEdgeProjection {
   using Vector = QuadraticEdgeGeometry::Vector;  ///< Physical vector.
@@ -33,21 +33,21 @@ struct CommonPlaneQuadraticEdgeProjection {
    * @param geometry1 First quadratic edge.
    * @param geometry2 Second quadratic edge.
    * @param subelement1 Linear subelement of geometry1 that produced the point.
-   * @param subelement2 Linear subelement of geometry2 that produced the point.
+   * @param subelement2 Linear subelement of geometry2 that produced the point, unused.
    * @param interval1 Element parametric interval of subelement1, used to select the intersection.
    * @param interval2 Element parametric interval of subelement2, used to select the intersection.
    * @param subelement_coord1 Point's parametric coordinate on subelement1.
    * @param subelement_coord2 Point's parametric coordinate on subelement2, unused because both subelement points lie on
    * the same pairing line.
+   * @param normal Unit integration-surface normal along which the subelement rule paired the point.
    * @return Element coordinates of both intersections; invalid when either line misses its edge inside [-1, 1].
-   * @pre The subelements are nondegenerate and have opposing normals, as required for the linear rule to emit points.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE ProjectedElementCoords mapToElements(
-      const QuadraticEdgeGeometry& geometry1, const QuadraticEdgeGeometry& geometry2,
-      const LinearEdgeGeometry& subelement1, const LinearEdgeGeometry& subelement2, SubelementInterval interval1,
-      SubelementInterval interval2, RealT subelement_coord1, RealT TRIBOL_UNUSED_PARAM( subelement_coord2 ) ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE ProjectedElementCoords
+  mapToElements( const QuadraticEdgeGeometry& geometry1, const QuadraticEdgeGeometry& geometry2,
+                 const LinearEdgeGeometry& subelement1, const LinearEdgeGeometry& TRIBOL_UNUSED_PARAM( subelement2 ),
+                 SubelementInterval interval1, SubelementInterval interval2, RealT subelement_coord1,
+                 RealT TRIBOL_UNUSED_PARAM( subelement_coord2 ), const Vector& normal ) const
   {
-    const auto normal = CommonPlaneEdgeMapping::computeCommonPlaneLine( subelement1, subelement2 ).normal;
     const MdArray<RealT, 1> subelement_coords1{ subelement_coord1 };
     const Point line_point = subelement1.position( subelement_coords1.view() );
     ProjectedElementCoords result;

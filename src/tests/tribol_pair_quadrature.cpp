@@ -273,7 +273,8 @@ TEST( SubdividedPairQuadrature, skips_degenerate_subelements_and_keeps_remaining
 }
 
 // Closed-form projection must pair points on the curved edges along the subelement pair's common-plane normal, keeping
-// the linear rule's weights. The affine mapping evaluates curved points whose separation is not along that normal.
+// the linear rule's weights and storing that normal with every point. The affine mapping evaluates curved points whose
+// separation is not along that normal.
 TEST( SubdividedPairQuadrature, projects_paired_points_onto_curved_edges_along_common_normal )
 {
   using LinearRule = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>>;
@@ -319,6 +320,10 @@ TEST( SubdividedPairQuadrature, projects_paired_points_onto_curved_edges_along_c
     SCOPED_TRACE( point );
     EXPECT_NEAR( tangentialSeparation( projected, point ), 0.0, tolerance );
     EXPECT_NEAR( projected.weights[point], affine.weights[point], tolerance );
+    for ( IndexT component = 0; component < LinearEdgeGeometry::spatial_dim; ++component ) {
+      EXPECT_NEAR( projected.integration_surface_normals( point, component ), normal[component], tolerance );
+      EXPECT_NEAR( affine.integration_surface_normals( point, component ), normal[component], tolerance );
+    }
     max_affine_tangential_separation =
         std::max( max_affine_tangential_separation, std::abs( tangentialSeparation( affine, point ) ) );
   }
@@ -695,7 +700,8 @@ TEST_P( EdgeQuadratureTest, direct_generation_skips_same_facing_edges_without_wr
       // Here all coordinate and weight pointers refer to the same marked storage value, which must remain unchanged.
       const PairQuadratureRuleView<1, 1> zero_capacity_output{ { point_storage_view.data(), { 0, 1 } },
                                                                { point_storage_view.data(), { 0, 1 } },
-                                                               { point_storage_view.data(), 0 } };
+                                                               { point_storage_view.data(), 0 },
+                                                               { point_storage_view.data(), { 0, 2 } } };
       results_view[0] = rule_generator.generate( LinearEdgeGeometry( coords1.view() ),
                                                  LinearEdgeGeometry( coords2.view() ), zero_capacity_output );
     } );
@@ -799,9 +805,12 @@ TEST_P( EdgeQuadratureTest, reports_insufficient_capacity_without_writing_past_o
     // For the valid pair, provide parent-coordinate arrays and weight storage for only one of the three points.
     MdArray<RealT, output_capacity, 1> edge1_parent_storage;
     MdArray<RealT, output_capacity, 1> edge2_parent_storage;
-    const PairQuadratureRuleView<1, 1> limited_output{ { edge1_parent_storage.data(), { output_capacity, 1 } },
-                                                       { edge2_parent_storage.data(), { output_capacity, 1 } },
-                                                       { weight_storage_view.data() + 1, output_capacity } };
+    MdArray<RealT, output_capacity, LinearEdgeGeometry::spatial_dim> normal_storage;
+    const PairQuadratureRuleView<1, 1> limited_output{
+        { edge1_parent_storage.data(), { output_capacity, 1 } },
+        { edge2_parent_storage.data(), { output_capacity, 1 } },
+        { weight_storage_view.data() + 1, output_capacity },
+        { normal_storage.data(), { output_capacity, LinearEdgeGeometry::spatial_dim } } };
     results_view[0] =
         generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( edge2.view() ), limited_output );
   } );
@@ -1248,7 +1257,8 @@ TEST_P( EdgeQuadratureTest, preserves_integration_surface_generator_failure_and_
     // generator, not from this zero capacity.
     const PairQuadratureRuleView<1, 1> zero_capacity_output{ { point_storage_view.data(), { 0, 1 } },
                                                              { point_storage_view.data(), { 0, 1 } },
-                                                             { point_storage_view.data(), 0 } };
+                                                             { point_storage_view.data(), 0 },
+                                                             { point_storage_view.data(), { 0, 2 } } };
     // The test-only integration-surface generator has room for one point but always reports that it needs two; it
     // produces no points.
     const PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, UndersizedEdgeQuadratureRuleGenerator>
