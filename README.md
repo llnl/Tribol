@@ -1,41 +1,37 @@
 # Tribol: Contact Interface Physics Library
 
-High fidelity simulations modeling complex interactions of moving bodies require
-specialized contact algorithms to enforce constraints between surfaces that come
-into contact in order to prevent penetration and to compute the associated contact
-response forces. Tribol aims to provide a unified interface for various contact
-algorithms, specifically, contact detection and enforcement, and serve as a
-common infrastructure enabling the research and development of advanced contact
-algorithms.
+[![Build Status](https://github.com/LLNL/tribol/actions/workflows/ci-tests.yml/badge.svg)](https://github.com/LLNL/tribol/actions/workflows/ci-tests.yml)
 
+High fidelity simulations modeling complex interactions of moving bodies require specialized contact algorithms to
+enforce zero-interpenetration constraints between surfaces. Tribol provides a unified interface for various 
+contact algorithms, including contact search, detection and enforcement, thereby enabling the research and development 
+of advanced contact algorithms.
 
 ## Quick Start Guide
 
 ### Clone the repository
 
 ```
-git clone git@github.com:LLNL/Tribol.git
+git clone --recursive git@github.com:LLNL/Tribol.git
 ```
 
-### Setup for Development
+### Setup for development
 
-Development tools can optionally be installed through the Spack package manager.
-The command to do this is
+Development tools can optionally be installed through the Spack package manager. Development tools are typically not
+needed when using Tribol. The command to install development tools is
 ```
-python3 scripts/uberenv/uberenv.py --project-json=scripts/spack/devtools.json --spack-config-dir=scripts/spack/configs/<platform> --prefix=../tribol_devtools
+python3 scripts/uberenv/uberenv.py --project-json=scripts/spack/devtools.json --spack-env-file=scripts/spack/configs/<platform>/spack.yaml --prefix=../tribol_devtools
 ```
-Please verify the `compilers.yaml` and `packages.yaml` files in
-`scripts/spack/configs/<platform>` match your system configuration.  In
-particular, local versions of `pyshroud` and `pysphinx` are assumed present.
+where `<platform>` is one of `blueos_3_ppc64le_ib_p9`, `linux_ubuntu_24`, `toss_4_x86_64_ib`, or
+`toss_4_x86_64_ib_cray`. Please verify `scripts/spack/configs/<platform>/spack.yaml` matches your system configuration.
 
 ### Installing dependencies
 
-Tribol dependency installation is managed through uberenv, which invokes a local
-instance of the spack package manager to install and manage dependencies.  To
-install dependencies, run
+Tribol dependency installation is managed through uberenv, which invokes a local instance of the spack package manager
+to install and manage dependencies. To install dependencies, run
 
 ```
-python3 scripts/uberenv/uberenv.py --spack-config-dir=scripts/spack/configs/<platform> --prefix=../tribol_libs
+python3 scripts/uberenv/uberenv.py --spack-env-file=scripts/spack/configs/<platform>/spack.yaml --prefix=../tribol_libs
 ```
 
 See additional options by running
@@ -45,23 +41,18 @@ python3 scripts/uberenv/uberenv.py --help
 ```
 
 Tribol is tested on three platforms: 
-- Ubuntu 20.04 LTS (via Windows WSL 2)
-- TOSS 3
+- Ubuntu 24.04 LTS (via Windows WSL 2)
+- TOSS 4
 - BlueOS
 
-Note, running on Ubuntu 20.04 LTS requires inspecting and tailoring the
-`compilers.yaml` and `packages.yaml` files for your specific system.
-
-See `scripts/spack/packages/tribol/package.py` for possible variants in the
-spack spec. The file `scripts/spack/specs.json` lists spack specs which are
-known to build successfully on different platforms.  Note the development tools
-can be built with dependencies using the `+devtools` variant.
+See `scripts/spack/packages/tribol/package.py` for possible variants in the spack spec. The file
+`scripts/spack/specs.json` lists spack specs which are known to build successfully on different platforms.  Note the
+development tools can be built with dependencies using the `+devtools` variant.
 
 ### Build the code
 
-After running uberenv, a host config file is created in the tribol repo root
-directory.  Use the `config-build.py` script to create build and install
-directories and invoke CMake.
+After running uberenv, a host config file is created in the tribol repo root directory.  Use the `config-build.py`
+script to create build and install directories and invoke CMake.
 
 ```
 python3 ./config-build.py -hc <host-config>
@@ -80,10 +71,17 @@ to build Tribol.
 
 The Tribol contact physics library requires:
 - CMake 3.14 or higher
-- C++11 compiler
+- C++17 compiler
 - MPI
 - mfem
 - axom
+
+Tribol has optional dependencies on:
+- CUDA
+- HIP
+- RAJA
+- Umpire
+- Enzyme AD
 
 ## License
 

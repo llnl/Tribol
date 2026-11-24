@@ -1,6 +1,6 @@
 {
     "__comment__":"##############################################################################",
-    "__comment__":"# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC.         ",
+    "__comment__":"# Copyright (c) Lawrence Livermore National Security, LLC.         ",
     "__comment__":"#                                                                             ",
     "__comment__":"# Produced at the Lawrence Livermore National Laboratory                      ",
     "__comment__":"##############################################################################",
@@ -12,16 +12,19 @@
     "__comment__":"#                                                                             ",
     "__comment__":"##############################################################################",
 
-    "toss_3_x86_64_ib":
-    [ "clang@10.0.0~minbuild+devtools",
-      "gcc@8.3.1~minbuild+devtools+fortran",
-      "intel@19.0.4~minbuild+devtools+fortran" ],
+    "toss_4_x86_64_ib":
+    [ "+devtools+adiak+caliper+enzyme %clang_19",
+      "+devtools+adiak+caliper~enzyme %gcc_13" ],
 
-    "blueos_3_ppc64le_ib_p9":
-    [ "clang@10.0.1+devtools+cuda+raja+umpire",
-      "xl@16.1.1.1+devtools+fortran+cuda+raja+umpire",
-      "xl@16.1.1.12+devtools+fortran+cuda+raja+umpire" ],
+    "toss_4_x86_64_ib_cray":
+    [ "~devtools~adiak~caliper~openmp+rocm+enzyme amdgpu_target=gfx942,gfx90a %rocm_6_4_2"],
 
-    "linux_ubuntu_20":
-    [ "gcc@9.4.0~minbuild+devtools+fortran" ]
+    "rzvector":
+    [ "+devtools+adiak+caliper~enzyme cuda_arch=90 %clang_19" ],
+
+    "matrix":
+    [ "+devtools+adiak+caliper~enzyme cuda_arch=90 %clang_19" ],
+
+    "macos_tahoe_aarch64":
+    [ "+devtools+adiak+caliper+enzyme~openmp %clang_19" ]
 }

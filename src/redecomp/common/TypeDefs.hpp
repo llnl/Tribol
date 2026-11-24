@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -11,27 +11,30 @@
 
 #include "axom/primal.hpp"
 
+#include "shared/common/BasicTypes.hpp"
 #include "redecomp/utils/MPIArray.hpp"
 
-namespace redecomp
-{
-  constexpr double pi = M_PI;
+namespace redecomp {
 
-  template <int NDIMS>
-  using Point = axom::primal::Point<double, NDIMS>;
+/// Floating-point type used for redecomp numerical data.
+using RealT = shared::RealT;
+constexpr RealT pi = M_PI;
 
-  template <int NDIMS>
-  using BoundingBox = axom::primal::BoundingBox<double, NDIMS>;
-  
-  /**
-   * @brief In its usage in redecomp, the first pair entry contains a list of
-   * entity (node or element) indices per rank. The second pair entry is sized
-   * the same as the first pair entry, and if the entry is true, it denotes the
-   * entity is in the ghost layer on a corresponding RedecompMesh. This data
-   * structure lists entities that need to be sent to or are received from other
-   * MPI ranks.
-   */
-  using EntityIndexByRank = std::pair<MPIArray<int>, MPIArray<bool>>;
-} // end namespace redecomp
+template <int NDIMS>
+using Point = axom::primal::Point<RealT, NDIMS>;
+
+template <int NDIMS>
+using BoundingBox = axom::primal::BoundingBox<RealT, NDIMS>;
+
+/**
+ * @brief In its usage in redecomp, the first pair entry contains a list of
+ * entity (node or element) indices per rank. The second pair entry is sized
+ * the same as the first pair entry, and if the entry is true, it denotes the
+ * entity is in the ghost layer on a corresponding RedecompMesh. This data
+ * structure lists entities that need to be sent to or are received from other
+ * MPI ranks.
+ */
+using EntityIndexByRank = std::pair<MPIArray<int>, MPIArray<bool>>;
+}  // end namespace redecomp
 
 #endif /* SRC_REDECOMP_COMMON_TYPEDEFS_HPP_ */

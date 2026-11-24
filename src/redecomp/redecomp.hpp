@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -10,6 +10,7 @@
 #include "partition/PartitionElements.hpp"
 #include "partition/RCB.hpp"
 #include "transfer/MatrixTransfer.hpp"
+#include "transfer/SparseMatrixTransfer.hpp"
 
 #include "MultiRedecomp.hpp"
 #include "RedecompTransfer.hpp"

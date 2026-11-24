@@ -3,7 +3,7 @@
 #
 copyright:
   -
-  - Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC.
+  - Copyright (c) Lawrence Livermore National Security, LLC.
   - Produced at the Lawrence Livermore National Laboratory
   - SPDX-License-Identifier (MIT)
 
@@ -38,17 +38,17 @@ declarations:
                                    int numElemsX2, int numElemsY2, int numElemsZ2,
                                    double xMin2, double yMin2, double zMin2, 
                                    double xMax2, double yMax2, double zMax2,
-                                   double thetaMaster, double thetaSlave )
+                                   double thetaMortar, double thetaNonmortar )
   - decl: int numTotalNodes  +readonly;
-  - decl: int numMasterFaces +readonly;
-  - decl: int numSlaveFaces  +readonly;
+  - decl: int numMortarFaces +readonly;
+  - decl: int numNonmortarFaces  +readonly;
 
   - decl: double* getX() const  +dimension(numTotalNodes)
   - decl: double* getY() const  +dimension(numTotalNodes)
   - decl: double* getZ() const  +dimension(numTotalNodes)
 
-  - decl: int getMasterFaceConnectivitySize() const;
-  - decl: int* getMasterFaceConnectivity() const  +dimension(getMasterFaceConnectivitySize())
+  - decl: int getMortarFaceConnectivitySize() const;
+  - decl: int* getMortarFaceConnectivity() const  +dimension(getMortarFaceConnectivitySize())
 
-  - decl: int getSlaveFaceConnectivitySize() const;
-  - decl: int* getSlaveFaceConnectivity() const  +dimension(getSlaveFaceConnectivitySize())
+  - decl: int getNonmortarFaceConnectivitySize() const;
+  - decl: int* getNonmortarFaceConnectivity() const  +dimension(getNonmortarFaceConnectivitySize())

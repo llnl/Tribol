@@ -1,27 +1,37 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef TRIBOL_CONFIG_HPP_
-#define TRIBOL_CONFIG_HPP_
+#ifndef SRC_TRIBOL_CONFIG_HPP_
+#define SRC_TRIBOL_CONFIG_HPP_
+
+#include "shared/config.hpp"
 
 /*
- * Note: Use only C-style comments in this file
- *       since it might be included from a C file
+ * Note: Use only C-style comments in this file since it might be included from a C file
  */
-
 
 /*
  * Version Information
  */
+/* clang-format off */
 #define TRIBOL_VERSION_MAJOR @TRIBOL_VERSION_MAJOR@
 #define TRIBOL_VERSION_MINOR @TRIBOL_VERSION_MINOR@
 #define TRIBOL_VERSION_PATCH @TRIBOL_VERSION_PATCH@
-#define TRIBOL_VERSION_FULL  "@TRIBOL_VERSION_FULL@"
+/* clang-format on */
+#define TRIBOL_VERSION_FULL "@TRIBOL_VERSION_FULL@"
 
-// Directories
+/*
+ * Directories
+ */
 #define TRIBOL_REPO_DIR "@TRIBOL_REPO_DIR@"
 #define TRIBOL_BIN_DIR "@TRIBOL_BIN_DIR@"
+#define TRIBOL_DATA_DIR "@TRIBOL_DATA_DIR@"
 
-#endif /* TRIBOL_CONFIG_HPP_ */
+/*
+ * Build information
+ */
+#cmakedefine BUILD_REDECOMP
+
+#endif /* SRC_TRIBOL_CONFIG_HPP_ */

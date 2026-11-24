@@ -1,10 +1,10 @@
 Host Sum of Weights  2.548378277873E+01
-      55                        This is the slave node and the low numbers < 200 are master nodes
-      55  3.601037892071E-02    These are the slave node wts
+      55                        This is the nonmortar node and the low numbers < 200 are mortar nodes
+      55  3.601037892071E-02    These are the nonmortar node wts
       61  1.939109205094E-02
       62  1.691194689799E-02
       56  3.308355306874E-02
-     364  8.726419965506E-03    These are the master node wts   
+     364  8.726419965506E-03    These are the mortar node wts   
      368  4.013836711257E-03
      396  2.626907068019E-02
      392  5.202745167592E-02
@@ -13,7 +13,7 @@ Host Sum of Weights  2.548378277873E+01
      424  5.313954560829E-03
      420  9.045942436160E-03
      428  1.539297610388E-08
-      55  1.053969709384E-01  1.053969709384E-01 This is the total for the slave side wts for node 55 (about integrated segment area/4)
+      55  1.053969709384E-01  1.053969709384E-01 This is the total for the nonmortar side wts for node 55 (about integrated segment area/4)
       56
       55  3.308355306874E-02
       61  1.691194689799E-02

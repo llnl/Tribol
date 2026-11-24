@@ -1,115 +1,30 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_MESH_INTERFACE_PAIRS_HPP_
-#define SRC_MESH_INTERFACE_PAIRS_HPP_
+#ifndef SRC_TRIBOL_MESH_INTERFACE_PAIRS_HPP_
+#define SRC_TRIBOL_MESH_INTERFACE_PAIRS_HPP_
 
-#include "tribol/types.hpp"
-#include "tribol/common/Parameters.hpp"
+#include <type_traits>
 
-#include "axom/slic.hpp"
+// Shared includes
+#include "tribol/common/BasicTypes.hpp"
 
-namespace tribol
-{
+namespace tribol {
 
-struct InterfacePair
-{
-   InterfacePair( integer m1, integer t1, integer i1,
-                  integer m2, integer t2, integer i2 )
-      : pairId(-1)
-      , meshId1(m1), pairType1(t1), pairIndex1(i1)
-      , meshId2(m2), pairType2(t2), pairIndex2(i2) 
-      , inContact(false)  {}
-
-   // overload constructor
-   InterfacePair( integer m1, integer t1, integer i1,
-                  integer m2, integer t2, integer i2,
-                  bool contacting, integer id )
-      : pairId(id)
-      , meshId1(m1), pairType1(t1), pairIndex1(i1)
-      , meshId2(m2), pairType2(t2), pairIndex2(i2) 
-      , inContact(contacting) {}
-
-   // overload constructor to handle zero input arguments
-   InterfacePair() : pairId(-1)
-                   , meshId1(-1), pairType1(-1), pairIndex1(-1)
-                   , meshId2(-1), pairType2(-1), pairIndex2(-1)
-                   , inContact(false)  {}
-
-   // pair id
-   integer pairId;
-
-   // mesh id, face type, and face id for face 1
-   integer meshId1;
-   integer pairType1;
-   integer pairIndex1;
-
-   // mesh id, face type and face id for face 2
-   integer meshId2;
-   integer pairType2;
-   integer pairIndex2;
-
-   // boolean to hold whether pair is in contact or not in contact
-   bool inContact;
+/** @brief Identifies one element from each mesh without storing method-specific contact state */
+struct InterfacePair {
+  IndexT element_id1_{ -1 };  ///< Element ID from the first mesh
+  IndexT element_id2_{ -1 };  ///< Element ID from the second mesh
 };
 
-
-class InterfacePairs
-{
-public:
-  InterfacePairs()  = default;
-  ~InterfacePairs() = default;
-
-  void clear();
-  void reserve(integer capacity);
-
-  void addInterfacePair( InterfacePair const& pair );
-
-  void updateInterfacePair( InterfacePair const& pair,
-                            integer const idx );
-
-  void setMeshId( int side, int id )
-  {
-     SLIC_ERROR_IF( side !=1 && side !=2, "mesh side not 1 or 2.");
-     if (side == 1) m_meshId1 = id;
-     if (side == 2) m_meshId2 = id;
-  }
-
-  void setPairType( int side, integer type )
-  {
-     SLIC_ERROR_IF( side !=1 && side !=2, "mesh side not 1 or 2.");
-     if (side == 1) m_pairType1 = type;
-     if (side == 2) m_pairType2 = type;
-  }
-
-  InterfacePair getInterfacePair(IndexType idx) const
-  {
-     SLIC_ERROR_IF(idx >= getNumPairs(), "Index out of range.");
-
-     return InterfacePair {
-        m_meshId1, m_pairType1, m_pairIndex1[idx],
-        m_meshId2, m_pairType2, m_pairIndex2[idx], 
-        m_inContact[idx], idx };
-  }
-
-  IndexType getNumPairs() const { return m_pairIndex1.size(); }
-
-private:
-
-  // A list of interface pairs is defined to be between 
-  // two meshes with the same elements type on each mesh
-  integer m_meshId1;
-  integer m_meshId2;
-  integer m_pairType1;
-  integer m_pairType2;
-
-  containerArray<integer> m_pairIndex1;
-  containerArray<integer> m_pairIndex2;
-  containerArray<bool>    m_inContact;
-};
+static_assert( std::is_aggregate_v<InterfacePair>, "InterfacePair must support aggregate initialization." );
+static_assert( std::is_trivially_copyable_v<InterfacePair>, "InterfacePair must remain inexpensive to copy." );
+static_assert( sizeof( InterfacePair ) == 2 * sizeof( IndexT ), "InterfacePair must store only its two element IDs." );
+static_assert( InterfacePair{}.element_id1_ == -1 && InterfacePair{}.element_id2_ == -1,
+               "A default InterfacePair must remain invalid." );
 
 } /* namespace tribol */
 
-#endif /* SRC_MESH_INTERFACE_PAIRS_HPP_ */
+#endif /* SRC_TRIBOL_MESH_INTERFACE_PAIRS_HPP_ */

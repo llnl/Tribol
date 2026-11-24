@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level LICENSE file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -7,27 +7,95 @@
 # Set up tribol's TPLs
 #------------------------------------------------------------------------------
 
-message( STATUS "----------------------------"
-                "Configuring TPLs"
-                "----------------------------")
+message(STATUS "Configuring TPLs...\n"
+               "----------------------")
 
-set(TPL_DEPS)
+set(EXPORTED_TPL_DEPS)
+include(CMakeFindDependencyMacro)
+
+#------------------------------------------------------------------------------
+# Create global variable to toggle between GPU targets
+#------------------------------------------------------------------------------
+if(TRIBOL_USE_CUDA)
+  set(tribol_device_depends blt::cuda CACHE STRING "" FORCE)
+
+  # This lets clangd see includes with CUDA builds
+  set(CMAKE_CUDA_USE_RESPONSE_FILE_FOR_INCLUDES OFF)
+endif()
+if(TRIBOL_USE_HIP)
+  set(tribol_device_depends blt::hip CACHE STRING "" FORCE)
+endif()
+
+#------------------------------------------------------------------------------
+# Enzyme
+#------------------------------------------------------------------------------
+if (ENZYME_DIR)
+  message(STATUS "Setting up external Enzyme TPL...")
+
+  set(Enzyme_DIR ${ENZYME_DIR})
+  find_dependency(Enzyme REQUIRED PATHS "${ENZYME_DIR}")
+
+  if(TRIBOL_USE_CUDA AND NOT CMAKE_CUDA_COMPILER_ID STREQUAL "Clang")
+    message(FATAL_ERROR
+      "Tribol's Enzyme contact formulations require Clang-CUDA. NVCC cannot run the LLVM Enzyme plugin on device "
+      "code and leaves the derivative intrinsics unresolved during device linking.")
+  endif()
+
+  include(${CMAKE_CURRENT_LIST_DIR}/TribolEnzymeFlags.cmake)
+  tribol_add_enzyme_gpu_flags(USE_CUDA "${TRIBOL_USE_CUDA}" USE_HIP "${TRIBOL_USE_HIP}")
+
+  set(TRIBOL_USE_ENZYME TRUE)
+else()
+  message(STATUS "Enzyme support is OFF")
+endif()
+
+
+#------------------------------------------------------------------------------
+# Umpire
+#------------------------------------------------------------------------------
+
+if (UMPIRE_DIR)
+  message(STATUS "Setting up external Umpire TPL...")
+
+  set(umpire_DIR ${UMPIRE_DIR})
+  find_dependency(umpire REQUIRED PATHS "${UMPIRE_DIR}")
+
+  set(TRIBOL_USE_UMPIRE TRUE)
+else()
+  message(STATUS "Umpire support is OFF")
+endif()
+
+
+#------------------------------------------------------------------------------
+# RAJA
+#------------------------------------------------------------------------------
+
+if (RAJA_DIR)
+  message(STATUS "Setting up external RAJA TPL...")
+
+  find_dependency(raja REQUIRED PATHS "${RAJA_DIR}")
+
+  set(TRIBOL_USE_RAJA TRUE)
+else()
+  message(STATUS "RAJA support is OFF")
+endif()
+
 
 #------------------------------------------------------------------------------
 # axom
 #------------------------------------------------------------------------------
-if (DEFINED AXOM_DIR)
-  message( STATUS "----------------------"
-                  "Setting up external Axom TPL"
-                  "----------------------")
-  include(${PROJECT_SOURCE_DIR}/cmake/thirdparty/SetupAxom.cmake)
-
-  list(APPEND TPL_DEPS axom)
-
+if (TARGET axom)
+    # Case: Tribol included in project that also creates an axom target, no need to recreate axom
+    message(STATUS "Axom support is ON, using existing axom target")
+    set(AXOM_FOUND TRUE)
+elseif (AXOM_DIR)
+  message(STATUS "Setting up external Axom TPL...")
+  tribol_assert_path_exists( ${AXOM_DIR} )
+  find_dependency(axom REQUIRED PATHS "${AXOM_DIR}/lib/cmake")
 else()
   message(FATAL_ERROR 
      "Axom is a required dependency for tribol. "
-     "Please configure tribol with a path to axom via the AXOM_DIR variable.")
+     "Please configure tribol with a path to Axom via the AXOM_DIR variable.")
 endif()
 
 
@@ -35,27 +103,25 @@ endif()
 # mfem
 #------------------------------------------------------------------------------
 
-if (DEFINED MFEM_DIR)
-  message( STATUS "----------------------"
-                  "Setting up external mfem TPL"
-                  "----------------------")
-
+if (TARGET mfem)
+    # Case: Tribol included in project that also creates an mfem target, no need to recreate mfem
+    message(STATUS "MFEM support is ON, using existing mfem target")
+    set(MFEM_FOUND TRUE)
+elseif (MFEM_DIR)
+  message(STATUS "Setting up external MFEM TPL...")
   include(${PROJECT_SOURCE_DIR}/cmake/thirdparty/SetupMFEM.cmake)
-
-  list(APPEND TPL_DEPS mfem)
 else()
   message(FATAL_ERROR 
-     "mfem is a required dependency for tribol."
-     " Please configure tribol with a path to axom via the MFEM_DIR variable.")
+     "MFEM is a required dependency for tribol. "
+     "Please configure tribol with a path to MFEM via the MFEM_DIR variable.")
 endif()
+
 
 #------------------------------------------------------------------------------
 # Shroud - Generates C/Fortran/Python bindings
 #------------------------------------------------------------------------------
 if(EXISTS ${SHROUD_EXECUTABLE})
-    message( STATUS "----------------------"
-                    "Setting up shroud TPL"
-                    "----------------------")
+    message(STATUS "Setting up shroud TPL...")
     execute_process(COMMAND ${SHROUD_EXECUTABLE}
                     --cmake ${CMAKE_CURRENT_BINARY_DIR}/SetupShroud.cmake
                     ERROR_VARIABLE SHROUD_cmake_error
@@ -70,23 +136,88 @@ else()
     message(STATUS "Shroud support is OFF")
 endif()
 
-# export tribol-targets
-foreach(dep ${TPL_DEPS})
-  # If the target is EXPORTABLE, add it to the export set
-  get_target_property(_is_imported ${dep} IMPORTED)
-  if(NOT ${_is_imported})
-      install(TARGETS              ${dep}
-              EXPORT               tribol-targets
-              DESTINATION          lib)
-      # Namespace target to avoid conflicts
-      set_target_properties(${dep} PROPERTIES EXPORT_NAME tribol::${dep})
-  endif()
+
+#---------------------------------------------------------------------------
+# Remove non-existent INTERFACE_INCLUDE_DIRECTORIES from imported targets
+# to work around CMake error
+#---------------------------------------------------------------------------
+set(_imported_targets
+    axom
+    conduit
+    conduit::conduit_mpi
+    conduit::conduit
+    conduit_relay_mpi
+    conduit_relay_mpi_io
+    conduit_blueprint
+    conduit_blueprint_mpi
+    mfem)
+
+foreach(_target ${_imported_targets})
+    if(TARGET ${_target})
+        get_target_property(_dirs ${_target} INTERFACE_INCLUDE_DIRECTORIES)
+        set(_existing_dirs)
+        foreach(_dir ${_dirs})
+            if("${_dir}" MATCHES "^\\$<" OR IS_DIRECTORY "${_dir}")
+                list(APPEND _existing_dirs "${_dir}")
+            endif()
+        endforeach()
+        if(_existing_dirs)
+            if(NOT "${_existing_dirs}" STREQUAL "${_dirs}")
+                message(STATUS "Removed non-existent include directories from target '${_target}'")
+            endif()
+            set_target_properties(${_target} PROPERTIES
+                                    INTERFACE_INCLUDE_DIRECTORIES "${_existing_dirs}" )
+        endif()
+    endif()
 endforeach()
 
-# export BLT targets
-blt_export_tpl_targets(EXPORT tribol-targets NAMESPACE tribol)
+set(_mfem_targets
+    mfem)
 
-message( STATUS "-----------------------"
-                "Finished configuring TPLs"
-                "----------------------")
+# Prevent unhelpful warnings by removing duplicate rpaths set in MFEM's config.mk MFEM_EXT_LIBS
+if(APPLE)
+    foreach(_target ${_mfem_targets})
+        if(TARGET ${_target})
+            get_target_property(_link_str ${_target} INTERFACE_LINK_LIBRARIES)
+            separate_arguments(_link_list UNIX_COMMAND "${_link_str}")
+            list(REMOVE_DUPLICATES _link_list)
+            set_target_properties(${_target} PROPERTIES INTERFACE_LINK_LIBRARIES "${_link_list}")
+        endif()
+    endforeach()
+    unset(_link_str)
+    unset(_link_libs)
+endif()
+unset(_mfem_targets)
 
+#------------------------------------------------------------------------------
+# Caliper
+#------------------------------------------------------------------------------
+if(TRIBOL_ENABLE_PROFILING AND NOT CALIPER_DIR)
+    message(FATAL_ERROR "TRIBOL_ENABLE_PROFILING cannot be ON without CALIPER_DIR defined. Either specify a host \
+                          config with CALIPER_DIR, or rebuild Tribol TPLs with +profiling variant.")
+endif()
+
+if(CALIPER_DIR AND TRIBOL_ENABLE_PROFILING)
+    tribol_assert_path_exists(${CALIPER_DIR})
+
+    # Should this logic be in the Caliper CMake package?
+    # If CMake version doesn't support CUDAToolkit the libraries
+    # are just "baked in"
+    if(TRIBOL_ENABLE_CUDA)
+        if(CMAKE_VERSION VERSION_LESS 3.17)
+            message(FATAL_ERROR "Tribol+Caliper+CUDA requires CMake > 3.17.")
+        else()
+            find_package(CUDAToolkit REQUIRED)
+        endif() 
+    endif()
+
+    find_dependency(caliper REQUIRED PATHS "${CALIPER_DIR}")
+    message(STATUS "Caliper support is ON")
+    set(TRIBOL_USE_CALIPER TRUE)
+else()
+    message(STATUS "Caliper support is OFF")
+    set(TRIBOL_USE_CALIPER FALSE)
+endif()
+
+message(STATUS "--------------------------\n"
+               "Finished configuring TPLs")

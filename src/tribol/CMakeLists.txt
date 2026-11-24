@@ -1,12 +1,7 @@
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level LICENSE file for details.
 #
 # SPDX-License-Identifier: (MIT)
-
-## configure types.hpp
-set(TRIBOL_DATA_DIR ${PROJECT_SOURCE_DIR}/data)
-tribol_configure_file(common/types.hpp.in
-                      ${PROJECT_BINARY_DIR}/include/tribol/types.hpp )
 
 # Add targets to generate C and Fortran interfaces
 if (SHROUD_FOUND)
@@ -14,71 +9,133 @@ if (SHROUD_FOUND)
 endif()
 
 ## list of headers
-set( tribol_headers
+set(tribol_headers
 
-     common/logger.hpp
-     common/Parameters.hpp
+    assembly/AssemblePairs.hpp
+    assembly/ElementBlockStorage.hpp
+    assembly/EnzymePairDerivative.hpp
+    assembly/EvaluatePairs.hpp
+    assembly/MfemMatrixAssembler.hpp
+    assembly/MfemVectorAssembler.hpp
+    assembly/PairBuffers.hpp
+    assembly/PairDerivativeData.hpp
+    assembly/PairFunctionData.hpp
 
-     interface/simple_tribol.hpp
-     interface/tribol.hpp
+    common/ArrayTypes.hpp
+    common/Atomics.hpp
+    common/BasicTypes.hpp
+    common/Containers.hpp
+    common/Enzyme.hpp
+    common/ExecModel.hpp
+    common/GlobalScalarAssembler.hpp
+    common/LoopExec.hpp
+    common/MdArray.hpp
+    common/MdSpan.hpp
+    common/Parameters.hpp
+    common/Reductions.hpp
 
-     integ/Integration.hpp
-     integ/FE.hpp
+    enforcement/PenaltyEnergy.hpp
+    enforcement/PenaltyStiffness.hpp
 
-     mesh/InterfacePairs.hpp
-     mesh/MethodCouplingData.hpp 
-     mesh/CouplingScheme.hpp
-     mesh/CouplingSchemeManager.hpp
-     mesh/MeshManager.hpp
-     mesh/MeshData.hpp
+    geom/CompGeom.hpp
+    geom/ElementNormal.hpp
+    geom/GeomUtilities.hpp
+    geom/Hyperplane.hpp
+    geom/OpposingNormalGap.hpp
+    geom/OffsetGap.hpp
+    geom/CommonPlaneEdgeMapping.hpp
+    geom/CommonPlaneGap.hpp
+    geom/LinearEdgeGeometry.hpp
+    geom/NodalNormal.hpp
+    geom/SmoothedProjectedEdgeMapping.hpp
 
-     geom/ContactPlane.hpp
-     geom/GeomUtilities.hpp
-     geom/ContactPlaneManager.hpp
+    integ/BasisFunction.hpp
+    integ/EdgeQuadratureRuleGenerator.hpp
+    integ/FE.hpp
+    integ/Integration.hpp
+    integ/PairQuadratureRuleGenerator.hpp
+    integ/QuadratureCommon.hpp
+    integ/QuadratureRuleGeneratorFactory.hpp
 
-     utils/ContactPlaneOutput.hpp
-     utils/Math.hpp
-     utils/TestUtils.hpp
+    interface/mfem_tribol.hpp
+    interface/simple_tribol.hpp
+    interface/tribol.hpp
 
-     search/InterfacePairFinder.hpp
+    mesh/CouplingScheme.hpp
+    mesh/InterfacePairs.hpp
+    mesh/MeshData.hpp
+    mesh/MethodCouplingData.hpp
+    mesh/MfemData.hpp
 
-     physics/Physics.hpp
-     physics/CommonPlane.hpp
-     physics/AlignedMortar.hpp
-     physics/Mortar.hpp
-     )
+    physics/integrals/PairIntegrals.hpp
+    
+    physics/AlignedMortar.hpp
+    physics/CommonPlane.hpp
+    physics/CommonPlaneFormulation.hpp
+    physics/ContactFormulation.hpp
+    physics/ContactFormulationFactory.hpp
+    physics/Mortar.hpp
+    physics/NodalEnergyMortar.hpp
+    physics/QuadraturePointEnergyMortar.hpp
+    physics/Physics.hpp
+
+    search/CoarseSearch.hpp
+    search/CoarseSearchFactory.hpp
+    search/BvhSearch.hpp
+    search/GridSearch.hpp
+    search/InterfacePairChecks.hpp
+    search/InterfacePairFinder.hpp
+    search/RefinedSearch.hpp
+    search/ProjectedEdgeSearch.hpp
+    search/PairListBuilder.hpp
+
+    utils/Algorithm.hpp
+    utils/ContactPlaneOutput.hpp
+    utils/DataManager.hpp
+    utils/Math.hpp
+    utils/TestUtils.hpp
+
+    )
 
 ## list of sources
-set( tribol_sources
+set(tribol_sources
 
-     interface/simple_tribol.cpp
-     interface/tribol.cpp
-
-     integ/Integration.cpp
-     integ/FE.cpp
-
-     mesh/InterfacePairs.cpp
-     mesh/MethodCouplingData.cpp
-     mesh/CouplingScheme.cpp
-     mesh/CouplingSchemeManager.cpp
-     mesh/MeshManager.cpp
-     mesh/MeshData.cpp
+    assembly/MfemMatrixAssembler.cpp
+    assembly/MfemVectorAssembler.cpp
      
-     geom/ContactPlane.cpp
-     geom/GeomUtilities.cpp 
-     geom/ContactPlaneManager.cpp
+    geom/CompGeom.cpp
+    geom/GeomUtilities.cpp
+    geom/NodalNormal.cpp
 
-     utils/ContactPlaneOutput.cpp
-     utils/Math.cpp
-     utils/TestUtils.cpp
+    integ/FE.cpp
+    integ/Integration.cpp
+    integ/QuadratureCommon.cpp
+
+    interface/mfem_tribol.cpp
+    interface/simple_tribol.cpp
+    interface/tribol.cpp
+
+    mesh/CouplingScheme.cpp
+    mesh/MeshData.cpp
+    mesh/MethodCouplingData.cpp
+    mesh/MfemData.cpp
+
+    physics/AlignedMortar.cpp
+    physics/CommonPlane.cpp
+    physics/ContactFormulationFactory.cpp
+    physics/Mortar.cpp
+    physics/NodalEnergyMortar.cpp
+    physics/Physics.cpp
      
-     search/InterfacePairFinder.cpp
+    search/CoarseSearchFactory.cpp
+    search/InterfacePairFinder.cpp
+    search/ProjectedEdgeSearch.cpp
 
-     physics/Physics.cpp
-     physics/CommonPlane.cpp
-     physics/AlignedMortar.cpp
-     physics/Mortar.cpp
-     )
+    utils/ContactPlaneOutput.cpp
+    utils/Math.cpp
+    utils/TestUtils.cpp
+
+    )
 
 if (ENABLE_FORTRAN)
     ## append shroud-generated headers/sources for tribol_simple interface
@@ -98,32 +155,59 @@ if (ENABLE_FORTRAN)
 endif()
 
 ## setup the dependency list for tribol
-set(tribol_depends axom mfem)
-blt_list_append(TO tribol_depends ELEMENTS mpi IF TRIBOL_USE_MPI )
-blt_list_append(TO tribol_depends ELEMENTS cuda IF ENABLE_CUDA )
-blt_list_append(TO tribol_depends ELEMENTS umpire IF UMPIRE_FOUND )
-blt_list_append(TO tribol_depends ELEMENTS RAJA IF RAJA_FOUND )
+set(tribol_depends tribol_shared axom::primal axom::slic mfem)
+blt_list_append(TO tribol_depends ELEMENTS blt::mpi IF TRIBOL_USE_MPI )
+blt_list_append(TO tribol_depends ELEMENTS redecomp IF BUILD_REDECOMP )
+blt_list_append(TO tribol_depends ELEMENTS umpire IF TRIBOL_USE_UMPIRE )
+blt_list_append(TO tribol_depends ELEMENTS RAJA IF TRIBOL_USE_RAJA )
+blt_list_append(TO tribol_depends ELEMENTS ClangEnzymeFlags IF TRIBOL_USE_ENZYME)
+message(STATUS "Tribol library dependencies: ${tribol_depends}")
+
+if(TRIBOL_USE_ENZYME)
+    # At -O0, Enzyme rejects Clang 19's aggregate-heavy IR or silently generates incorrect fixed-rule derivatives.
+    # Optimize the translation units that generate those derivatives; other Debug sources remain at -O0.
+    set_property(SOURCE physics/ContactFormulationFactory.cpp APPEND PROPERTY COMPILE_OPTIONS
+        "$<$<CONFIG:Debug>:-O2>")
+endif()
 
 ## create the library
 blt_add_library(
     NAME tribol
     SOURCES ${tribol_sources}
     HEADERS ${tribol_headers}
-    DEPENDS_ON ${tribol_depends}
+    DEPENDS_ON ${tribol_depends} ${tribol_device_depends}
     FOLDER tribol
     )
 
+# Add debug flag
+if(ENABLE_HIP)
+    target_compile_options(tribol PRIVATE
+        $<$<CONFIG:Debug>:
+            -ggdb
+        >
+    )
+endif()
+
+# Don't propagate internal dependencies
+target_link_libraries(tribol PRIVATE axom::quest)
+
 target_include_directories(tribol PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>
-    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>
+    $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
     $<INSTALL_INTERFACE:include>
     )
 
 ## tribol install target
-tribol_install( SOURCE_HEADERS ${tribol_headers}
-                GENERATED_HEADERS ${PROJECT_BINARY_DIR}/include/tribol/types.hpp )
+tribol_install( SOURCE_HEADERS ${tribol_headers} )
 
 if(ENABLE_FORTRAN AND ENABLE_MPI)
     install(FILES ${CMAKE_Fortran_MODULE_DIRECTORY}/tribol_simple.mod DESTINATION lib/fortran)
     install(FILES ${CMAKE_Fortran_MODULE_DIRECTORY}/tribol_test_mesh.mod DESTINATION lib/fortran)
+endif()
+
+# Add the TRIBOL_DEBUG compile definition, if non-empty
+if(TRIBOL_DEBUG_DEFINE_STRING)
+  blt_add_target_definitions(TO tribol SCOPE PUBLIC TARGET_DEFINITIONS "${TRIBOL_DEBUG_DEFINE_STRING}")
+  # Define AXOM_DEBUG for SLIC macros
+  blt_add_target_definitions(TO tribol SCOPE PUBLIC TARGET_DEFINITIONS "${AXOM_DEBUG_DEFINE_STRING}")
 endif()

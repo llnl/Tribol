@@ -1,9 +1,9 @@
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level LICENSE file for details.
 #
 # SPDX-License-Identifier: (MIT)
 
-cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
 
 @PACKAGE_INIT@
 
@@ -28,60 +28,108 @@ if(NOT TRIBOL_FOUND)
   # Language features
   set(TRIBOL_USE_FORTRAN          "@ENABLE_FORTRAN@")
   set(TRIBOL_USE_MPI              "@ENABLE_MPI@")
-  #set(TRIBOL_USE_CUDA            "@TRIBOL_USE_CUDA@")
-  #set(TRIBOL_USE_OPENMP          "@TRIBOL_USE_OPENMP@")
+  set(TRIBOL_USE_CUDA             "@TRIBOL_USE_CUDA@")
+  set(TRIBOL_USE_HIP              "@TRIBOL_USE_HIP@")
+  set(TRIBOL_USE_OPENMP           "@TRIBOL_USE_OPENMP@")
 
   # Config options
   set(TRIBOL_USE_SINGLE_PRECISION "@TRIBOL_USE_SINGLE_PRECISION@")
   set(TRIBOL_USE_64BIT_INDEXTYPE  "@TRIBOL_USE_64BIT_INDEXTYPE@")
-  set(TRIBOL_ENABLE_SIDRE         "@TRIBOL_ENABLE_SIDRE@")
-  set(TRIBOL_ENABLE_SLIC          "@TRIBOL_ENABLE_SLIC@")
+  set(TRIBOL_USE_GPU_MPI          "@TRIBOL_USE_GPU_MPI@")
+
+  # TPLs
+  set(TRIBOL_USE_UMPIRE  "@TRIBOL_USE_UMPIRE@")
+  set(TRIBOL_USE_RAJA    "@TRIBOL_USE_RAJA@")
+  set(TRIBOL_USE_ENZYME  "@TRIBOL_USE_ENZYME@")
+  set(TRIBOL_USE_CALIPER "@TRIBOL_USE_CALIPER@")
+
+  # Configuration for Tribol compiler defines
+  set(TRIBOL_DEBUG_DEFINE         "@TRIBOL_DEBUG_DEFINE@")
+  set(TRIBOL_DEBUG_DEFINE_STRING  "@TRIBOL_DEBUG_DEFINE_STRING@")
   
   #----------------------------------------------------------------------------
-  # Bring in required dependencies for this axom configuration
+  # Bring in required dependencies for this Tribol configuration
   #----------------------------------------------------------------------------
   include(CMakeFindDependencyMacro)
 
+  get_filename_component(TRIBOL_CMAKE_CONFIG_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
+
+  # Enable various find commands to look in non-default paths
+  set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB32_PATHS TRUE)
+  set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS TRUE)
+  set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIBX32_PATHS TRUE)
+
+  # Umpire is optional
+  if(TRIBOL_USE_UMPIRE)
+    set(TRIBOL_UMPIRE_DIR  "@UMPIRE_DIR@")
+    if(NOT UMPIRE_DIR) 
+      set(UMPIRE_DIR "${TRIBOL_UMPIRE_DIR}")
+    endif()
+    find_dependency(umpire REQUIRED PATHS "${UMPIRE_DIR}")
+  endif()
+
+  # RAJA is optional
+  if(TRIBOL_USE_RAJA)
+    set(TRIBOL_RAJA_DIR  "@RAJA_DIR@")
+    if(NOT RAJA_DIR) 
+      set(RAJA_DIR "${TRIBOL_RAJA_DIR}")
+    endif()
+    find_dependency(RAJA REQUIRED PATHS "${RAJA_DIR}")
+  endif()
+
+  # Enzyme is optional
+  if(TRIBOL_USE_ENZYME)
+    set(TRIBOL_ENZYME_DIR  "@ENZYME_DIR@")
+    if(NOT ENZYME_DIR) 
+      set(ENZYME_DIR "${TRIBOL_ENZYME_DIR}")
+    endif()
+    find_dependency(Enzyme REQUIRED PATHS "${ENZYME_DIR}")
+    # Downstream GPU translation units that instantiate Tribol's header-only Enzyme kernels need Tribol's flags.
+    include(${TRIBOL_CMAKE_CONFIG_DIR}/TribolEnzymeFlags.cmake)
+    tribol_add_enzyme_gpu_flags(USE_CUDA "${TRIBOL_USE_CUDA}" USE_HIP "${TRIBOL_USE_HIP}")
+  endif()
+
+  # Caliper is optional
+  if(TRIBOL_USE_CALIPER)
+    set(TRIBOL_CALIPER_DIR  "@CALIPER_DIR@")
+    if(NOT CALIPER_DIR) 
+      set(CALIPER_DIR "${TRIBOL_CALIPER_DIR}")
+    endif()
+    find_dependency(caliper REQUIRED PATHS "${CALIPER_DIR}")
+  endif()
+
   # axom is a required TPL. It is either external, or built-in
   set(TRIBOL_AXOM_DIR  "@AXOM_DIR@")
-  if(NOT TRIBOL_AXOM_DIR) 
-    set(TRIBOL_AXOM_DIR "@TRIBOL_INSTALL_PREFIX@")
+  if(NOT AXOM_DIR) 
+    set(AXOM_DIR "${TRIBOL_AXOM_DIR}")
   endif()
-  find_dependency(axom REQUIRED NO_DEFAULT_PATH PATHS "${TRIBOL_AXOM_DIR}/lib/cmake")
+  find_dependency(axom REQUIRED PATHS "${AXOM_DIR}/lib/cmake")
 
   # mfem is also a required TPL
-  if(TRIBOL_USE_MFEM)
-    set(TRIBOL_MFEM_DIR              "@MFEM_DIR@")
-    if(NOT TRIBOL_MFEM_DIR)
-      set(TRIBOL_MFEM_DIR "@TRIBOL_INSTALL_PREFIX@")
-    endif()
-    set(TRIBOL_MFEM_BUILT_WITH_CMAKE @MFEM_BUILT_WITH_CMAKE@)
+  set(TRIBOL_MFEM_DIR  "@MFEM_DIR@")
+  if(NOT MFEM_DIR) 
+    set(MFEM_DIR "${TRIBOL_MFEM_DIR}")
+  endif()
+  set(TRIBOL_MFEM_BUILT_WITH_CMAKE @MFEM_BUILT_WITH_CMAKE@)
 
-    if(TRIBOL_MFEM_BUILT_WITH_CMAKE)
-      # Allow user to override with MFEM_DIR
-      if(NOT MFEM_DIR)
-        set(MFEM_DIR ${TRIBOL_MFEM_DIR}) 
-      endif()
-      find_dependency(mfem REQUIRED NO_DEFAULT_PATH PATHS "${MFEM_DIR}/lib/cmake/mfem" NAMES MFEM)
-    else()
-      set(TRIBOL_MFEM_INCLUDE_DIRS     "@MFEM_INCLUDE_DIRS@")
-      if(NOT MFEM_INCLUDE_DIRS) 
-        set(MFEM_INCLUDE_DIRS ${TRIBOL_MFEM_INCLUDE_DIRS}) 
-      endif()
-      set(TRIBOL_MFEM_LIBRARIES        "@MFEM_LIBRARIES@")
-      if(NOT MFEM_LIBRARIES) 
-        set(MFEM_LIBRARIES ${TRIBOL_MFEM_LIBRARIES}) 
-      endif()
-
-      # TODO: Construct CMake target from GNU Make-build MFEM
-    endif()
+  if(TRIBOL_MFEM_BUILT_WITH_CMAKE)
+    find_dependency(mfem REQUIRED PATHS "${MFEM_DIR}/lib/cmake/mfem" NAMES MFEM)
+  elseif(NOT TARGET mfem)
+    blt_import_library( NAME mfem
+                        INCLUDES "@MFEM_INCLUDE_DIRS@"
+                        TREAT_INCLUDES_AS_SYSTEM ON
+                        DEPENDS_ON "@MFEM_LIBRARIES@")
+  else()
   endif()
 
+  #----------------------------------------------------------------------------
+  # Include targets installed by BLT
+  #----------------------------------------------------------------------------
+  include(${TRIBOL_CMAKE_CONFIG_DIR}/BLTSetupTargets.cmake)
 
   #----------------------------------------------------------------------------
   # Include targets exported by cmake
   #----------------------------------------------------------------------------
-  get_filename_component(TRIBOL_CMAKE_CONFIG_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
   include(${TRIBOL_CMAKE_CONFIG_DIR}/tribol-targets.cmake)
 
   #----------------------------------------------------------------------------
@@ -90,4 +138,3 @@ if(NOT TRIBOL_FOUND)
   set(TRIBOL_FOUND TRUE)
 
 endif()
-

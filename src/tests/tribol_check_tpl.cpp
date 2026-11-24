@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -28,27 +28,22 @@ TEST( tribol_check_tpl, check_axom )
   EXPECT_TRUE( !axom_version.empty() );
 
   std::ostringstream oss;
-  oss << "v" << AXOM_VERSION_MAJOR << "."
-             << AXOM_VERSION_MINOR << "."
-             << AXOM_VERSION_PATCH;
+  oss << "v" << AXOM_VERSION_MAJOR << "." << AXOM_VERSION_MINOR << "." << AXOM_VERSION_PATCH;
 
   EXPECT_EQ( axom_version, oss.str() );
 }
 
-TEST( tribol_check_tpl, print_axom_about )
-{
-  axom::about();
-}
+TEST( tribol_check_tpl, print_axom_about ) { axom::about(); }
 
 //------------------------------------------------------------------------------
 
-int main(int argc, char* argv[])
+int main( int argc, char* argv[] )
 {
   int result = 0;
 
-  ::testing::InitGoogleTest(&argc, argv);
+  ::testing::InitGoogleTest( &argc, argv );
 
-  axom::slic::SimpleLogger logger; 
+  axom::slic::SimpleLogger logger;
 
   result = RUN_ALL_TESTS();
 

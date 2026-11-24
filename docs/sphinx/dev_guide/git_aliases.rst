@@ -1,5 +1,5 @@
 .. ##
-.. ## Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC.
+.. ## Copyright (c) Lawrence Livermore National Security, LLC.
 .. ##
 .. ## Produced at the Lawrence Livermore National Laboratory
 .. ##

@@ -1,20 +1,16 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_PHYSICS_PHYSICS_HPP_
-#define SRC_PHYSICS_PHYSICS_HPP_
+#ifndef SRC_TRIBOL_PHYSICS_PHYSICS_HPP_
+#define SRC_TRIBOL_PHYSICS_PHYSICS_HPP_
 
-#include "tribol/types.hpp"
 #include "tribol/common/Parameters.hpp"
 
-namespace tribol
-{
+namespace tribol {
 
 // forward declarations
-struct InterfacePair;
-struct SurfaceContactElem;
 class CouplingScheme;
 
 /*!
@@ -28,8 +24,7 @@ class CouplingScheme;
  * \return 0 if no errors
  *
  */
-int ApplyInterfacePhysics( CouplingScheme const * cs,
-                           integer cycle, real t );
+int ApplyInterfacePhysics( CouplingScheme* cs, int cycle, RealT t );
 /*!
  *
  * \brief applies interface method in the normal direction
@@ -39,8 +34,8 @@ int ApplyInterfacePhysics( CouplingScheme const * cs,
  * \return 0 if no error
  *
  */
-template< ContactMethod M, EnforcementMethod E >
-int ApplyNormal( CouplingScheme const * cs );
+template <ContactMethod M, EnforcementMethod E>
+int ApplyNormal( CouplingScheme* cs );
 
 /*!
  *
@@ -51,10 +46,8 @@ int ApplyNormal( CouplingScheme const * cs );
  * \return 0 if no error
  *
  */
-template< ContactMethod M, 
-          EnforcementMethod E,
-          ContactModel Model >
-int ApplyTangential( CouplingScheme const * cs );
+template <ContactMethod M, EnforcementMethod E, ContactModel Model>
+int ApplyTangential( CouplingScheme* cs );
 
 /*!
  *
@@ -65,9 +58,9 @@ int ApplyTangential( CouplingScheme const * cs );
  * \return 0 if no error
  *
  */
-template< ContactMethod M >
-int GetMethodData( CouplingScheme const * cs );
+template <ContactMethod M>
+int GetMethodData( CouplingScheme* cs );
 
-} // end namespace TRIBOL
+}  // namespace tribol
 
-#endif /* SRC_PHYSICS_PHYSICS_HPP_ */
+#endif /* SRC_TRIBOL_PHYSICS_PHYSICS_HPP_ */

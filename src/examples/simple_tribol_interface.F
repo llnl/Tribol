@@ -1,4 +1,4 @@
-! Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+! Copyright (c) Lawrence Livermore National Security, LLC and
 ! other Tribol Project Developers. See the top-level LICENSE file for details.
 !
 ! SPDX-License-Identifier: (MIT)
@@ -67,7 +67,7 @@ contains
     real(C_DOUBLE) :: theta1 = 0., theta2 = 0.
 
     real(C_DOUBLE), pointer :: pos_x(:), pos_y(:), pos_z(:)
-    integer, pointer :: master_face_conn(:), slave_face_conn(:)
+    integer, pointer :: mortar_face_conn(:), nonmortar_face_conn(:)
 
     real(C_DOUBLE) :: area_frac = 1.e-03
 
@@ -130,12 +130,12 @@ contains
 
     ! Output some info about the generated mesh
     if (rank == 0) then
-      write(*,*) "Master mesh:"
-      write(*,*) "- Num faces", mesh%get_nummasterfaces()
+      write(*,*) "Mortar mesh:"
+      write(*,*) "- Num faces", mesh%get_nummortarfaces()
       write(*,*) "- Num nodes", mesh%get_numtotalnodes()
 
-      write(*,*) "Slave mesh:"
-      write(*,*) "- Num faces", mesh%get_numslavefaces()
+      write(*,*) "Nonmortar mesh:"
+      write(*,*) "- Num faces", mesh%get_numnonmortarfaces()
       write(*,*) "- Num nodes", mesh%get_numtotalnodes()
     end if
 
@@ -149,8 +149,8 @@ contains
     pos_x => mesh%get_x()
     pos_y => mesh%get_y()
     pos_z => mesh%get_z()
-    master_face_conn => mesh%get_master_face_connectivity()
-    slave_face_conn  => mesh%get_slave_face_connectivity()
+    mortar_face_conn => mesh%get_mortar_face_connectivity()
+    nonmortar_face_conn  => mesh%get_nonmortar_face_connectivity()
 
     ! Allocate and zero out necessary fields for mortar computation
     allocate( mortar_gaps( mesh%get_numtotalnodes() ) )
@@ -163,10 +163,10 @@ contains
     ! Set up simple coupling scheme
     call tribol_simple_setup_coupling( &
         dim, contact_method, &
-        mesh%get_nummasterfaces(), mesh%get_numtotalnodes(), &
-        master_face_conn, pos_x, pos_y, pos_z, &
-        mesh%get_numslavefaces(), mesh%get_numtotalnodes(), &
-        slave_face_conn, pos_x, pos_y, pos_z, &
+        mesh%get_nummortarfaces(), mesh%get_numtotalnodes(), &
+        mortar_face_conn, pos_x, pos_y, pos_z, &
+        mesh%get_numnonmortarfaces(), mesh%get_numtotalnodes(), &
+        nonmortar_face_conn, pos_x, pos_y, pos_z, &
         area_frac, mortar_gaps, mortar_pressures )
 
   end subroutine initialize_tribol

@@ -1,21 +1,21 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_UTILS_CONTACTPLANEOUTPUT_HPP_
-#define SRC_UTILS_CONTACTPLANEOUTPUT_HPP_
-
-#include "tribol/types.hpp"
-
-// AXOM includes
-#include "axom/slic.hpp" 
+#ifndef SRC_TRIBOL_UTILS_CONTACTPLANEOUTPUT_HPP_
+#define SRC_TRIBOL_UTILS_CONTACTPLANEOUTPUT_HPP_
 
 // C++ includes
 #include <string>
 
-namespace tribol
-{
+// Shared includes
+#include "tribol/common/BasicTypes.hpp"
+
+// Tribol includes
+#include "tribol/common/Parameters.hpp"
+
+namespace tribol {
 
 // forward declarations
 class ContactPlaneManager;
@@ -26,7 +26,7 @@ class ContactPlaneManager;
  *
  * \param [in] dir output directory
  * \param [in] v_type visualization type
- * \param [in] csId coupling scheme id
+ * \param [in] cs_id coupling scheme id
  * \param [in] meshId1 id for first mesh in interface
  * \param [in] meshId2 id for second mesh in interface
  * \param [in] dim spatial dimension
@@ -34,12 +34,10 @@ class ContactPlaneManager;
  * \param [in] t simulation time step
  *
  */
-void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, 
-                                 const integer csId, const integer meshId1, 
-                                 const integer meshId2, const integer dim,
-                                 const integer cycle, const real t );
+void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, const IndexT cs_id,
+                                 const IndexT mesh_id1, const IndexT mesh_id2, const int dim, const int cycle,
+                                 const RealT t );
 
+}  // namespace tribol
 
-} // end of namespace "tribol"
-
-#endif /* SRC_UTILS_CONTACTPLANEOUTPUT_HPP_ */
+#endif /* SRC_TRIBOL_UTILS_CONTACTPLANEOUTPUT_HPP_ */

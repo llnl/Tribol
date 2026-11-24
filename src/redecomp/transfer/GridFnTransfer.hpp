@@ -1,22 +1,20 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_REDECOMP_GRIDFNTRANSFER_HPP_
-#define SRC_REDECOMP_GRIDFNTRANSFER_HPP_
+#ifndef SRC_REDECOMP_TRANSFER_GRIDFNTRANSFER_HPP_
+#define SRC_REDECOMP_TRANSFER_GRIDFNTRANSFER_HPP_
 
 #include "mfem.hpp"
 
-namespace redecomp
-{
+namespace redecomp {
 
 /**
- * @brief GridFnTransfer interface base class 
+ * @brief GridFnTransfer interface base class
  */
-class GridFnTransfer
-{
-public:
+class GridFnTransfer {
+ public:
   /**
    * @brief Transfers nodal values from src to dst
    *
@@ -25,10 +23,7 @@ public:
    * @param dst A redecomp GridFunction which receives values from a parent
    * ParGridFunction (src)
    */
-  virtual void TransferToSerial(
-    const mfem::ParGridFunction& src,
-    mfem::GridFunction& dst
-  ) const = 0;
+  virtual void TransferToSerial( const mfem::ParGridFunction& src, mfem::GridFunction& dst ) const = 0;
 
   /**
    * @brief Transfers nodal values from src to dst
@@ -38,18 +33,14 @@ public:
    * @param dst A parent ParGridFunction which receives values from a redecomp
    * GridFunction (src)
    */
-  virtual void TransferToParallel(
-    const mfem::GridFunction& src, 
-    mfem::ParGridFunction& dst
-  ) const = 0;
+  virtual void TransferToParallel( const mfem::GridFunction& src, mfem::ParGridFunction& dst ) const = 0;
 
   /**
    * @brief Destroy the GridFnTransfer object
    */
   virtual ~GridFnTransfer() = default;
-
 };
 
-} // end namespace redecomp
+}  // end namespace redecomp
 
-#endif /* SRC_REDECOMP_GRIDFNTRANSFER_HPP_ */
+#endif /* SRC_REDECOMP_TRANSFER_GRIDFNTRANSFER_HPP_ */

@@ -1,224 +1,174 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
 
 #include "tribol/mesh/MeshData.hpp"
+
+// C++ includes
+#include <cmath>
+#include <iostream>
+
+// Axom includes
+#include "axom/slic/interface/slic_macros.hpp"
+#include "axom/fmt/format.h"
+#include "axom/fmt/ranges.h"
+
+#include "tribol/common/ExecModel.hpp"
+#include "tribol/common/LoopExec.hpp"
+#include "tribol/common/Atomics.hpp"
+// Required by the explicit computeFaceData instantiations.
+#include "tribol/geom/ElementNormal.hpp"  // IWYU pragma: keep
+#include "tribol/integ/BasisFunction.hpp"
 #include "tribol/utils/Math.hpp"
-#include "tribol/common/logger.hpp"
 
-#include <cmath> 
-#include <iostream> 
-#include <sstream>
-#include <iomanip>
-#include <fstream>
-
-#include "axom/slic.hpp"
-#include "axom/fmt.hpp"
-
-namespace fmt = axom::fmt;
-
-namespace tribol
-{
-
-///////////////////////////////////////////
-//                                       //
-// Routines for the MeshNodalData struct //
-//                                       //
-///////////////////////////////////////////
-MeshNodalData::MeshNodalData()
-{
-   this->m_node_gap      = nullptr;
-   this->m_node_pressure = nullptr;
-   return;
-}
-
-///////////////////////////////////////////
-//                                       //
-// Routines for the MeshElemData struct //
-//                                       //
-///////////////////////////////////////////
-MeshElemData::MeshElemData()
-{
-   this->m_mat_mod   = nullptr;
-   this->m_thickness = nullptr;
-   return;
-}
+namespace tribol {
 
 //------------------------------------------------------------------------------
-MeshElemData::~MeshElemData()
+bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_options, ExecutionMode exec_mode,
+                                            int alloc_id )
 {
-   // Don't delete any pointers to host code data (e.g. force, velocity, 
-   // penalty data, etc.). Don't nullify pointers as the host code 
-   // could register these pointers at the very beginning of a simulation 
-   // and not every cycle.
-}
+  // Note, this routine is, and should be called only for non-null meshes
+  KinematicPenaltyCalculation kin_calc = pen_options.kinematic_calculation;
 
-//------------------------------------------------------------------------------
-bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_options )
-{
-   KinematicPenaltyCalculation kin_calc = pen_options.kinematic_calculation;
+  // check kinematic penalty calculation data
+  if ( !in_range( kin_calc, NUM_KINEMATIC_PENALTY_CALCULATION ) ) {
+    // warning already issued when penalty options were set. If penalty options
+    // were not set, the following else-if will catch this
+    return false;
+  }
+  // a kinematic penalty should always be set. Right now Tribol does not support
+  // rate only enforcement
+  else if ( !pen_options.kinematic_calc_set ) {
+    SLIC_WARNING( "MeshElemData::isValidKinematic(): kinematic penalty calculation data not set; "
+                  << "call tribol::setPenaltyOptions()." );
+    return false;
+  }
 
-   // check kinematic penalty calculation data
-   if ( !in_range( kin_calc, NUM_KINEMATIC_PENALTY_CALCULATION) )
-   {
-      // warning already issued when penalty options were set. If penalty options 
-      // were not set, the following else-if will catch this
-      return false;
-   }
-   // a kinematic penalty should always be set. Right now Tribol does not support 
-   // rate only enforcement
-   else if ( !pen_options.is_kinematic_calculation_set() )
-   {
-      SLIC_WARNING( "MeshElemData::isValidKinematic(): kinematic penalty calculation data not set; " << 
-                    "call tribol::setPenaltyOptions()." );
-      return false;
-   }
+  switch ( kin_calc ) {
+    case KINEMATIC_CONSTANT: {
+      if ( !this->m_is_kinematic_constant_penalty_set ) {
+        SLIC_WARNING( "MeshElemData::isValidKinematicPenalty(): " << "single stiffness penalty not set." );
+        return false;
+      } else if ( this->m_penalty_stiffness < pen_options.tiny_penalty ) {
+        SLIC_WARNING( "MeshElemData::isValidKinematicPenalty(): " << "single stiffness penalty less than threshold ("
+                                                                  << pen_options.tiny_penalty
+                                                                  << "). Consider increasing "
+                                                                  << "for your problem." );
+        return false;
+      }
+      break;
+    }  // end case KINEMATIC_CONSTANT
+    case KINEMATIC_ELEMENT: {
+      if ( !this->m_is_kinematic_element_penalty_set ) {
+        SLIC_WARNING( "MeshElemData::isValidKinematicPenalty(): " << "element-wise penalty data not set." );
+        return false;
+      }
 
-   switch (kin_calc)
-   {
-      case KINEMATIC_CONSTANT:
-      {
-         if ( !this->m_is_kinematic_constant_penalty_set )
-         {
-            SLIC_WARNING("MeshElemData::isValidKinematicPenalty(): " << 
-                         "single stiffness penalty not set.");
-            return false;
-         }
-         else if ( this->m_penalty_stiffness < pen_options.tiny_penalty )
-         {
-            SLIC_WARNING("MeshElemData::isValidKinematicPenalty(): " << 
-                         "single stiffness penalty less than threshold (" << 
-                         pen_options.tiny_penalty << "). Consider increasing " << 
-                         "for your problem.");
-            return false;
-         }
-         break;
-      } // end case KINEMATIC_CONSTANT
-      case KINEMATIC_ELEMENT:
-      {
-         if ( !this->m_is_kinematic_element_penalty_set )
-         {
-            SLIC_WARNING("MeshElemData::isValidKinematicPenalty(): " << 
-                         "element-wise penalty data not set.");
-            return false;
-         }
+      ArrayT<IndexT> mod_ok_data( { static_cast<IndexT>( true ) }, alloc_id );
+      ArrayViewT<IndexT> mod_ok = mod_ok_data;
+      ArrayT<IndexT> thickness_ok_data( { static_cast<IndexT>( true ) }, alloc_id );
+      ArrayViewT<IndexT> thickness_ok = thickness_ok_data;
+      Array1DView<const RealT> mod = this->m_mat_mod;
+      Array1DView<const RealT> thickness = this->m_thickness;
 
-         // check for positive material modulus and thickness values
-         bool isValidMatMod = true;
-         bool isValidElemThickness = true;
-         for (int i=0; i<this->m_numCells; ++i)
-         {
-            if (this->m_mat_mod[i] <= 0.)
-            {
-               isValidMatMod = false;
-            }
-            if (this->m_thickness[i] <= 0.)
-            {
-               isValidElemThickness = false;
-            }
+      // Note: A true reduction would be more efficient here.
+      // However, it is not currently implemented because forAllExec would need
+      // to know the execution mode at compile time to instantiate the correct reducer.
+      forAllExec( exec_mode, this->m_num_cells, [mod, thickness, mod_ok, thickness_ok] TRIBOL_HOST_DEVICE( IndexT i ) {
+        if ( mod[i] <= 0. ) {
+          tribol::atomicMin( mod_ok.data(), static_cast<IndexT>( false ) );
+        }
+        if ( thickness[i] <= 0. ) {
+          tribol::atomicMin( thickness_ok.data(), static_cast<IndexT>( false ) );
+        }
+      } );  // end element loop
 
-            SLIC_WARNING_IF(!isValidMatMod, "MeshElemData::isValidKinematicPenalty(): " << 
-                            "invalid nonpositive element material modulus encountered.");
+      ArrayT<IndexT, 1, MemorySpace::Host> mod_ok_data_host( mod_ok_data );
+      SLIC_WARNING_IF(
+          !mod_ok_data_host[0],
+          axom::fmt::format(
+              "MeshElemData::isValidKinematicPenalty(): invalid nonpositive element material modulus encountered." ) );
+      ArrayT<IndexT, 1, MemorySpace::Host> thickness_ok_data_host( thickness_ok_data );
+      SLIC_WARNING_IF(
+          !thickness_ok_data_host[0],
+          axom::fmt::format(
+              "MeshElemData::isValidKinematicPenalty(): invalid nonpositive element thickness encountered." ) );
 
-            SLIC_WARNING_IF(!isValidElemThickness, "MeshElemData::isValidKinematicPenalty(): " << 
-                            "invalid nonpositive element thickness encountered.");
+      if ( !mod_ok_data_host[0] || !thickness_ok_data_host[0] ) {
+        return false;
+      }  // end for loop over elements
+      break;
+    }  // end case KINEMATIC_ELEMENT
+    default:
+      // no-op, quiet compiler
+      break;
+  }  // end switch over kinematic calculation
 
-            if (!isValidMatMod || !isValidElemThickness)
-            {
-               return false;
-            }
-         } // end for loop over elements
-         break;
-      } // end case KINEMATIC_ELEMENT
-      default:
-         // no-op, quiet compiler
-         break;
-   } // end switch over kinematic calculation
+  return true;
 
-   return true;
- 
-} // end MeshElemData::isValidKinematicPenalty()
+}  // end MeshElemData::isValidKinematicPenalty()
 
 //------------------------------------------------------------------------------
 bool MeshElemData::isValidRatePenalty( PenaltyEnforcementOptions& pen_options )
 {
-   RatePenaltyCalculation rate_calc = pen_options.rate_calculation; 
+  // Note, this method is and should only be called for non-null meshes
+  RatePenaltyCalculation rate_calc = pen_options.rate_calculation;
 
-   // check rate penalty calculation data
-   if ( !in_range( rate_calc, NUM_RATE_PENALTY_CALCULATION) )
-   {
-      // warning already issued when penalty options were set. If penalty options 
-      // were not set, the following else-if will catch this
-      return false;
-   }
-   // the rate_calc could be set to NONE and this boolean will be true
-   else if ( !pen_options.is_rate_calculation_set() )
-   {
-      SLIC_WARNING( "MeshElemData::isValidRatePenalty(): rate penalty calculation data not set. " << 
-                    "call tribol::setPenaltyOptions()." );
-      return false;
-   }
+  // check rate penalty calculation data
+  if ( !in_range( rate_calc, NUM_RATE_PENALTY_CALCULATION ) ) {
+    // warning already issued when penalty options were set. If penalty options
+    // were not set, the following else-if will catch this
+    return false;
+  }
+  // the rate_calc could be set to NONE and this boolean will be true
+  else if ( !pen_options.rate_calc_set ) {
+    SLIC_WARNING( "MeshElemData::isValidRatePenalty(): rate penalty calculation data not set. "
+                  << "call tribol::setPenaltyOptions()." );
+    return false;
+  }
 
-   switch (rate_calc)
-   {
-      case NO_RATE_PENALTY:
-      {
-         // double check that mesh booleans are consistent with rate penalty 
-         // calculation option
-         if (this->m_is_rate_constant_penalty_set)
-         {
-            this->m_is_rate_constant_penalty_set = false;
-         }
-         else if (this->m_is_rate_percent_penalty_set)
-         {
-            this->m_is_rate_percent_penalty_set = false;
-         }
-         break;
-      } // end case NONE
-      case RATE_CONSTANT:
-      {
-         if ( !this->m_is_rate_constant_penalty_set )
-         {
-            SLIC_WARNING("MeshElemData::isValidRatePenalty(): " << 
-                         "constant rate penalty data not set.");
-            return false;
-         }
-         else if ( this->m_rate_penalty_stiffness < pen_options.tiny_penalty )
-         {
-            SLIC_WARNING("MeshElemData::isValidRatePenalty(): " << 
-                         "constant rate penalty less than threshold (" << 
-                         pen_options.tiny_penalty << "). Consider increasing " << 
-                         "for your problem.");
-            return false;
-         }
-         break;
-      } // end case RATE_CONSTANT
-      case RATE_PERCENT:
-      {
-         if ( !this->m_is_rate_percent_penalty_set )
-         {
-            SLIC_WARNING("MeshElemData::isValidRatePenalty(): " << 
-                         "percent rate penalty data not set.");
-            return false;
-         }
-         else if ( this->m_rate_percent_stiffness < pen_options.tiny_penalty ||
-                   this->m_rate_percent_stiffness > (1.-pen_options.tiny_penalty) )
-         {
-            SLIC_WARNING("MeshElemData::isValidRatePenalty(): " << 
-                         "rate percent penalty not in (0,1).");
-            return false;
-         }
-         break;
-      } // end case RATE_PERCENT
-      default:
-         // no-op, quiet compiler
-         break;
-   } // end switch on rate calculation
+  switch ( rate_calc ) {
+    case NO_RATE_PENALTY: {
+      // double check that mesh booleans are consistent with rate penalty
+      // calculation option
+      if ( this->m_is_rate_constant_penalty_set ) {
+        this->m_is_rate_constant_penalty_set = false;
+      } else if ( this->m_is_rate_percent_penalty_set ) {
+        this->m_is_rate_percent_penalty_set = false;
+      }
+      break;
+    }  // end case NONE
+    case RATE_CONSTANT: {
+      if ( !this->m_is_rate_constant_penalty_set ) {
+        SLIC_WARNING( "MeshElemData::isValidRatePenalty(): " << "constant rate penalty data not set." );
+        return false;
+      } else if ( this->m_rate_penalty_stiffness < pen_options.tiny_penalty ) {
+        SLIC_WARNING( "MeshElemData::isValidRatePenalty(): " << "constant rate penalty less than threshold ("
+                                                             << pen_options.tiny_penalty << "). Consider increasing "
+                                                             << "for your problem." );
+        return false;
+      }
+      break;
+    }  // end case RATE_CONSTANT
+    case RATE_PERCENT: {
+      if ( !this->m_is_rate_percent_penalty_set ) {
+        SLIC_WARNING( "MeshElemData::isValidRatePenalty(): " << "percent rate penalty data not set." );
+        return false;
+      } else if ( this->m_rate_percent_stiffness < 0.0 ) {
+        SLIC_WARNING( "MeshElemData::isValidRatePenalty(): " << "rate percent penalty less than 0." );
+        return false;
+      }
+      break;
+    }  // end case RATE_PERCENT
+    default:
+      // no-op, quiet compiler
+      break;
+  }  // end switch on rate calculation
 
-   return true;
+  return true;
 
-} // end MeshElemData::isValidRatePenalty()
+}  // end MeshElemData::isValidRatePenalty()
 
 //------------------------------------------------------------------------------
 
@@ -227,726 +177,456 @@ bool MeshElemData::isValidRatePenalty( PenaltyEnforcementOptions& pen_options )
 // Routines for MeshData class //
 //                             //
 /////////////////////////////////
-MeshData::MeshData()
-  : m_elementType( tribol::UNDEFINED_ELEMENT )
-  , m_lengthNodalData(0)
-  , m_numSurfaceNodes(0)
-  , m_numCells(0)
-  , m_numCellNodes(0)
-  , m_isValid(true)
-  , m_positionX(nullptr), m_positionY(nullptr), m_positionZ(nullptr)
-  , m_dispX(nullptr), m_dispY(nullptr), m_dispZ(nullptr)
-  , m_forceX(nullptr), m_forceY(nullptr), m_forceZ(nullptr)
-  , m_velX(nullptr), m_velY(nullptr), m_velZ(nullptr)
-  , m_nX(nullptr), m_nY(nullptr), m_nZ(nullptr)
-  , m_cX(nullptr), m_cY(nullptr), m_cZ(nullptr)
-  , m_faceRadius(nullptr)
-  , m_area(nullptr)
-  , m_connectivity(nullptr)
-  , m_sortedSurfaceNodeIds(nullptr)
-  , m_node_nX(nullptr), m_node_nY(nullptr), m_node_nZ(nullptr)
+MeshData::MeshData( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity,
+                    InterfaceElementType element_type, FaceOrderType face_order, const RealT* x, const RealT* y,
+                    const RealT* z, MemorySpace mem_space )
+    : m_mesh_id( mesh_id ),
+      m_element_type( element_type ),
+      m_face_order( face_order ),
+      m_dim( getDimFromElementType() ),
+      m_num_nodes( num_nodes ),
+      m_mem_space( mem_space ),
+      m_allocator_id( getResourceAllocatorID( mem_space ) ),
+      m_is_valid( true ),
+      m_position( createNodalVector( x, y, z ) ),
+      m_connectivity( createConnectivity( num_elements, connectivity ) )
 {
+  // mesh verification
+  if ( num_elements > 0 ) {
+    if ( m_dim == 2 && ( x == nullptr || y == nullptr ) ) {
+      SLIC_WARNING_ROOT( "tribol::MeshData(): pointer to x and/or y-component "
+                         << "mesh coordinate array is a null pointer "
+                         << "for mesh id " << m_mesh_id << "." );
+      m_is_valid = false;
+    } else if ( m_dim == 3 && ( x == nullptr || y == nullptr || z == nullptr ) ) {
+      SLIC_WARNING_ROOT( "tribol::MeshData(): pointer to x, y, and/or z-component "
+                         << "mesh coordinate array is a null pointer "
+                         << "for mesh id " << m_mesh_id << "." );
+      m_is_valid = false;
+    }
+    if ( connectivity == nullptr ) {
+      SLIC_WARNING_ROOT( "tribol::MeshData(): pointer to mesh connectivity is " << "a null pointer for mesh id "
+                                                                                << m_mesh_id << "." );
+    }
+  }
+
+  getElementData().m_num_cells = num_elements;
+  getNodalFields().m_num_nodes = num_nodes;
 }
 
 //------------------------------------------------------------------------------
-void MeshData::allocateArrays(int dimension)
+void MeshData::setPosition( const RealT* x, const RealT* y, const RealT* z )
 {
-  m_nX = new   real[m_numCells];
-  m_nY = new   real[m_numCells];
-  m_cX = new   real[m_numCells];
-  m_cY = new   real[m_numCells];
-  m_area = new real[m_numCells];
-  m_faceRadius = new real[m_numCells];
-  m_nZ = nullptr;
-  m_cZ = nullptr;
+  m_position = createNodalVector( x, y, z );
+}
 
-  if (dimension == 3)
-  {
-    m_nZ = new real[m_numCells];
-    m_cZ = new real[m_numCells];
+//------------------------------------------------------------------------------
+void MeshData::setDisplacement( const RealT* ux, const RealT* uy, const RealT* uz )
+{
+  m_disp = createNodalVector( ux, uy, uz );
+}
+
+//------------------------------------------------------------------------------
+void MeshData::setReferencePosition( const RealT* xref, const RealT* yref, const RealT* zref )
+{
+  m_ref_position = createNodalVector( xref, yref, zref );
+}
+
+//------------------------------------------------------------------------------
+void MeshData::setVelocity( const RealT* vx, const RealT* vy, const RealT* vz )
+{
+  m_vel = createNodalVector( vx, vy, vz );
+}
+
+//------------------------------------------------------------------------------
+void MeshData::setResponse( RealT* rx, RealT* ry, RealT* rz ) { m_response = createNodalVector( rx, ry, rz ); }
+
+//------------------------------------------------------------------------------
+int MeshData::getDimFromElementType() const
+{
+  switch ( m_element_type ) {
+    case EDGE: {
+      return 2;
+    }
+    case TRIANGLE:
+    case QUAD: {
+      return 3;
+    }
+    default: {
+      SLIC_ERROR_ROOT( "Unsupported element type for a contact mesh." );
+      return 0;
+    }
   }
 }
 
 //------------------------------------------------------------------------------
-MeshData::~MeshData()
+ArrayViewT<const IndexT, 2> MeshData::createConnectivity( IndexT num_elements, const IndexT* connectivity )
 {
-  deallocateArrays();
+  const int num_face_nodes = numberOfFaceNodes( m_element_type, m_face_order );
+  if ( num_face_nodes > 0 ) {
+    return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, num_face_nodes } );
+  }
+
+  SLIC_ERROR_ROOT( "Unsupported element type and face order for a contact mesh." );
+  return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 0 } );
 }
 
 //------------------------------------------------------------------------------
-void MeshData::deallocateArrays()
+Array1D<IndexT> MeshData::sortSurfaceNodeIds()
 {
-  if (m_nX != nullptr)
-  {
-    delete[] m_nX;
-    m_nX = nullptr;
+  ArrayT<IndexT> sorted_conn( 0, m_connectivity.size() );
+  for ( auto node_id : m_connectivity ) {
+    sorted_conn.push_back( node_id );
   }
 
-  if (m_nY != nullptr)
-  {
-    delete[] m_nY;
-    m_nY = nullptr;
-  }
- 
-  if (m_nZ != nullptr)
-  {
-    delete[] m_nZ;
-    m_nZ = nullptr;
+  bubble_sort( sorted_conn.data(), sorted_conn.size() );
+
+  // count number of duplicate entries
+  int num_dup = 0;
+  for ( IndexT i{ 1 }; i < sorted_conn.size(); ++i ) {
+    if ( sorted_conn[i] == sorted_conn[i - 1] ) {
+      ++num_dup;
+    }
   }
 
-  if (m_cX != nullptr)
-  {
-    delete[] m_cX;
-    m_cX = nullptr;
-  }
-  
-  if (m_cY != nullptr)
-  {
-    delete[] m_cY;
-    m_cY = nullptr;
-  }
-  
-  if (m_cZ != nullptr)
-  {
-    delete[] m_cZ;
-    m_cZ = nullptr;
+  // compute number of unique integer ids
+  int unique_size = sorted_conn.size() - num_dup;
+
+  SLIC_ERROR_IF( unique_size <= 0,
+                 "MeshData::sortSurfaceNodeIds(): " << "invalid connectivity array; "
+                                                    << "only single unique id in connectivity array." );
+
+  // allocate array to store unique, sorted node ids on mesh object
+  auto sorted_surface_node_ids = ArrayT<IndexT>( 0, unique_size );
+
+  // populate sorted node id list
+  sorted_surface_node_ids.push_back( sorted_conn[0] );
+  for ( IndexT i{ 1 }; i < sorted_conn.size(); ++i ) {
+    if ( sorted_conn[i] != sorted_conn[i - 1] ) {
+      sorted_surface_node_ids.push_back( sorted_conn[i] );
+    }
   }
 
-  if (m_node_nX != nullptr)
-  {
-     delete[] m_node_nX;
-     m_node_nX = nullptr;
-  }
-
-  if (m_node_nY != nullptr)
-  {
-     delete[] m_node_nY;
-     m_node_nY = nullptr;
-  }
-
-  if (m_node_nZ != nullptr)
-  {
-     delete[] m_node_nZ;
-     m_node_nZ = nullptr;
-  }
-
-  if (m_faceRadius != nullptr)
-  {
-    delete[] m_faceRadius;
-    m_faceRadius = nullptr;
-  }
-
-  if (m_area != nullptr)
-  {
-    delete[] m_area;
-    m_area = nullptr;
-  }
-
-  if (m_sortedSurfaceNodeIds != nullptr)
-  {
-     delete[] m_sortedSurfaceNodeIds;
-     m_sortedSurfaceNodeIds = nullptr;
-  }
-
-}
+  return sorted_surface_node_ids;
+}  // end MeshData::sortSurfaceNodeIds()
 
 //------------------------------------------------------------------------------
-void MeshData::computeFaceData( int const dim )
+template <typename ElemNormalMethod>
+bool MeshData::computeFaceData( ExecutionMode exec_mode, ElemNormalMethod elem_normal )
 {
-  int nodeId;
-  int nextNodeId;
-  int nodeIndex;
-  real fac = 1.0 / m_numCellNodes;
-  real mag, invMag;
-  real nrmlMagTol = 1.E-6;
+  constexpr RealT nrml_mag_tol = 1.0e-15;
 
-  // loop over all cells in the mesh
-  for (int i=0; i<m_numCells; ++i) {
+  // Quadratic connectivity includes edge and interior nodes that are not polygon corners. The current centroid, radius,
+  // area, and normal formulas treat every connectivity entry as a corner, so they must not modify face data until a
+  // higher-order calculation is available.
+  if ( m_face_order != LINEAR_LAGRANGE ) {
+    SLIC_WARNING_ROOT( "MeshData::computeFaceData() does not support higher-order faces." );
+    return false;
+  }
 
-     // compute the vertex average centroid. This will lie in the 
-     // plane of the face for planar faces, and will be used as 
-     // an approximate centroid for warped faces, both in 3D.
+  // allocate m_c
+  m_c = ArrayT<RealT, 2>( { m_dim, numberOfElements() }, m_allocator_id );
+  // initialize m_c
+  m_c.fill( 0.0 );
 
-     // loop over the nodes per cell
-     for (int j=0; j<m_numCellNodes; ++j) {
-        nodeIndex = m_numCellNodes * i + j;
-        nodeId = m_connectivity[ nodeIndex ];
-        // always compute the x and y components for 2D and 3D
-        m_cX[i] += m_positionX[ nodeId ];
-        m_cY[i] += m_positionY[ nodeId ];
-     } // end loop over nodes
-     
-     m_cX[i] = fac * m_cX[i];
-     m_cY[i] = fac * m_cY[i];
+  // allocate m_n
+  m_n = ArrayT<RealT, 2>( { m_dim, numberOfElements() }, m_allocator_id );
+  // initialize m_n
+  m_n.fill( 0.0 );
 
-     if (dim == 3) {
-        for (int j=0; j<m_numCellNodes; ++j) {
-           nodeIndex = m_numCellNodes * i + j;
-           nodeId = m_connectivity[ nodeIndex ];
-           m_cZ[i] += m_positionZ[ nodeId ];
-        } // end loop over nodes
-        m_cZ[i] = fac * m_cZ[i];
-     } // end if-dim
-     else { // dim == 2, nullify just in case
-        m_cZ = nullptr;
-     }
+  // allocate m_area (initialized to 0.0)
+  m_area = Array1D<RealT>( numberOfElements(), numberOfElements(), m_allocator_id );
 
-     // compute the outward facing normal
-     if (dim == 2) {
+  // allocate face_radius (initialized to 0.0)
+  m_face_radius = Array1D<RealT>( numberOfElements(), numberOfElements(), m_allocator_id );
 
-        // the 2D calculation over a 2-node, 1D segment assumes a 
-        // counter-clockwise ordering of the quad4 area element
-        // to which the 1D line segment belongs. This is to properly 
-        // orient the normal outward
-        nodeIndex = m_numCellNodes * i;
-        nodeId = m_connectivity[ nodeIndex ];
-        nextNodeId = m_connectivity[ nodeIndex+1 ];
-        real lambdaX = m_positionX[ nextNodeId ] - m_positionX[ nodeId ];
-        real lambdaY = m_positionY[ nextNodeId ] - m_positionY[ nodeId ];
-   
-        m_nX[i] = lambdaY;
-        m_nY[i] = -lambdaX;
+  ArrayT<IndexT> face_data_ok_data( { static_cast<IndexT>( true ) }, m_allocator_id );
 
-        m_nZ = nullptr;
+  // loop over all elements in the mesh
+  Array2DView<RealT> c = m_c;
+  MultiViewArrayView<const RealT> x = m_position;
+  Array2DView<RealT> n = m_n;
+  Array1DView<RealT> area = m_area;
+  Array1DView<RealT> radius = m_face_radius;
+  auto dim = m_dim;
+  auto conn = m_connectivity;
+  ArrayViewT<IndexT> face_data_ok = face_data_ok_data;
+  forAllExec( exec_mode, numberOfElements(),
+              [c, x, n, area, radius, dim, conn, face_data_ok, elem_normal] TRIBOL_HOST_DEVICE( IndexT i ) {
+                // compute the vertex average centroid. This will lie in the
+                // plane of the face for planar faces, and will be used as
+                // an approximate centroid for warped faces, both in 3D.
 
-        // compute the length of the segment
-        m_area[i] = magnitude( lambdaX, lambdaY );
+                // loop over the nodes per element
+                auto num_nodes_per_elem = conn.shape()[1];
+                for ( int j = 0; j < num_nodes_per_elem; ++j ) {
+                  auto node_id = conn( i, j );
+                  for ( IndexT d{ 0 }; d < dim; ++d ) {
+                    c[d][i] += x[d][node_id];
+                  }
+                }  // end loop over nodes
 
-        // normalize normal vector
-        mag = magnitude( m_nX[i], m_nY[i] );
-        if (mag >= nrmlMagTol) {
-           invMag = 1.0 / mag;
+                RealT fac = 1.0 / num_nodes_per_elem;
+                for ( IndexT d{ 0 }; d < dim; ++d ) {
+                  c[d][i] = fac * c[d][i];
+                }
+
+                // compute face radius for both 2D and 3D. For 2D, this is a duplicate of
+                // the length, but allows for some uniformity in accessing this value
+                // for tolerance ratios
+                // loop over nodes of the face and determine the maximum
+                // "link" vector from the ith node to the face center
+                RealT sqr_radius = 0.0;
+                for ( int j = 0; j < num_nodes_per_elem; ++j ) {
+                  const int node_id = conn( i, j );
+                  RealT sqr_link_mag = 0.0;
+                  for ( IndexT d{ 0 }; d < dim; ++d ) {
+                    RealT lv = x[d][node_id] - c[d][i];
+                    sqr_link_mag += lv * lv;
+                  }
+                  if ( sqr_link_mag > sqr_radius ) {
+                    sqr_radius = sqr_link_mag;
+                  }
+                }
+                radius[i] = sqrt( sqr_radius );
+
+                // compute the outward facing normal
+                if ( dim == 2 ) {
+                  // the 2D calculation over a 2-node, 1D segment assumes a
+                  // counter-clockwise ordering of the quad4 area element
+                  // to which the 1D line segment belongs. This is to properly
+                  // orient the normal outward
+                  auto node_id = conn( i, 0 );
+                  auto next_node_id = conn( i, 1 );
+                  RealT lambdaX = x[0][next_node_id] - x[0][node_id];
+                  RealT lambdaY = x[1][next_node_id] - x[1][node_id];
+
+                  n[0][i] = lambdaY;
+                  n[1][i] = -lambdaX;
+
+                  // compute the length of the segment
+                  area[i] = magnitude( lambdaX, lambdaY );
+
+                  // normalize normal vector
+                  auto mag = magnitude( n[0][i], n[1][i] );
+                  auto inv_mag = nrml_mag_tol;
+                  if ( mag >= nrml_mag_tol ) {
+                    inv_mag = 1.0 / mag;
+                  } else {
+                    face_data_ok[0] = static_cast<IndexT>( false );
+                  }
+                  n[0][i] *= inv_mag;
+                  n[1][i] *= inv_mag;
+
+                } else if ( dim == 3 ) {
+                  // get element coordinates
+                  RealT x_elem[12];
+                  for ( int j = 0; j < num_nodes_per_elem; ++j ) {
+                    auto node_id = conn( i, j );
+                    for ( IndexT d{ 0 }; d < dim; ++d ) {
+                      x_elem[d * num_nodes_per_elem + j] = x[d][node_id];
+                    }
+                  }
+                  // get vertex average element centroid
+                  RealT c_elem[3];
+                  for ( IndexT d{ 0 }; d < dim; ++d ) {
+                    c_elem[d] = c[d][i];
+                  }
+                  // initialize element normal
+                  RealT n_elem[3] = { 0.0, 0.0, 0.0 };
+                  // compute element normal and area
+                  auto face_ok = elem_normal.Compute( x_elem, c_elem, n_elem, num_nodes_per_elem, area[i] );
+                  if ( !face_ok ) {
+                    face_data_ok[0] = static_cast<IndexT>( false );
+                  }
+                  // set global element normal
+                  for ( IndexT d{ 0 }; d < dim; ++d ) {
+                    n[d][i] = n_elem[d];
+                  }
+                }  // end if (dim == 3)
+              } );  // end element loop
+
+  ArrayT<IndexT, 1, MemorySpace::Host> face_data_ok_host( face_data_ok_data );
+  SLIC_WARNING_IF(
+      !face_data_ok_host[0],
+      axom::fmt::format( "There are faces with a normal magnitude less than tolerance ({:e}).", nrml_mag_tol ) );
+
+  return face_data_ok_host[0];
+
+}  // end MeshData::computeFaceData()
+
+template bool MeshData::computeFaceData<PalletAvgNormal>( ExecutionMode, PalletAvgNormal );
+template bool MeshData::computeFaceData<ElementCentroidNormal>( ExecutionMode, ElementCentroidNormal );
+
+//------------------------------------------------------------------------------
+RealT MeshData::computeEdgeLength( int faceId )
+{
+  // compute the length of the edge as the magnitude of
+  // the vector defined between the two edge vertices
+  const int nodeId1 = getGlobalNodeId( faceId, 0 );
+  const int nodeId2 = getGlobalNodeId( faceId, 1 );
+  RealT lvx = m_position[0][nodeId2] - m_position[0][nodeId1];
+  RealT lvy = m_position[1][nodeId2] - m_position[1][nodeId1];
+
+  RealT len = magnitude( lvx, lvy );
+
+  return len;
+
+}  // end MeshData::computeEdgeLength()
+
+//------------------------------------------------------------------------------
+void MeshData::allocateNodalNormals()
+{
+  m_node_n = ArrayT<RealT, 2>( { m_dim, m_num_nodes }, m_allocator_id );
+  m_node_n.fill( 0.0 );
+}  // end MeshData::allocateNodalNormals()
+
+//------------------------------------------------------------------------------
+int MeshData::checkLagrangeMultiplierData()
+{
+  int err = 0;
+  if ( this->numberOfElements() > 0 ) {
+    if ( !m_nodal_fields.m_is_node_gap_set || !m_nodal_fields.m_is_node_pressure_set ) {
+      err = 1;
+    }
+  }  // end if-non-null mesh
+  return err;
+}  // end MeshData::checkLagrangeMultiplierData()
+
+//------------------------------------------------------------------------------
+int MeshData::checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options, ExecutionMode exec_mode )
+{
+  int err = 0;
+  if ( this->numberOfElements() > 0 ) {
+    PenaltyConstraintType constraint_type = p_enfrc_options.constraint_type;
+    // switch over penalty enforcement options and check for required data
+    switch ( constraint_type ) {
+      case KINEMATIC: {
+        if ( !m_element_data.isValidKinematicPenalty( p_enfrc_options, exec_mode, this->m_allocator_id ) ) {
+          err = 1;
         }
-        m_nX[i] *= invMag;
-        m_nY[i] *= invMag;
+        break;
+      }  // end KINEMATIC case
 
-     }
-        
-     // compute face radius for both 2D and 3D. For 2D, this is a duplicate of 
-     // the length, but allows for some uniformity in accessing this value 
-     // for tolerance ratios
-     m_faceRadius[i] = this->computeFaceRadius(i);
-
-     if (dim == 3) {
-
-        // this method of computing an outward unit normal breaks the 
-        // face into triangular pallets by connecting two consecutive 
-        // nodes with the approximate centroid.
-        // The average outward unit normal for the face is the average of 
-        // those of the pallets. This is exact for non-warped faces. To 
-        // compute the pallet normal, you only need edge vectors for the 
-        // pallet. These are constructed from the face centroid and the face 
-        // edge's first node and the face edge's two nodes
-
-        // declare triangle edge vector components and normal components
-        real vX1, vY1, vZ1;
-        real vX2, vY2, vZ2;
-        real nX, nY, nZ; 
-
-        // loop over m_numCellNodes-1 cell edges and compute pallet normal
-        for (int j=0; j<(m_numCellNodes-1); ++j) 
-        {
-           nodeIndex = m_numCellNodes * i + j;
-           nodeId = m_connectivity[ nodeIndex ];
-           nextNodeId = m_connectivity[ nodeIndex + 1 ];
-           // first triangle edge vector between the face's two 
-           // edge nodes
-           vX1 = m_positionX[ nextNodeId ] - m_positionX[ nodeId ];
-           vY1 = m_positionY[ nextNodeId ] - m_positionY[ nodeId ];
-           vZ1 = m_positionZ[ nextNodeId ] - m_positionZ[ nodeId ];
-          
-           // second triangle edge vector between the face centroid 
-           // and the face edge's first node
-           vX2 = m_cX[i] - m_positionX[ nodeId ];
-           vY2 = m_cY[i] - m_positionY[ nodeId ];
-           vZ2 = m_cZ[i] - m_positionZ[ nodeId ];
-
-           // compute the contribution to the pallet normal as v1 x v2. Sum 
-           // these into the face normal component variables stored on the mesh data 
-           // object
-           nX = (vY1 * vZ2) - (vZ1 * vY2);
-           nY = (vZ1 * vX2) - (vX1 * vZ2);
-           nZ = (vX1 * vY2) - (vY1 * vX2);
-
-           // sum the normal component contributions into the component variables
-           m_nX[i] += nX;
-           m_nY[i] += nY;
-           m_nZ[i] += nZ;
-
-           // half the magnitude of the computed normal is the pallet area. Note: this is exact 
-           // for planar faces and approximate for warped faces. Face areas are used in a general 
-           // sense to create a face-overlap tolerance
-           m_area[i] += 0.5 * magnitude( nX, nY, nZ );
+      case KINEMATIC_AND_RATE: {
+        if ( !m_element_data.isValidKinematicPenalty( p_enfrc_options, exec_mode, this->m_allocator_id ) ) {
+          err = 1;
         }
-
-        // compute the pallet normal contribution for the last pallet
-        nodeIndex = m_numCellNodes * i;
-        nodeId = m_connectivity[ nodeIndex ];
-        nextNodeId = m_connectivity[ nodeIndex + m_numCellNodes - 1 ];
-        vX1 = m_positionX[ nodeId ] - m_positionX[ nextNodeId ];
-        vY1 = m_positionY[ nodeId ] - m_positionY[ nextNodeId ];
-        vZ1 = m_positionZ[ nodeId ] - m_positionZ[ nextNodeId ];
-
-        vX2 = m_cX[i] - m_positionX[ nextNodeId ];
-        vY2 = m_cY[i] - m_positionY[ nextNodeId ];
-        vZ2 = m_cZ[i] - m_positionZ[ nextNodeId ];
-        
-        nX = (vY1 * vZ2) - (vZ1 * vY2);
-        nY = (vZ1 * vX2) - (vX1 * vZ2);
-        nZ = (vX1 * vY2) - (vY1 * vX2);
-
-        // sum the normal component contributions into the component variables
-        m_nX[i] += nX;
-        m_nY[i] += nY;
-        m_nZ[i] += nZ;
-
-        // half the magnitude of the computed normal is the pallet area. Note: this is exact 
-        // for planar faces and approximate for warped faces. Face areas are used in a general 
-        // sense to create a face-overlap tolerance
-        m_area[i] += 0.5 * magnitude( nX, nY, nZ );
-
-        // multiply the pallet normal components by fac to obtain avg.
-        m_nX[i] = fac * m_nX[i];
-        m_nY[i] = fac * m_nY[i];
-        m_nZ[i] = fac * m_nZ[i];
-
-        // compute the magnitude of the average pallet normal
-        mag = magnitude(m_nX[i], m_nY[i], m_nZ[i] );
-        if (mag >= nrmlMagTol) {
-           invMag = 1.0 / mag;
+        if ( !m_element_data.isValidRatePenalty( p_enfrc_options ) ) {
+          err = 1;
         }
-
-        // normalize the average normal
-        m_nX[i] *= invMag;
-        m_nY[i] *= invMag;
-        m_nZ[i] *= invMag;
-
-     } // end if (dim == 3)
-
-  } // end cell loop
-
-  return; 
-
-} // end MeshData::computeFaceData()
-
-//------------------------------------------------------------------------------
-real MeshData::computeFaceRadius( int faceId ) 
-{
-   // loop over nodes of the face and determine the maximum 
-   // "link" vector from the ith node to the face center
-   real sqrRadius = 0.0;
-   for (int i=0; i<m_numCellNodes; ++i) {
-      const int nodeId = getFaceNodeId(faceId, i);
-      real lvx = m_positionX[nodeId] - m_cX[faceId];
-      real lvy = m_positionY[nodeId] - m_cY[faceId];
-
-      real lvz;
-      if (m_positionZ != nullptr) { // for 3D
-         lvz = m_positionZ[nodeId] - m_cZ[faceId];
-      }
-      else {
-         lvz = 0.0;
-      }
-
-      real sqrLinkMag = lvx * lvx + lvy * lvy + lvz * lvz;   
-     
-      if (sqrLinkMag > sqrRadius) {
-         sqrRadius = sqrLinkMag;
-      }
-   } 
-
-   return sqrt(sqrRadius);
-
-} // end MeshData::computeFaceRadius()
-
-//------------------------------------------------------------------------------
-real MeshData::computeEdgeLength( int faceId ) 
-{
-   // compute the length of the edge as the magnitude of 
-   // the vector defined between the two edge vertices
-   const int nodeId1 = getFaceNodeId( faceId, 0 );
-   const int nodeId2 = getFaceNodeId( faceId, 1 );
-   real lvx = m_positionX[nodeId2] - m_positionX[nodeId1];
-   real lvy = m_positionY[nodeId2] - m_positionY[nodeId1];
-
-   real len = magnitude( lvx, lvy );
-
-   return len;
-
-} // end MeshData::computeEdgeLength()
-
-//------------------------------------------------------------------------------
-void MeshData::getFaceCoords( int const faceId, real * coords )
-{
-   int dim =  (m_positionZ != nullptr) ? 3 : 2;
-
-   for (IndexType a=0; a<m_numCellNodes; ++a)
-   {
-     IndexType nodeId = m_connectivity[ faceId*m_numCellNodes + a ];
-
-     coords[dim * a]     = m_positionX[ nodeId ];
-     coords[dim * a + 1] = m_positionY[ nodeId ];
-
-     if (dim == 3)
-     {
-        coords[dim * a + 2] = m_positionZ[ nodeId ];
-     }
-   }
-
-   return;
-
-}  // end MeshData::getFaceCoords()
-
-//------------------------------------------------------------------------------
-void MeshData::getFaceNodalVelocities( int const faceId, real * nodalVel )
-{
-   if (m_velX == nullptr || m_velY == nullptr)
-   {
-      SLIC_ERROR("MeshData::getFaceNodalVelocities(): velocity arrays on each " <<
-                 "mesh must be registered with Tribol.");
-   }
-
-   int dim =  (m_velZ != nullptr) ? 3 : 2;
-
-   for (IndexType a=0; a<m_numCellNodes; ++a)
-   {
-     IndexType nodeId = m_connectivity[ faceId*m_numCellNodes + a ];
-
-     nodalVel[dim * a]     = m_velX[ nodeId ];
-     nodalVel[dim * a + 1] = m_velY[ nodeId ];
-
-     if (dim == 3)
-     {
-        nodalVel[dim * a + 2] = m_velZ[ nodeId ];
-     }
-   }
-
-   return;
-
-}  // end MeshData::getFaceNodalVelocities()
-
-//------------------------------------------------------------------------------
-void MeshData::computeNodalNormals( int const dim )
-{
-   // check to make sure face normals have been computed with 
-   // a call to computeFaceData
-   if (this->m_nX == nullptr || 
-       this->m_nY == nullptr)
-   {
-      TRIBOL_ERROR("MeshData::computeNodalNormals: required face normals not computed.");
-   }
-
-   // allocate space for nodal normal array
-   int size = this->m_lengthNodalData; 
-   if (this->m_node_nX != nullptr)
-   {
-      delete[] m_node_nX;
-      m_node_nX = new real [size];
-   }
-   else
-   {
-      m_node_nX = new real [size];
-   }
-
-   if (this->m_node_nY != nullptr)
-   {
-      delete[] m_node_nY;
-      m_node_nY = new real [size];
-   }
-   else
-   {
-      m_node_nY = new real [size];
-   }
-
-   if (dim == 3)
-   {
-      if (this->m_node_nZ != nullptr)
-      {
-         delete[] m_node_nZ;
-         m_node_nZ = new real [size];
-      }
-      else 
-      {
-         m_node_nZ = new real [size];
-      }
-
-      // initialize z component
-      initRealArray( m_node_nZ, size, 0. );
-   }
-
-   // initialize x and y components 
-   initRealArray( m_node_nX, size, 0. );
-   initRealArray( m_node_nY, size, 0. );
-
-   // allocate scratch array to hold number of faces whose 
-   // normals contribute to a given node. Most of the time 
-   // this will be four face normals contributing to an 
-   // averaged nodal normal for linear quad elements, but 
-   // we want to handle arbitrary meshes and edge cases
-   int * numFaceNrmlsToNodes;
-   allocIntArray( &numFaceNrmlsToNodes, size, 0 );
-
-
-   // loop over cells
-   for (int i=0; i<this->m_numCells; ++i)
-   {
-      // loop over cell nodes
-      for (int j=0; j<this->m_numCellNodes; ++j)
-      {
-
-         // SRW: note the connectivity array must be local to the mesh for indexing into 
-         // the mesh nodal normal array. If it is not, then nodeId will access some other
-         // piece of memory and there may be a memory issue when numFaceNrmlsToNodes is deleted
-         // at the end of this routine.
-         integer nodeId = this->m_connectivity[ this->m_numCellNodes * i + j ]; 
-         m_node_nX[ nodeId ] += this->m_nX[ i ]; // m_nX[i] is the ith face normal x-component
-         m_node_nY[ nodeId ] += this->m_nY[ i ]; // see above...
-
-         // increment face-normal-to-node contribution counter
-         ++numFaceNrmlsToNodes[ nodeId ];
-
-      } // end loop over cell nodes
-
-      // populate z-component for 3D problems
-      if (dim == 3)
-      {
-
-         // repeat loop over cell nodes for z-component
-         for (int k=0; k<this->m_numCellNodes; ++k)
-         {
-            integer nodeId = this->m_connectivity[ this->m_numCellNodes * i + k ]; 
-            m_node_nZ[ nodeId ] += this->m_nZ[ i ];
-         } // end loop over cell nodes
-
-      } // end if (dim == 3)
-
-   } // end loop over cells
-
-   // average the nodal normals
-   for (int i=0; i<this->m_lengthNodalData; ++i)
-   {
-      m_node_nX[i] /= numFaceNrmlsToNodes[i];
-      m_node_nY[i] /= numFaceNrmlsToNodes[i];
-      if (dim == 3)
-      {
-         m_node_nZ[i] /= numFaceNrmlsToNodes[i];
-      }
-   } // end loop over nodes
-
-   // normalize the nodal normals
-   if (dim == 3)
-   {
-      for (int i=0; i<this->m_lengthNodalData; ++i)
-      {
-         real mag = magnitude( m_node_nX[i], m_node_nY[i], m_node_nZ[i] );
-         m_node_nX[ i ] /= mag;
-         m_node_nY[ i ] /= mag;
-         m_node_nZ[ i ] /= mag;
-      }
-   }
-   else 
-   {
-      for (int i=0; i<this->m_lengthNodalData; ++i)
-      {
-         real mag = magnitude( m_node_nX[i], m_node_nY[i] );
-         m_node_nX[ i ] /= mag;
-         m_node_nY[ i ] /= mag;
-      }
-   }
-
-   delete [] numFaceNrmlsToNodes;
-
-   return;
-} // end MeshData::computeNodalNormals()
-
-//------------------------------------------------------------------------------
-void MeshData::getFaceNormal( int const faceId, int const dim, real * nrml )
-{
-   nrml[0] = this->m_nX[ faceId ];
-   nrml[1] = this->m_nY[ faceId ];
-   
-   if (dim == 3)
-   {
-      nrml[2] = this->m_nZ[ faceId ];
-   }
-
-   return;
-
-} // end MeshData::getFaceNormal()
-
-//------------------------------------------------------------------------------
-void MeshData::sortSurfaceNodeIds()
-{
-   // check that the number of cells is greater than 0
-   SLIC_ERROR_IF( (this->m_numCells == 0), "MeshData::sortSurfaceNodeIds(): " << 
-                  "m_numCells on mesh cannot be equal to zero.");
-
-   // check that the number of cell nodes is greater than 2 (minimum number of cell 
-   // nodes for 1D segment
-   SLIC_ERROR_IF( (this->m_numCellNodes < 2), "MeshData::sortSurfaceNodeIds(): " << 
-                   "m_numCellNodes on mesh cannot be equal to zero.");
-
-   int conn_size = this->m_numCells * this->m_numCellNodes;
-
-   int sorted_conn[ conn_size ];
-   for (int i=0; i<conn_size; ++i)
-   {
-      sorted_conn[i] = this->m_connectivity[i];
-   }
-
-   bubble_sort( &sorted_conn[0], conn_size );
-
-   // count number of duplicate entries
-   int num_dup = 0;
-   for (int i=1; i<conn_size; ++i)
-   {
-      if ( sorted_conn[ i ] == sorted_conn[ i-1 ] )
-      {
-         ++num_dup;
-      }
-   }
-
-   // compute number of unique integer ids
-   int unique_size = conn_size - num_dup;
-
-   SLIC_ERROR_IF( (unique_size <=0), "MeshData::sortSurfaceNodeIds(): " << 
-                  "invalid connectivity array; " <<
-                  "only single unique id in connectivity array.");
-
-   // allocate array to store unique, sorted node ids on mesh object
-   this->m_sortedSurfaceNodeIds = new int[ unique_size ];
-   this->m_numSurfaceNodes = unique_size;
-
-   // populate sorted node id list
-   this->m_sortedSurfaceNodeIds[ 0 ] = sorted_conn[ 0 ];
-   int k = 1;
-   for (int i=1; i<conn_size; ++i)
-   {
-      if ( sorted_conn[ i ] != sorted_conn[ i-1 ] )
-      { 
-         this->m_sortedSurfaceNodeIds[ k ] = sorted_conn[ i ];
-         ++k;
-      }
-   }
-
-   return;
-} // end MeshData::sortSurfaceNodeIds()
-
-//------------------------------------------------------------------------------
-int MeshData::checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options )
-{
-   int err = 0;
-   PenaltyConstraintType constraint_type = p_enfrc_options.constraint_type;
-   
-   // switch over penalty enforcement options and check for required data
-   switch (constraint_type)
-   {
-      case KINEMATIC:
-      {
-         if (!this->m_elemData.isValidKinematicPenalty( p_enfrc_options ))
-         {
-            SLIC_WARNING("Invalid Kinematic penalty data.");
-            err = 1;
-         }
-         break;
-      } // end KINEMATIC case
-
-      case KINEMATIC_AND_RATE:
-      {
-         if (!this->m_elemData.isValidKinematicPenalty( p_enfrc_options ))
-         {
-            SLIC_WARNING("Invalid Kinematic penalty data.");
-            err = 1;
-         }
-         if (!this->m_elemData.isValidRatePenalty( p_enfrc_options ))
-         {
-            SLIC_WARNING("Invalid Rate penalty data.");
-            err = 1;
-         }
-         if (!this->m_nodalFields.m_is_velocity_set)
-         {
-            SLIC_WARNING("Nodal velocities not set for use with gap rate penalty enforcement.");
-            err = 1;
-         }
-         break;
-      } // end case KINEMATIC_AND_RATE
+        if ( !m_nodal_fields.m_is_velocity_set ) {
+          SLIC_WARNING( "Nodal velocities not set or null pointers; please set for "
+                        << "use with gap rate penalty enforcement." );
+          err = 1;
+        }
+        break;
+      }  // end case KINEMATIC_AND_RATE
       default:
-         // no-op, quiet compiler
-         break;
-   } // end switch over constraint types
+        // no-op, quiet compiler
+        break;
+    }  // end switch over constraint types
+  }  // end if-non-null mesh
 
-   return err;
-} // end MeshData::checkPenaltyData()
-
-//------------------------------------------------------------------------------
-int MeshData::localIdFromConn( const int connectivityId )
-{
-    return binary_search( this->m_sortedSurfaceNodeIds, 
-                          this->m_numSurfaceNodes, connectivityId );
-
-} // end MeshData::localIdFromConn()
+  return err;
+}  // end MeshData::checkPenaltyData()
 
 //------------------------------------------------------------------------------
-void MeshData::print(std::ostream& os) const
+void MeshData::print( std::ostream& os ) const
 {
-   const int num_verts = m_lengthNodalData;
-   const int num_elem = m_numCells;
-   const int dim = m_positionZ == nullptr ? 2 : 3;
+  const int num_verts = m_num_nodes;
+  const int num_elem = numberOfElements();
 
-   if(num_verts <= 0)
-   {
-      os << "{}";
-      return;
-   }
+  if ( num_verts <= 0 ) {
+    os << "{}";
+    return;
+  }
 
-   os << "{\n";
-   os << fmt::format("  verts ({}) {{",num_verts);
-   // positions
-   os << fmt::format("\n\tx: {}", fmt::join(m_positionX, m_positionX+num_verts, ", "));
-   os << fmt::format("\n\ty: {}", fmt::join(m_positionY, m_positionY+num_verts, ", "));
-   if(dim == 3)
-   {  
-      os << fmt::format("\n\tz: {}", fmt::join(m_positionZ, m_positionZ+num_verts, ", "));
-   }
-   // contact force
-   if( m_forceX != nullptr )
-   {
-      os << fmt::format("\n\tfx: {}", fmt::join(m_forceX, m_forceX+num_verts, ", "));
-      os << fmt::format("\n\tfy: {}", fmt::join(m_forceY, m_forceY+num_verts, ", "));
-      if(dim == 3)
-      {  
-         os << fmt::format("\n\tfz: {}", fmt::join(m_forceZ, m_forceZ+num_verts, ", "));
+  os << "{\n";
+  os << axom::fmt::format( "  verts ({}) {{", num_verts );
+  // positions
+  os << axom::fmt::format( "\n\tx: {}",
+                           axom::fmt::join( m_position[0].data(), m_position[0].data() + num_verts, ", " ) );
+  os << axom::fmt::format( "\n\ty: {}",
+                           axom::fmt::join( m_position[1].data(), m_position[1].data() + num_verts, ", " ) );
+  if ( m_dim == 3 ) {
+    os << axom::fmt::format( "\n\tz: {}",
+                             axom::fmt::join( m_position[2].data(), m_position[2].data() + num_verts, ", " ) );
+  }
+  // contact response (force)
+  if ( !m_response.empty() ) {
+    os << axom::fmt::format( "\n\tfx: {}",
+                             axom::fmt::join( m_response[0].data(), m_response[0].data() + num_verts, ", " ) );
+    os << axom::fmt::format( "\n\tfy: {}",
+                             axom::fmt::join( m_response[1].data(), m_response[1].data() + num_verts, ", " ) );
+    if ( m_dim == 3 ) {
+      os << axom::fmt::format( "\n\tfz: {}",
+                               axom::fmt::join( m_response[2].data(), m_response[2].data() + num_verts, ", " ) );
+    }
+  }
+  os << "\n  }";
+
+  os << axom::fmt::format( "\n  elems ({}) {{", num_elem );
+
+  if ( !m_connectivity.empty() ) {
+    os << axom::fmt::format(
+        "\n\tconnectivity: {{ {} }}",
+        axom::fmt::join( m_connectivity.data(), m_connectivity.data() + ( num_elem * numberOfNodesPerElement() ),
+                         ", " ) );
+  }
+
+  // normals
+  if ( !m_n.empty() ) {
+    os << "\n\tnx: " << m_n( 0, 0 );
+    for ( int e{ 1 }; e < num_elem; ++e ) {
+      os << ", " << m_n( e, 0 );
+    }
+    os << "\n\tny: " << m_n( 0, 1 );
+    for ( int e{ 1 }; e < num_elem; ++e ) {
+      os << ", " << m_n( e, 1 );
+    }
+    if ( m_dim == 3 ) {
+      os << "\n\tnz: " << m_n( 0, 2 );
+      for ( int e{ 1 }; e < num_elem; ++e ) {
+        os << ", " << m_n( e, 2 );
       }
-   }
-   os << "\n  }";
+    }
+  }
+  os << "\n  }";
 
-   os << fmt::format("\n  elems ({}) {{", num_elem);  
-   
-   if( m_connectivity != nullptr )
-   {
-      os << fmt::format("\n\tconnectivity: {{ {} }}", fmt::join(m_connectivity, m_connectivity+(num_elem*m_numCellNodes), ", "));
-   }
-
-   // normals
-   if( m_nX != nullptr)
-   {
-      os << fmt::format("\n\tnx: {}", fmt::join(m_nX, m_nX+num_elem, ", "));
-      os << fmt::format("\n\tny: {}", fmt::join(m_nY, m_nY+num_elem, ", "));
-      if(dim == 3)
-      {  
-         os << fmt::format("\n\tnz: {}", fmt::join(m_nZ, m_nZ+num_elem, ", "));
-      }
-   }
-   os << "\n  }";
-
-   os << "\n}";
+  os << "\n}";
 }
 
 //------------------------------------------------------------------------------
-} // end tribol namespace
-
-std::ostream& operator<<(std::ostream& os, const tribol::MeshData& md)
+MeshData::Viewer::Viewer( MeshData& mesh )
+    : m_mesh_id( mesh.m_mesh_id ),
+      m_element_type( mesh.m_element_type ),
+      m_face_order( mesh.m_face_order ),
+      m_num_nodes( mesh.m_num_nodes ),
+      m_mem_space( mesh.m_mem_space ),
+      m_allocator_id( mesh.m_allocator_id ),
+      m_position( mesh.m_position ),
+      m_ref_position( mesh.m_ref_position ),
+      m_disp( mesh.m_disp ),
+      m_vel( mesh.m_vel ),
+      m_response( mesh.m_response ),
+      m_node_n( mesh.m_node_n ),
+      m_connectivity( mesh.m_connectivity ),
+      m_c( mesh.m_c ),
+      m_n( mesh.m_n ),
+      m_face_radius( mesh.m_face_radius ),
+      m_area( mesh.m_area ),
+      m_nodal_fields( mesh.m_nodal_fields ),
+      m_element_data( mesh.m_element_data )
 {
-   md.print(os);
-   return os;
+}
+
+//------------------------------------------------------------------------------
+
+}  // namespace tribol
+
+std::ostream& operator<<( std::ostream& os, const tribol::MeshData& md )
+{
+  md.print( os );
+  return os;
 }

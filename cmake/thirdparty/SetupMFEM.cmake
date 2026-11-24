@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level LICENSE file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -19,6 +19,8 @@ set(_MFEM_DIR ${MFEM_DIR}) # Save MFEM_DIR as a non-cache variable
 find_package(MFEM CONFIG NO_DEFAULT_PATH PATHS "${MFEM_DIR}/lib/cmake/mfem")
 # find_package will overwrite MFEM_DIR, so restore it here
 set(MFEM_DIR ${_MFEM_DIR} CACHE PATH "" FORCE)
+set(_mfem_uses_mpi FALSE)
+set(_mfem_uses_openmp FALSE)
 
 if(MFEM_FOUND)
     # MFEM was built with CMake so use that config file
@@ -26,6 +28,12 @@ if(MFEM_FOUND)
     set(MFEM_BUILT_WITH_CMAKE TRUE)
     # It looks like include directories are not always built into the target
     target_include_directories(mfem INTERFACE ${MFEM_INCLUDE_DIRS})
+    if(MFEM_USE_MPI)
+        set(_mfem_uses_mpi TRUE)
+    endif()
+    if(MFEM_USE_OPENMP OR MFEM_USE_LEGACY_OPENMP)
+        set(_mfem_uses_openmp TRUE)
+    endif()
 else()
     set(MFEM_BUILT_WITH_CMAKE FALSE)
     find_path(
@@ -68,6 +76,12 @@ else()
 
     # read config.mk file
     file(READ "${MFEM_CFG_DIR}/config.mk" mfem_cfg_file_txt)
+    if(mfem_cfg_file_txt MATCHES "MFEM_USE_MPI[ \\t]*\\+?=[ \\t]*YES")
+        set(_mfem_uses_mpi TRUE)
+    endif()
+    if(mfem_cfg_file_txt MATCHES "MFEM_USE_(LEGACY_)?OPENMP[ \\t]*\\+?=[ \\t]*YES")
+        set(_mfem_uses_openmp TRUE)
+    endif()
 
     # parse include flags
     string(REGEX MATCHALL "MFEM_TPLFLAGS [^\n]+\n" mfem_tpl_inc_flags ${mfem_cfg_file_txt})
@@ -96,11 +110,16 @@ else()
     endif()
     if(NOT mfem_tpl_lnk_flags EQUAL "")
         string(REGEX REPLACE  "MFEM_EXT_LIBS +=" "" mfem_tpl_lnk_flags "${mfem_tpl_lnk_flags}")
+        string(REPLACE "-ltribol " "" mfem_tpl_lnk_flags "${mfem_tpl_lnk_flags}")
+        string(REPLACE "-lredecomp " "" mfem_tpl_lnk_flags "${mfem_tpl_lnk_flags}")
         string(FIND  "${mfem_tpl_lnk_flags}" "\n" mfem_tpl_lnl_flags_end_pos )
         string(SUBSTRING "${mfem_tpl_lnk_flags}" 0 ${mfem_tpl_lnl_flags_end_pos} mfem_tpl_lnk_flags)
         string(STRIP "${mfem_tpl_lnk_flags}" mfem_tpl_lnk_flags)
     else()
         message(WARNING "No third party library flags found in ${MFEM_CFG_DIR}/config.mk")
+    endif()
+    if(mfem_cfg_file_txt MATCHES "MFEM_USE_CUDA += YES")
+        string(REGEX REPLACE "-Xlinker=-rpath," "-Xlinker -rpath -Xlinker " mfem_tpl_lnk_flags "${mfem_tpl_lnk_flags}")
     endif()
 
     list(APPEND MFEM_LIBRARIES ${mfem_tpl_lnk_flags})
@@ -116,19 +135,32 @@ else()
         list(APPEND MFEM_LIBRARIES ${CUDA_cusolver_LIBRARY})
     endif()
 
-    # Tribol edit
-    if(TRIBOL_USE_MPI)
-        list(APPEND MFEM_LIBRARIES mpi)
-    endif()
-    # End Tribol edit
-
     blt_import_library(
         NAME          mfem
         INCLUDES      ${MFEM_INCLUDE_DIRS}
         LIBRARIES     ${MFEM_LIBRARIES}
-        TREAT_INCLUDES_AS_SYSTEM ON
-        EXPORTABLE    ON)
+        TREAT_INCLUDES_AS_SYSTEM ON)
 
+endif()
+
+if(_mfem_uses_mpi)
+    if(NOT TARGET blt::mpi)
+        message(FATAL_ERROR "MFEM was built with MPI support, but MPI is not enabled in BLT. Configure with ENABLE_MPI=ON.")
+    endif()
+    if(NOT MFEM_BUILT_WITH_CMAKE)
+        # Note: -lmpifort is being added to MFEM's link line w/o a -L<mpi lib dir>
+        list(GET MPI_C_LIBRARIES 0 _first_mpi_lib)
+        get_filename_component(_mpi_lib_dir ${_first_mpi_lib} DIRECTORY)
+        target_link_directories(mfem INTERFACE ${_mpi_lib_dir})
+    endif()
+    target_link_libraries(mfem INTERFACE blt::mpi)
+endif()
+
+if(_mfem_uses_openmp)
+    if(NOT TARGET blt::openmp)
+        message(FATAL_ERROR "MFEM was built with OpenMP support, but OpenMP is not enabled in BLT. Configure with ENABLE_OPENMP=ON.")
+    endif()
+    target_link_libraries(mfem INTERFACE blt::openmp)
 endif()
 
 include(FindPackageHandleStandardArgs)

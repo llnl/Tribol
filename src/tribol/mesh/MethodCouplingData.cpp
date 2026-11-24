@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -6,237 +6,180 @@
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/mesh/MeshManager.hpp"
-#include "tribol/mesh/InterfacePairs.hpp"
 
 // Axom includes
 #include "axom/slic.hpp"
 
-#include <iostream> 
-#include <sstream>
-#include <iomanip>
-#include <fstream>
-
-namespace tribol
-{
+namespace tribol {
 
 ////////////////////////////////////////////////
 //                                            //
 // Routines for the SurfaceContactElem struct //
 //                                            //
 ////////////////////////////////////////////////
-void SurfaceContactElem::allocateMortarWts( )
+void SurfaceContactElem::allocateMortarWts()
 {
-   // We store wts, n_aa and n_ab, which are slave/slave and slave/master 
-   // products of shape functions
-   this->numWts = 2 * this->numFaceVert * this->numFaceVert;
-   if (this->mortarWts != nullptr)
-   {
-      delete [] this->mortarWts;
-      this->mortarWts = new real [ this->numWts ];
-   }
-   else
-   {
-      this->mortarWts = new real [ this->numWts ];
-   }
+  // We store wts, n_aa and n_ab, which are nonmortar/nonmortar and nonmortar/mortar
+  // products of shape functions
+  this->numWts = 2 * this->numFaceVert * this->numFaceVert;
+  if ( this->mortarWts != nullptr ) {
+    delete[] this->mortarWts;
+    this->mortarWts = new RealT[this->numWts];
+  } else {
+    this->mortarWts = new RealT[this->numWts];
+  }
 
-   this->initializeMortarWts();
+  this->initializeMortarWts();
 }
 
 //------------------------------------------------------------------------------
-void SurfaceContactElem::initializeMortarWts( ) 
+void SurfaceContactElem::initializeMortarWts()
 {
-   for (int i=0; i<this->numWts; ++i)
-   {
-      mortarWts[i] = 0.;
-   }
+  for ( int i = 0; i < this->numWts; ++i ) {
+    mortarWts[i] = 0.;
+  }
 }
 
 //------------------------------------------------------------------------------
 void SurfaceContactElem::allocateBlockJ( EnforcementMethod enf )
 {
-   if (enf == LAGRANGE_MULTIPLIER)
-   {
-      this->blockJ.resize(3, 3);
-   }
-   else
-   {
-      this->blockJ.resize(2, 2);
-   }
-
-   // number of element displacement degrees of freedom
-   integer nPrimal = this->dim * this->numFaceVert;
-   for (int i{}; i < 2; ++i)
-   {
-      for (int j{}; j < 2; ++j)
-      {
-         blockJ(i, j).SetSize(nPrimal, nPrimal);
-      }
-   }
-
-   if (enf == LAGRANGE_MULTIPLIER)
-   {
-      // number of element Lagrange multiplier degrees of freedom
-      integer nDual = this->numFaceVert;
-      for (int i{}; i < 2; ++i)
-      {
-         blockJ(2, i).SetSize(nDual, nPrimal);
-         // transpose
-         blockJ(i, 2).SetSize(nPrimal, nDual);
-      }
-      blockJ(2, 2).SetSize(nDual, nDual);
-   }
-}
-
-//------------------------------------------------------------------------------
-void SurfaceContactElem::deallocateElem( )
-{
-    if (this->mortarWts != nullptr)
-    {
-       delete [] this->mortarWts;
-       this->mortarWts = nullptr;
+  // number of element displacement degrees of freedom
+  int nPrimal = this->dim * this->numFaceVert;
+  for ( int i{}; i < 2; ++i ) {
+    for ( int j{}; j < 2; ++j ) {
+      this->blockJ( i, j ) = DeviceArray2D<RealT>( nPrimal, nPrimal );
+      this->blockJ( i, j ).fill( 0.0 );
     }
+  }
+
+  if ( enf == LAGRANGE_MULTIPLIER ) {
+    // number of element Lagrange multiplier degrees of freedom
+    int nDual = this->numFaceVert;
+    for ( int i{}; i < 2; ++i ) {
+      this->blockJ( i, 2 ) = DeviceArray2D<RealT>( nPrimal, nDual );
+      this->blockJ( i, 2 ).fill( 0.0 );
+      // transpose
+      this->blockJ( 2, i ) = DeviceArray2D<RealT>( nDual, nPrimal );
+      this->blockJ( 2, i ).fill( 0.0 );
+    }
+    this->blockJ( 2, 2 ) = DeviceArray2D<RealT>( nDual, nDual );
+    this->blockJ( 2, 2 ).fill( 0.0 );
+  }
 }
 
 //------------------------------------------------------------------------------
-real SurfaceContactElem::getMasterSlaveWt( const int a, const int b )
+RealT SurfaceContactElem::getMortarNonmortarWt( const int a, const int b )
 {
-   // note: the mortar wts are stored in a stacked array with slave-slave 
-   //       wts followed by master-slave weights in master-slave ordering
+  // note: the mortar wts are stored in a stacked array with nonmortar-nonmortar
+  //       wts followed by mortar-nonmortar weights in mortar-nonmortar ordering
 
-   int masterSlaveId = this->numFaceVert * this->numFaceVert + 
-                       this->numFaceVert * a + b;
+  int mortarNonmortarId = this->numFaceVert * this->numFaceVert + this->numFaceVert * a + b;
 
-   real wt = this->mortarWts[ masterSlaveId ];
-   return wt;
+  RealT wt = this->mortarWts[mortarNonmortarId];
+  return wt;
 }
 
 //------------------------------------------------------------------------------
-real SurfaceContactElem::getSlaveMasterWt( const int a, const int b )
+RealT SurfaceContactElem::getNonmortarMortarWt( const int a, const int b )
 {
-   // note: the mortar wts are stored in a stacked array with slave-slave 
-   //       wts followed by master-slave weights in master-slave ordering.
-   //       Therefore, the slaveMaster id is the transpose of how it is 
-   //       stored
+  // note: the mortar wts are stored in a stacked array with nonmortar-nonmortar
+  //       wts followed by mortar-nonmortar weights in mortar-nonmortar ordering.
+  //       Therefore, the nonmortarMortar id is the transpose of how it is
+  //       stored
 
-   int slaveMasterId = this->numFaceVert * this->numFaceVert + 
-                       this->numFaceVert * b + a;
+  int nonmortarMortarId = this->numFaceVert * this->numFaceVert + this->numFaceVert * b + a;
 
-   real wt = this->mortarWts[ slaveMasterId ];
-   return wt;
+  RealT wt = this->mortarWts[nonmortarMortarId];
+  return wt;
 }
 
 //------------------------------------------------------------------------------
-real SurfaceContactElem::getSlaveSlaveWt( const int a, const int b )
+RealT SurfaceContactElem::getNonmortarNonmortarWt( const int a, const int b )
 {
-   // note: the mortar wts are stored in a stacked array with slave-slave 
-   //       wts followed by master-slave weights in master-slave ordering
+  // note: the mortar wts are stored in a stacked array with nonmortar-nonmortar
+  //       wts followed by mortar-nonmortar weights in mortar-nonmortar ordering
 
-   int slaveSlaveId = this->numFaceVert * a + b;
+  int nonmortarNonmortarId = this->numFaceVert * a + b;
 
-   real wt = this->mortarWts[ slaveSlaveId ];
-   return wt;
+  RealT wt = this->mortarWts[nonmortarNonmortarId];
+  return wt;
 }
 
 //------------------------------------------------------------------------------
-int SurfaceContactElem::getJacobianIndex( JacBlock block,
-                                          const int a, 
-                                          const int b ) const
+int SurfaceContactElem::getJacobianIndex( JacBlock block, const int a, const int b ) const
 {
-   if (block == JguBlock)
-   {
-      return a + this->numFaceVert * b;
-   }
+  if ( block == JguBlock ) {
+    return a + this->numFaceVert * b;
+  }
 
-   if (block == JrpBlock)
-   {
-      return a + this->dim * this->numFaceVert * b;
-   }
+  if ( block == JrpBlock ) {
+    return a + this->dim * this->numFaceVert * b;
+  }
 
-   return -1;
+  return -1;
 }
 
 //------------------------------------------------------------------------------
 int SurfaceContactElem::getJacobianDimOffset( JacBlock block ) const
 {
-   if (block == JguBlock)
-   {
-      return this->numFaceVert * this->numFaceVert;
-   }
+  if ( block == JguBlock ) {
+    return this->numFaceVert * this->numFaceVert;
+  }
 
-   if (block == JrpBlock)
-   {
-      return this->numFaceVert;
-   }
+  if ( block == JrpBlock ) {
+    return this->numFaceVert;
+  }
 
-   return -1;
+  return -1;
 }
 
 //------------------------------------------------------------------------------
 MethodData::MethodData()
-:  m_blockJElemIds {
-      static_cast<axom::IndexType>(BlockSpace::NUM_BLOCK_SPACES),
-      static_cast<axom::IndexType>(BlockSpace::NUM_BLOCK_SPACES)
-   } ,
-   m_blockJ ({
-      static_cast<axom::IndexType>(BlockSpace::NUM_BLOCK_SPACES),
-      static_cast<axom::IndexType>(BlockSpace::NUM_BLOCK_SPACES)
-   })
+    : m_blockJElemIds( static_cast<IndexT>( BlockSpace::NUM_BLOCK_SPACES ),
+                       static_cast<IndexT>( BlockSpace::NUM_BLOCK_SPACES ) ),
+      m_blockJ( static_cast<IndexT>( BlockSpace::NUM_BLOCK_SPACES ),
+                static_cast<IndexT>( BlockSpace::NUM_BLOCK_SPACES ) )
 {
-   m_blockJ.shrink();
+  m_blockJ.shrink();
 }
 
 //------------------------------------------------------------------------------
-void MethodData::reserveBlockJ( 
-   axom::Array<BlockSpace>&& blockJSpaces, 
-   int nPairs
-)
+void MethodData::reserveBlockJ( ArrayT<BlockSpace>&& blockJSpaces, int nPairs )
 {
-   axom::IndexType pairFraction = static_cast<axom::IndexType>(0.5 * nPairs);
+  IndexT pairFraction = static_cast<IndexT>( 0.5 * nPairs );
 
-   m_blockJSpaces = std::move(blockJSpaces);
-   m_blockJElemIds.fill(axom::Array<integer>(0, 0));
-   for (auto blockJSpace : m_blockJSpaces)
-   {
-      m_blockJElemIds[static_cast<axom::IndexType>(blockJSpace)].reserve(pairFraction);
-   }
-   m_blockJ.fill(axom::Array<mfem::DenseMatrix>(0, 0));
-   for (auto blockJSpaceI : m_blockJSpaces)
-   {
-      for (auto blockJSpaceJ : m_blockJSpaces)
-      {
-         m_blockJ(
-            static_cast<axom::IndexType>(blockJSpaceI),
-            static_cast<axom::IndexType>(blockJSpaceJ)
-         ).reserve(pairFraction);
-      }
-   }
+  m_blockJSpaces = std::move( blockJSpaces );
+  m_blockJElemIds.fill( ArrayT<int>( 0, 0 ) );
+  for ( auto blockJSpace : m_blockJSpaces ) {
+    m_blockJElemIds[static_cast<IndexT>( blockJSpace )].reserve( pairFraction );
+  }
+  m_blockJ.fill( ArrayT<mfem::DenseMatrix>( 0, 0 ) );
+  for ( auto blockJSpaceI : m_blockJSpaces ) {
+    for ( auto blockJSpaceJ : m_blockJSpaces ) {
+      m_blockJ( static_cast<IndexT>( blockJSpaceI ), static_cast<IndexT>( blockJSpaceJ ) ).reserve( pairFraction );
+    }
+  }
 }
 
 //------------------------------------------------------------------------------
-void MethodData::storeElemBlockJ( 
-   axom::Array<integer>&& blockJElemIds,
-   axom::Array<mfem::DenseMatrix, 2>& blockJ
-)
+void MethodData::storeElemBlockJ( ArrayT<int>&& blockJElemIds, const StackArray<DeviceArray2D<RealT>, 9>& blockJ )
 {
-   SLIC_ASSERT_MSG(blockJElemIds.size() == getNSpaces(),
-      "Number of element ID vectors does not match the number of Jacobian spaces.");
-   SLIC_ASSERT_MSG(blockJ.shape()[0] == getNSpaces(),
-      "Number of rows in blockJ does not match the number of Jacobian spaces.");
-   SLIC_ASSERT_MSG(blockJ.shape()[1] == getNSpaces(),
-      "Number of columns in blockJ does not match the number of Jacobian spaces.");
-   for (axom::IndexType i{}; i < getNSpaces(); ++i)
-   {
-      axom::IndexType blockIdxI = static_cast<axom::IndexType>(m_blockJSpaces[i]);
-      m_blockJElemIds[blockIdxI].push_back(blockJElemIds[i]);
-      for (axom::IndexType j{}; j < getNSpaces(); ++j)
-      {
-         axom::IndexType blockIdxJ = static_cast<axom::IndexType>(m_blockJSpaces[j]);
-         m_blockJ(blockIdxI, blockIdxJ).push_back(blockJ(i, j));
-      }
-   }
-} 
-
+  SLIC_ASSERT_MSG( blockJElemIds.size() == getNSpaces(),
+                   "Number of element ID vectors does not match the number of Jacobian spaces." );
+  for ( IndexT i{}; i < getNSpaces(); ++i ) {
+    IndexT blockIdxI = static_cast<IndexT>( m_blockJSpaces[i] );
+    m_blockJElemIds[blockIdxI].push_back( blockJElemIds[i] );
+    for ( IndexT j{}; j < getNSpaces(); ++j ) {
+      IndexT blockIdxJ = static_cast<IndexT>( m_blockJSpaces[j] );
+      // convert to mfem::DenseMatrix
+      auto& block = blockJ( i, j );
+      // this DenseMatrix is a "view" of block
+      mfem::DenseMatrix block_densemat( const_cast<RealT*>( block.data() ), block.height(), block.width() );
+      // deep copy should happen here
+      m_blockJ( blockIdxI, blockIdxJ ).push_back( block_densemat );
+    }
+  }
+}
 
 ///////////////////////////////////////
 //                                   //
@@ -248,271 +191,248 @@ void MethodData::storeElemBlockJ(
 MortarData::MortarData()
 {
   // set null pointers
-  this->m_smat       = nullptr;
+  this->m_smat = nullptr;
 }
 
 //------------------------------------------------------------------------------
 // Destructor
 MortarData::~MortarData()
 {
-  if (this->m_smat != nullptr)
-  {
-     delete this->m_smat;
-     this->m_smat = nullptr;
+  if ( this->m_smat != nullptr ) {
+    delete this->m_smat;
+    this->m_smat = nullptr;
   }
 }
 
 //------------------------------------------------------------------------------
-void MortarData::assembleJacobian( SurfaceContactElem & elem, SparseMode s_mode ) const
+void MortarData::assembleJacobian( SurfaceContactElem& elem, SparseMode s_mode ) const
 {
-   (void) s_mode; // will be used at a later point
-   // grab the two meshes in this coupling scheme
-   MeshManager& meshManager = MeshManager::getInstance();
+  (void)s_mode;  // will be used at a later point
+  // grab the two meshes in this coupling scheme
+  auto& mortarMesh = *elem.m_mesh1;
+  auto& nonmortarMesh = *elem.m_mesh2;
 
-   IndexType const masterId = elem.meshId1;
-   IndexType const slaveId  = elem.meshId2;
+  // compute the pressure dof offset.
+  // Recall that the "equilibrium"
+  // block is the problem_dimension x total_number_of_coupling_scheme_nodes,
+  // which is the sum of mortar and nonmortar mesh nodes registered
+  // by the host code. The node ids between the two are assumed to
+  // be unique and contiguous. There is space to store a pressure
+  // dof for ALL nonmortar AND mortar nodes (done for ease of indexing
+  // using connectivity arrays registered by the host code), but we
+  // will pass back an array indicating the active pressure dofs for
+  // both mortar and nonmortar meshes in the case of LM implementations
 
-   MeshData& masterMesh = meshManager.GetMeshInstance( masterId );
-   MeshData& slaveMesh  = meshManager.GetMeshInstance( slaveId );
+  // TODO: fix tests where we now assume the number of nodes on the
+  // registered nonmortar and mortar mesh is ONLY the number of nonmortar
+  // nodes and mortar nodes, respectively.
+  int numNodes = this->m_numTotalNodes;
+  int presOffset = elem.dim * numNodes;
 
-   // compute the pressure dof offset. 
-   // Recall that the "equilibrium" 
-   // block is the problem_dimension x total_number_of_coupling_scheme_nodes,
-   // which is the sum of master and slave mesh nodes registered 
-   // by the host code. The node ids between the two are assumed to 
-   // be unique and contiguous. There is space to store a pressure 
-   // dof for ALL slave AND master nodes (done for ease of indexing 
-   // using connectivity arrays registered by the host code), but we 
-   // will pass back an array indicating the active pressure dofs for 
-   // both master and slave meshes in the case of LM implementations
+  // loop over contact element nodes and assemble the four block
+  // contributions stored in arrays on the SurfaceContactElem struct
 
-   // TODO: fix tests where we now assume the number of nodes on the 
-   // registered slave and master mesh is ONLY the number of slave 
-   // nodes and master nodes, respectively.
-   int numNodes = this->m_numTotalNodes;
-   int presOffset = elem.dim * numNodes;
+  // loop over face nodes "a" (general loop, don't distinguish mortar/nonmortar
+  // as that changes for Jrp and Jgu contributions)
+  for ( int a = 0; a < elem.numFaceVert; ++a ) {
+    // get mortar and nonmortar node ids from connectivity
+    int mortarNodeIdA = mortarMesh.getGlobalNodeId( elem.faceId1, a );
+    int nonmortarNodeIdA = nonmortarMesh.getGlobalNodeId( elem.faceId2, a );
 
-   // loop over contact element nodes and assemble the four block 
-   // contributions stored in arrays on the SurfaceContactElem struct
+    // loop over face nodes "b" (general loop, don't distinguish mortar/nonmortar
+    // as that changes for Jrp and Jgu contributions)
+    for ( int b = 0; b < elem.numFaceVert; ++b ) {
+      // get nonmortar node id from connectivity
+      int nonmortarNodeIdB = nonmortarMesh.getGlobalNodeId( elem.faceId2, b );
 
-   // loop over face nodes "a" (general loop, don't distinguish master/slave 
-   // as that changes for Jrp and Jgu contributions)
-   for (int a = 0; a<elem.numFaceVert; ++a)
-   {
-      // get master and slave node ids from connectivity
-      int masterNodeIdA = masterMesh.getFaceNodeId( elem.faceId1, a );
-      int slaveNodeIdA  = slaveMesh.getFaceNodeId( elem.faceId2, a );
+      // We don't exclude nonmortar nodes that are in separation. NOTE: Per
+      // testing, we include ALL nonmortar contributions for faces that
+      // have positive areas of overlap regardless of gap evaluation. Contact
+      // activity is determined from gaps AND pressure solution per KKT constraint
+      // equations
 
-      // loop over face nodes "b" (general loop, don't distinguish master/slave 
-      // as that changes for Jrp and Jgu contributions)
-      for (int b = 0; b<elem.numFaceVert; ++b)
-      {
-         // get slave node id from connectivity
-         int slaveNodeIdB = slaveMesh.getFaceNodeId( elem.faceId2, b );
+      /////////////////////////////////////////////////////////////////
+      // Assemble Jrp contributions (upper-right off-diagonal block) //
+      /////////////////////////////////////////////////////////////////
 
-         // We don't exclude slave nodes that are in separation. NOTE: Per 
-         // testing, we include ALL slave contributions for faces that 
-         // have positive areas of overlap regardless of gap evaluation. Contact 
-         // activity is determined from gaps AND pressure solution per KKT constraint 
-         // equations
+      // get local ids into contact element Jacobian arrays
+      int localId = elem.getJacobianIndex( SurfaceContactElem::JrpBlock, a, b );
 
-         /////////////////////////////////////////////////////////////////
-         // Assemble Jrp contributions (upper-right off-diagonal block) //
-         /////////////////////////////////////////////////////////////////
+      int i = elem.dim * mortarNodeIdA;       // mortar row contributions
+      int j = presOffset + nonmortarNodeIdB;  // nonmortar column contributions always
+      int dimOffset = elem.getJacobianDimOffset( SurfaceContactElem::JrpBlock );
 
-         // get local ids into contact element Jacobian arrays
-         int localId = elem.getJacobianIndex(SurfaceContactElem::JrpBlock, a, b );
+      // Add() will "set" if a nonzero entry hasn't been
+      // introduced at the (i,j) element
+      // Mortar-Lagrange multiplier block (0, 2)
+      this->m_smat->Add( i, j,
+                         elem.blockJ( static_cast<IndexT>( BlockSpace::MORTAR ),
+                                      static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+                             .data()[localId] );
+      this->m_smat->Add( i + 1, j,
+                         elem.blockJ( static_cast<IndexT>( BlockSpace::MORTAR ),
+                                      static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+                             .data()[localId + dimOffset] );
+      this->m_smat->Add( i + 2, j,
+                         elem.blockJ( static_cast<IndexT>( BlockSpace::MORTAR ),
+                                      static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+                             .data()[localId + 2 * dimOffset] );  // assume 3D for now
 
-         int i = elem.dim * masterNodeIdA; // master row contributions
-         int j = presOffset + slaveNodeIdB; // slave column contributions always
-         int dimOffset = elem.getJacobianDimOffset(SurfaceContactElem::JrpBlock);
+      // Nonmortar-Lagrange Multiplier block (1, 2)
+      i = elem.dim * nonmortarNodeIdA;  // nonmortar row contributions
+      this->m_smat->Add( i, j,
+                         elem.blockJ( static_cast<IndexT>( BlockSpace::NONMORTAR ),
+                                      static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+                             .data()[localId] );
+      this->m_smat->Add( i + 1, j,
+                         elem.blockJ( static_cast<IndexT>( BlockSpace::NONMORTAR ),
+                                      static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+                             .data()[localId + dimOffset] );
+      this->m_smat->Add( i + 2, j,
+                         elem.blockJ( static_cast<IndexT>( BlockSpace::NONMORTAR ),
+                                      static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+                             .data()[localId + 2 * dimOffset] );  // assume 3D for now
 
-         // Add() will "set" if a nonzero entry hasn't been 
-         // introduced at the (i,j) element
-         // Master-Lagrange multiplier block (0, 2)
-         this->m_smat->Add( i, j, elem.blockJ(
-            static_cast<axom::IndexType>(BlockSpace::MASTER),
-            static_cast<axom::IndexType>(BlockSpace::LAGRANGE_MULTIPLIER)
-         ).Data()[ localId ]);
-         this->m_smat->Add( i+1, j, elem.blockJ(
-            static_cast<axom::IndexType>(BlockSpace::MASTER),
-            static_cast<axom::IndexType>(BlockSpace::LAGRANGE_MULTIPLIER)
-         ).Data()[ localId + dimOffset ]);
-         this->m_smat->Add( i+2, j, elem.blockJ(
-            static_cast<axom::IndexType>(BlockSpace::MASTER),
-            static_cast<axom::IndexType>(BlockSpace::LAGRANGE_MULTIPLIER)
-         ).Data()[ localId + 2*dimOffset ]); // assume 3D for now
+      ////////////////////////////////////////////////////////////////
+      // Assemble Jgu contributions (lower-left off-diagonal block) //
+      ////////////////////////////////////////////////////////////////
 
-         // Slave-Lagrange Multiplier block (1, 2)
-         i = elem.dim * slaveNodeIdA; // slave row contributions
-         this->m_smat->Add( i, j, elem.blockJ(
-            static_cast<axom::IndexType>(BlockSpace::SLAVE),
-            static_cast<axom::IndexType>(BlockSpace::LAGRANGE_MULTIPLIER)
-         ).Data()[ localId  ]);
-         this->m_smat->Add( i+1, j, elem.blockJ(
-            static_cast<axom::IndexType>(BlockSpace::SLAVE),
-            static_cast<axom::IndexType>(BlockSpace::LAGRANGE_MULTIPLIER)
-         ).Data()[ localId + dimOffset ]);
-         this->m_smat->Add( i+2, j, elem.blockJ(
-            static_cast<axom::IndexType>(BlockSpace::SLAVE),
-            static_cast<axom::IndexType>(BlockSpace::LAGRANGE_MULTIPLIER)
-         ).Data()[ localId + 2*dimOffset ]); // assume 3D for now
+      // note b and a are swapped.  index a loops over displacement DOFs (i.e. the
+      // columns of Jgu) and index b loops over pressure DOFs (rows of Jgu)
+      localId = elem.getJacobianIndex( SurfaceContactElem::JguBlock, b, a );
 
-         ////////////////////////////////////////////////////////////////
-         // Assemble Jgu contributions (lower-left off-diagonal block) //
-         ////////////////////////////////////////////////////////////////
+      i = presOffset + nonmortarNodeIdB;  // nonmortar rows always
+      j = elem.dim * mortarNodeIdA;       // mortar column contributions
+      dimOffset = elem.getJacobianDimOffset( SurfaceContactElem::JguBlock );
 
-         // note b and a are swapped.  index a loops over displacement DOFs (i.e. the
-         // columns of Jgu) and index b loops over pressure DOFs (rows of Jgu)
-         localId = elem.getJacobianIndex(SurfaceContactElem::JguBlock, b, a );
+      // Lagrange-multiplier-mortar block (2, 0)
+      this->m_smat->Add( i, j,
+                         elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
+                                      static_cast<IndexT>( BlockSpace::MORTAR ) )
+                             .data()[localId] );
+      this->m_smat->Add( i, j + 1,
+                         elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
+                                      static_cast<IndexT>( BlockSpace::MORTAR ) )
+                             .data()[localId + dimOffset] );
+      this->m_smat->Add( i, j + 2,
+                         elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
+                                      static_cast<IndexT>( BlockSpace::MORTAR ) )
+                             .data()[localId + 2 * dimOffset] );  // assume 3D for now
 
-         i = presOffset + slaveNodeIdB; // slave rows always
-         j = elem.dim * masterNodeIdA; // master column contributions
-         dimOffset = elem.getJacobianDimOffset(SurfaceContactElem::JguBlock);
+      // Lagrange multiplier-nonmortar block (2, 1)
+      j = elem.dim * nonmortarNodeIdA;  // nonmortar column contributions
+      this->m_smat->Add( i, j,
+                         elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
+                                      static_cast<IndexT>( BlockSpace::NONMORTAR ) )
+                             .data()[localId] );
+      this->m_smat->Add( i, j + 1,
+                         elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
+                                      static_cast<IndexT>( BlockSpace::NONMORTAR ) )
+                             .data()[localId + dimOffset] );
+      this->m_smat->Add( i, j + 2,
+                         elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
+                                      static_cast<IndexT>( BlockSpace::NONMORTAR ) )
+                             .data()[localId + 2 * dimOffset] );  // assume 3D for now
 
-         // Lagrange-multiplier-master block (2, 0)
-         this->m_smat->Add( i, j, elem.blockJ(
-            static_cast<axom::IndexType>(BlockSpace::LAGRANGE_MULTIPLIER),
-            static_cast<axom::IndexType>(BlockSpace::MASTER)
-         ).Data()[ localId ]);
-         this->m_smat->Add( i, j+1, elem.blockJ(
-            static_cast<axom::IndexType>(BlockSpace::LAGRANGE_MULTIPLIER),
-            static_cast<axom::IndexType>(BlockSpace::MASTER)
-         ).Data()[ localId + dimOffset ]);
-         this->m_smat->Add( i, j+2, elem.blockJ(
-            static_cast<axom::IndexType>(BlockSpace::LAGRANGE_MULTIPLIER),
-            static_cast<axom::IndexType>(BlockSpace::MASTER)
-         ).Data()[ localId + 2*dimOffset ]); // assume 3D for now
+      //////////////////////////////////////////////////
+      // Assemble Jru contributions (matrix 11-block) //
+      //////////////////////////////////////////////////
 
-         // Lagrange multiplier-slave block (2, 1)
-         j = elem.dim * slaveNodeIdA; // slave column contributions
-         this->m_smat->Add( i, j, elem.blockJ(
-            static_cast<axom::IndexType>(BlockSpace::LAGRANGE_MULTIPLIER),
-            static_cast<axom::IndexType>(BlockSpace::SLAVE)
-         ).Data()[ localId  ]);
-         this->m_smat->Add( i, j+1, elem.blockJ(
-            static_cast<axom::IndexType>(BlockSpace::LAGRANGE_MULTIPLIER),
-            static_cast<axom::IndexType>(BlockSpace::SLAVE)
-         ).Data()[ localId + dimOffset ]);
-         this->m_smat->Add( i, j+2, elem.blockJ(
-            static_cast<axom::IndexType>(BlockSpace::LAGRANGE_MULTIPLIER),
-            static_cast<axom::IndexType>(BlockSpace::SLAVE)
-         ).Data()[ localId + 2*dimOffset ]); // assume 3D for now
+      // TODO implement the assembly procedure if we want to add a consistent
+      // Jacobian
 
-         //////////////////////////////////////////////////
-         // Assemble Jru contributions (matrix 11-block) //
-         //////////////////////////////////////////////////
+      //////////////////////////////////////////////////
+      // Assemble Jgp contributions (matrix 22-block) //
+      //////////////////////////////////////////////////
 
-         // TODO implement the assembly procedure if we want to add a consistent
-         // Jacobian
+      // TODO implement the assembly procedure if we want to add a consistent
+      // Jacobian
 
-         //////////////////////////////////////////////////
-         // Assemble Jgp contributions (matrix 22-block) //
-         //////////////////////////////////////////////////
-            
-         // TODO implement the assembly procedure if we want to add a consistent
-         // Jacobian
-         
-      } // end loop over b nodes
-   } // end loop over a nodes
+    }  // end loop over b nodes
+  }  // end loop over a nodes
 
-   return;
-} // end of MortarData::assembleJacobian() 
+  return;
+}  // end of MortarData::assembleJacobian()
 
 //------------------------------------------------------------------------------
-void MortarData::assembleMortarWts( SurfaceContactElem & elem, SparseMode s_mode ) const
+void MortarData::assembleMortarWts( SurfaceContactElem& elem, SparseMode s_mode ) const
 {
-   // Note: check for active gaps here
-   // grab the two meshes in this coupling scheme
-   MeshManager& meshManager = MeshManager::getInstance();
+  // Note: check for active gaps here
+  // grab the two meshes in this coupling scheme
+  auto& mortarMesh = *elem.m_mesh1;
+  auto& nonmortarMesh = *elem.m_mesh2;
 
-   IndexType const masterId = elem.meshId1;
-   IndexType const slaveId  = elem.meshId2; 
+  // Note: The node ids between the two are assumed to
+  // be unique and contiguous using the int ids in the
+  // mortar and nonmortar mesh connectivity arrays with the number
+  // of nodes specified for each mesh being the number of mortar
+  // and the number of nonmortar nodes for each mesh, respectively.
+  // int numNodes = this->m_numTotalNodes;
 
-   MeshData& masterMesh = meshManager.GetMeshInstance( masterId );
-   MeshData& slaveMesh  = meshManager.GetMeshInstance( slaveId );
+  // loop over contact element nodes and assemble the local weight
+  // contributions
 
-   // Note: The node ids between the two are assumed to 
-   // be unique and contiguous using the integer ids in the 
-   // master and slave mesh connectivity arrays with the number 
-   // of nodes specified for each mesh being the number of master
-   // and the number of slave nodes for each mesh, respectively.
-   //int numNodes = this->m_numTotalNodes;
+  // loop over nonmortar ROWS
+  for ( int a = 0; a < elem.numFaceVert; ++a ) {
+    // weights will be mortar/nonmortar (a,b) or nonmortar/nonmortar (a,b)
 
-   // loop over contact element nodes and assemble the local weight 
-   // contributions
+    // get nonmortar node ROW id from connectivity
+    int nonmortarNodeIdA = nonmortarMesh.getGlobalNodeId( elem.faceId2, a );
 
-   // loop over slave ROWS 
-   for (int a = 0; a<elem.numFaceVert; ++a)
-   {
-      // weights will be master/slave (a,b) or slave/slave (a,b)
+    // We include ALL nonmortar nodes, even if the nodal gap is in separation.
+    // NOTE: Per testing, we include ALL nonmortar node
+    // contributions for faces that have positive areas of overlap per the
+    // geometric filtering. Contact activity is not determined per
+    // gap interrogation, but rather gap AND pressure solution. For MORTAR_WEIGHTS,
+    // we just pass back all nonmortar node weights.
 
-      // get slave node ROW id from connectivity
-      int slaveNodeIdA = slaveMesh.getFaceNodeId( elem.faceId2, a );
+    // loop over mortar and nonmortar columns
+    for ( int b = 0; b < elem.numFaceVert; ++b ) {
+      // get mortar COL id based on connectivity array
+      int mortarNodeIdB = mortarMesh.getGlobalNodeId( elem.faceId1, b );
 
-      // We include ALL slave nodes, even if the nodal gap is in separation. 
-      // NOTE: Per testing, we include ALL slave node 
-      // contributions for faces that have positive areas of overlap per the 
-      // geometric filtering. Contact activity is not determined per 
-      // gap interrogation, but rather gap AND pressure solution. For MORTAR_WEIGHTS, 
-      // we just pass back all slave node weights.
+      // get nonmortar COL id based on connectivity array
+      int nonmortarNodeIdB = nonmortarMesh.getGlobalNodeId( elem.faceId2, b );
 
-      // loop over master and slave columns  
-      for (int b = 0; b<elem.numFaceVert; ++b)
-      {
-         // get master COL id based on connectivity array
-         int masterNodeIdB = masterMesh.getFaceNodeId( elem.faceId1, b );
+      // Add() will "set" if a nonzero entry hasn't been
+      // introduced at the (i,j) element
+      if ( s_mode == SparseMode::MFEM_LINKED_LIST ) {
+        // note: if we are here, the mfem sparse object, m_smat, has been allocated
+        this->m_smat->Add( nonmortarNodeIdA, mortarNodeIdB, elem.getNonmortarMortarWt( a, b ) );
+        this->m_smat->Add( nonmortarNodeIdA, nonmortarNodeIdB, elem.getNonmortarNonmortarWt( a, b ) );
+      } else if ( s_mode == SparseMode::MFEM_INDEX_SET ) {
+        SLIC_ERROR( "MortarData::assembleMortarWts() MFEM_INDEX_SET " << "not implemented." );
+      }
 
-         // get slave COL id based on connectivity array
-         int slaveNodeIdB  = slaveMesh.getFaceNodeId( elem.faceId2, b );
+    }  // end loop over b nodes (columns)
+  }  // end loop over a nodes (rows)
 
-         // Add() will "set" if a nonzero entry hasn't been 
-         // introduced at the (i,j) element
-         if (s_mode == SparseMode::MFEM_LINKED_LIST)
-         {
-            // note: if we are here, the mfem sparse object, m_smat, has been allocated
-            this->m_smat->Add( slaveNodeIdA, masterNodeIdB, elem.getSlaveMasterWt( a, b ) );
-            this->m_smat->Add( slaveNodeIdA, slaveNodeIdB, elem.getSlaveSlaveWt( a, b ) );
-         }
-         else if (s_mode == SparseMode::MFEM_INDEX_SET)
-         {
-            SLIC_ERROR("MortarData::assembleMortarWts() MFEM_INDEX_SET " << 
-                       "not implemented."); 
-         }
-
-      } // end loop over b nodes (columns)
-   } // end loop over a nodes (rows)
-
-   return;
-} // end of MortarData::assembleMortarWts()
+  return;
+}  // end of MortarData::assembleMortarWts()
 
 //------------------------------------------------------------------------------
-void MortarData::getCSRArrays( int** I, int** J, real** vals,
-                               int* n_offsets, int* n_nonzero)
+void MortarData::getCSRArrays( int** I, int** J, RealT** vals, int* n_offsets, int* n_nonzero )
 {
-   if (this->m_smat == nullptr)
-   {
-      SLIC_ERROR("getCSRArrays: method data get routine has m_smat == nullptr.");
-   }
+  if ( this->m_smat == nullptr ) {
+    SLIC_ERROR( "getCSRArrays: method data get routine has m_smat == nullptr." );
+  }
 
-   this->m_smat->Finalize();
-   *I = this->m_smat->GetI();
-   *J = this->m_smat->GetJ();
-   *vals = this->m_smat->GetData();
+  this->m_smat->Finalize();
+  *I = this->m_smat->GetI();
+  *J = this->m_smat->GetJ();
+  *vals = this->m_smat->GetData();
 
-   // Set the sizes
-   if(n_offsets != nullptr)
-   {
-      *n_offsets = this->m_smat->GetMemoryI().Capacity();
-   }
-   if(n_nonzero != nullptr)
-   {
-      *n_nonzero = this->m_smat->GetMemoryJ().Capacity();
-   }
+  // Set the sizes
+  if ( n_offsets != nullptr ) {
+    *n_offsets = this->m_smat->GetMemoryI().Capacity();
+  }
+  if ( n_nonzero != nullptr ) {
+    *n_nonzero = this->m_smat->GetMemoryJ().Capacity();
+  }
 
-   return;
+  return;
 }
 
 //------------------------------------------------------------------------------
 
-} // end of namespace tribol
+}  // end of namespace tribol

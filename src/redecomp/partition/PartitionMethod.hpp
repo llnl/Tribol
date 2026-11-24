@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -6,10 +6,12 @@
 #ifndef SRC_REDECOMP_PARTITION_PARTITIONMETHOD_HPP_
 #define SRC_REDECOMP_PARTITION_PARTITIONMETHOD_HPP_
 
+#include "redecomp/common/CoordList.hpp"
 #include "redecomp/common/TypeDefs.hpp"
 
-namespace redecomp
-{
+#include "mfem.hpp"
+
+namespace redecomp {
 
 /**
  * @brief PartitionMethod base class
@@ -23,30 +25,24 @@ namespace redecomp
  * @tparam NDIMS number of dimensions
  */
 template <int NDIMS>
-class PartitionMethod
-{
-public:
+class PartitionMethod {
+ public:
   /**
-   * @brief Returns a list of entity ids on each rank/subdomain determined by
-   * the partitioning method
+   * @brief Returns a list of entity ids on each rank/subdomain determined by the partitioning method
    *
    * @param n_parts Number of subdomains to cut the list of coords into
-   * @param coords_by_mesh List of on-rank points (one point-per-entity, sorted
-   * by entity id) to subdivide sorted by mesh
-   * @param ghost_size Sets length to include entities as ghost on each
-   * subdomain
-   * @return List of entity ids and ghost information on each subdomain sorted
-   * by mesh
+   * @param coords_by_mesh List of on-rank points (one point-per-entity, sorted by entity id) to subdivide sorted by
+   * mesh
+   * @param ghost_size Sets length to include entities as ghost on each subdomain
+   * @return List of entity ids and ghost information on each subdomain sorted by mesh
    */
-  virtual std::vector<EntityIndexByRank> generatePartitioning(
-    int n_parts,
-    const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh,
-    double ghost_size
-  ) const = 0;
-  
+  virtual std::vector<EntityIndexByRank> generatePartitioning( int n_parts,
+                                                               const std::vector<CoordList<NDIMS>>& coords_by_mesh,
+                                                               RealT ghost_size ) const = 0;
+
   /**
    * @brief Returns the MPIUtility
-   * 
+   *
    * @return MPIUtility reference
    */
   const MPIUtility& getMPIUtility() const;
@@ -56,25 +52,24 @@ public:
    */
   virtual ~PartitionMethod() = default;
 
-protected:
+ protected:
   /**
    * @brief Construct a new PartitionMethod object
-   * 
+   *
    * @param comm MPI_Comm to used to build MPIUtility
    */
-  PartitionMethod(const MPI_Comm& comm);
+  PartitionMethod( const MPI_Comm& comm );
 
-private:
+ private:
   /**
    * @brief MPIUtility used to hold MPI communication patterns used in redecomp
    */
   const MPIUtility mpi_;
-  
 };
 
 using PartitionMethod2D = PartitionMethod<2>;
 using PartitionMethod3D = PartitionMethod<3>;
 
-} // end namespace redecomp
+}  // end namespace redecomp
 
 #endif /* SRC_REDECOMP_PARTITION_PARTITIONMETHOD_HPP_ */
