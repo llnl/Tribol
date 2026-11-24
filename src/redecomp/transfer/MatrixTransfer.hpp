@@ -57,7 +57,7 @@ class MatrixTransfer {
    *
    * @param test_elem_idx List of element IDs on the redecomp test space
    * @param trial_elem_idx List of element IDs on the redecomp trial space
-   * @param src List of element-level dense matrices from the redecomp mesh
+   * @param src_elem_mat List of element-level dense matrices from the redecomp mesh
    * @param parallel_assemble Performs parallel assembly (transforms to tdofs)
    * on the HypreParMatrix if true, returns ldofs otherwise
    * @return Owned pointer to mfem::HypreParMatrix on the parent mesh
@@ -76,7 +76,7 @@ class MatrixTransfer {
    *
    * @param test_elem_idx List of element IDs on the redecomp test space
    * @param trial_elem_idx List of element IDs on the redecomp trial space
-   * @param src List of element-level dense matrices from the redecomp mesh
+   * @param src_elem_mat List of element-level dense matrices from the redecomp mesh
    * @return mfem::SparseMatrix on the parent mesh (ldofs on the rows, global
    * ldofs on the columns) in linked-list format
    *

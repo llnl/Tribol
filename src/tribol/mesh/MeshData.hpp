@@ -73,7 +73,9 @@ struct MeshElemData {
   /*!
    * \brief Checks if the kinematic penalty data is valid
    *
-   * \param [in] pen_enfrc penalty enforcement option struct
+   * \param [in] pen_options penalty enforcement option struct
+   * \param [in] exec_mode execution mode used for penalty data checks
+   * \param [in] alloc_id allocator id used for execution-accessible penalty data
    *
    * \return true if the kinematic penalty option has valid data
    */
@@ -82,7 +84,7 @@ struct MeshElemData {
   /*!
    * \brief Checks if the rate penalty data is valid
    *
-   * \param [in] pen_enfrc to penalty enforcement option struct
+   * \param [in] pen_options penalty enforcement option struct
    *
    * \return true if the rate penalty option has valid data
    */
@@ -382,8 +384,8 @@ class MeshData {
      * @pre face_id identifies an existing face, and the requested extents match the mesh's nodal layout.
      */
     template <typename Coords>
-      requires( Coords::rank() == 2 )
     TRIBOL_HOST_DEVICE auto getFaceCoords( IndexT face_id ) const
+      requires( Coords::rank() == 2 )
     {
       assert( face_id >= 0 && face_id < numberOfElements() );
       assert( Coords::template extent<0>() == numberOfNodesPerElement() );
@@ -398,7 +400,7 @@ class MeshData {
      * \brief returns pointer to array of stacked nodal velocities for given face
      *
      * \param [in] face_id integer id of face
-     * \param [in/out] nodalVel pointer to an array of stacked (x,y,z) nodal velocities
+     * \param [in,out] vels pointer to an array of stacked (x,y,z) nodal velocities
      *
      */
     TRIBOL_HOST_DEVICE inline void getFaceVelocities( IndexT face_id, RealT* vels ) const;
@@ -408,7 +410,7 @@ class MeshData {
      * \brief returns pointer to array of stacked normal components
      *
      * \param [in] face_id integer id of face
-     * \param [in/out] nrml pointer to array of stacked components of the face normal vector
+     * \param [in,out] nrml pointer to array of stacked components of the face normal vector
      *
      */
     TRIBOL_HOST_DEVICE inline void getFaceNormal( IndexT face_id, RealT* nrml ) const;
@@ -418,7 +420,7 @@ class MeshData {
      * \brief returns pointer to array of stacked face centroid components
      *
      * \param [in] face_id integer id of face
-     * \param [in/out] cx pointer to array of stacked components of the face centroid components
+     * \param [in,out] cx pointer to array of stacked components of the face centroid components
      *
      */
     TRIBOL_HOST_DEVICE inline void getFaceCentroid( IndexT face_id, RealT* cx ) const;
@@ -758,13 +760,16 @@ class MeshData {
    * \brief Checks for valid penalty enforcement data
    *
    * \param [in] p_enfrc_options penalty enforcement options guiding check
+   * \param [in] exec_mode execution mode used for penalty data checks
    */
   int checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options, ExecutionMode exec_mode );
 
   /*!
    * \brief Computes the face normals and centroids for all faces in the mesh
    *
+   * \tparam ElemNormalMethod callable type used to compute element normals
    * \param [in] exec_mode defines where loops should be executed
+   * \param [in] elem_normal callable used to compute one element normal
    * \return true if face calculations do not encounter errors or warnings
    *
    * This routine accounts for warped faces by computing an average normal.

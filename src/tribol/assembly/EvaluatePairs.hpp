@@ -42,10 +42,10 @@ namespace tribol {
  * the input meshes are destroyed. Quadrature failures are recorded for the caller to check.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
-  requires( PairFunction::Coords1::rank() == 2 && PairFunction::Coords2::rank() == 2 )
 PairValueBuffer<PairFunction::size_values> evaluatePairValues( const ArrayT<InterfacePair>& pairs,
                                                                MeshData::Viewer mesh1, MeshData::Viewer mesh2,
                                                                PairFunction pair_function )
+  requires( PairFunction::Coords1::rank() == 2 && PairFunction::Coords2::rank() == 2 )
 {
   PairValueBuffer<PairFunction::size_values> all_pair_values( pairs.size(), pairs.getAllocatorID() );
   const auto all_pair_values_view = all_pair_values.view();
@@ -96,9 +96,9 @@ PairValueBuffer<PairFunction::size_values> evaluatePairValues( const ArrayT<Inte
  * are destroyed. Quadrature failures are recorded for the caller to check.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
-  requires( PairFunction::Coords1::rank() == 2 && PairFunction::Coords2::rank() == 2 )
 PairValueJacobianBuffer<PairFunction::size_values, PairFunction::size_coords> evaluatePairValuesAndJacobians(
     const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function )
+  requires( PairFunction::Coords1::rank() == 2 && PairFunction::Coords2::rank() == 2 )
 {
   PairValueJacobianBuffer<PairFunction::size_values, PairFunction::size_coords> all_pair_values(
       pairs.size(), pairs.getAllocatorID() );
@@ -161,10 +161,10 @@ PairValueJacobianBuffer<PairFunction::size_values, PairFunction::size_coords> ev
  * @pre The caller has checked pair quadrature for errors at these coordinates.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction, typename WeightReader>
-  requires( PairFunction::Coords1::rank() == 2 && PairFunction::Coords2::rank() == 2 )
 PairJacobianHessianBuffer<PairFunction::size_coords> evaluatePairWeightedJacobiansAndHessians(
     const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function,
     WeightReader read_weights )
+  requires( PairFunction::Coords1::rank() == 2 && PairFunction::Coords2::rank() == 2 )
 {
   PairJacobianHessianBuffer<PairFunction::size_coords> all_pair_values( pairs.size(), pairs.getAllocatorID() );
   const auto all_pair_values_view = all_pair_values.view();
@@ -217,9 +217,9 @@ PairJacobianHessianBuffer<PairFunction::size_coords> evaluatePairWeightedJacobia
  * and the input meshes are destroyed. Quadrature failures are recorded for the caller to check.
  */
 template <ExecutionMode Exec, PairFunctionType PairFunction>
-  requires( PairFunction::size_values == 1 && PairFunction::Coords1::rank() == 2 && PairFunction::Coords2::rank() == 2 )
 PairValueJacobianHessianBuffer<PairFunction::size_coords> evaluatePairValuesJacobiansAndHessians(
     const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2, PairFunction pair_function )
+  requires( PairFunction::size_values == 1 && PairFunction::Coords1::rank() == 2 && PairFunction::Coords2::rank() == 2 )
 {
   PairValueJacobianHessianBuffer<PairFunction::size_coords> all_pair_values( pairs.size(), pairs.getAllocatorID() );
   const auto all_pair_values_view = all_pair_values.view();

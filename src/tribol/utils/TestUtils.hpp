@@ -216,7 +216,7 @@ class TestMesh {
    * \brief sets up the Dirichlet BC node ids and values for a single 3D mesh block
    *        for the contact PATCH TEST
    *
-   * \param [in] meshId mesh id for the given block
+   * \param [in] mesh_id mesh id for the given block
    * \param [in] numElemsX number of elements in the x-direction
    * \param [in] numElemsY number of elements in the y-direction
    * \param [in] numElemsZ number of elements in the z-direction
@@ -234,7 +234,7 @@ class TestMesh {
   /*!
    * \brief sets up pressure dof ids for a 3D nonmortar mesh block for PATCH TEST
    *
-   * \param [in] meshId id of the mesh block for patch test
+   * \param [in] mesh_id id of the mesh block for patch test
    * \param [in] numElemsX number of elements in x-direction of nonmortar block
    * \param [in] numElemsY number of elements in y-direction of nonmortar block
    * \param [in] numElemsZ number of elements in z-direction of nonmortar block
@@ -248,6 +248,7 @@ class TestMesh {
   /*!
    * \brief allocates and sets velocity arrays
    *
+   * \param [in] mesh_id mesh id for the velocity arrays
    * \param [in] valX x-velocity value to set velocity arrays
    * \param [in] valY y-velocity value to set velocity arrays
    * \param [in] valZ z-velocity value to set velocity arrays
@@ -260,6 +261,7 @@ class TestMesh {
   /*!
    * \brief allocates and sets bulk modulus arrays on mesh
    *
+   * \param [in] mesh_id mesh id for the bulk modulus array
    * \param [in] val single scalar bulk modulus
    *
    * \note in the future we should handle an array of values
@@ -270,7 +272,8 @@ class TestMesh {
   /*!
    * \brief allocates and sets element thickness arrays on mesh
    *
-   * \param [in] val single scalar element thickness
+   * \param [in] mesh_id mesh id for the element thickness array
+   * \param [in] t single scalar element thickness
    *
    * \note this is suitable for a uniform mesh. In the future we
    *       should handle an array of values
@@ -311,7 +314,8 @@ class TestMesh {
    *
    * \param [in,out] A      mfem sparse matrix data object where Jac. contributions are summed into
    * \param [in]     eInt   mfem elasticity integrator
-   * \param [in]     fes    finite element space
+   * \param [in]     fe_space finite element space
+   * \param [in]     matrixDebug whether to print matrix debugging output
    *
    *
    * \pre fes != nullptr

@@ -26,3 +26,10 @@ HAVE_DOT               = YES
 INTERACTIVE_SVG        = YES
 DISTRIBUTE_GROUP_DOC   = YES
 EXTRACT_PRIVATE        = YES
+ENABLE_PREPROCESSING  = YES
+MACRO_EXPANSION       = YES
+EXPAND_ONLY_PREDEF    = YES
+PREDEFINED           += TRIBOL_UNUSED_PARAM(x)=x \
+                        AXOM_UNUSED_PARAM(x)=x \
+                        TRIBOL_HOST_DEVICE= \
+                        TRIBOL_ENZYME_INLINE=

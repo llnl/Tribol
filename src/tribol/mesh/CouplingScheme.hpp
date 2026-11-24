@@ -257,6 +257,7 @@ class CouplingScheme {
    * @param [in] contact_model the contact model, e.g. FRICTION_COULOMB
    * @param [in] enforcement_method the enforcement method, e.g. PENALTY
    * @param [in] binning_method the binning method, e.g. BINNING_GRID
+   * @param [in] given_exec_mode requested execution mode
    *
    * Per-cycle rebinning is enabled by default.
    */
@@ -623,7 +624,7 @@ class CouplingScheme {
    *
    * @param [in] cycle the cycle at which this method is invoked.
    * @param [in] t the simulation time at the given cycle
-   * @param [in/out] dt the simulation dt at the given cycle sent back as Tribol timestep vote
+   * @param [in,out] dt the simulation dt at the given cycle sent back as Tribol timestep vote
    *
    * @return 0 if successful apply
    * @note Reports a SLIC error if Energy Mortar has no configured formulation.
@@ -633,7 +634,7 @@ class CouplingScheme {
   /**
    * @brief Wrapper around method specific calculation of the Tribol timestep vote
    *
-   * @param [in/out] dt simulation timestep at given cycle
+   * @param [in,out] dt simulation timestep at given cycle
    */
   void computeTimeStep( RealT& dt );
 
@@ -931,7 +932,7 @@ class CouplingScheme {
   /**
    * @brief Computes common-plane specific time step vote
    *
-   * @param [in/out] dt simulation timestep at given cycle
+   * @param [in,out] dt simulation timestep at given cycle
    */
   void computeCommonPlaneTimeStep( RealT& dt );
 

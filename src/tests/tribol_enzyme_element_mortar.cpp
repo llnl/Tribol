@@ -48,6 +48,9 @@ class EnzymeElementMortarTest : public testing::Test {
    * @param p1 Pressure of the first face
    * @param x1_stencil Stencil coordinate directions of the first face
    * @param x2_stencil Stencil coordinate directions of the second face
+   * @param num_nodes Number of nodes per face
+   * @param check_scale Scaling factor for finite-difference perturbations
+   * @param len_collapse_ratio Length-collapse ratio used by the check
    */
   void FDCheck( RealT* x1, RealT* x2, RealT* n1, RealT* p1, const RealT* x1_stencil = nullptr,
                 const RealT* x2_stencil = nullptr, int num_nodes = 4, RealT check_scale = 1.0,
@@ -394,6 +397,7 @@ class EnzymeElementMortarTest : public testing::Test {
    * @param x2 Coordinates of the second face
    * @param n1 Normal of the first face
    * @param p1 Pressure of the first face
+   * @param num_nodes Number of nodes per face
    */
   void SimplifiedJacobianCheck( RealT* x1, RealT* x2, RealT* n1, RealT* p1, int num_nodes = 4 )
   {

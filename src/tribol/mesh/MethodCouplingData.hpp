@@ -178,7 +178,7 @@ struct SurfaceContactElem {
   /*!
    * \brief routine to allocate space to store contact element Jacobians
    *
-   * \param [in] method contact method
+   * \param [in] enf enforcement method
    *
    */
   void allocateBlockJ( EnforcementMethod enf );
@@ -327,7 +327,7 @@ class MortarData : public MethodData {
    *        MFEM sparse matrix on the coupling scheme object
    *
    * \param [in] elem surface contact element struct with Jacobian data
-   * \param [in] sparse mode for assembly
+   * \param [in] s_mode sparse mode for assembly
    *
    */
   void assembleJacobian( SurfaceContactElem& elem, SparseMode s_mode ) const;
