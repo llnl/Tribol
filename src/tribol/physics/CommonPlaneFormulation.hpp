@@ -224,7 +224,7 @@ class CommonPlaneFormulation final : public ContactFormulation {
     auto result = residual_outputs_.template computeResidual<Exec>( pairs, mesh1, mesh2, pair_integral_ );
     if ( timestep_settings_.has_value() ) {
       result.time_step = TimestepCalculator( *timestep_settings_ )
-                             .template computeForPairIntegral<Exec>( pairs, mesh1, mesh2, pair_integral_, inputs.dt );
+                             .template compute<Exec>( pairs, mesh1, mesh2, pair_integral_, inputs.dt );
     }
     return result;
   }

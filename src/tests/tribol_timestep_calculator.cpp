@@ -235,7 +235,7 @@ TEST( TimestepCalculatorTest, runtime_criteria_toggles_control_active_checks )
   {
     TimestepCalculator calc( settings );
     EXPECT_FALSE( calc.anyEnabled() );
-    EXPECT_TRUE( std::isinf( calc.evaluatePoint( point, 1.0 ) ) );
+    EXPECT_TRUE( std::isinf( calc.evaluatePenetrationCriteria( point, 1.0 ) ) );
     EXPECT_TRUE( std::isinf( calc.evaluatePairSpringMassCfl( pair ) ) );
     EXPECT_TRUE( std::isinf( calc.finalizeNodalPenaltyCfl( 100.0, 0.0 ) ) );
   }
@@ -244,7 +244,7 @@ TEST( TimestepCalculatorTest, runtime_criteria_toggles_control_active_checks )
   settings.active_criteria = { false, false, false, true };
   {
     TimestepCalculator calc( settings );
-    EXPECT_TRUE( std::isinf( calc.evaluatePoint( point, 1.0 ) ) );
+    EXPECT_TRUE( std::isinf( calc.evaluatePenetrationCriteria( point, 1.0 ) ) );
     EXPECT_NEAR( calc.evaluatePairSpringMassCfl( pair ), 2.0 / std::sqrt( 50.0 ), 1.0e-12 );
   }
 
@@ -252,7 +252,7 @@ TEST( TimestepCalculatorTest, runtime_criteria_toggles_control_active_checks )
   settings.active_criteria = { true, false, false, false };
   {
     TimestepCalculator calc( settings );
-    EXPECT_NEAR( calc.evaluatePoint( point, 1.0 ), 0.3 * 0.25 / 3.0, 1.0e-12 );
+    EXPECT_NEAR( calc.evaluatePenetrationCriteria( point, 1.0 ), 0.3 * 0.25 / 3.0, 1.0e-12 );
     EXPECT_TRUE( std::isinf( calc.evaluatePairSpringMassCfl( pair ) ) );
   }
 }

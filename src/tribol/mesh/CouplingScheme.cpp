@@ -1422,17 +1422,46 @@ void CouplingScheme::computeTimeStep( RealT& dt )
 
 namespace detail {
 
-/** @brief Pair visitor extracting overlap-centroid kinematics and single-point CFL data for legacy Common Plane. */
-struct LegacyCommonPlaneTimestepVisitor {
-  CouplingScheme::Viewer cs_view;
-  TimestepCriteria criteria;
-  int dim{ 3 };
-  bool include_tangential_damping{ false };
-  IndexT second_dof_offset{ 0 };
+/**
+ * @brief Evaluate active timestep criteria across Common Plane contact pairs on execution mode Exec.
+ * @tparam Exec Concrete execution mode for the pair and row-sum reduction kernels.
+ * @param cs_view Coupling scheme device view supplying CompGeom common planes and mesh views.
+ * @param calculator Timestep calculator holding active criteria and parameters.
+ * @param dt_in Incoming simulation timestep for velocity projection (<= 0 disables velocity projection).
+ * @param num_pairs Number of active Common Plane pairs.
+ * @param num_dofs Number of local DOF slots for nodal penalty CFL row-sum accumulation.
+ * @param allocator_id Umpire allocator ID matching the execution space.
+ * @param dim Spatial dimension (2 or 3).
+ * @param include_damping True when rate penalty or tangential viscous damping is active.
+ * @param include_tangential_damping True when tangential viscous damping is active.
+ * @param second_dof_offset Offset into row-sum arrays for mesh2 DOFs (0 when meshes share DOFs).
+ * @return Unclamped global allowable timestep, or +infinity when no active criterion votes.
+ */
+template <ExecutionMode Exec>
+RealT computeCommonPlaneTimeStep( CouplingScheme::Viewer cs_view, const TimestepCalculator& calculator, RealT dt_in,
+                                  IndexT num_pairs, IndexT num_dofs, int allocator_id, int dim, bool include_damping,
+                                  bool include_tangential_damping, IndexT second_dof_offset )
+{
+  const TimestepSettings& settings = calculator.settings();
+  const TimestepCriteria criteria = settings.active_criteria;
 
-  template <typename Collector>
-  TRIBOL_HOST_DEVICE void visitPair( IndexT i, const Collector& collector ) const
-  {
+  const bool run_nodal_penalty_cfl = criteria.nodal_penalty_cfl && num_pairs > 0;
+  const IndexT size_stiffness_row_sums =
+      run_nodal_penalty_cfl ? axom::utilities::max( static_cast<IndexT>( 1 ), num_dofs ) : 0;
+  const IndexT size_damping_row_sums = ( run_nodal_penalty_cfl && include_damping ) ? size_stiffness_row_sums : 0;
+
+  ArrayT<RealT> stiffness_row_sums_data( size_stiffness_row_sums, size_stiffness_row_sums, allocator_id );
+  ArrayT<RealT> damping_row_sums_data( size_damping_row_sums, size_damping_row_sums, allocator_id );
+  stiffness_row_sums_data.fill( 0.0 );
+  damping_row_sums_data.fill( 0.0 );
+  ArrayViewT<RealT> stiffness_row_sums = stiffness_row_sums_data.view();
+  ArrayViewT<RealT> damping_row_sums = damping_row_sums_data.view();
+  ArrayT<int> invalid_mass_data( { 0 }, allocator_id );
+  ArrayViewT<int> invalid_mass = invalid_mass_data.view();
+
+  ReduceMin<Exec, RealT> min_dt( std::numeric_limits<RealT>::infinity() );
+
+  forAllExec<Exec>( num_pairs, [=] TRIBOL_HOST_DEVICE( IndexT i ) {
     auto& cg_view = cs_view.getCompGeomView();
     auto& plane = cg_view.getCommonPlane( i );
 
@@ -1481,7 +1510,10 @@ struct LegacyCommonPlaneTimestepVisitor {
       point_data.thickness2 = m2.getElementData().m_thickness[index2];
       point_data.in_contact = plane.m_inContact;
 
-      collector.recordPoint( point_data );
+      const RealT dt_point = calculator.evaluatePenetrationCriteria( point_data, dt_in );
+      if ( std::isfinite( dt_point ) && dt_point > 0.0 ) {
+        min_dt.min( dt_point );
+      }
     }
 
     if ( plane.m_inContact && criteria.requiresInverseMass() && plane.m_area > 0.0 ) {
@@ -1497,12 +1529,15 @@ struct LegacyCommonPlaneTimestepVisitor {
         pair_data.inv_mass2 =
             computeSurfaceElementNormalInverseMass( m2, index2, overlap_normal, dim, local_invalid_mass );
         if ( local_invalid_mass ) {
-          collector.markInvalidMass();
+          tribol::atomicMax( &invalid_mass[0], 1 );
         } else {
           pair_data.penalty_stiffness_per_area = penalty_stiff_per_area;
           pair_data.overlap_measure = plane.m_area;
           pair_data.in_contact = true;
-          collector.recordPairSpringMassCfl( pair_data );
+          const RealT dt_pair = calculator.evaluatePairSpringMassCfl( pair_data );
+          if ( std::isfinite( dt_pair ) && dt_pair > 0.0 ) {
+            min_dt.min( dt_pair );
+          }
         }
       }
 
@@ -1570,11 +1605,60 @@ struct LegacyCommonPlaneTimestepVisitor {
             cfl_point.dof_indices[1][b][d] = second_dof_offset + node_id * dim + d;
           }
         }
-        collector.recordNodalPenaltyPoint( cfl_point );
+        calculator.accumulateNodalPenaltyPoint( cfl_point, stiffness_row_sums, damping_row_sums, invalid_mass );
       }
     }
+  } );
+
+  RealT local_stiffness_bound = 0.0;
+  RealT local_damping_bound = 0.0;
+  if ( run_nodal_penalty_cfl ) {
+    ReduceMax<Exec, RealT> max_stiffness( 0.0 );
+    ReduceMax<Exec, RealT> max_damping( 0.0 );
+    const bool has_damping_sums = size_damping_row_sums > 0;
+    forAllExec<Exec>( size_stiffness_row_sums, [=] TRIBOL_HOST_DEVICE( IndexT dof ) {
+      max_stiffness.max( stiffness_row_sums[dof] );
+      if ( has_damping_sums ) {
+        max_damping.max( damping_row_sums[dof] );
+      }
+    } );
+    local_stiffness_bound = max_stiffness.get();
+    local_damping_bound = max_damping.get();
   }
-};
+
+  ArrayT<int, 1, MemorySpace::Host> invalid_mass_host( invalid_mass_data );
+  int global_invalid_mass = invalid_mass_host[0];
+  RealT global_stiffness_bound = local_stiffness_bound;
+  RealT global_damping_bound = local_damping_bound;
+  RealT global_dt = min_dt.get();
+
+#ifdef TRIBOL_USE_MPI
+  if ( settings.use_mpi ) {
+    MPI_Allreduce( MPI_IN_PLACE, &global_invalid_mass, 1, MPI_INT, MPI_MAX, settings.communicator );
+    if ( criteria.nodal_penalty_cfl ) {
+      RealT bounds[2]{ global_stiffness_bound, global_damping_bound };
+      MPI_Allreduce( MPI_IN_PLACE, bounds, 2, MPI_DOUBLE, MPI_SUM, settings.communicator );
+      global_stiffness_bound = bounds[0];
+      global_damping_bound = bounds[1];
+    }
+    MPI_Allreduce( MPI_IN_PLACE, &global_dt, 1, MPI_DOUBLE, MPI_MIN, settings.communicator );
+  }
+#endif
+
+  if ( global_invalid_mass != 0 ) {
+    SLIC_ERROR_ROOT( "CouplingScheme::computeCommonPlaneTimeStep(): inverse diagonal mass data are invalid." );
+    return std::numeric_limits<RealT>::infinity();
+  }
+
+  if ( criteria.nodal_penalty_cfl ) {
+    const RealT nodal_penalty_dt = calculator.finalizeNodalPenaltyCfl( global_stiffness_bound, global_damping_bound );
+    if ( std::isfinite( nodal_penalty_dt ) && nodal_penalty_dt > 0.0 ) {
+      global_dt = std::min( global_dt, nodal_penalty_dt );
+    }
+  }
+
+  return global_dt;
+}
 
 }  // namespace detail
 
@@ -1595,26 +1679,31 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
   settings.use_mpi = ( mpi_initialized != 0 );
 #endif
 
+  const TimestepCalculator calculator( settings );
+  if ( !calculator.anyEnabled() || !calculator.validateRequiredFields( mesh1.getView(), mesh2.getView() ) ) {
+    dt = std::numeric_limits<RealT>::infinity();
+    return;
+  }
+
   const int dim = spatialDim();
   const bool meshes_share_dofs = ( m_mesh_id1 == m_mesh_id2 ) || hasMfemData();
   const IndexT first_dof_count = mesh1.numberOfNodes() * dim;
   const IndexT second_dof_count = mesh2.numberOfNodes() * dim;
   const IndexT second_dof_offset = meshes_share_dofs ? 0 : first_dof_count;
+  const IndexT num_pairs = getNumActivePairs();
+  const IndexT num_dofs = meshes_share_dofs ? axom::utilities::max( first_dof_count, second_dof_count )
+                                            : first_dof_count + second_dof_count;
+  const int allocator_id = getAllocatorId();
+  const RealT dt_in = dt > 0.0 ? dt : 0.0;
+  const bool include_damping = ( m_enforcementOptions.penalty_options.constraint_type == KINEMATIC_AND_RATE ) ||
+                               ( m_contactModel == VISCOUS_TANGENTIAL );
+  const bool include_tangential_damping = ( m_contactModel == VISCOUS_TANGENTIAL );
 
-  TimestepComputeConfig config;
-  config.num_pairs = getNumActivePairs();
-  config.num_dofs = meshes_share_dofs ? axom::utilities::max( first_dof_count, second_dof_count )
-                                      : first_dof_count + second_dof_count;
-  config.allocator_id = getAllocatorId();
-  config.current_dt = dt > 0.0 ? dt : 0.0;
-  config.include_damping = ( m_enforcementOptions.penalty_options.constraint_type == KINEMATIC_AND_RATE ) ||
-                           ( m_contactModel == VISCOUS_TANGENTIAL );
-
-  const detail::LegacyCommonPlaneTimestepVisitor visitor{ getView(), m_parameters.timestep_criteria, dim,
-                                                          m_contactModel == VISCOUS_TANGENTIAL, second_dof_offset };
-  dt = TimestepCalculator( settings )
-           .compute( getExecutionMode(), mesh1.getView(), mesh2.getView(), config, visitor )
-           .value_or( std::numeric_limits<RealT>::infinity() );
+  dt = dispatchExecutionMode( getExecutionMode(), [&]<ExecutionMode Exec>() {
+    return detail::computeCommonPlaneTimeStep<Exec>( getView(), calculator, dt_in, num_pairs, num_dofs, allocator_id,
+                                                     dim, include_damping, include_tangential_damping,
+                                                     second_dof_offset );
+  } );
 }
 
 //------------------------------------------------------------------------------
