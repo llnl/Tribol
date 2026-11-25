@@ -27,10 +27,9 @@ namespace tribol {
  * updateMfemParallelDecomposition() is called. The meshes used in the Tribol coupling scheme are created after the
  * parallel domains are rebalanced (using the redecomp library) through the call to updateMfemParallelDecomposition().
  *
- * If the registered mesh contains a higher-order Nodes grid function, then a low-order refined (LOR) mesh is created
- * (if needed) to use Tribol's linear contact methodologies. LOR support is currently limited to methods that do not
- * require Jacobian calculations, and is still experimental. The low-order refinement factor equals the order of the
- * Nodes grid function, but can be overridden using setMfemLowOrderRefinedFactor().
+ * Methods using linear surface elements can evaluate higher-order coordinate fields on a low-order refined (LOR)
+ * mesh. The default refinement factor is the coordinate order. Use setMfemLORFactor() to change it. The single mortar
+ * formulation transfers its assembled vectors and Jacobians from the linear surface to the solver true DOFs.
  *
  * Mortar methods implemented through ContactFormulation use the first mesh as the non-mortar integration surface
  * and the second as the mortar projection surface. Legacy SINGLE_MORTAR uses the opposite surface order.
@@ -85,6 +84,26 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
  * gaps and energy output are unsupported.
  */
 void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_jacobian = true );
+
+/**
+ * @brief Select the formulation for an MFEM single mortar scheme.
+ *
+ * Register mesh1 as the non-mortar integration surface and mesh2 as the mortar projection surface. Register reference
+ * coordinates before enabling this formulation. Use getMfemContactPressure() to supply the nodal multiplier before
+ * update(). The scalar submesh retains both surfaces. Keep the unused mortar-side pressure values at zero.
+ * The formulation uses the unshifted geometric gap. For SINGLE_MORTAR, setResidualGap() applies to the legacy
+ * calculation.
+ *
+ * Disabling returns to the legacy mesh order, for which mesh2 is the non-mortar surface. Legacy evaluation requires
+ * a Sequential registration. The pressure grid function from getMfemPressure() is separate from the formulation input.
+ *
+ * @param cs_id Registered MFEM coupling scheme.
+ * @param enabled Whether to use the single mortar formulation.
+ * @param exact_jacobian Whether to differentiate overlap and normals. Requires Enzyme. When false, df_dx is absent
+ * and the weighted-gap Jacobian holds integration weights, basis values, and normals fixed.
+ * @note Reports a SLIC error and preserves the selection if the requested configuration is unsupported.
+ */
+void setMfemUseSingleMortarFormulation( IndexT cs_id, bool enabled, bool exact_jacobian = true );
 
 /**
  * @brief Sets factor of refinement in low-order refined (LOR) representation of
@@ -333,6 +352,8 @@ mfem::HypreParVector getMfemContactResidual( IndexT cs_id );
  *
  * For coupling schemes with a ContactFormulation, the blocks are deep copies of the latest result, which the coupling
  * scheme keeps; this call does not affect getMfemDfDx(), getMfemDfDp(), or getMfemWeightedGapJacobian().
+ * Approximate single mortar has an implicit zero displacement block. With the single mortar formulation,
+ * the dual diagonal constrains pressure entries with no support on mesh1.
  *
  * @param cs_id Coupling scheme id with a registered MFEM mesh
  * @return Jacobian contributions as an mfem::BlockOperator

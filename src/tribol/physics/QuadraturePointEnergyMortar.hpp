@@ -74,7 +74,8 @@ struct PenaltyEnergyDensity {
 /**
  * @brief Quadrature-point Energy Mortar with energy, residual, and residual-Jacobian assembly.
  *
- * Uses PairEnergyIntegral with PenaltyEnergyDensity; the residual and its coordinate Jacobian are energy derivatives.
+ * Uses PairIntegral with EnergyIntegrand and PenaltyEnergyDensity; the residual and its coordinate Jacobian are energy
+ * derivatives.
  * @tparam Exec Concrete execution mode for search, evaluation, and assembly kernels.
  * @tparam PairRuleGenerator Generates quadrature points and physical weights for the current edge pair.
  * @tparam GapDefinition Geometric or offset alignment-corrected gap.
@@ -96,7 +97,8 @@ class QuadraturePointEnergyMortar final : public ContactFormulation {
                                PairListBuilder pair_builder )
       : mesh_data_( mesh_data ),
         jacobian_data_( jacobian_data ),
-        pair_integral_( std::move( rule_generator ), { penalty, std::move( gap ) } ),
+        pair_integral_( std::move( rule_generator ),
+                        EnergyIntegrand<PenaltyEnergyDensity<GapDefinition>>{ { penalty, std::move( gap ) } } ),
         pair_builder_( std::move( pair_builder ) )
   {
   }
@@ -119,7 +121,7 @@ class QuadraturePointEnergyMortar final : public ContactFormulation {
  private:
   const MfemMeshData& mesh_data_;          ///< Displacement transfer data referenced for this formulation's lifetime.
   const MfemJacobianData& jacobian_data_;  ///< Matrix transfer data referenced for this formulation's lifetime.
-  const PairEnergyIntegral<PairRuleGenerator, PenaltyEnergyDensity<GapDefinition>>
+  const PairIntegral<PairRuleGenerator, EnergyIntegrand<PenaltyEnergyDensity<GapDefinition>>>
       pair_integral_;             ///< Integrates the fixed compressive penalty energy density.
   PairListBuilder pair_builder_;  ///< Owned pair search.
 };

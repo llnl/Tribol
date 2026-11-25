@@ -268,7 +268,8 @@ TEST( TimestepCalculatorTest, enabled_nodal_cfl_requires_parent_data )
   using namespace tribol;
   using RuleGenerator = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<1>>;
   using Basis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
-  const PairTractionIntegral<RuleGenerator, CommonPlanePenaltyTraction<>, Basis> integral( RuleGenerator{}, { 1.0 } );
+  using Integrand = TractionIntegrand<CommonPlanePenaltyTraction<>, Basis>;
+  const PairIntegral<RuleGenerator, Integrand> integral( RuleGenerator{}, Integrand{ { 1.0 } } );
   MeshData mesh( 0, 0, 0, nullptr, EDGE, LINEAR_LAGRANGE, nullptr, nullptr, nullptr, MemorySpace::Host );
   const ArrayT<InterfacePair> pairs;
   TimestepSettings settings;

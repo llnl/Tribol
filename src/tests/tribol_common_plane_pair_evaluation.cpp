@@ -38,8 +38,8 @@ using Coordinates = MdArray<RealT, LinearEdgeGeometry::num_vertices, LinearEdgeG
 using QuadraticCoordinates = MdArray<RealT, QuadraticEdgeGeometry::num_nodes, QuadraticEdgeGeometry::spatial_dim>;
 using CommonPlaneRuleGenerator = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<1>>;
 using CommonPlaneTraction = CommonPlanePenaltyTraction<CommonPlaneGap>;
-using CommonPlaneResidualValue = PairTractionIntegral<CommonPlaneRuleGenerator, CommonPlaneTraction,
-                                                      BasisFunction<EDGE, LINEAR_LAGRANGE>>::PairResidual;
+using CommonPlaneLinearIntegrand = TractionIntegrand<CommonPlaneTraction, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
+using CommonPlaneResidualValue = PairIntegral<CommonPlaneRuleGenerator, CommonPlaneLinearIntegrand>::Result;
 
 /**
  * @brief Quadratic subdivided Common Plane rule generator with a chosen subelement point projection.
@@ -64,9 +64,12 @@ using ProjectedQuadraticCommonPlaneRuleGenerator =
  * @tparam NumPoints Number of Gauss points on each subelement-pair overlap.
  */
 template <int NumPoints>
-using ProjectedQuadraticCommonPlaneIntegral =
-    PairTractionIntegral<ProjectedQuadraticCommonPlaneRuleGenerator<NumPoints>,
-                         CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
+using ProjectedQuadraticCommonPlaneIntegrand =
+    TractionIntegrand<CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
+
+template <int NumPoints>
+using ProjectedQuadraticCommonPlaneIntegral = PairIntegral<ProjectedQuadraticCommonPlaneRuleGenerator<NumPoints>,
+                                                           ProjectedQuadraticCommonPlaneIntegrand<NumPoints>>;
 
 static_assert( PairFunctionType<ProjectedQuadraticCommonPlaneIntegral<3>> );
 
@@ -118,8 +121,7 @@ static_assert( PairTractionFunction<CommonPlaneTraction, CommonPlaneRuleGenerato
 static_assert( !PairEnergyFunction<CommonPlaneTraction, CommonPlaneRuleGenerator> );
 
 // Common Plane exposes the same values and quadrature state required by the shared pair derivative calculations.
-static_assert( PairFunctionType<PairTractionIntegral<CommonPlaneRuleGenerator, CommonPlaneTraction,
-                                                     BasisFunction<EDGE, LINEAR_LAGRANGE>>> );
+static_assert( PairFunctionType<PairIntegral<CommonPlaneRuleGenerator, CommonPlaneLinearIntegrand>> );
 
 #ifdef TRIBOL_USE_ENZYME
 /**
@@ -171,14 +173,14 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
       forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
         const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
         const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, separation }, MdArray<RealT, 2>{ 0.0, separation } };
-        const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>
-            rule_generator;
-        const PairTractionIntegral<
-            PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>,
-            CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>, BasisFunction<EDGE, LINEAR_LAGRANGE>>
-            pair_integral{
-                rule_generator,
-                { ComputePenaltyStiffnessPerArea( 2.0, 6.0 ), OffsetGap{ CommonPlaneGap{}, residual_gap } } };
+        using RuleGenerator =
+            PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>;
+        using Integrand = TractionIntegrand<CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>,
+                                            BasisFunction<EDGE, LINEAR_LAGRANGE>>;
+        const RuleGenerator rule_generator;
+        const PairIntegral<RuleGenerator, Integrand> pair_integral{
+            rule_generator,
+            Integrand{ { ComputePenaltyStiffnessPerArea( 2.0, 6.0 ), OffsetGap{ CommonPlaneGap{}, residual_gap } } } };
         pair_residuals_view[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
       } );
       const ArrayT<CommonPlaneResidualValue, 1, MemorySpace::Host> host_pair_residuals( pair_residuals );
@@ -281,15 +283,16 @@ class CommonPlaneTest : public tribol::detail::ExecutionTest {
         const Coordinates edge2{ MdArray<RealT, 2>{ 1.0, separation - slope },
                                  MdArray<RealT, 2>{ -1.0, separation + slope } };
         const LinearEdgeGeometry geometry1( edge1.view() ), geometry2( edge2.view() );
-        const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>
-            rule_generator;
+        using RuleGenerator =
+            PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>;
+        using Integrand = TractionIntegrand<CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>,
+                                            BasisFunction<EDGE, LINEAR_LAGRANGE>>;
+        const RuleGenerator rule_generator;
         const auto quadrature_rule = rule_generator.generate( geometry1, geometry2 );
         const auto line = CommonPlaneEdgeMapping::computeCommonPlaneLine( geometry1, geometry2 );
         overlap_results_view[0].interval = CommonPlaneEdgeMapping{}.makeIntegrationSurface( geometry1, geometry2 );
-        const PairTractionIntegral<
-            PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>,
-            CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>, BasisFunction<EDGE, LINEAR_LAGRANGE>>
-            pair_integral{ rule_generator, { 1.0, OffsetGap{ CommonPlaneGap{}, residual_gap } } };
+        const PairIntegral<RuleGenerator, Integrand> pair_integral{
+            rule_generator, Integrand{ { 1.0, OffsetGap{ CommonPlaneGap{}, residual_gap } } } };
         overlap_results_view[0].residual = pair_integral.evaluate( edge1.view(), edge2.view() );
         for ( int point = 0; point < NumPoints; ++point ) {
           const auto point1 = geometry1.position( { &quadrature_rule.geom1_parametric_coords( point, 0 ), 1 } );
@@ -393,17 +396,17 @@ TEST_P( CommonPlaneTest, balances_rotated_pair_forces_and_moments )
   const Coordinates edge1 = transform( reference_edge1 );
   const Coordinates edge2 = transform( reference_edge2 );
 
-  using Integral =
-      PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>>,
-                           CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
-  ArrayT<Integral::PairResidual> pair_residuals( 1, 1, allocatorId() );
+  using RuleGenerator = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>>;
+  using Integrand = TractionIntegrand<CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
+  using Integral = PairIntegral<RuleGenerator, Integrand>;
+  ArrayT<Integral::Result> pair_residuals( 1, 1, allocatorId() );
   const auto pair_residuals_view = pair_residuals.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
-    const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>> rule_generator;
-    const Integral pair_integral{ rule_generator, { penalty_stiffness } };
+    const RuleGenerator rule_generator;
+    const Integral pair_integral{ rule_generator, Integrand{ { penalty_stiffness } } };
     pair_residuals_view[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
   } );
-  const ArrayT<Integral::PairResidual, 1, MemorySpace::Host> host_pair_residuals( pair_residuals );
+  const ArrayT<Integral::Result, 1, MemorySpace::Host> host_pair_residuals( pair_residuals );
   const auto pair_residual_values = host_pair_residuals[0].values();
   RealT force_x = 0.0, force_y = 0.0, moment = 0.0;
   const Coordinates edges[] = { edge1, edge2 };
@@ -530,18 +533,19 @@ struct NodalPressureTraction {
 TEST_P( CommonPlaneTest, integrates_supplied_traction_with_independent_bases )
 {
   using RuleGenerator = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
-  using Integral = PairTractionIntegral<RuleGenerator, NodalPressureTraction, BasisFunction<EDGE, LINEAR_LAGRANGE>,
-                                        BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
+  using Integrand = TractionIntegrand<NodalPressureTraction, BasisFunction<EDGE, LINEAR_LAGRANGE>,
+                                      BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
+  using Integral = PairIntegral<RuleGenerator, Integrand>;
   static_assert( PairFunctionType<Integral> );
-  ArrayT<Integral::PairResidual> pair_residuals( 1, 1, allocatorId() );
+  ArrayT<Integral::Result> pair_residuals( 1, 1, allocatorId() );
   const auto pair_residuals_view = pair_residuals.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
     const Coordinates edge1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 } };
     const Coordinates edge2{ MdArray<RealT, 2>{ 1.0, -0.1 }, MdArray<RealT, 2>{ -1.0, -0.1 } };
-    const Integral pair_integral{ {}, {} };
+    const Integral pair_integral{ RuleGenerator{}, Integrand{} };
     pair_residuals_view[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
   } );
-  const ArrayT<Integral::PairResidual, 1, MemorySpace::Host> host_pair_residuals( pair_residuals );
+  const ArrayT<Integral::Result, 1, MemorySpace::Host> host_pair_residuals( pair_residuals );
   const auto& pair_residual = host_pair_residuals[0];
   ASSERT_EQ( pair_residual.quadrature_metadata.status, QuadratureStatus::Success );
   EXPECT_EQ( pair_residual.quadrature_metadata.num_required_points, 2 );
@@ -565,8 +569,9 @@ TEST_P( CommonPlaneTest, integrates_penalty_traction_with_quadratic_geometry_and
 {
   using Integral = ProjectedQuadraticCommonPlaneIntegral<1>;
   using RuleGenerator = ProjectedQuadraticCommonPlaneRuleGenerator<1>;
+  using Integrand = ProjectedQuadraticCommonPlaneIntegrand<1>;
 
-  ArrayT<Integral::PairResidual> pair_residuals( 1, 1, allocatorId() );
+  ArrayT<Integral::Result> pair_residuals( 1, 1, allocatorId() );
   const auto pair_residuals_view = pair_residuals.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
     // Two straight, oppositely directed quadratic edges spanning x in [-1, 1] at y=0.0 and y=0.1 (penetration 0.1),
@@ -575,11 +580,11 @@ TEST_P( CommonPlaneTest, integrates_penalty_traction_with_quadratic_geometry_and
                                       MdArray<RealT, 2>{ 0.0, 0.0 } };
     const MdArray<RealT, 3, 2> edge2{ MdArray<RealT, 2>{ 1.0, 0.1 }, MdArray<RealT, 2>{ -1.0, 0.1 },
                                       MdArray<RealT, 2>{ 0.0, 0.1 } };
-    const Integral pair_integral{ RuleGenerator{ default_num_quadrature_subdivisions }, { 1.0 } };
+    const Integral pair_integral{ RuleGenerator{ default_num_quadrature_subdivisions }, Integrand{ { 1.0 } } };
     pair_residuals_view[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
   } );
 
-  const ArrayT<Integral::PairResidual, 1, MemorySpace::Host> host_pair_residuals( pair_residuals );
+  const ArrayT<Integral::Result, 1, MemorySpace::Host> host_pair_residuals( pair_residuals );
   const auto& residual = host_pair_residuals[0];
   ASSERT_EQ( residual.quadrature_metadata.status, QuadratureStatus::Success );
   ASSERT_EQ( residual.quadrature_metadata.num_required_points, default_num_quadrature_subdivisions );
@@ -600,9 +605,11 @@ TEST_P( CommonPlaneTest, conserves_linear_and_angular_momentum_on_curved_quadrat
 {
   using Integral = ProjectedQuadraticCommonPlaneIntegral<3>;
   using RuleGenerator = ProjectedQuadraticCommonPlaneRuleGenerator<3>;
+  using Integrand = ProjectedQuadraticCommonPlaneIntegrand<3>;
   using AffineRuleGenerator = QuadraticCommonPlaneRuleGenerator<3, AffineSubelementMapping>;
-  using AffineIntegral = PairTractionIntegral<AffineRuleGenerator, CommonPlanePenaltyTraction<CommonPlaneGap>,
-                                              BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
+  using AffineIntegrand =
+      TractionIntegrand<CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, QUADRATIC_LAGRANGE>>;
+  using AffineIntegral = PairIntegral<AffineRuleGenerator, AffineIntegrand>;
   // Edge1 bulges upward; edge2 is rotated by 0.15 radians and bulges downward, so the curved edges interpenetrate with
   // varying gap and the moment arm of each paired point differs from its neighbors'.
   const QuadraticCoordinates edge1{ MdArray<RealT, 2>{ 1.0, 0.0 }, MdArray<RealT, 2>{ -1.0, 0.0 },
@@ -616,13 +623,13 @@ TEST_P( CommonPlaneTest, conserves_linear_and_angular_momentum_on_curved_quadrat
   constexpr RealT minimum_detectable_relative_moment = 1.0e-4;
   for ( const int num_subdivisions : { 1, 2, max_num_quadrature_subdivisions } ) {
     SCOPED_TRACE( num_subdivisions );
-    ArrayT<Integral::PairResidual> pair_residuals( 1, 1, allocatorId() );
+    ArrayT<Integral::Result> pair_residuals( 1, 1, allocatorId() );
     const auto pair_residuals_view = pair_residuals.view();
     forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
-      const Integral pair_integral{ RuleGenerator{ num_subdivisions }, { penalty } };
+      const Integral pair_integral{ RuleGenerator{ num_subdivisions }, Integrand{ { penalty } } };
       pair_residuals_view[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
     } );
-    const ArrayT<Integral::PairResidual, 1, MemorySpace::Host> host_pair_residuals( pair_residuals );
+    const ArrayT<Integral::Result, 1, MemorySpace::Host> host_pair_residuals( pair_residuals );
     const auto& residual = host_pair_residuals[0];
     ASSERT_EQ( residual.quadrature_metadata.status, QuadratureStatus::Success );
     ASSERT_TRUE( residual.has_active_points );
@@ -634,7 +641,7 @@ TEST_P( CommonPlaneTest, conserves_linear_and_angular_momentum_on_curved_quadrat
     EXPECT_NEAR( balance.moment, 0.0, balance_tolerance );
 
     if ( num_subdivisions == 1 ) {
-      const AffineIntegral affine_integral{ AffineRuleGenerator{ num_subdivisions }, { penalty } };
+      const AffineIntegral affine_integral{ AffineRuleGenerator{ num_subdivisions }, AffineIntegrand{ { penalty } } };
       const auto affine_residual = affine_integral.evaluate( edge1.view(), edge2.view() );
       ASSERT_EQ( affine_residual.quadrature_metadata.status, QuadratureStatus::Success );
       const auto affine_balance = computeNetForceAndMoment( affine_residual, edge1, edge2 );
@@ -693,10 +700,11 @@ TEST_P( CommonPlaneTest, activates_each_quadrature_point_after_gap_offset )
     forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
       const Coordinates edge1{ MdArray<RealT, 2>{ -1.0, -0.25 }, MdArray<RealT, 2>{ 1.0, 0.25 } };
       const Coordinates edge2{ MdArray<RealT, 2>{ 1.0, -0.25 }, MdArray<RealT, 2>{ -1.0, 0.25 } };
-      const PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>,
-                                 CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>,
-                                 BasisFunction<EDGE, LINEAR_LAGRANGE>>
-          pair_integral{ {}, { 1.0, OffsetGap{ CommonPlaneGap{}, residual_gap } } };
+      using RuleGenerator = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
+      using Integrand = TractionIntegrand<CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>,
+                                          BasisFunction<EDGE, LINEAR_LAGRANGE>>;
+      const PairIntegral<RuleGenerator, Integrand> pair_integral{
+          RuleGenerator{}, Integrand{ { 1.0, OffsetGap{ CommonPlaneGap{}, residual_gap } } } };
       pair_residuals_view[0] = pair_integral.evaluate( edge1.view(), edge2.view() );
     } );
     const ArrayT<CommonPlaneResidualValue, 1, MemorySpace::Host> host_pair_residuals( pair_residuals );
@@ -719,23 +727,22 @@ TEST_P( CommonPlaneTest, activates_each_quadrature_point_after_gap_offset )
   }
 }
 
+using TwoPointCommonPlaneRuleGenerator =
+    PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
+using TwoPointCommonPlaneIntegrand =
+    TractionIntegrand<CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
+using TwoPointCommonPlaneIntegral = PairIntegral<TwoPointCommonPlaneRuleGenerator, TwoPointCommonPlaneIntegrand>;
+
 /** @brief Supply a nonzero entry even for inactive or invalid pairs to check pair-output masking. */
-struct UnmaskedResidualPairFunction
-    : PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>,
-                           CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>> {
-  using PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>,
-                             CommonPlanePenaltyTraction<CommonPlaneGap>,
-                             BasisFunction<EDGE, LINEAR_LAGRANGE>>::PairTractionIntegral;
+struct UnmaskedResidualPairFunction : TwoPointCommonPlaneIntegral {
+  using TwoPointCommonPlaneIntegral::TwoPointCommonPlaneIntegral;
 
   /** @brief Evaluate the pair and overwrite one residual entry regardless of state.
    * @param coords1 First edge coordinates. @param coords2 Second edge coordinates.
    * @return Residual with its original quadrature status and activation, and a nonzero first entry. */
-  TRIBOL_HOST_DEVICE PairResidual evaluate( Coords1 coords1, Coords2 coords2 ) const
+  TRIBOL_HOST_DEVICE Result evaluate( Coords1 coords1, Coords2 coords2 ) const
   {
-    auto pair_residual =
-        PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>,
-                             CommonPlanePenaltyTraction<CommonPlaneGap>,
-                             BasisFunction<EDGE, LINEAR_LAGRANGE>>::evaluate( coords1, coords2 );
+    auto pair_residual = TwoPointCommonPlaneIntegral::evaluate( coords1, coords2 );
     pair_residual.geometry1( 0, 0 ) = 1.0;
     return pair_residual;
   }
@@ -744,10 +751,8 @@ struct UnmaskedResidualPairFunction
 // Force-only evaluation must keep pair slots distinct and preserve active zero-gap and invalid-geometry state.
 TEST_P( CommonPlaneTest, value_evaluation_returns_forces_and_quadrature_without_derivatives )
 {
-  using PairIntegral =
-      PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<2>>,
-                           CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
-  const PairIntegral pair_integral{ {}, { 1.0 } };
+  using Integral = TwoPointCommonPlaneIntegral;
+  const Integral pair_integral{ TwoPointCommonPlaneRuleGenerator{}, TwoPointCommonPlaneIntegrand{ { 1.0 } } };
   // Mesh1 contains one horizontal edge at y=0. Mesh2 contains four oppositely directed candidates: a penetrating edge
   // at y=0.1, an open edge at y=-0.1, a coincident edge, and a collapsed edge with both nodes at the origin.
   const auto mesh1_x = copyToExecutionSpace<RealT>( { 0.0, 2.0 } );
@@ -774,9 +779,9 @@ TEST_P( CommonPlaneTest, value_evaluation_returns_forces_and_quadrature_without_
     EXPECT_EQ( host_quadrature_metadata[pair].status,
                pair == 3 ? QuadratureStatus::InvalidGeometry : QuadratureStatus::Success );
     EXPECT_EQ( host_quadrature_metadata[pair].num_required_points, pair == 3 ? 0 : 2 );
-    for ( IndexT row = 0; row < PairIntegral::size_values; ++row ) {
+    for ( IndexT row = 0; row < Integral::size_values; ++row ) {
       const RealT expected_pair_value =
-          pair == 0 && row % 2 == 1 ? ( row < PairIntegral::size_geom1_coords ? -0.1 : 0.1 ) : 0.0;
+          pair == 0 && row % 2 == 1 ? ( row < Integral::size_geom1_coords ? -0.1 : 0.1 ) : 0.0;
       EXPECT_NEAR( host_pair_values[row * pair_list.size() + pair], expected_pair_value, tolerance );
     }
   }
@@ -785,7 +790,9 @@ TEST_P( CommonPlaneTest, value_evaluation_returns_forces_and_quadrature_without_
   } ) );
   // A second calculation uses different stiffness and must leave the first returned buffer unchanged.
   auto doubled_stiffness_buffer = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
-    return evaluatePairValues<Exec>( pair_list, mesh1.getView(), mesh2.getView(), PairIntegral{ {}, { 2.0 } } );
+    return evaluatePairValues<Exec>(
+        pair_list, mesh1.getView(), mesh2.getView(),
+        Integral{ TwoPointCommonPlaneRuleGenerator{}, TwoPointCommonPlaneIntegrand{ { 2.0 } } } );
   } );
   const Array1D<RealT, MemorySpace::Host> host_doubled_stiffness_values( doubled_stiffness_buffer.values() );
   const Array1D<RealT, MemorySpace::Host> host_preserved_pair_values( pair_value_buffer.values() );
@@ -795,8 +802,9 @@ TEST_P( CommonPlaneTest, value_evaluation_returns_forces_and_quadrature_without_
   }
   // Pair evaluation must zero inactive or failed outputs even when evaluate() supplies nonzero numerical entries.
   auto masked_pair_value_buffer = dispatchExecutionMode( GetParam(), [&]<ExecutionMode Exec>() {
-    return evaluatePairValues<Exec>( pair_list, mesh1.getView(), mesh2.getView(),
-                                     UnmaskedResidualPairFunction{ {}, { 1.0 } } );
+    return evaluatePairValues<Exec>(
+        pair_list, mesh1.getView(), mesh2.getView(),
+        UnmaskedResidualPairFunction{ TwoPointCommonPlaneRuleGenerator{}, TwoPointCommonPlaneIntegrand{ { 1.0 } } } );
   } );
   const Array1D<RealT, MemorySpace::Host> host_masked_values( masked_pair_value_buffer.values() );
   for ( IndexT pair = 0; pair < pair_list.size(); ++pair ) {
@@ -868,10 +876,11 @@ void checkPairJacobian( const PairIntegral& pair_integral, const Coords& edge1, 
 template <int NumPoints>
 void checkJacobian()
 {
-  using PairIntegral =
-      PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>,
-                           CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
-  const PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>> rule_generator;
+  using RuleGenerator = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>;
+  using OffsetIntegrand =
+      TractionIntegrand<CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
+  using Integral = PairIntegral<RuleGenerator, OffsetIntegrand>;
+  const RuleGenerator rule_generator;
   // The longer second edge in the offset case keeps the limiting overlap endpoint unchanged under perturbation.
   const Coordinates edge1_cases[] = { Coordinates{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.2 } },
                                       Coordinates{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 } },
@@ -882,8 +891,8 @@ void checkJacobian()
   const MdArray<RealT, 3> residual_gaps{ 0.03, 0.03, -0.3 };
   for ( int case_index = 0; case_index < residual_gaps.size(); ++case_index ) {
     SCOPED_TRACE( testing::Message() << "points=" << NumPoints << ", case=" << case_index );
-    const PairIntegral pair_integral{ rule_generator,
-                                      { 2.5, OffsetGap{ CommonPlaneGap{}, residual_gaps[case_index] } } };
+    const Integral pair_integral{
+        rule_generator, OffsetIntegrand{ { 2.5, OffsetGap{ CommonPlaneGap{}, residual_gaps[case_index] } } } };
     EXPECT_EQ( pair_integral.evaluate( edge1_cases[case_index].view(), edge2_cases[case_index].view() )
                    .quadrature_metadata.num_required_points,
                NumPoints );
@@ -891,10 +900,10 @@ void checkJacobian()
   }
   const Coordinates edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
   const Coordinates edge2{ MdArray<RealT, 2>{ 2.0, 0.0 }, MdArray<RealT, 2>{ 0.0, 0.0 } };
-  using UnshiftedIntegral =
-      PairTractionIntegral<PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>,
-                           CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
-  const UnshiftedIntegral unshifted_pair_integral{ rule_generator, { 1.0 } };
+  using UnshiftedIntegrand =
+      TractionIntegrand<CommonPlanePenaltyTraction<CommonPlaneGap>, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
+  using UnshiftedIntegral = PairIntegral<RuleGenerator, UnshiftedIntegrand>;
+  const UnshiftedIntegral unshifted_pair_integral{ rule_generator, UnshiftedIntegrand{ { 1.0 } } };
   const auto zero_gap_residual = unshifted_pair_integral.evaluate( edge1.view(), edge2.view() );
   EXPECT_TRUE( zero_gap_residual.has_active_points );
   const auto zero_gap_derivatives =
@@ -930,13 +939,15 @@ TEST( CommonPlaneJacobian, matches_finite_differences )
 
   using QuadraticPairIntegral = ProjectedQuadraticCommonPlaneIntegral<1>;
   using RuleGenerator = ProjectedQuadraticCommonPlaneRuleGenerator<1>;
+  using Integrand = ProjectedQuadraticCommonPlaneIntegrand<1>;
   // Two curved, non-parallel, interpenetrating quadratic edges whose midpoints are bowed upward and shifted so every
   // nodal coordinate contributes to the subdivided overlap bounds, local normals, and pointwise gaps.
   const QuadraticCoordinates edge1{ MdArray<RealT, 2>{ -1.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.1 },
                                     MdArray<RealT, 2>{ 0.0, 0.25 } };
   const QuadraticCoordinates edge2{ MdArray<RealT, 2>{ 1.3, 0.35 }, MdArray<RealT, 2>{ -1.1, 0.4 },
                                     MdArray<RealT, 2>{ 0.15, 0.55 } };
-  const QuadraticPairIntegral pair_integral{ RuleGenerator{ default_num_quadrature_subdivisions }, { 2.5 } };
+  const QuadraticPairIntegral pair_integral{ RuleGenerator{ default_num_quadrature_subdivisions },
+                                             Integrand{ { 2.5 } } };
   ASSERT_TRUE( pair_integral.evaluate( edge1.view(), edge2.view() ).has_active_points );
   checkPairJacobian( pair_integral, edge1, edge2, 3.0e-7 );
 }

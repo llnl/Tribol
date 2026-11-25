@@ -6,9 +6,12 @@
 #ifndef SRC_REDECOMP_TRANSFER_TRANSFERBYELEMENTS_HPP_
 #define SRC_REDECOMP_TRANSFER_TRANSFERBYELEMENTS_HPP_
 
+#include "axom/core/ArrayView.hpp"
 #include "redecomp/transfer/GridFnTransfer.hpp"
 
 namespace redecomp {
+
+class RedecompMesh;
 
 /**
  * @brief GridFnTransfer method using elements
@@ -43,6 +46,17 @@ class TransferByElements : public GridFnTransfer {
    * GridFunction (src)
    */
   void TransferToParallel( const mfem::GridFunction& src, mfem::ParGridFunction& dst ) const override;
+
+  /**
+   * @brief Send owned-element vectors to the original parallel mesh and add each entry at its local DOF.
+   * @param mesh Redecomp mesh supplying the owned and ghost element lists.
+   * @param surface_fes Parallel space on the mesh that was redistributed.
+   * @param element_values Host-accessible array indexed by Redecomp element and MFEM element vector DOF.
+   * @param local_values Host-accessible destination with one entry per local DOF. Existing entries are retained.
+   */
+  void AddElementContributions( const RedecompMesh& mesh, const mfem::ParFiniteElementSpace& surface_fes,
+                                axom::ArrayView<const mfem::real_t, 2, axom::MemorySpace::Host> element_values,
+                                mfem::Vector& local_values ) const;
 };
 
 }  // end namespace redecomp

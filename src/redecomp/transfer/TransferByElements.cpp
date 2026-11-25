@@ -165,4 +165,45 @@ void TransferByElements::TransferToParallel( const mfem::GridFunction& src, mfem
   }
 }
 
+void TransferByElements::AddElementContributions(
+    const RedecompMesh& mesh, const mfem::ParFiniteElementSpace& surface_fes,
+    axom::ArrayView<const mfem::real_t, 2, axom::MemorySpace::Host> element_values, mfem::Vector& local_values ) const
+{
+  const auto size_element_values = element_values.shape()[1];
+  const auto& offsets = mesh.getRedecompToParentElemOffsets();
+  const auto& ghost_elements = mesh.getRedecompToParentGhostElems();
+  const auto& parallel_elements = mesh.getParentToRedecompElems();
+
+  // Each owned element is sent once, in the same order as the receiver's original elements.
+  mesh.getMPIUtility().SendRecvEach(
+      type<mfem::Array<RealT>>(),
+      [&]( int rank ) {
+        mfem::Array<RealT> values;
+        const int num_owned = offsets[rank + 1] - offsets[rank] - ghost_elements[rank].Size();
+        values.Reserve( num_owned * size_element_values );
+        int ghost_index = 0;
+        for ( int element = offsets[rank]; element < offsets[rank + 1]; ++element ) {
+          if ( ghost_index < ghost_elements[rank].Size() && ghost_elements[rank][ghost_index] == element ) {
+            ++ghost_index;
+            continue;
+          }
+          values.Append( &element_values( element, 0 ), size_element_values );
+        }
+        return values;
+      },
+      [&]( mfem::Array<RealT>&& values, int rank ) {
+        mfem::Array<int> element_dofs;
+        axom::IndexType offset = 0;
+        for ( int index = 0; index < parallel_elements.first[rank].Size(); ++index ) {
+          if ( parallel_elements.second[rank][index] ) {
+            continue;
+          }
+          surface_fes.GetElementVDofs( parallel_elements.first[rank][index], element_dofs );
+          SLIC_ASSERT( element_dofs.Size() == size_element_values );
+          local_values.AddElementVector( element_dofs, values.GetData() + offset );
+          offset += size_element_values;
+        }
+      } );
+}
+
 }  // end namespace redecomp

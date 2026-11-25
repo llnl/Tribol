@@ -189,6 +189,114 @@ class PairNodalGapValue {
   MdArray<RealT, size_values> values_{};  ///< Weighted gaps followed by tributary areas in local-node order.
 };
 
+/**
+ * @brief Geometry1 and geometry2 mortar weight matrices in one contiguous buffer, with quadrature status and
+ * activation.
+ * @tparam SizeMultiplierBasis Number of multiplier basis functions on geometry1.
+ * @tparam SizeGeom1Basis Number of displacement basis functions on geometry1.
+ * @tparam SizeGeom2Basis Number of displacement basis functions on geometry2.
+ */
+template <IndexT SizeMultiplierBasis, IndexT SizeGeom1Basis = SizeMultiplierBasis,
+          IndexT SizeGeom2Basis = SizeGeom1Basis>
+class PairMortarWeightsValue {
+  static_assert( SizeMultiplierBasis > 0 );
+  static_assert( SizeGeom1Basis > 0 );
+  static_assert( SizeGeom2Basis > 0 );
+
+ public:
+  static constexpr IndexT size_multiplier_basis = SizeMultiplierBasis;  ///< Multiplier basis size on geometry1.
+  static constexpr IndexT size_geom1_basis = SizeGeom1Basis;            ///< Displacement basis size on geometry1.
+  static constexpr IndexT size_geom2_basis = SizeGeom2Basis;            ///< Displacement basis size on geometry2.
+  static constexpr IndexT size_geom1_weights =
+      SizeMultiplierBasis * SizeGeom1Basis;  ///< Number of geometry1 mortar weight entries.
+  static constexpr IndexT size_geom2_weights =
+      SizeMultiplierBasis * SizeGeom2Basis;  ///< Number of geometry2 mortar weight entries.
+  static constexpr IndexT size_values =
+      size_geom1_weights + size_geom2_weights;  ///< Total flattened mortar weight extent.
+
+  /** @brief Construct zero mortar weights with default quadrature state and no active points. */
+  TRIBOL_DEFAULT_HOST_DEVICE PairMortarWeightsValue() = default;
+
+  /**
+   * @brief Return the flattened index of one geometry1 weight entry.
+   * @param multiplier_basis_index Multiplier basis-function index on geometry1.
+   * @param basis_index Displacement basis-function index on geometry1.
+   * @return Index into values().
+   */
+  TRIBOL_HOST_DEVICE static constexpr IndexT geometry1Index( IndexT multiplier_basis_index, IndexT basis_index )
+  {
+    return multiplier_basis_index * SizeGeom1Basis + basis_index;
+  }
+
+  /**
+   * @brief Return the flattened index of one geometry2 weight entry.
+   * @param multiplier_basis_index Multiplier basis-function index on geometry1.
+   * @param basis_index Displacement basis-function index on geometry2.
+   * @return Index into values().
+   */
+  TRIBOL_HOST_DEVICE static constexpr IndexT geometry2Index( IndexT multiplier_basis_index, IndexT basis_index )
+  {
+    return size_geom1_weights + multiplier_basis_index * SizeGeom2Basis + basis_index;
+  }
+
+  /**
+   * @brief Access one geometry1 weight entry.
+   * @param multiplier_basis_index Multiplier basis-function index on geometry1.
+   * @param basis_index Displacement basis-function index on geometry1.
+   * @return Mutable weight entry.
+   */
+  TRIBOL_HOST_DEVICE RealT& geometry1( IndexT multiplier_basis_index, IndexT basis_index )
+  {
+    return weights_[geometry1Index( multiplier_basis_index, basis_index )];
+  }
+
+  /**
+   * @brief Access one geometry1 weight entry.
+   * @param multiplier_basis_index Multiplier basis-function index on geometry1.
+   * @param basis_index Displacement basis-function index on geometry1.
+   * @return Read-only weight entry.
+   */
+  TRIBOL_HOST_DEVICE const RealT& geometry1( IndexT multiplier_basis_index, IndexT basis_index ) const
+  {
+    return weights_[geometry1Index( multiplier_basis_index, basis_index )];
+  }
+
+  /**
+   * @brief Access one geometry2 weight entry.
+   * @param multiplier_basis_index Multiplier basis-function index on geometry1.
+   * @param basis_index Displacement basis-function index on geometry2.
+   * @return Mutable weight entry.
+   */
+  TRIBOL_HOST_DEVICE RealT& geometry2( IndexT multiplier_basis_index, IndexT basis_index )
+  {
+    return weights_[geometry2Index( multiplier_basis_index, basis_index )];
+  }
+
+  /**
+   * @brief Access one geometry2 weight entry.
+   * @param multiplier_basis_index Multiplier basis-function index on geometry1.
+   * @param basis_index Displacement basis-function index on geometry2.
+   * @return Read-only weight entry.
+   */
+  TRIBOL_HOST_DEVICE const RealT& geometry2( IndexT multiplier_basis_index, IndexT basis_index ) const
+  {
+    return weights_[geometry2Index( multiplier_basis_index, basis_index )];
+  }
+
+  /** @brief Return the contiguous mortar weights vector. @return Geometry1 weights followed by geometry2 weights. */
+  TRIBOL_HOST_DEVICE MdArray<RealT, size_values> values() const { return weights_; }
+
+  /** @brief Return writable flattened weight storage for a derivative provider. @return Mortar weight storage. */
+  TRIBOL_HOST_DEVICE RealT* data() { return weights_.data(); }
+
+  /// Whether successful quadrature is nonempty; this does not indicate contact activation.
+  bool has_active_points = false;
+  QuadratureMetadata quadrature_metadata{};  ///< Failed quadrature output must not be consumed.
+
+ private:
+  MdArray<RealT, size_values> weights_{};  ///< Geometry1 weights followed by geometry2 weights.
+};
+
 /** @brief Result type returned by a pair function's evaluate() operation. @tparam PairFunction Pair function type. */
 template <typename PairFunction>
 using PairFunctionValue = std::remove_cvref_t<decltype( std::declval<const PairFunction&>().evaluate(

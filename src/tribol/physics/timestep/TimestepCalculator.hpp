@@ -5,7 +5,7 @@
 
 /**
  * @file
- * @brief Parallel timestep calculator for contact formulations built on PairTractionIntegral.
+ * @brief Parallel timestep calculator for contact formulations built on PairIntegral with TractionIntegrand.
  */
 #ifndef SRC_TRIBOL_PHYSICS_TIMESTEP_TIMESTEPCALCULATOR_HPP_
 #define SRC_TRIBOL_PHYSICS_TIMESTEP_TIMESTEPCALCULATOR_HPP_
@@ -290,7 +290,8 @@ class TimestepCalculator {
   }
 
   /**
-   * @brief Compute the allowable timestep for a normal kinematic penalty formulation built on PairTractionIntegral.
+   * @brief Compute the allowable timestep for a normal kinematic penalty formulation built on PairIntegral with
+   * TractionIntegrand.
    *
    * Evaluates each pair's quadrature points via pair_integral, queries
    * TractionFunction::computeTimestepDataAtQuadraturePoint() for local normals, contact activation, and penalty
@@ -314,7 +315,7 @@ class TimestepCalculator {
             FiniteElementBasis Basis1, FiniteElementBasis Basis2>
   std::optional<RealT> compute(
       const ArrayT<InterfacePair>& pairs, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-      const PairTractionIntegral<RuleGenerator, TractionFunction, Basis1, Basis2>& pair_integral,
+      const PairIntegral<RuleGenerator, TractionIntegrand<TractionFunction, Basis1, Basis2>>& pair_integral,
       std::optional<RealT> current_dt = std::nullopt,
       [[maybe_unused]] const detail::MfemParentPenaltyCflData* parent_cfl_data = nullptr ) const
   {
@@ -363,7 +364,7 @@ class TimestepCalculator {
 
     const auto pairs_view = pairs.view();
     const auto rule_generator = pair_integral.ruleGenerator();
-    const auto traction_function = pair_integral.tractionFunction();
+    const auto traction_function = pair_integral.integrand().tractionFunction();
     const TimestepCalculator calculator( settings_ );
     const TimestepCriteria criteria = settings_.active_criteria;
 

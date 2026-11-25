@@ -299,6 +299,9 @@ class CouplingScheme {
    */
   Parameters& getParameters() { return m_parameters; }
 
+  /** @brief Read the coupling scheme parameters. @return Current settings. */
+  const Parameters& getParameters() const { return m_parameters; }
+
   /**
    * @brief Get a reference to the first mesh
    *
@@ -742,13 +745,22 @@ class CouplingScheme {
   /**
    * @brief Check whether the selected contact method uses a ContactFormulation.
    *
-   * @return True for Energy Mortar and opted-in Common Plane formulations.
+   * @return True for Energy Mortar and opted-in Common Plane or single mortar.
    */
   bool usesContactFormulation() const
   {
-    return m_contactMethod == ENERGY_MORTAR ||
+    return m_contactMethod == ENERGY_MORTAR || usesSingleMortarFormulation() ||
            ( m_contactMethod == COMMON_PLANE && m_parameters.use_common_plane_formulation );
   }
+
+  /** @brief Check whether this scheme selected the single mortar formulation. @return True when opted in. */
+  bool usesSingleMortarFormulation() const
+  {
+    return m_contactMethod == SINGLE_MORTAR && m_parameters.use_single_mortar_formulation;
+  }
+
+  /** @brief Read the requested execution mode before mesh validation. @return Mode supplied at registration. */
+  ExecutionMode getRegisteredExecutionMode() const { return m_given_exec_mode; }
 
   /**
    * @brief Check if a ContactFormulation implementation is set
@@ -774,6 +786,9 @@ class CouplingScheme {
    * @note Reports a SLIC error if the scheme does not support a nodal LM input or its MFEM data is invalid.
    */
   mfem::HypreParVector& getContactMultiplier();
+  /** @brief Discard the formulation's multiplier when its input space is no longer used. */
+  void clearContactMultiplier() { m_contact_multiplier.reset(); }
+
 #endif
 
 #ifdef BUILD_REDECOMP

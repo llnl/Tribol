@@ -169,6 +169,57 @@ class MfemVectorAssembler {
 };
 
 namespace detail {
+/** @brief Sum element-local vectors before transferring them to true DOFs. */
+class MfemElementVectorAssembler {
+ public:
+  /**
+   * @brief Allocate zero element vectors in execution-accessible memory.
+   * @param path Surface and final spaces and the transfer chain, which must outlive assembly.
+   * @param redecomp_fes FE space on the Redecomp mesh.
+   * @param allocator_id Allocator for the element vectors.
+   */
+  MfemElementVectorAssembler( const MfemJacobianPath& path, const mfem::FiniteElementSpace& redecomp_fes,
+                              int allocator_id );
+
+  /**
+   * @brief View writable element vectors in MFEM value-index, then node order.
+   * @return Referencing view, valid until this assembler is destroyed.
+   */
+  ArrayViewT<RealT, 2> view() { return element_values_.view(); }
+
+  /**
+   * @brief Add owned element vectors and transfer the sum to true DOFs.
+   * @return Owned vector on the final space, which must remain alive while the vector is used.
+   */
+  shared::ParVector assemble() const;
+
+ private:
+  const MfemJacobianPath& path_;        ///< Transfer to the final true DOFs.
+  const redecomp::RedecompMesh& mesh_;  ///< Redecomp element ownership and mapping.
+  Array2D<RealT> element_values_;       ///< Owned storage [element][element vector DOF].
+};
+
+/**
+ * @brief Add nodal entries to a single element vector in MFEM order.
+ * @tparam ValueReader Function returning a value by node and value index.
+ * @param element_values Writable element vectors.
+ * @param element Redecomp element receiving the contributions.
+ * @param num_nodes_per_element Number of FE nodes in the element.
+ * @param num_values_per_node Number of components per FE node.
+ * @param read_value Node and value-index reader.
+ */
+template <typename ValueReader>
+TRIBOL_HOST_DEVICE void addElementVector( ArrayViewT<RealT, 2> element_values, IndexT element,
+                                          IndexT num_nodes_per_element, IndexT num_values_per_node,
+                                          ValueReader read_value )
+{
+  for ( IndexT d = 0; d < num_values_per_node; ++d ) {
+    for ( IndexT node = 0; node < num_nodes_per_element; ++node ) {
+      atomicAdd( &element_values( element, d * num_nodes_per_element + node ), read_value( node, d ) );
+    }
+  }
+}
+
 /** @brief Configure contact residual assembly, dual to displacement, on parent true DOFs.
  * @param data Displacement data for the current decomposition; must outlive the returned assembler.
  * @param mesh1 First geometry. @param mesh2 Second geometry.
