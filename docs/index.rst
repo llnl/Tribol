@@ -12,7 +12,7 @@ Tribol provides a unified interface for contact algorithms used in high-fidelity
 supports contact search, detection, and enforcement workflows for zero-interpenetration constraints between surfaces,
 and serves as a platform for developing advanced contact methods.
 
-Browse the generated `Doxygen API reference <../../doxygen/html/index.html>`_.
+Browse the generated `Doxygen API reference <doxygen/html/index.html>`_.
 
 Quick Start
 -----------
@@ -57,7 +57,7 @@ Documentation Contents
 .. toctree::
    :maxdepth: 2
 
-   dev_guide/index.rst
+   sphinx/dev_guide/index.rst
 
 License
 -------

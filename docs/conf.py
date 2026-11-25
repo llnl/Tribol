@@ -11,8 +11,7 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
-import sys
-import os
+import sys, os
 
 # Call doxygen in ReadtheDocs
 read_the_docs_build = os.environ.get('READTHEDOCS', None) == 'True'
@@ -61,12 +60,8 @@ if read_the_docs_build:
     # used in RTD
     extensions.append('sphinxcontrib.jquery')
 
-# Get current directory
-conf_directory = os.path.dirname(os.path.realpath(__file__))
-
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
-
 
 # The suffix of source filenames.
 source_suffix = '.rst'
@@ -168,18 +163,17 @@ else:
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static/']
 
-# Add any extra paths that contain custom files (such as robots.txt or
-# .htaccess) here, relative to this directory. These files are copied
-# directly to the root of the documentation.
-#html_extra_path = []
+def setup(app):
+   app.add_css_file("theme_overrides.css")
 
 # If not '', a 'Last updated on:' timestamp is inserted at every page bottom,
 # using the given strftime format.
 #html_last_updated_fmt = '%b %d, %Y'
 
-# If true, SmartyPants will be used to convert quotes and dashes to
-# typographically correct entities.
-#html_use_smartypants = True
+# If true, the Docutils Smart Quotes transform, originally based on SmartyPants
+# (limited to English) and currently applying to many languages, will be used to convert
+# quotes and dashes to typographically correct entities. Default: True.
+smartquotes = False
 
 # Custom sidebar templates, maps document names to template names.
 #html_sidebars = {}
