@@ -16,6 +16,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date 2026-11-24
 
 ### Added
+- Added opt-in 3D MFEM frictionless constant-penalty Common Plane support through `setMfemUseCommonPlaneFormulation()`
+  for linear and LOR-subdivided higher-order triangle and quadrilateral contact meshes, including `ResidualOnly`,
+  Enzyme `ResidualAndJacobian`, `setQuadratureOrder()` (order 0-1 overlap centroid; order 2-5 positive-weight
+  fan-triangulated Gauss rules), and parent true-DOF timestep voting.
 - Added explicit penalty CFL timestep limits for Common Plane (both legacy `COMMON_PLANE` and opted-in
   `CommonPlaneFormulation`), including an assembled nodal penalty CFL bound (enabled by default) and an optional
   pair-local spring-mass CFL estimate. Added `TimestepCriteria`, `setTimestepCriteria()`,

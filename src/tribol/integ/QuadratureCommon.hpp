@@ -34,6 +34,19 @@ struct EdgeQuadratureInterval {
   bool valid{ true };                     ///< False for invalid geometry; collapsed valid bounds have zero measure.
 };
 
+/**
+ * @brief Convex polygon in a two-dimensional integration surface's coordinates.
+ *
+ * Vertices are stored in counter-clockwise order in common-plane (e1, e2) coordinates. Clipping two quads and one
+ * zero-gap half-plane produces at most 9 vertices; capacity 10 leaves margin for intermediate vertices.
+ */
+struct PolygonQuadratureSurface {
+  static constexpr IndexT max_num_vertices = 10;   ///< Maximum supported polygon vertex count.
+  MdArray<RealT, max_num_vertices, 2> vertices{};  ///< CCW polygon vertices [vertex][coord].
+  IndexT num_vertices{ 0 };                        ///< Number of populated vertices (0 or >= 3 when valid).
+  bool valid{ true };                              ///< False for degenerate or invalid input geometry.
+};
+
 /** @brief Whether a complete rule was generated, needs more storage, or has invalid geometry */
 enum class QuadratureStatus
 {

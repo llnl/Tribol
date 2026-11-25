@@ -847,23 +847,20 @@ TEST( CommonPlaneSelection, rejects_unsupported_methods_models_and_cases )
   }
 }
 
-// Curved 2D coordinate spaces without LOR subdivision and three-dimensional parent meshes are rejected before
-// selection.
-TEST( CommonPlaneSelection, rejects_higher_order_without_lor_and_three_dimensional_geometry )
+// Curved 2D and 3D coordinate spaces without LOR subdivision are rejected before selection.
+TEST( CommonPlaneSelection, rejects_higher_order_without_lor )
 {
   constexpr int spatial_dim = 2;
   constexpr int three_dimensional = 3;
   for ( const int geometry_dim : { spatial_dim, three_dimensional } ) {
-    constexpr int linear_order = 1;
     constexpr int quadratic_order = 2;
-    const int coordinate_order = geometry_dim == spatial_dim ? quadratic_order : linear_order;
     constexpr int horizontal_element_count = 1;
     constexpr int vertical_element_count = 1;
     mfem::ParMesh parent_mesh = shared::ParMeshBuilder(
         MPI_COMM_WORLD, geometry_dim == spatial_dim
                             ? shared::MeshBuilder::SquareMesh( horizontal_element_count, vertical_element_count )
-                            : shared::MeshBuilder::CubeMesh( 1, 1, 1 ) );
-    mfem::H1_FECollection coordinate_collection( coordinate_order, geometry_dim );
+                            : shared::MeshBuilder::CubeMesh( 2, 1, 1 ) );
+    mfem::H1_FECollection coordinate_collection( quadratic_order, geometry_dim );
     mfem::ParFiniteElementSpace coordinate_space( &parent_mesh, &coordinate_collection, geometry_dim );
     mfem::ParGridFunction coordinates( &coordinate_space );
     parent_mesh.GetNodes( coordinates );
@@ -879,12 +876,10 @@ TEST( CommonPlaneSelection, rejects_higher_order_without_lor_and_three_dimension
     constexpr RealT upper_mesh_penalty = 6.0;
     setMfemKinematicConstantPenalty( coupling_scheme_id, lower_mesh_penalty, upper_mesh_penalty );
     auto& coupling_scheme = CouplingSchemeManager::getInstance().at( coupling_scheme_id );
-    if ( geometry_dim == spatial_dim ) {
-      // Disable LOR transfer on the quadratic 2D mesh so Common Plane sees an unrefined higher-order surface.
-      coupling_scheme.setMfemMeshData( std::make_unique<MfemMeshData>(
-          lower_mesh_id, upper_mesh_id, parent_mesh, coordinates, std::set<int>{ mesh_boundary_attribute_1 },
-          std::set<int>{ mesh_boundary_attribute_2 }, ExecutionMode::Sequential, MemorySpace::Host, false ) );
-    }
+    // Disable LOR transfer on the quadratic mesh so Common Plane sees an unrefined higher-order surface.
+    coupling_scheme.setMfemMeshData( std::make_unique<MfemMeshData>(
+        lower_mesh_id, upper_mesh_id, parent_mesh, coordinates, std::set<int>{ mesh_boundary_attribute_1 },
+        std::set<int>{ mesh_boundary_attribute_2 }, ExecutionMode::Sequential, MemorySpace::Host, false ) );
     EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false ) );
     EXPECT_FALSE( coupling_scheme.hasContactFormulation() );
     EXPECT_FALSE( coupling_scheme.hasMfemJacobianData() );
@@ -1520,6 +1515,307 @@ TEST( MfemCommonPlaneTimestepTest, computes_legacy_nodal_cfl_for_quadrilateral_f
   const RealT stiffness_bound = ( 0.5 * penalty ) * 0.25 * 2.0;
   EXPECT_NEAR( dt, 2.0 / std::sqrt( stiffness_bound ), 1.0e-10 );
   finalize();
+}
+
+// Linear 3D hex (QUAD) CommonPlaneFormulation matches legacy 3D Common Plane response (opposite sign), analytical
+// parent-DOF nodal penalty CFL, opening-pair velocity projection, and Enzyme Jacobian against centered finite
+// differences on 1 and 2 MPI ranks (including a 2-rank partition where one rank has no local contact pairs).
+TEST( MfemCommonPlane3DTest, quad_matches_legacy_jacobian_and_timestep )
+{
+  constexpr IndexT coupling_scheme_id = 0;
+  constexpr int lower_contact_attribute = 6;
+  constexpr int upper_contact_attribute = 7;
+  constexpr int spatial_dim = 3;
+  constexpr RealT penalty = 8.0;
+
+  auto mesh_builder = shared::MeshBuilder::Unify(
+      { shared::MeshBuilder::CubeMesh( 1, 1, 1 ), shared::MeshBuilder::CubeMesh( 1, 1, 1 )
+                                                      .translate( { 0.0, 0.0, 0.99 } )
+                                                      .updateBdrAttrib( 1, upper_contact_attribute )
+                                                      .updateBdrAttrib( lower_contact_attribute, 8 ) } );
+  mfem::ParMesh parallel_mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, std::move( mesh_builder ) );
+  mfem::H1_FECollection fe_collection( 1, spatial_dim );
+  mfem::ParFiniteElementSpace coord_space( &parallel_mesh, &fe_collection, spatial_dim, mfem::Ordering::byNODES );
+  mfem::ParGridFunction coords( &coord_space );
+  parallel_mesh.GetNodes( coords );
+  mfem::ParGridFunction inverse_mass( &coord_space );
+  inverse_mass = 1.0;
+
+  // 1. Compute legacy 3D COMMON_PLANE response as reference.
+  registerMfemCouplingScheme( coupling_scheme_id, 0, 1, parallel_mesh, coords, { lower_contact_attribute },
+                              { upper_contact_attribute }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE, FRICTIONLESS,
+                              PENALTY, BINNING_GRID, ExecutionMode::Sequential );
+  setMfemKinematicConstantPenalty( coupling_scheme_id, penalty, penalty );
+  updateMfemParallelDecomposition( 1, true );
+  RealT dt = 1.0;
+  ASSERT_EQ( update( 0, 0.0, dt ), 0 );
+  mfem::Vector legacy_local( coord_space.GetVSize() );
+  legacy_local = 0.0;
+  getMfemResponse( coupling_scheme_id, legacy_local );
+  mfem::Vector legacy_true( coord_space.GetTrueVSize() );
+  coord_space.GetProlongationMatrix()->MultTranspose( legacy_local, legacy_true );
+
+  // 2. Enable 3D CommonPlaneFormulation (order 1 centroid matches legacy; also check CFL and Jacobian).
+#ifdef TRIBOL_USE_ENZYME
+  constexpr bool compute_jacobian = true;
+#else
+  constexpr bool compute_jacobian = false;
+#endif
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, compute_jacobian );
+  setQuadratureOrder( coupling_scheme_id, 1 );
+  registerMfemInverseMass( coupling_scheme_id, inverse_mass );
+  setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ false, false, true, false } );
+  enableTimestepVote( coupling_scheme_id, true );
+  updateMfemParallelDecomposition( 1, true );
+
+  dt = 10.0;
+  ASSERT_EQ( update( 0, 0.0, dt ), 0 );
+
+  const auto residual = getMfemContactResidual( coupling_scheme_id );
+  auto sum = residual;
+  sum += legacy_true;
+  EXPECT_LT( std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, sum, sum ) ), 1.0e-12 );
+  EXPECT_GT( std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, residual, residual ) ), 0.0 );
+
+  const RealT stiffness_bound = ( 0.5 * penalty ) * 0.25 * 2.0;
+  EXPECT_NEAR( dt, 2.0 / std::sqrt( stiffness_bound ), 1.0e-10 );
+
+  finalize();
+
+#ifdef TRIBOL_USE_ENZYME
+  // Check assembled Enzyme df_dx against centered finite differences on a non-coincident (shifted) 3D quad pair so
+  // projected polygon edges do not coincide under +-eps perturbations.
+  {
+    auto shifted_builder = shared::MeshBuilder::Unify(
+        { shared::MeshBuilder::CubeMesh( 1, 1, 1 ), shared::MeshBuilder::CubeMesh( 1, 1, 1 )
+                                                        .translate( { 0.13, 0.17, 0.99 } )
+                                                        .updateBdrAttrib( 1, upper_contact_attribute )
+                                                        .updateBdrAttrib( lower_contact_attribute, 8 ) } );
+    mfem::ParMesh shifted_mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, std::move( shifted_builder ) );
+    mfem::ParFiniteElementSpace shifted_space( &shifted_mesh, &fe_collection, spatial_dim, mfem::Ordering::byNODES );
+    mfem::ParGridFunction shifted_coords( &shifted_space );
+    shifted_mesh.GetNodes( shifted_coords );
+
+    registerMfemCouplingScheme( coupling_scheme_id, 0, 1, shifted_mesh, shifted_coords, { lower_contact_attribute },
+                                { upper_contact_attribute }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE, FRICTIONLESS,
+                                PENALTY, BINNING_GRID, ExecutionMode::Sequential );
+    setMfemKinematicConstantPenalty( coupling_scheme_id, penalty, penalty );
+    setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, true );
+    setQuadratureOrder( coupling_scheme_id, 2 );
+    updateMfemParallelDecomposition( 1, true );
+    dt = 10.0;
+    ASSERT_EQ( update( 0, 0.0, dt ), 0 );
+
+    auto df_dx = getMfemDfDx( coupling_scheme_id );
+    ASSERT_TRUE( df_dx != nullptr );
+    mfem::Vector dir_true( shifted_space.GetTrueVSize() );
+    for ( int i = 0; i < dir_true.Size(); ++i ) {
+      dir_true[i] = std::sin( static_cast<RealT>( i + 1 ) );
+    }
+    mfem::Vector ad_action( shifted_space.GetTrueVSize() );
+    df_dx->Mult( dir_true, ad_action );
+
+    mfem::Vector dir_local( shifted_space.GetVSize() );
+    shifted_space.GetProlongationMatrix()->Mult( dir_true, dir_local );
+    constexpr RealT eps = 1.0e-6;
+    mfem::ParGridFunction coords_saved = shifted_coords;
+    shifted_coords.Add( eps, dir_local );
+    updateMfemParallelDecomposition( 1, true );
+    ASSERT_EQ( update( 0, 0.0, dt ), 0 );
+    const auto r_plus = getMfemContactResidual( coupling_scheme_id );
+
+    shifted_coords = coords_saved;
+    shifted_coords.Add( -eps, dir_local );
+    updateMfemParallelDecomposition( 1, true );
+    ASSERT_EQ( update( 0, 0.0, dt ), 0 );
+    const auto r_minus = getMfemContactResidual( coupling_scheme_id );
+
+    auto fd_action = r_plus;
+    fd_action -= r_minus;
+    fd_action /= ( 2.0 * eps );
+    mfem::Vector jac_diff = ad_action;
+    jac_diff -= fd_action;
+    EXPECT_LT( std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, jac_diff, jac_diff ) ), 1.0e-5 );
+    finalize();
+  }
+#endif
+}
+
+// Linear 3D tet (TRIANGLE) CommonPlaneFormulation matches the analytical flat-patch contact residual and computes
+// parent-DOF nodal penalty CFL.
+TEST( MfemCommonPlane3DTest, triangle_matches_analytical_load_and_cfl )
+{
+  constexpr IndexT coupling_scheme_id = 0;
+  constexpr int lower_contact_attribute = 6;
+  constexpr int upper_contact_attribute = 7;
+  constexpr int spatial_dim = 3;
+  constexpr RealT penalty = 8.0;
+
+  auto mesh_builder =
+      shared::MeshBuilder::Unify( { shared::MeshBuilder::CubeMesh( 1, 1, 1, mfem::Element::TETRAHEDRON ),
+                                    shared::MeshBuilder::CubeMesh( 1, 1, 1, mfem::Element::TETRAHEDRON )
+                                        .translate( { 0.0, 0.0, 0.99 } )
+                                        .updateBdrAttrib( 1, upper_contact_attribute )
+                                        .updateBdrAttrib( lower_contact_attribute, 8 ) } );
+  mfem::ParMesh parallel_mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, std::move( mesh_builder ) );
+  mfem::H1_FECollection fe_collection( 1, spatial_dim );
+  mfem::ParFiniteElementSpace coord_space( &parallel_mesh, &fe_collection, spatial_dim, mfem::Ordering::byNODES );
+  mfem::ParGridFunction coords( &coord_space );
+  parallel_mesh.GetNodes( coords );
+  mfem::ParGridFunction inverse_mass( &coord_space );
+  inverse_mass = 1.0;
+
+  registerMfemCouplingScheme( coupling_scheme_id, 0, 1, parallel_mesh, coords, { lower_contact_attribute },
+                              { upper_contact_attribute }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE, FRICTIONLESS,
+                              PENALTY, BINNING_GRID, ExecutionMode::Sequential );
+  setMfemKinematicConstantPenalty( coupling_scheme_id, penalty, penalty );
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false );
+  setQuadratureOrder( coupling_scheme_id, 1 );
+  registerMfemInverseMass( coupling_scheme_id, inverse_mass );
+  setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ false, false, true, false } );
+  enableTimestepVote( coupling_scheme_id, true );
+  updateMfemParallelDecomposition( 1, true );
+
+  RealT dt = 10.0;
+  ASSERT_EQ( update( 0, 0.0, dt ), 0 );
+
+  // Two opposing unit-square patches split into two triangles each with penetration 0.01 and effective penalty 4.0:
+  // each triangle carries load 0.02 split equally (0.02/3) to its 3 nodes, giving L2 norm sqrt(5)/75 across both faces.
+  const auto residual = getMfemContactResidual( coupling_scheme_id );
+  const RealT expected_norm = std::sqrt( RealT{ 5.0 } ) / RealT{ 75.0 };
+  EXPECT_NEAR( std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, residual, residual ) ), expected_norm, 1.0e-12 );
+  EXPECT_TRUE( std::isfinite( dt ) && dt > 0.0 && dt < 10.0 );
+  finalize();
+}
+
+// Quadratic 3D hex mesh uses LOR with 3D CommonPlaneFormulation, rejects native 3D quadrature subdivision without
+// mutating state, and computes residual and parent true-DOF CFL.
+TEST( MfemCommonPlane3DTest, quadratic_lor_assembles_and_rejects_3d_subdivision )
+{
+  constexpr IndexT coupling_scheme_id = 0;
+  constexpr int lower_contact_attribute = 6;
+  constexpr int upper_contact_attribute = 7;
+  constexpr int spatial_dim = 3;
+  constexpr int quadratic_order = 2;
+  constexpr RealT penalty = 8.0;
+
+  auto mesh_builder = shared::MeshBuilder::Unify(
+      { shared::MeshBuilder::CubeMesh( 1, 1, 1 ), shared::MeshBuilder::CubeMesh( 1, 1, 1 )
+                                                      .translate( { 0.0, 0.0, 0.99 } )
+                                                      .updateBdrAttrib( 1, upper_contact_attribute )
+                                                      .updateBdrAttrib( lower_contact_attribute, 8 ) } );
+  mfem::ParMesh parallel_mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, std::move( mesh_builder ) );
+  parallel_mesh.SetCurvature( quadratic_order, /*discont=*/false, /*space_dim=*/spatial_dim, mfem::Ordering::byVDIM );
+  auto* parent_mesh_nodes = dynamic_cast<mfem::ParGridFunction*>( parallel_mesh.GetNodes() );
+  ASSERT_NE( parent_mesh_nodes, nullptr );
+  auto& coord_space = *parent_mesh_nodes->ParFESpace();
+  mfem::ParGridFunction coords( &coord_space );
+  coords = *parent_mesh_nodes;
+  mfem::ParGridFunction inverse_mass( &coord_space );
+  inverse_mass = 1.0;
+
+  registerMfemCouplingScheme( coupling_scheme_id, 0, 1, parallel_mesh, coords, { lower_contact_attribute },
+                              { upper_contact_attribute }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE, FRICTIONLESS,
+                              PENALTY, BINNING_GRID, ExecutionMode::Sequential );
+  setMfemKinematicConstantPenalty( coupling_scheme_id, penalty, penalty );
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false );
+  setQuadratureOrder( coupling_scheme_id, 2 );
+  registerMfemInverseMass( coupling_scheme_id, inverse_mass );
+  setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ false, false, true, false } );
+  enableTimestepVote( coupling_scheme_id, true );
+
+  // Native 3D quadrature subdivision must be rejected without disabling the active LOR formulation.
+  EXPECT_SLIC_ERROR( enableQuadratureSubdivision( coupling_scheme_id, true, 2 ) );
+
+  updateMfemParallelDecomposition( 1, true );
+  RealT dt = 10.0;
+  ASSERT_EQ( update( 0, 0.0, dt ), 0 );
+
+  const auto residual = getMfemContactResidual( coupling_scheme_id );
+  EXPECT_GT( std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, residual, residual ) ), 0.0 );
+  EXPECT_TRUE( std::isfinite( dt ) && dt > 0.0 && dt < 10.0 );
+  finalize();
+}
+
+// 3D opening-pair velocity projection timestep voting and mixed-face (quad + triangle) rejection before mutating state.
+TEST( MfemCommonPlane3DTest, opening_pair_velocity_vote_and_mixed_face_rejection )
+{
+  constexpr IndexT coupling_scheme_id = 0;
+  constexpr int lower_contact_attribute = 6;
+  constexpr int upper_contact_attribute = 7;
+  constexpr int spatial_dim = 3;
+  constexpr RealT penalty = 8.0;
+
+  // 1. Opening 3D quad pair with positive gap = 0.04 and approaching relative velocity = -2.0 along +z.
+  {
+    auto mesh_builder = shared::MeshBuilder::Unify(
+        { shared::MeshBuilder::CubeMesh( 1, 1, 1 ), shared::MeshBuilder::CubeMesh( 1, 1, 1 )
+                                                        .translate( { 0.0, 0.0, 1.04 } )
+                                                        .updateBdrAttrib( 1, upper_contact_attribute )
+                                                        .updateBdrAttrib( lower_contact_attribute, 8 ) } );
+    mfem::ParMesh parallel_mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, std::move( mesh_builder ) );
+    mfem::H1_FECollection fe_collection( 1, spatial_dim );
+    mfem::ParFiniteElementSpace coord_space( &parallel_mesh, &fe_collection, spatial_dim, mfem::Ordering::byNODES );
+    mfem::ParGridFunction coords( &coord_space );
+    parallel_mesh.GetNodes( coords );
+    mfem::ParGridFunction velocity( &coord_space );
+    mfem::VectorFunctionCoefficient vel_coeff( spatial_dim, []( const mfem::Vector& x, mfem::Vector& v ) {
+      v.SetSize( spatial_dim );
+      v = 0.0;
+      v[2] = ( x[2] > 1.02 ) ? -2.0 : 0.0;
+    } );
+    velocity.ProjectCoefficient( vel_coeff );
+
+    registerMfemCouplingScheme( coupling_scheme_id, 0, 1, parallel_mesh, coords, { lower_contact_attribute },
+                                { upper_contact_attribute }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE, FRICTIONLESS,
+                                PENALTY, BINNING_GRID, ExecutionMode::Sequential );
+    setMfemKinematicConstantPenalty( coupling_scheme_id, penalty, penalty );
+    setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false );
+    setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ false, true, false, false } );
+    enableTimestepVote( coupling_scheme_id, true );
+    updateMfemParallelDecomposition( 1, true );
+
+    // Missing velocity must report a SLIC error.
+    RealT dt = 10.0;
+    EXPECT_SLIC_ERROR( update( 0, 0.0, dt ) );
+
+    registerMfemVelocity( coupling_scheme_id, velocity );
+    updateMfemParallelDecomposition( 1, true );
+    dt = 10.0;
+    ASSERT_EQ( update( 0, 0.0, dt ), 0 );
+    // Opening pair has zero contact residual, and velocity projection limits dt using the 0.04 gap and speed 2.0.
+    const auto residual = getMfemContactResidual( coupling_scheme_id );
+    EXPECT_DOUBLE_EQ( std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, residual, residual ) ), 0.0 );
+    EXPECT_GT( dt, 0.0 );
+    EXPECT_LT( dt, 10.0 );
+    finalize();
+  }
+
+  // 2. Mixed hex (QUAD) + tet (TRIANGLE) contact submesh must be rejected without mutating scheme state.
+  {
+    auto mesh_builder =
+        shared::MeshBuilder::Unify( { shared::MeshBuilder::CubeMesh( 1, 1, 1, mfem::Element::HEXAHEDRON ),
+                                      shared::MeshBuilder::CubeMesh( 1, 1, 1, mfem::Element::TETRAHEDRON )
+                                          .translate( { 0.0, 0.0, 0.99 } )
+                                          .updateBdrAttrib( 1, upper_contact_attribute )
+                                          .updateBdrAttrib( lower_contact_attribute, 8 ) } );
+    mfem::ParMesh parallel_mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, std::move( mesh_builder ) );
+    mfem::H1_FECollection fe_collection( 1, spatial_dim );
+    mfem::ParFiniteElementSpace coord_space( &parallel_mesh, &fe_collection, spatial_dim, mfem::Ordering::byNODES );
+    mfem::ParGridFunction coords( &coord_space );
+    parallel_mesh.GetNodes( coords );
+
+    registerMfemCouplingScheme( coupling_scheme_id, 0, 1, parallel_mesh, coords, { lower_contact_attribute },
+                                { upper_contact_attribute }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE, FRICTIONLESS,
+                                PENALTY, BINNING_GRID, ExecutionMode::Sequential );
+    setMfemKinematicConstantPenalty( coupling_scheme_id, penalty, penalty );
+    EXPECT_SLIC_ERROR( setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false ) );
+    auto& cs = CouplingSchemeManager::getInstance().at( coupling_scheme_id );
+    EXPECT_FALSE( cs.getParameters().use_common_plane_formulation );
+    EXPECT_FALSE( cs.hasContactFormulation() );
+    EXPECT_FALSE( cs.hasMfemJacobianData() );
+    finalize();
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P( execution_modes, MfemCommonPlaneLorCflTest,

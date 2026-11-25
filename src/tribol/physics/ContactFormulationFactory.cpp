@@ -12,9 +12,13 @@
 #include "tribol/common/Parameters.hpp"
 #include "tribol/search/CoarseSearchFactory.hpp"
 #include "tribol/search/ProjectedEdgeSearch.hpp"
+#include "tribol/search/ProjectedFaceSearch.hpp"
 #include "tribol/integ/QuadratureRuleGeneratorFactory.hpp"
 #include "tribol/integ/SubdividedPairQuadratureRuleGenerator.hpp"
+#include "tribol/geom/CommonPlaneFaceMapping.hpp"
 #include "tribol/geom/CommonPlaneQuadraticEdgeProjection.hpp"
+#include "tribol/geom/LinearQuadGeometry.hpp"
+#include "tribol/geom/LinearTriangleGeometry.hpp"
 #include "tribol/geom/QuadraticEdgeGeometry.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 
@@ -30,6 +34,39 @@ namespace tribol {
 
 #ifdef BUILD_REDECOMP
 namespace {
+/**
+ * @brief Resolve the single 3D surface element type (TRIANGLE or QUAD) present on the contact submesh across all ranks.
+ * @param data MFEM mesh data owning the parent-linked contact submesh.
+ * @return TRIANGLE or QUAD if all contact submesh faces share that type; UNDEFINED_ELEMENT if mixed, unsupported, or
+ * empty across all ranks.
+ */
+InterfaceElementType resolveCommonPlane3DSurfaceElementType( const MfemMeshData& data )
+{
+  const auto& submesh = data.GetSubmesh();
+  int has_types[3]{ 0, 0, 0 };  // [0]: triangle, [1]: quad, [2]: unsupported
+  for ( int elem = 0; elem < submesh.GetNE(); ++elem ) {
+    const auto geom = submesh.GetElementGeometry( elem );
+    if ( geom == mfem::Geometry::TRIANGLE ) {
+      has_types[0] = 1;
+    } else if ( geom == mfem::Geometry::SQUARE ) {
+      has_types[1] = 1;
+    } else {
+      has_types[2] = 1;
+    }
+  }
+  MPI_Allreduce( MPI_IN_PLACE, has_types, 3, MPI_INT, MPI_MAX, data.GetParentCoords().ParFESpace()->GetComm() );
+  if ( has_types[2] != 0 || ( has_types[0] != 0 && has_types[1] != 0 ) ) {
+    return UNDEFINED_ELEMENT;
+  }
+  if ( has_types[0] != 0 ) {
+    return TRIANGLE;
+  }
+  if ( has_types[1] != 0 ) {
+    return QUAD;
+  }
+  return UNDEFINED_ELEMENT;
+}
+
 template <ExecutionMode Exec>
 std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs );
 #ifdef TRIBOL_USE_ENZYME
@@ -94,15 +131,26 @@ bool validateCommonPlaneFormulation( CouplingScheme& cs, bool compute_jacobian )
     return false;
   }
   const auto& data = *cs.getMfemMeshData();
+  const int spatial_dim = data.GetParentCoords().ParFESpace()->GetParMesh()->SpaceDimension();
+  const int vdim = data.GetParentCoords().ParFESpace()->GetVDim();
   const int order = data.GetParentCoords().ParFESpace()->FEColl()->GetOrder();
-  const bool uses_quadratic_subdivision = order == 2 && cs.getParameters().use_quadrature_subdivision;
-  if ( data.GetParentCoords().ParFESpace()->GetParMesh()->SpaceDimension() != 2 ||
-       data.GetParentCoords().ParFESpace()->GetVDim() != 2 || order < 1 ||
+  const bool uses_quadratic_subdivision =
+      spatial_dim == 2 && order == 2 && cs.getParameters().use_quadrature_subdivision;
+  if ( ( spatial_dim != 2 && spatial_dim != 3 ) || vdim != spatial_dim || order < 1 ||
+       ( spatial_dim == 3 && cs.getParameters().use_quadrature_subdivision ) ||
        ( order > 1 && !uses_quadratic_subdivision && data.GetLORMesh() == nullptr ) ) {
     SLIC_ERROR_ROOT(
-        "Common Plane supports only 2D linear, LOR-subdivided higher-order, or subdivided quadratic "
-        "coordinates." );
+        "Common Plane supports 2D linear, LOR-subdivided higher-order, or subdivided quadratic coordinates, and 3D "
+        "linear or LOR-subdivided higher-order coordinates." );
     return false;
+  }
+  if ( spatial_dim == 3 ) {
+    const InterfaceElementType face_type = resolveCommonPlane3DSurfaceElementType( data );
+    if ( face_type != TRIANGLE && face_type != QUAD ) {
+      SLIC_ERROR_ROOT(
+          "3D Common Plane requires a contact submesh with exclusively triangle or exclusively quadrilateral faces." );
+      return false;
+    }
   }
   const auto* penalty1 = data.GetMesh1KinematicConstantPenalty();
   const auto* penalty2 = data.GetMesh2KinematicConstantPenalty();
@@ -136,9 +184,14 @@ namespace {
 template <ExecutionMode Exec>
 PairListBuilder makePairListBuilder( CouplingScheme& cs )
 {
+  const bool checks_shared_nodes = cs.getContactCase() == AUTO;
+  std::unique_ptr<RefinedSearch> refined_search =
+      cs.spatialDim() == 3
+          ? std::unique_ptr<RefinedSearch>( std::make_unique<ProjectedFaceSearch>( Exec, checks_shared_nodes ) )
+          : std::unique_ptr<RefinedSearch>( std::make_unique<ProjectedEdgeSearch>( Exec, checks_shared_nodes ) );
   return { createCoarseSearch( cs.spatialDim(), cs.getBinningMethod(), Exec, cs.getEffectiveBinningProximityScale(),
                                cs.getParameters().residual_gap ),
-           std::make_unique<ProjectedEdgeSearch>( Exec, cs.getContactCase() == AUTO ) };
+           std::move( refined_search ) };
 }
 
 /**
@@ -209,6 +262,24 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
       detail::checkedPenaltyStiffness( *data.GetMesh2KinematicConstantPenalty() * ( scale2 ? *scale2 : 1.0 ) );
   const RealT penalty =
       detail::checkedPenaltyStiffness( SeriesPenaltyStiffness{}.computeEffectiveStiffness( penalty1, penalty2 ) );
+  const int spatial_dim = data.GetParentCoords().ParFESpace()->GetParMesh()->SpaceDimension();
+  if ( spatial_dim == 3 ) {
+    const InterfaceElementType face_type = resolveCommonPlane3DSurfaceElementType( data );
+    if ( face_type == TRIANGLE ) {
+      return createWithQuadratureRuleGenerator(
+          cs->getParameters().quadrature_order, CommonPlaneFaceMapping<LinearTriangleGeometry>{},
+          [&]( auto rule_generator ) -> std::unique_ptr<ContactFormulation> {
+            return createCommonPlaneForRuleGenerator<Exec, BasisFunction<TRIANGLE, LINEAR_LAGRANGE>>(
+                cs, std::move( rule_generator ), penalty );
+          } );
+    }
+    return createWithQuadratureRuleGenerator(
+        cs->getParameters().quadrature_order, CommonPlaneFaceMapping<LinearQuadGeometry>{},
+        [&]( auto rule_generator ) -> std::unique_ptr<ContactFormulation> {
+          return createCommonPlaneForRuleGenerator<Exec, BasisFunction<QUAD, LINEAR_LAGRANGE>>(
+              cs, std::move( rule_generator ), penalty );
+        } );
+  }
   const int coordinate_order = data.GetParentCoords().ParFESpace()->FEColl()->GetOrder();
   const bool uses_quadratic_subdivision = coordinate_order == 2 && cs->getParameters().use_quadrature_subdivision;
   return createWithQuadratureRuleGenerator(

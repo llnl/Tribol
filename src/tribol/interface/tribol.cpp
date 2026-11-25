@@ -245,7 +245,8 @@ void enableQuadratureSubdivision( IndexT cs_id, bool enabled, int num_subdivisio
 #ifdef BUILD_REDECOMP
   const bool has_opted_in_quadratic_common_plane =
       cs && cs->getContactMethod() == COMMON_PLANE && cs->getParameters().use_common_plane_formulation &&
-      cs->hasMfemData() && cs->getMfemMeshData()->GetParentCoords().ParFESpace()->FEColl()->GetOrder() == 2;
+      cs->hasMfemData() && cs->getMfemMeshData()->GetParentCoords().ParFESpace()->GetParMesh()->SpaceDimension() == 2 &&
+      cs->getMfemMeshData()->GetParentCoords().ParFESpace()->FEColl()->GetOrder() == 2;
   const bool valid_num_subdivisions = !enabled || ( num_subdivisions >= min_num_quadrature_subdivisions &&
                                                     num_subdivisions <= max_num_quadrature_subdivisions );
   if ( !has_opted_in_quadratic_common_plane || !valid_num_subdivisions ) {

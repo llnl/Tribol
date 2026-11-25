@@ -68,14 +68,41 @@ struct InterfacePairChecks {
     return edge1.dot( edge2 ) <= 0.0;
   }
 
+  /**
+   * @brief Return whether two linear 3D surface-element normals are separated by at least 90 degrees.
+   *
+   * Normals are computed directly from vertex coordinates so formulations do not require MeshData::computeFaceData()
+   * before filtering candidates. Supports 3-node triangles and 4-node quadrilaterals; degenerate faces return false.
+   *
+   * @param mesh1 First surface mesh view.
+   * @param element_id1 Surface element index on mesh1.
+   * @param mesh2 Second surface mesh view.
+   * @param element_id2 Surface element index on mesh2.
+   * @return True when both faces have nondegenerate normals with dot product <= 0.
+   */
+  TRIBOL_HOST_DEVICE static bool linearFaceNormalsAreOpposing( const MeshData::Viewer& mesh1, IndexT element_id1,
+                                                               const MeshData::Viewer& mesh2, IndexT element_id2 )
+  {
+    const Vector3D normal1 = getLinearFaceNormalVector( mesh1, element_id1 );
+    const Vector3D normal2 = getLinearFaceNormalVector( mesh2, element_id2 );
+    const RealT min_area_sq = minimum_face_twice_area_ * minimum_face_twice_area_;
+    if ( normal1.squared_norm() < min_area_sq || normal2.squared_norm() < min_area_sq ) {
+      return false;
+    }
+    return normal1.dot( normal2 ) <= 0.0;
+  }
+
  private:
   /** @brief Use the static checks without constructing an instance. */
   InterfacePairChecks() = delete;
 
   using Point2D = axom::primal::Point<RealT, 2>;
   using Vector2D = axom::primal::Vector<RealT, 2>;
+  using Point3D = axom::primal::Point<RealT, 3>;
+  using Vector3D = axom::primal::Vector<RealT, 3>;
 
-  inline static constexpr RealT minimum_edge_length_ = 1.0e-14;  ///< Edge-length degeneracy threshold.
+  inline static constexpr RealT minimum_edge_length_ = 1.0e-14;      ///< Edge-length degeneracy threshold.
+  inline static constexpr RealT minimum_face_twice_area_ = 1.0e-28;  ///< Face twice-area degeneracy threshold.
 
   /**
    * @brief Return the directed edge from the first finite-element node to the second.
@@ -89,6 +116,38 @@ struct InterfacePairChecks {
     const Point2D point0{ mesh.getPosition()[0][node0], mesh.getPosition()[1][node0] };
     const Point2D point1{ mesh.getPosition()[0][node1], mesh.getPosition()[1][node1] };
     return Vector2D( point0, point1 );
+  }
+
+  /**
+   * @brief Return an unnormalized outward normal vector for a 3-node triangle or 4-node quadrilateral.
+   * @param mesh Mesh view containing the 3D surface element.
+   * @param element_id Element whose vertex coordinates are read.
+   * @return Twice-area outward normal vector, or zero if the element has unsupported node count.
+   */
+  TRIBOL_HOST_DEVICE static Vector3D getLinearFaceNormalVector( const MeshData::Viewer& mesh, IndexT element_id )
+  {
+    const IndexT num_nodes = mesh.numberOfNodesPerElement();
+    if ( num_nodes == 3 ) {
+      const IndexT n0 = mesh.getGlobalNodeId( element_id, 0 );
+      const IndexT n1 = mesh.getGlobalNodeId( element_id, 1 );
+      const IndexT n2 = mesh.getGlobalNodeId( element_id, 2 );
+      const Point3D p0{ mesh.getPosition()[0][n0], mesh.getPosition()[1][n0], mesh.getPosition()[2][n0] };
+      const Point3D p1{ mesh.getPosition()[0][n1], mesh.getPosition()[1][n1], mesh.getPosition()[2][n1] };
+      const Point3D p2{ mesh.getPosition()[0][n2], mesh.getPosition()[1][n2], mesh.getPosition()[2][n2] };
+      return Vector3D::cross_product( Vector3D( p0, p1 ), Vector3D( p0, p2 ) );
+    }
+    if ( num_nodes == 4 ) {
+      const IndexT n0 = mesh.getGlobalNodeId( element_id, 0 );
+      const IndexT n1 = mesh.getGlobalNodeId( element_id, 1 );
+      const IndexT n2 = mesh.getGlobalNodeId( element_id, 2 );
+      const IndexT n3 = mesh.getGlobalNodeId( element_id, 3 );
+      const Point3D p0{ mesh.getPosition()[0][n0], mesh.getPosition()[1][n0], mesh.getPosition()[2][n0] };
+      const Point3D p1{ mesh.getPosition()[0][n1], mesh.getPosition()[1][n1], mesh.getPosition()[2][n1] };
+      const Point3D p2{ mesh.getPosition()[0][n2], mesh.getPosition()[1][n2], mesh.getPosition()[2][n2] };
+      const Point3D p3{ mesh.getPosition()[0][n3], mesh.getPosition()[1][n3], mesh.getPosition()[2][n3] };
+      return Vector3D::cross_product( Vector3D( p0, p2 ), Vector3D( p1, p3 ) );
+    }
+    return Vector3D{ 0.0, 0.0, 0.0 };
   }
 };
 

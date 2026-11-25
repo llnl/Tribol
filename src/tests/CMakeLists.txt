@@ -19,6 +19,7 @@ set( tribol_tests
      tribol_energy_mortar_pair_evaluation.cpp
      tribol_basis_function.cpp
      tribol_check_tpl.cpp
+     tribol_common_plane_3d.cpp
      tribol_common_plane_pair_evaluation.cpp
      tribol_common_plane_penalty.cpp
      tribol_common_plane_gap_rate.cpp
@@ -87,9 +88,10 @@ foreach( test ${tribol_tests} )
 endforeach()
 
 if(TRIBOL_USE_ENZYME)
-  # Enzyme rejects the aggregate-heavy edge geometry IR produced at -O0. Both tests differentiate pair functions.
+  # Enzyme rejects the aggregate-heavy geometry IR produced at -O0. These tests differentiate pair functions.
   target_compile_options(tribol_energy_mortar_pair_evaluation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
   target_compile_options(tribol_common_plane_pair_evaluation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
+  target_compile_options(tribol_common_plane_3d_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
 endif()
 
 #------------------------------------------------------------------------------

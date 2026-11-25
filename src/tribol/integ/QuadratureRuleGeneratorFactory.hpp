@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
+#include "tribol/integ/PolygonQuadratureRuleGenerator.hpp"
 #include "axom/slic/interface/slic.hpp"
 #include "axom/slic/interface/slic_macros.hpp"
 #include "tribol/integ/PairQuadratureRuleGenerator.hpp"
@@ -22,7 +23,7 @@ namespace tribol {
 
 inline constexpr int minimum_supported_quadrature_order = 0;  ///< Smallest accepted polynomial order.
 inline constexpr int maximum_supported_quadrature_order =
-    EdgeQuadratureRuleGenerator<3>::polynomial_order;  ///< Largest order supported by the available edge rules.
+    EdgeQuadratureRuleGenerator<3>::polynomial_order;  ///< Largest order supported by the available edge/polygon rules.
 
 /**
  * @brief Create a pair quadrature rule generator with the rule generator selected by polynomial order.
@@ -39,21 +40,42 @@ inline constexpr int maximum_supported_quadrature_order =
 template <typename Mapping, typename Create>
 decltype( auto ) createWithQuadratureRuleGenerator( int order, const Mapping& mapping, Create&& create )
 {
-  using OnePointRuleGenerator = PairQuadratureRuleGenerator<Mapping, EdgeQuadratureRuleGenerator<1>>;
-  using TwoPointRuleGenerator = PairQuadratureRuleGenerator<Mapping, EdgeQuadratureRuleGenerator<2>>;
-  using ThreePointRuleGenerator = PairQuadratureRuleGenerator<Mapping, EdgeQuadratureRuleGenerator<3>>;
-
   // Execution continues past an unsupported-order error only when SLIC aborts are disabled; the nearest rule is used.
   SLIC_ERROR_IF( order < minimum_supported_quadrature_order, "Quadrature order must be nonnegative." );
-  if ( order <= OnePointRuleGenerator::polynomial_order ) {
-    return std::forward<Create>( create )( OnePointRuleGenerator{ mapping } );
+  if constexpr ( Mapping::Geometry1::parametric_dim == 1 ) {
+    using OnePointRuleGenerator = PairQuadratureRuleGenerator<Mapping, EdgeQuadratureRuleGenerator<1>>;
+    using TwoPointRuleGenerator = PairQuadratureRuleGenerator<Mapping, EdgeQuadratureRuleGenerator<2>>;
+    using ThreePointRuleGenerator = PairQuadratureRuleGenerator<Mapping, EdgeQuadratureRuleGenerator<3>>;
+
+    if ( order <= OnePointRuleGenerator::polynomial_order ) {
+      return std::forward<Create>( create )( OnePointRuleGenerator{ mapping } );
+    }
+    if ( order <= TwoPointRuleGenerator::polynomial_order ) {
+      return std::forward<Create>( create )( TwoPointRuleGenerator{ mapping } );
+    }
+    SLIC_ERROR_IF( order > maximum_supported_quadrature_order,
+                   "Requested quadrature order exceeds the supported quadrature rules." );
+    return std::forward<Create>( create )( ThreePointRuleGenerator{ mapping } );
+  } else {
+    static_assert( Mapping::Geometry1::parametric_dim == 2 );
+    using CentroidRuleGenerator = PairQuadratureRuleGenerator<Mapping, PolygonCentroidQuadratureRuleGenerator>;
+    using ThreePointTriRuleGenerator = PairQuadratureRuleGenerator<Mapping, PolygonQuadratureRuleGenerator<3>>;
+    using SixPointTriRuleGenerator = PairQuadratureRuleGenerator<Mapping, PolygonQuadratureRuleGenerator<6>>;
+    using SevenPointTriRuleGenerator = PairQuadratureRuleGenerator<Mapping, PolygonQuadratureRuleGenerator<7>>;
+
+    if ( order <= CentroidRuleGenerator::polynomial_order ) {
+      return std::forward<Create>( create )( CentroidRuleGenerator{ mapping } );
+    }
+    if ( order <= ThreePointTriRuleGenerator::polynomial_order ) {
+      return std::forward<Create>( create )( ThreePointTriRuleGenerator{ mapping } );
+    }
+    if ( order <= SixPointTriRuleGenerator::polynomial_order ) {
+      return std::forward<Create>( create )( SixPointTriRuleGenerator{ mapping } );
+    }
+    SLIC_ERROR_IF( order > maximum_supported_quadrature_order,
+                   "Requested quadrature order exceeds the supported quadrature rules." );
+    return std::forward<Create>( create )( SevenPointTriRuleGenerator{ mapping } );
   }
-  if ( order <= TwoPointRuleGenerator::polynomial_order ) {
-    return std::forward<Create>( create )( TwoPointRuleGenerator{ mapping } );
-  }
-  SLIC_ERROR_IF( order > maximum_supported_quadrature_order,
-                 "Requested quadrature order exceeds the supported quadrature rules." );
-  return std::forward<Create>( create )( ThreePointRuleGenerator{ mapping } );
 }
 
 }  // namespace tribol

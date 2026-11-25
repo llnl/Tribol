@@ -75,7 +75,11 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
  * are unsupported, or if Jacobian calculation was requested without Enzyme support.
  *
  * Supports 2D MFEM frictionless penalty contact on linear coordinates, higher-order coordinates with LOR subdivision,
- * or quadratic coordinates with pair-local quadrature subdivision enabled via enableQuadratureSubdivision().
+ * or quadratic coordinates with pair-local quadrature subdivision enabled via enableQuadratureSubdivision(), and 3D
+ * MFEM frictionless penalty contact on linear or LOR-subdivided higher-order coordinates with exclusively triangle or
+ * exclusively quadrilateral contact faces. In 3D, quadrature orders 0-1 use a single point at the overlap polygon
+ * centroid (which can miss localized penetration on warped faces), while orders 2-5 use positive-weight symmetric
+ * triangle Gauss rules over a centroid fan triangulation.
  * Use getMfemContactResidual() and, when requested, getMfemDfDx() after update(), rather than getMfemResponse(). The
  * returned vector is a contact residual; its negative is the physical force returned by legacy Common Plane. Nodal
  * gaps and energy output are unsupported.
