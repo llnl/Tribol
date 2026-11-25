@@ -3,7 +3,10 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-/** @file @brief Accumulate nodal pair contributions into an MFEM vector with an explicit transfer destination. */
+/**
+ * @file
+ * @brief Accumulate nodal pair contributions into an MFEM vector with an explicit transfer destination.
+ */
 #ifndef SRC_TRIBOL_ASSEMBLY_MFEMVECTORASSEMBLER_HPP_
 #define SRC_TRIBOL_ASSEMBLY_MFEMVECTORASSEMBLER_HPP_
 #include "tribol/config.hpp"

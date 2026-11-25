@@ -3,7 +3,10 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-/** @file @brief Parallel reductions selected by Tribol execution mode. */
+/**
+ * @file
+ * @brief Parallel reductions selected by Tribol execution mode.
+ */
 #ifndef SRC_TRIBOL_COMMON_REDUCTIONS_HPP_
 #define SRC_TRIBOL_COMMON_REDUCTIONS_HPP_
 

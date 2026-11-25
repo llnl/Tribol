@@ -3,7 +3,10 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-/** @file @brief Execution-space reduction and MPI assembly for scalar contributions. */
+/**
+ * @file
+ * @brief Execution-space reduction and MPI assembly for scalar contributions.
+ */
 #ifndef SRC_TRIBOL_COMMON_GLOBALSCALARASSEMBLER_HPP_
 #define SRC_TRIBOL_COMMON_GLOBALSCALARASSEMBLER_HPP_
 

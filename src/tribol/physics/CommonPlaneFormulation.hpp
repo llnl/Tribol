@@ -3,7 +3,10 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-/** @file @brief Opt-in composed Common Plane contact formulation, separate from the legacy response path. */
+/**
+ * @file
+ * @brief Opt-in composed Common Plane contact formulation, separate from the legacy response path.
+ */
 #ifndef SRC_TRIBOL_PHYSICS_COMMONPLANEFORMULATION_HPP_
 #define SRC_TRIBOL_PHYSICS_COMMONPLANEFORMULATION_HPP_
 

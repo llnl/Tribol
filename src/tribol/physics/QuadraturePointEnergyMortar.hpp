@@ -3,7 +3,10 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-/** @file @brief Quadrature-point Energy Mortar pair energy and contact formulation. */
+/**
+ * @file
+ * @brief Quadrature-point Energy Mortar pair energy and contact formulation.
+ */
 #ifndef SRC_TRIBOL_PHYSICS_QUADRATUREPOINTENERGYMORTAR_HPP_
 #define SRC_TRIBOL_PHYSICS_QUADRATUREPOINTENERGYMORTAR_HPP_
 

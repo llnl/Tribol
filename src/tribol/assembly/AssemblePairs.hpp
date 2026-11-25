@@ -3,7 +3,10 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-/** @file @brief Evaluate pair functions and assemble residuals and residual Jacobians on MFEM parent DOFs. */
+/**
+ * @file
+ * @brief Evaluate pair functions and assemble residuals and residual Jacobians on MFEM parent DOFs.
+ */
 #ifndef SRC_TRIBOL_ASSEMBLY_ASSEMBLEPAIRS_HPP_
 #define SRC_TRIBOL_ASSEMBLY_ASSEMBLEPAIRS_HPP_
 
