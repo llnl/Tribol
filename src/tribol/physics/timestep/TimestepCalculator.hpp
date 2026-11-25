@@ -412,8 +412,11 @@ class TimestepCalculator {
 
         const auto point1 = geometry1.position( parametric_coords1 );
         const auto point2 = geometry2.position( parametric_coords2 );
+        static_assert( std::remove_cvref_t<decltype( points )>::spatial_dim == Geometry1::spatial_dim );
+        const typename Geometry1::Vector normal( &points.integration_surface_normals( point, 0 ),
+                                                 Geometry1::spatial_dim );
         const QuadraturePointTimestepData qp_data = traction_function.computeTimestepDataAtQuadraturePoint(
-            point1, point2, parametric_coords1, parametric_coords2, pair_geometry_data );
+            point1, point2, parametric_coords1, parametric_coords2, normal, pair_geometry_data );
         if ( !qp_data.valid ) {
           continue;
         }

@@ -29,6 +29,7 @@
 #include "tribol/geom/QuadraticEdgeGeometry.hpp"
 #include "tribol/integ/QuadratureRuleGeneratorFactory.hpp"
 #include "tribol/integ/SubdividedPairQuadratureRuleGenerator.hpp"
+#include "tribol/geom/CommonPlaneQuadraticEdgeProjection.hpp"
 
 namespace {
 using namespace tribol;
@@ -49,6 +50,8 @@ using LinearCommonPlaneRule = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping
 using QuadraticCommonPlaneRule = SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, LinearCommonPlaneRule,
                                                                        max_num_quadrature_subdivisions>;
 static_assert( PairRuleGenerator<QuadraticCommonPlaneRule> );
+static_assert( SubelementPointProjection<CommonPlaneQuadraticEdgeProjection, QuadraticEdgeGeometry> );
+static_assert( SubelementPointProjection<AffineSubelementMapping, QuadraticEdgeGeometry> );
 static_assert( QuadraticCommonPlaneRule::max_num_points ==
                max_num_quadrature_subdivisions * max_num_quadrature_subdivisions );
 
@@ -112,8 +115,9 @@ TEST( QuadraticEdgeGeometry, evaluates_position_tangent_and_normal )
   const auto midpoint = geometry.position( midpoint_coordinate.view() );
   const auto second_endpoint = geometry.position( second_endpoint_coordinate.view() );
   const auto tangent = geometry.tangent( midpoint_coordinate.view() );
-  QuadraticEdgeGeometry::Vector normal;
-  ASSERT_TRUE( geometry.unitNormal( midpoint_coordinate.view(), normal ) );
+  const auto unit_normal = geometry.unitNormal( midpoint_coordinate.view() );
+  ASSERT_TRUE( unit_normal.valid );
+  const auto& normal = unit_normal.normal;
   EXPECT_NEAR( first_endpoint[0], coords( 0, 0 ), tolerance );
   EXPECT_NEAR( first_endpoint[1], coords( 0, 1 ), tolerance );
   EXPECT_NEAR( midpoint[0], 0.0, tolerance );
@@ -124,6 +128,26 @@ TEST( QuadraticEdgeGeometry, evaluates_position_tangent_and_normal )
   EXPECT_NEAR( tangent[1], 0.0, tolerance );
   EXPECT_NEAR( normal[0], 0.0, tolerance );
   EXPECT_NEAR( normal[1], -1.0, tolerance );
+}
+
+// QuadraticEdgeGeometry::monomialCoefficients must reproduce the nodal interpolation at every parametric coordinate.
+TEST( QuadraticEdgeGeometry, monomial_coefficients_reproduce_position )
+{
+  // Asymmetric curved edge so every coefficient component is nonzero.
+  const MdArray<RealT, 3, 2> coords{ MdArray<RealT, 2>{ -1.0, 0.2 }, MdArray<RealT, 2>{ 1.5, -0.1 },
+                                     MdArray<RealT, 2>{ 0.3, 0.4 } };
+  const QuadraticEdgeGeometry geometry( coords.view() );
+  const auto coefficients = geometry.monomialCoefficients();
+  for ( const RealT xi : { -1.0, -0.3, 0.0, 0.6, 1.0 } ) {
+    SCOPED_TRACE( xi );
+    const MdArray<RealT, 1> parametric_coords{ xi };
+    const auto position = geometry.position( parametric_coords.view() );
+    for ( IndexT component = 0; component < QuadraticEdgeGeometry::spatial_dim; ++component ) {
+      EXPECT_NEAR( coefficients.constant[component] + xi * coefficients.linear[component] +
+                       xi * xi * coefficients.quadratic[component],
+                   position[component], tolerance );
+    }
+  }
 }
 
 // QuadraticEdgeGeometry::unitNormal must fail when the local tangent has zero length or nonfinite coordinates.
@@ -137,10 +161,9 @@ TEST( QuadraticEdgeGeometry, rejects_zero_and_nonfinite_tangents )
                                                        MdArray<RealT, 2>{ std::numeric_limits<RealT>::infinity(), 0.0 },
                                                        MdArray<RealT, 2>{ 1.0, 0.0 } };
   const MdArray<RealT, 1> midpoint_coordinate{ 0.0 };
-  QuadraticEdgeGeometry::Vector normal;
-  EXPECT_FALSE( QuadraticEdgeGeometry( zero_tangent_coords.view() ).unitNormal( midpoint_coordinate.view(), normal ) );
+  EXPECT_FALSE( QuadraticEdgeGeometry( zero_tangent_coords.view() ).unitNormal( midpoint_coordinate.view() ).valid );
   EXPECT_FALSE(
-      QuadraticEdgeGeometry( nonfinite_tangent_coords.view() ).unitNormal( midpoint_coordinate.view(), normal ) );
+      QuadraticEdgeGeometry( nonfinite_tangent_coords.view() ).unitNormal( midpoint_coordinate.view() ).valid );
 }
 
 // SubdividedPairQuadratureRuleGenerator must visit every subelement-chord pair across supported subdivision counts,
@@ -247,6 +270,68 @@ TEST( SubdividedPairQuadrature, skips_degenerate_subelements_and_keeps_remaining
   for ( IndexT point = 0; point < rule.metadata.num_required_points; ++point ) {
     EXPECT_GE( rule.geom1_parametric_coords( point, 0 ), 0.0 );
   }
+}
+
+// Closed-form projection must pair points on the curved edges along the subelement pair's common-plane normal, keeping
+// the linear rule's weights and storing that normal with every point. The affine mapping evaluates curved points whose
+// separation is not along that normal.
+TEST( SubdividedPairQuadrature, projects_paired_points_onto_curved_edges_along_common_normal )
+{
+  using LinearRule = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<3>>;
+  using AffineRule = SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, LinearRule,
+                                                           max_num_quadrature_subdivisions, AffineSubelementMapping>;
+  using ProjectedRule =
+      SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, LinearRule, max_num_quadrature_subdivisions,
+                                            CommonPlaneQuadraticEdgeProjection>;
+  // Edge1 bulges upward toward edge2, which is tilted and bulges downward, so the curved edges interpenetrate. One
+  // subdivision makes each edge's chord the only subelement, so the test can compute the common-plane normal directly.
+  const MdArray<RealT, 3, 2> coords1{ MdArray<RealT, 2>{ 1.0, 0.0 }, MdArray<RealT, 2>{ -1.0, 0.0 },
+                                      MdArray<RealT, 2>{ 0.05, 0.12 } };
+  const MdArray<RealT, 3, 2> coords2{ MdArray<RealT, 2>{ -0.9, 0.1 }, MdArray<RealT, 2>{ 0.9, 0.0 },
+                                      MdArray<RealT, 2>{ 0.1, -0.02 } };
+  constexpr int num_subdivisions = 1;
+  const QuadraticEdgeGeometry geometry1( coords1.view() );
+  const QuadraticEdgeGeometry geometry2( coords2.view() );
+  const MdArray<RealT, 2, 2> chord1{ MdArray<RealT, 2>{ coords1( 0, 0 ), coords1( 0, 1 ) },
+                                     MdArray<RealT, 2>{ coords1( 1, 0 ), coords1( 1, 1 ) } };
+  const MdArray<RealT, 2, 2> chord2{ MdArray<RealT, 2>{ coords2( 0, 0 ), coords2( 0, 1 ) },
+                                     MdArray<RealT, 2>{ coords2( 1, 0 ), coords2( 1, 1 ) } };
+  const auto normal = CommonPlaneEdgeMapping::computeCommonPlaneLine( LinearEdgeGeometry( chord1.view() ),
+                                                                      LinearEdgeGeometry( chord2.view() ) )
+                          .normal;
+
+  const auto projected = ProjectedRule{ num_subdivisions }.generate( geometry1, geometry2 );
+  const auto affine = AffineRule{ num_subdivisions }.generate( geometry1, geometry2 );
+  ASSERT_EQ( projected.metadata.status, QuadratureStatus::Success );
+  ASSERT_EQ( affine.metadata.status, QuadratureStatus::Success );
+  ASSERT_EQ( projected.metadata.num_required_points, affine.metadata.num_required_points );
+  ASSERT_GT( projected.metadata.num_required_points, 0 );
+
+  // Component of the vector between the two paired quadrature points perpendicular to the common-plane normal.
+  // Zero means the two curved-edge points lie on the same line along the common-plane normal.
+  const auto tangentialSeparation = [&]( const auto& rule, IndexT point ) {
+    const MdArray<RealT, 1> parametric_coords1{ rule.geom1_parametric_coords( point, 0 ) };
+    const MdArray<RealT, 1> parametric_coords2{ rule.geom2_parametric_coords( point, 0 ) };
+    const QuadraticEdgeGeometry::Vector separation( geometry2.position( parametric_coords2.view() ),
+                                                    geometry1.position( parametric_coords1.view() ) );
+    return separation[0] * normal[1] - separation[1] * normal[0];
+  };
+  RealT max_affine_tangential_separation = 0.0;
+  for ( IndexT point = 0; point < projected.metadata.num_required_points; ++point ) {
+    SCOPED_TRACE( point );
+    EXPECT_NEAR( tangentialSeparation( projected, point ), 0.0, tolerance );
+    EXPECT_NEAR( projected.weights[point], affine.weights[point], tolerance );
+    for ( IndexT component = 0; component < LinearEdgeGeometry::spatial_dim; ++component ) {
+      EXPECT_NEAR( projected.integration_surface_normals( point, component ), normal[component], tolerance );
+      EXPECT_NEAR( affine.integration_surface_normals( point, component ), normal[component], tolerance );
+    }
+    max_affine_tangential_separation =
+        std::max( max_affine_tangential_separation, std::abs( tangentialSeparation( affine, point ) ) );
+  }
+  // The edge curvature offsets affine points by a few percent of the edge length; any visible offset shows the check
+  // above can detect a misaligned pairing.
+  constexpr RealT minimum_detectable_offset = 1.0e-3;
+  EXPECT_GT( max_affine_tangential_separation, minimum_detectable_offset );
 }
 
 /** @brief Run local rule calculations in memory accessible to the selected backend. */
@@ -396,7 +481,8 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
     ArrayT<RealT> stored_values( 3, 3, allocatorId() );
     const auto status = results.view();
     const auto stored = stored_values.view();
-    constexpr RealT unwritten = -1.0;
+    // A failed mapping returns a value-initialized rule.
+    constexpr RealT unwritten = 0.0;
     for ( const RealT invalid : { std::numeric_limits<RealT>::quiet_NaN(), std::numeric_limits<RealT>::infinity(),
                                   -std::numeric_limits<RealT>::infinity() } ) {
       for ( IndexT geometry_index = 0; geometry_index < 2; ++geometry_index ) {
@@ -412,12 +498,9 @@ class EdgeQuadratureTest : public tribol::detail::ExecutionTest {
           const LinearEdgeGeometry geometry1( coords1.view() ), geometry2( coords2.view() );
           const PairQuadratureRuleGenerator<Mapping, EdgeQuadratureRuleGenerator<1>> generator{};
           status[0] = generator.generate( geometry1, geometry2 ).metadata;
-          PairQuadratureRule<1, 1, 1> mapped{};
-          mapped.geom1_parametric_coords( 0, 0 ) = unwritten;
-          mapped.geom2_parametric_coords( 0, 0 ) = unwritten;
-          mapped.weights[0] = unwritten;
           const auto reference = EdgeQuadratureRuleGenerator<1>{}.generate();
-          status[1] = Mapping{}.mapToElements( geometry1, geometry2, reference.getView(), mapped.getOutputView() );
+          const auto mapped = Mapping{}.template mapToElements<1>( geometry1, geometry2, reference.getView() );
+          status[1] = mapped.metadata;
           stored[0] = mapped.geom1_parametric_coords( 0, 0 );
           stored[1] = mapped.geom2_parametric_coords( 0, 0 );
           stored[2] = mapped.weights[0];
@@ -591,44 +674,38 @@ TEST_P( EdgeQuadratureTest, integration_surface_generation_skips_edges_with_same
   }
 }
 
-// Direct generation must skip same-facing edges before requiring or writing any caller-provided point storage.
-TEST_P( EdgeQuadratureTest, direct_generation_skips_same_facing_edges_without_writing_points )
+// Same-facing edges must be skipped before the mapping compares the required point count with its capacity, both when
+// mapping a supplied rule and during direct generation.
+TEST_P( EdgeQuadratureTest, skips_same_facing_edges_before_checking_capacity )
 {
   constexpr int num_points = 3;
-  constexpr RealT initial_storage_value = -7.0;
+  // A capacity smaller than the supplied rule would report insufficient capacity if the pair were not skipped first.
+  constexpr int small_capacity = 1;
+  constexpr int num_operations = 2;
   // Test both parallel and tilted edges above edge1, with both edges ordered left-to-right.
   for ( const RealT rise : { 0.0, 0.5 } ) {
     SCOPED_TRACE( testing::Message() << "edge2 endpoint rise=" << rise );
-    ArrayT<QuadratureMetadata> results( 1, 1, allocatorId() );
+    ArrayT<QuadratureMetadata> results( num_operations, num_operations, allocatorId() );
     const auto results_view = results.view();
-    // This single number lets us detect a write to output storage that should never be used for a skipped pair.
-    ArrayT<RealT> point_storage( 1, 1, allocatorId() );
-    point_storage.fill( initial_storage_value );
-    const auto point_storage_view = point_storage.view();
     forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
       const MdArray<RealT, 2, 2> coords1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } };
       const MdArray<RealT, 2, 2> coords2{ MdArray<RealT, 2>{ 0.0, 0.2 }, MdArray<RealT, 2>{ 4.0, 0.2 + rise } };
+      const LinearEdgeGeometry geometry1( coords1.view() ), geometry2( coords2.view() );
+      const auto integration_surface_rule = EdgeQuadratureRuleGenerator<num_points>{}.generate();
+      results_view[0] = SmoothedProjectedEdgeMapping{}
+                            .mapToElements<small_capacity>( geometry1, geometry2, integration_surface_rule.getView() )
+                            .metadata;
       const PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<num_points>>
           rule_generator{};
-      // Use zero capacity to check that this pair is skipped before any point storage is required: the result must be
-      // success with zero points, not an insufficient-capacity error. With room for three points, the pair should
-      // still be skipped and storage left unchanged; that case would require allocating space for all three points.
-      // Here all coordinate and weight pointers refer to the same marked storage value, which must remain unchanged.
-      const PairQuadratureRuleView<1, 1> zero_capacity_output{ { point_storage_view.data(), { 0, 1 } },
-                                                               { point_storage_view.data(), { 0, 1 } },
-                                                               { point_storage_view.data(), 0 } };
-      results_view[0] = rule_generator.generate( LinearEdgeGeometry( coords1.view() ),
-                                                 LinearEdgeGeometry( coords2.view() ), zero_capacity_output );
+      results_view[1] = rule_generator.generate( geometry1, geometry2 ).metadata;
     } );
-    // Read back the operation result and storage value, including when generation ran on a GPU.
+    // Read back the operation results, including when generation ran on a GPU.
     const ArrayT<QuadratureMetadata, 1, MemorySpace::Host> host_results( results );
-    const ArrayT<RealT, 1, MemorySpace::Host> host_point_storage( point_storage );
-    // A skipped pair needs no storage, so zero capacity must not cause an insufficient-capacity error.
-    EXPECT_EQ( host_results[0].status, QuadratureStatus::Success );
-    // The caller should be told that no points are needed.
-    EXPECT_EQ( host_results[0].num_required_points, 0 );
-    // Skipping the pair must leave the caller's output storage unchanged.
-    EXPECT_EQ( host_point_storage[0], initial_storage_value );
+    for ( const auto result : host_results ) {
+      // A skipped pair needs no points, so the small capacity must not cause an insufficient-capacity error.
+      EXPECT_EQ( result.status, QuadratureStatus::Success );
+      EXPECT_EQ( result.num_required_points, 0 );
+    }
   }
 }
 
@@ -647,10 +724,11 @@ TEST_P( EdgeQuadratureTest, integration_surface_mapping_skips_edges_with_same_fa
       const MdArray<RealT, 2, 2> coords2{ MdArray<RealT, 2>{ 0.0, 0.2 }, MdArray<RealT, 2>{ 4.0, 0.2 + rise } };
       // Start with three quadrature points on [-1,1], generated independently of the two edges.
       const auto integration_surface_rule = EdgeQuadratureRuleGenerator<num_points>{}.generate();
-      PairQuadratureRule<1, 1, num_points> mapped_quadrature{};
-      results_view[0] = SmoothedProjectedEdgeMapping{}.mapToElements(
-          LinearEdgeGeometry( coords1.view() ), LinearEdgeGeometry( coords2.view() ),
-          integration_surface_rule.getView(), mapped_quadrature.getOutputView() );
+      results_view[0] =
+          SmoothedProjectedEdgeMapping{}
+              .mapToElements<num_points>( LinearEdgeGeometry( coords1.view() ), LinearEdgeGeometry( coords2.view() ),
+                                          integration_surface_rule.getView() )
+              .metadata;
     } );
     // Copy the result to the host for assertions on every execution backend.
     const ArrayT<QuadratureMetadata, 1, MemorySpace::Host> host_results( results );
@@ -695,48 +773,32 @@ TEST_P( EdgeQuadratureTest, rejects_collapsed_edges )
   }
 }
 
-// A valid pair requiring three points must report insufficient capacity when output has room for only one point.
-TEST_P( EdgeQuadratureTest, reports_insufficient_capacity_without_writing_past_output )
+// A valid pair requiring three points must report insufficient capacity, with the full required count, when the mapped
+// rule has room for only one point.
+TEST_P( EdgeQuadratureTest, reports_insufficient_capacity_with_full_required_count )
 {
   constexpr int num_points = 3;
   constexpr int output_capacity = 1;
-  constexpr int num_guard_entries = 2;
-  constexpr int weight_storage_size = output_capacity + num_guard_entries;
-  constexpr RealT initial_storage_value = -7.0;
-  // Weight storage layout: [left guard, space for one weight, right guard]. Only the middle entry belongs to output.
-  // Both guards start at a known value so the assertions can detect writes immediately outside that output space.
-  ArrayT<RealT> weight_storage( weight_storage_size, weight_storage_size, allocatorId() );
-  weight_storage.fill( initial_storage_value );
-  // Store the status and required point count for this generation call.
+  // Store the status and required point count for this mapping call.
   ArrayT<QuadratureMetadata> results( 1, 1, allocatorId() );
-  const auto weight_storage_view = weight_storage.view();
   const auto results_view = results.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
-    const PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<num_points>>
-        generator{};
     // The valid pair consists of parallel edges spanning x=[0,4], separated by 0.2, with opposing normals.
     const MdArray<RealT, 2, 2> edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } },
         edge2{ MdArray<RealT, 2>{ 4.0, 0.2 }, MdArray<RealT, 2>{ 0.0, 0.2 } };
-    // For the valid pair, provide parent-coordinate arrays and weight storage for only one of the three points.
-    MdArray<RealT, output_capacity, 1> edge1_parent_storage;
-    MdArray<RealT, output_capacity, 1> edge2_parent_storage;
-    const PairQuadratureRuleView<1, 1> limited_output{ { edge1_parent_storage.data(), { output_capacity, 1 } },
-                                                       { edge2_parent_storage.data(), { output_capacity, 1 } },
-                                                       { weight_storage_view.data() + 1, output_capacity } };
+    const auto integration_surface_rule = EdgeQuadratureRuleGenerator<num_points>{}.generate();
     results_view[0] =
-        generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( edge2.view() ), limited_output );
+        SmoothedProjectedEdgeMapping{}
+            .mapToElements<output_capacity>( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( edge2.view() ),
+                                             integration_surface_rule.getView() )
+            .metadata;
   } );
-  // Copy the operation results and weight storage to the host, including when generation ran on a GPU.
+  // Copy the operation results to the host, including when generation ran on a GPU.
   const ArrayT<QuadratureMetadata, 1, MemorySpace::Host> host_results( results );
-  const ArrayT<RealT, 1, MemorySpace::Host> host_weight_storage( weight_storage );
-  // The geometry is valid, but room for one point is insufficient for the selected three-point rule.
+  // The geometry is valid, but room for one point is insufficient for the supplied three-point rule.
   EXPECT_EQ( host_results[0].status, QuadratureStatus::InsufficientCapacity );
-  // Report the full required count so the caller knows how much storage is needed.
+  // Report the full required count so the caller knows how much capacity is needed.
   EXPECT_EQ( host_results[0].num_required_points, num_points );
-  // The left guard entry must remain unchanged: no write before the output space.
-  EXPECT_EQ( host_weight_storage[0], initial_storage_value );
-  // The right guard entry must remain unchanged: no write past the output space.
-  EXPECT_EQ( host_weight_storage[weight_storage_size - 1], initial_storage_value );
 }
 
 // Refined search and quadrature generation use the same minimum input-edge length. This test checks that element
@@ -783,10 +845,11 @@ TEST_P( EdgeQuadratureTest, applies_same_minimum_length_to_both_edges )
               .metadata;
       // This path starts with one quadrature point on [-1,1] and maps it without choosing an overlap interval again.
       const auto integration_surface_rule = EdgeQuadratureRuleGenerator<num_points>{}.generate();
-      PairQuadratureRule<1, 1, num_points> mapped_quadrature{};
-      results_view[1] = SmoothedProjectedEdgeMapping{}.mapToElements(
-          LinearEdgeGeometry( coords1.view() ), LinearEdgeGeometry( coords2.view() ),
-          integration_surface_rule.getView(), mapped_quadrature.getOutputView() );
+      results_view[1] =
+          SmoothedProjectedEdgeMapping{}
+              .mapToElements<num_points>( LinearEdgeGeometry( coords1.view() ), LinearEdgeGeometry( coords2.view() ),
+                                          integration_surface_rule.getView() )
+              .metadata;
     } );
     // Read both results on the host, including when the calculations ran on a GPU.
     const ArrayT<QuadratureMetadata, 1, MemorySpace::Host> host_results( results );
@@ -826,14 +889,12 @@ TEST_P( EdgeQuadratureTest, remaps_integration_surface_rule_after_first_edge_dou
     const MdArray<RealT, 2, 2> original_edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 4.0, 0.0 } };
     const MdArray<RealT, 2, 2> lengthened_edge1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 8.0, 0.0 } };
     const MdArray<RealT, 2, 2> edge2{ MdArray<RealT, 2>{ 4.0, 0.2 }, MdArray<RealT, 2>{ 0.0, 0.2 } };
-    PairQuadratureRule<1, 1, num_points> original_quadrature{};
-    original_quadrature.metadata = SmoothedProjectedEdgeMapping{}.mapToElements(
+    const auto original_quadrature = SmoothedProjectedEdgeMapping{}.mapToElements<num_points>(
         LinearEdgeGeometry( original_edge1.view() ), LinearEdgeGeometry( edge2.view() ),
-        integration_surface_rule.getView(), original_quadrature.getOutputView() );
-    PairQuadratureRule<1, 1, num_points> stretched_quadrature{};
-    stretched_quadrature.metadata = SmoothedProjectedEdgeMapping{}.mapToElements(
+        integration_surface_rule.getView() );
+    const auto stretched_quadrature = SmoothedProjectedEdgeMapping{}.mapToElements<num_points>(
         LinearEdgeGeometry( lengthened_edge1.view() ), LinearEdgeGeometry( edge2.view() ),
-        integration_surface_rule.getView(), stretched_quadrature.getOutputView() );
+        integration_surface_rule.getView() );
     records_view[0] =
         stretched_quadrature.geom1_parametric_coords( 0, 0 ) - original_quadrature.geom1_parametric_coords( 0, 0 );
     records_view[1] = stretched_quadrature.weights[0] / original_quadrature.weights[0];
@@ -865,10 +926,8 @@ TEST_P( EdgeQuadratureTest, maps_integration_surface_rule_to_both_tilted_edges )
     const MdArray<RealT, 2, 2> edge2{ MdArray<RealT, 2>{ 3.0, 2.0 }, MdArray<RealT, 2>{ 1.0, 0.0 } };
     // Supply points on the full edge1 reference interval [-1,1] to test mapping without computing overlap bounds.
     const auto integration_surface_rule = EdgeQuadratureRuleGenerator<num_points>{}.generate();
-    PairQuadratureRule<1, 1, num_points> mapped_quadrature{};
-    mapped_quadrature.metadata = SmoothedProjectedEdgeMapping{}.mapToElements(
-        LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( edge2.view() ), integration_surface_rule.getView(),
-        mapped_quadrature.getOutputView() );
+    const auto mapped_quadrature = SmoothedProjectedEdgeMapping{}.mapToElements<num_points>(
+        LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( edge2.view() ), integration_surface_rule.getView() );
     results_view[0] = mapped_quadrature.metadata;
     const auto points = mapped_quadrature.getView();
     for ( int q = 0; q < mapped_quadrature.metadata.num_required_points; ++q ) {
@@ -919,10 +978,8 @@ TEST_P( EdgeQuadratureTest, uses_first_edge_length_for_physical_weights )
     // Integrate over all of edge1, using supplied integration-surface quadrature rather than selecting an overlap
     // interval.
     const auto integration_surface_rule = EdgeQuadratureRuleGenerator<num_points>{}.generate();
-    PairQuadratureRule<1, 1, num_points> mapped_quadrature{};
-    mapped_quadrature.metadata = SmoothedProjectedEdgeMapping{}.mapToElements(
-        LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( edge2.view() ), integration_surface_rule.getView(),
-        mapped_quadrature.getOutputView() );
+    const auto mapped_quadrature = SmoothedProjectedEdgeMapping{}.mapToElements<num_points>(
+        LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( edge2.view() ), integration_surface_rule.getView() );
     results_view[0] = mapped_quadrature.metadata;
     const auto points = mapped_quadrature.getView();
     for ( int q = 0; q < mapped_quadrature.metadata.num_required_points; ++q ) {
@@ -978,14 +1035,12 @@ TEST_P( EdgeQuadratureTest, remaps_integration_surface_rule_after_second_edge_mo
     const auto integration_surface_rule =
         EdgeQuadratureRuleGenerator<num_points>{}.generate( SmoothedProjectedEdgeMapping{}.makeIntegrationSurface(
             LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( original_edge2.view() ) ) );
-    PairQuadratureRule<1, 1, num_points> original_quadrature{};
-    original_quadrature.metadata = SmoothedProjectedEdgeMapping{}.mapToElements(
+    const auto original_quadrature = SmoothedProjectedEdgeMapping{}.mapToElements<num_points>(
         LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( original_edge2.view() ),
-        integration_surface_rule.getView(), original_quadrature.getOutputView() );
-    PairQuadratureRule<1, 1, num_points> translated_quadrature{};
-    translated_quadrature.metadata = SmoothedProjectedEdgeMapping{}.mapToElements(
+        integration_surface_rule.getView() );
+    const auto translated_quadrature = SmoothedProjectedEdgeMapping{}.mapToElements<num_points>(
         LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( translated_edge2.view() ),
-        integration_surface_rule.getView(), translated_quadrature.getOutputView() );
+        integration_surface_rule.getView() );
     records_view[0] =
         translated_quadrature.geom1_parametric_coords( 0, 0 ) - original_quadrature.geom1_parametric_coords( 0, 0 );
     records_view[1] =
@@ -1039,17 +1094,23 @@ struct ParallelEdgeMapping {
    * @brief Map physical-x integration points onto each horizontal edge.
    * @param edge1 First edge endpoints.
    * @param edge2 Second edge endpoints.
+   * @tparam Capacity Point capacity of the returned rule.
    * @param integration_surface_rule Points and weights expressed in physical x.
-   * @param [out] paired_points Normalized [-1,1] coordinates on both elements and physical weights.
-   * @return Success with initialized count, or InsufficientCapacity with the full count and untouched output.
+   * @return Normalized [-1,1] coordinates on both elements and physical weights with Success and the initialized count,
+   * or InsufficientCapacity with the full count and no initialized points.
    */
-  TRIBOL_HOST_DEVICE QuadratureMetadata mapToElements( const LinearEdgeGeometry& edge1, const LinearEdgeGeometry& edge2,
-                                                       IntegrationSurfaceRuleView<1> integration_surface_rule,
-                                                       PairQuadratureRuleView<1, 1> paired_points ) const
+  template <IndexT Capacity>
+  TRIBOL_HOST_DEVICE PairQuadratureRule<1, 1, Capacity> mapToElements(
+      const LinearEdgeGeometry& edge1, const LinearEdgeGeometry& edge2,
+      IntegrationSurfaceRuleView<1> integration_surface_rule ) const
   {
+    PairQuadratureRule<1, 1, Capacity> paired_points{};
     const IndexT num_points = integration_surface_rule.numberOfPoints();
     // Check capacity before writing any coordinate or weight.
-    if ( paired_points.capacity() < num_points ) return { QuadratureStatus::InsufficientCapacity, num_points };
+    if ( Capacity < num_points ) {
+      paired_points.metadata = { QuadratureStatus::InsufficientCapacity, num_points };
+      return paired_points;
+    }
     for ( IndexT q = 0; q < num_points; ++q ) {
       // The integration-surface coordinate is physical x. Setting y=0 locates the same x on each horizontal edge
       // because parametricCoordinate() projects the point orthogonally onto the edge's line.
@@ -1060,7 +1121,8 @@ struct ParallelEdgeMapping {
       // The supplied rule's weights already integrate over physical x; no edge-length factor is needed.
       paired_points.weights[q] = integration_surface_rule.weights[q];
     }
-    return { QuadratureStatus::Success, num_points };
+    paired_points.metadata = { QuadratureStatus::Success, num_points };
+    return paired_points;
   }
 };
 
@@ -1107,12 +1169,13 @@ struct IncompatibleRuleMapping : SmoothedProjectedEdgeMapping {
    * @brief Declare element mapping for an incompatible integration-surface rule view.
    * @param geometry1 Geometry1 type.
    * @param geometry2 Geometry2 type.
+   * @tparam Capacity Point capacity of the returned rule.
    * @param rule Integration-surface view requiring two coordinates per point.
-   * @param output Paired element coordinates and weights.
-   * @return Declared generation result type.
+   * @return Declared paired rule type.
    */
-  QuadratureMetadata mapToElements( const Geometry1& geometry1, const Geometry2& geometry2,
-                                    IntegrationSurfaceRuleView<2> rule, PairQuadratureRuleView<1, 1> output ) const;
+  template <IndexT Capacity>
+  PairQuadratureRule<1, 1, Capacity> mapToElements( const Geometry1& geometry1, const Geometry2& geometry2,
+                                                    IntegrationSurfaceRuleView<2> rule ) const;
 };
 
 /** @brief Test-only generator declaring zero points of storage, which cannot back the fixed-size output arrays. */
@@ -1148,44 +1211,29 @@ static_assert( !CanFormPairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping,
 static_assert( !CanFormPairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, ZeroPointRuleGenerator> );
 
 // PairQuadratureRuleGenerator must pass through a failure from the integration-surface rule generator, including the
-// required count, without mapping incomplete points or writing the caller's output storage.
+// required count, without mapping incomplete points.
 TEST_P( EdgeQuadratureTest, preserves_integration_surface_generator_failure_and_required_count )
 {
-  constexpr RealT initial_storage_value = -1.0;
-  // Mark one output value so an unexpected write can be detected after the integration-surface generator reports its
-  // failure.
-  ArrayT<RealT> point_storage( 1, 1, allocatorId() );
-  point_storage.fill( initial_storage_value );
   // Store the status and required count returned by the pair generator.
   ArrayT<QuadratureMetadata> results( 1, 1, allocatorId() );
-  const auto point_storage_view = point_storage.view();
   const auto results_view = results.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
     // Valid, parallel edges span x=[0,1] with opposing normals; geometry should not cause the failure.
     const MdArray<RealT, 2, 2> coords1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 1.0, 0.0 } };
     const MdArray<RealT, 2, 2> coords2{ MdArray<RealT, 2>{ 1.0, 0.2 }, MdArray<RealT, 2>{ 0.0, 0.2 } };
-    // All output views have zero capacity and point to the marked value. The integration-surface generator's failure
-    // must be returned before mapping needs these views. Its reported count comes from the integration-surface
-    // generator, not from this zero capacity.
-    const PairQuadratureRuleView<1, 1> zero_capacity_output{ { point_storage_view.data(), { 0, 1 } },
-                                                             { point_storage_view.data(), { 0, 1 } },
-                                                             { point_storage_view.data(), 0 } };
     // The test-only integration-surface generator has room for one point but always reports that it needs two; it
     // produces no points.
     const PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, UndersizedEdgeQuadratureRuleGenerator>
         rule_generator{};
-    results_view[0] = rule_generator.generate( LinearEdgeGeometry( coords1.view() ),
-                                               LinearEdgeGeometry( coords2.view() ), zero_capacity_output );
+    results_view[0] =
+        rule_generator.generate( LinearEdgeGeometry( coords1.view() ), LinearEdgeGeometry( coords2.view() ) ).metadata;
   } );
-  // Read the operation result and marked storage on the host for assertions on every execution backend.
+  // Read the operation result on the host for assertions on every execution backend.
   const ArrayT<QuadratureMetadata, 1, MemorySpace::Host> host_results( results );
-  const ArrayT<RealT, 1, MemorySpace::Host> host_point_storage( point_storage );
   // The pair generator must preserve the integration-surface generator's failure status.
   EXPECT_EQ( host_results[0].status, QuadratureStatus::InsufficientCapacity );
   // It must also preserve the integration-surface generator's requested count of two points.
   EXPECT_EQ( host_results[0].num_required_points, UndersizedEdgeQuadratureRuleGenerator::num_required_points );
-  // A failed integration-surface generator must not lead to a write to paired-point output.
-  EXPECT_EQ( host_point_storage[0], initial_storage_value );
 }
 
 // PairQuadratureRuleGenerator must not assume that integration-surface coordinates are normalized element coordinates.

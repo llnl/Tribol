@@ -14,6 +14,7 @@
 #include "tribol/search/ProjectedEdgeSearch.hpp"
 #include "tribol/integ/QuadratureRuleGeneratorFactory.hpp"
 #include "tribol/integ/SubdividedPairQuadratureRuleGenerator.hpp"
+#include "tribol/geom/CommonPlaneQuadraticEdgeProjection.hpp"
 #include "tribol/geom/QuadraticEdgeGeometry.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
 
@@ -217,9 +218,11 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
           return createCommonPlaneForRuleGenerator<Exec, BasisFunction<EDGE, LINEAR_LAGRANGE>>(
               cs, std::move( linear_rule_generator ), penalty );
         }
+        // Pair points on the quadratic edges themselves so each pair is separated along its stored common-plane
+        // normal; the traction along that normal then conserves angular momentum.
         using SubdividedRuleGenerator =
             SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, decltype( linear_rule_generator ),
-                                                  max_num_quadrature_subdivisions>;
+                                                  max_num_quadrature_subdivisions, CommonPlaneQuadraticEdgeProjection>;
         return createCommonPlaneForRuleGenerator<Exec, BasisFunction<EDGE, QUADRATIC_LAGRANGE>>(
             cs,
             SubdividedRuleGenerator{ cs->getParameters().num_quadrature_subdivisions,

@@ -7,7 +7,7 @@
 # Tribol version is set here
 #------------------------------------------------------------------------------
 set(TRIBOL_VERSION_MAJOR 0)
-set(TRIBOL_VERSION_MINOR 1)
+set(TRIBOL_VERSION_MINOR 2)
 set(TRIBOL_VERSION_PATCH 0)
 string(CONCAT TRIBOL_VERSION_FULL
     "v${TRIBOL_VERSION_MAJOR}"

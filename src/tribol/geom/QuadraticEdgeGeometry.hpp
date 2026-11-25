@@ -70,26 +70,57 @@ class QuadraticEdgeGeometry {
     return result;
   }
 
+  /** @brief Coefficients of the quadratic map x(xi) = constant + linear * xi + quadratic * xi^2. */
+  struct MonomialCoefficients {
+    Vector constant;   ///< Position at xi = 0.
+    Vector linear;     ///< Tangent dx/dxi at xi = 0.
+    Vector quadratic;  ///< Half of the constant second derivative d2x/dxi2.
+  };
+
+  /**
+   * @brief Convert the nodal coordinates to monomial coefficients in the element parametric coordinate.
+   * @return Coefficients reproducing position() exactly.
+   */
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE MonomialCoefficients monomialCoefficients() const
+  {
+    // Node order follows Basis: endpoint at xi = -1, endpoint at xi = 1, then the midpoint at xi = 0.
+    constexpr IndexT first_endpoint = 0;
+    constexpr IndexT second_endpoint = 1;
+    constexpr IndexT midpoint = 2;
+    MonomialCoefficients coefficients;
+    for ( IndexT d = 0; d < spatial_dim; ++d ) {
+      const RealT first = coords_( first_endpoint, d );
+      const RealT second = coords_( second_endpoint, d );
+      const RealT middle = coords_( midpoint, d );
+      coefficients.constant[d] = middle;
+      coefficients.linear[d] = 0.5 * ( second - first );
+      coefficients.quadratic[d] = 0.5 * ( first + second ) - middle;
+    }
+    return coefficients;
+  }
+
+  /** @brief Unit normal together with a validity flag. */
+  struct UnitNormalResult {
+    Vector normal{};     ///< Unit normal oriented (dy,-dx) when valid; zero otherwise.
+    bool valid = false;  ///< Whether the local tangent has finite components and nonzero length.
+  };
+
   /**
    * @brief Evaluate the directed unit normal when the local tangent is usable.
    * @param parametric_coords Element parametric coordinate.
-   * @param[out] normal Unit normal oriented (dy,-dx) when true; zero when false.
-   * @return Whether the tangent has finite components and nonzero length.
+   * @return Unit normal and whether the local tangent was usable.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE bool unitNormal( MdSpan<const RealT, parametric_dim> parametric_coords,
-                                                           Vector& normal ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE UnitNormalResult
+  unitNormal( MdSpan<const RealT, parametric_dim> parametric_coords ) const
   {
     const auto local_tangent = tangent( parametric_coords );
     const RealT squared_length = local_tangent.dot( local_tangent );
     if ( !std::isfinite( local_tangent[0] ) || !std::isfinite( local_tangent[1] ) || !std::isfinite( squared_length ) ||
          squared_length <= 0.0 ) {
-      normal = Vector{};
-      return false;
+      return {};
     }
     const RealT inverse_length = 1.0 / std::sqrt( squared_length );
-    normal[0] = local_tangent[1] * inverse_length;
-    normal[1] = -local_tangent[0] * inverse_length;
-    return true;
+    return { Vector{ local_tangent[1] * inverse_length, -local_tangent[0] * inverse_length }, true };
   }
 
  private:

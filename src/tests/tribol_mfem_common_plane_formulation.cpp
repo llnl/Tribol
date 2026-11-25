@@ -982,6 +982,8 @@ TEST( CommonPlaneSelection, evaluates_residuals_and_jacobians_with_lor_subdivisi
   ASSERT_NE( assembled_jacobian, nullptr );
 
   const mfem::ParGridFunction original_coordinates( coordinates );
+  // Perturb the x and y coordinates with an affine displacement field so the finite-difference residual change can be
+  // compared with the assembled Jacobian applied to the same displacement.
   mfem::VectorFunctionCoefficient coordinate_direction_coefficient( spatial_dim,
                                                                     []( const mfem::Vector& x, mfem::Vector& v ) {
                                                                       v.SetSize( spatial_dim );

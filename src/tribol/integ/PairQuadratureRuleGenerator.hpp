@@ -40,8 +40,9 @@ concept ElementPairMapping = requires(
  * @brief Requires a mapping and generator that can exchange integration-surface rules and paired element coordinates.
  *
  * The generator accepts the mapping's integration surface. The mapping accepts the generated rule's read-only view
- * and writes paired element coordinates and physical weights. These requirements check types and expressions;
- * coordinate conventions, weight scaling, and host/device execution must be verified separately.
+ * and returns a pair rule, with the generator's point capacity, holding paired element coordinates, physical weights,
+ * and integration-surface normals. These requirements check types and expressions; coordinate conventions, weight
+ * scaling, and host/device execution must be verified separately.
  * @tparam Mapping Type constructing the integration surface and mapping its quadrature points to both elements.
  * @tparam Generator Type generating integration-surface points, weights, and generation status.
  */
@@ -59,8 +60,7 @@ concept CompatibleQuadratureMappingAndGenerator =
     requires( const Generator& generator, const Mapping& mapping, const typename Mapping::Geometry1& geometry1,
               const typename Mapping::Geometry2& geometry2,
               const typename Generator::IntegrationSurfaceRule& integration_surface_rule,
-              IntegrationSurfaceRuleView<Generator::coordinate_dim> integration_surface_rule_view,
-              PairQuadratureRuleView<Mapping::Geometry1::parametric_dim, Mapping::Geometry2::parametric_dim> output ) {
+              IntegrationSurfaceRuleView<Generator::coordinate_dim> integration_surface_rule_view ) {
       {
         generator.generate( mapping.makeIntegrationSurface( geometry1, geometry2 ) )
       } -> std::same_as<typename Generator::IntegrationSurfaceRule>;
@@ -68,8 +68,9 @@ concept CompatibleQuadratureMappingAndGenerator =
       QuadratureMetadata{ integration_surface_rule.metadata.status,
                           integration_surface_rule.metadata.num_required_points };
       {
-        mapping.mapToElements( geometry1, geometry2, integration_surface_rule_view, output )
-      } -> std::same_as<QuadratureMetadata>;
+        mapping.template mapToElements<Generator::max_num_points>( geometry1, geometry2, integration_surface_rule_view )
+      } -> std::same_as<PairQuadratureRule<Mapping::Geometry1::parametric_dim, Mapping::Geometry2::parametric_dim,
+                                           Generator::max_num_points>>;
     };
 
 /**
@@ -118,36 +119,23 @@ class PairQuadratureRuleGenerator {
   using Rule = PairQuadratureRule<Geometry1::parametric_dim, Geometry2::parametric_dim, max_num_points>;
 
   /**
-   * @brief Generate into caller storage using geometry prepared by the pair calculation.
+   * @brief Generate paired quadrature for already prepared element geometry.
    * @param geometry1 First current element geometry.
    * @param geometry2 Second current element geometry.
-   * @param[out] output Paired parametric coordinates and physical weights.
-   * @return Generation status and full count; failed output must not be consumed.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureMetadata
-  generate( const Geometry1& geometry1, const Geometry2& geometry2,
-            PairQuadratureRuleView<Geometry1::parametric_dim, Geometry2::parametric_dim> output ) const
-  {
-    const auto integration_surface_rule =
-        integration_surface_rule_generator_.generate( mapping_.makeIntegrationSurface( geometry1, geometry2 ) );
-    // Return fields explicitly so Enzyme can identify their integer types.
-    if ( integration_surface_rule.metadata.status != QuadratureStatus::Success ) {
-      return { integration_surface_rule.metadata.status, integration_surface_rule.metadata.num_required_points };
-    }
-    return mapping_.mapToElements( geometry1, geometry2, integration_surface_rule.getView(), output );
-  }
-
-  /**
-   * @brief Generate into local storage using already prepared element geometry.
-   * @param geometry1 First current element geometry.
-   * @param geometry2 Second current element geometry.
-   * @return Local paired quadrature; failed output must not be consumed.
+   * @return Paired quadrature with generation status and full count; failed output must not be consumed.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE Rule generate( const Geometry1& geometry1, const Geometry2& geometry2 ) const
   {
-    Rule output{};
-    output.metadata = generate( geometry1, geometry2, output.getOutputView() );
-    return output;
+    const auto integration_surface_rule =
+        integration_surface_rule_generator_.generate( mapping_.makeIntegrationSurface( geometry1, geometry2 ) );
+    if ( integration_surface_rule.metadata.status != QuadratureStatus::Success ) {
+      Rule output{};
+      // Assign fields explicitly so Enzyme can identify their integer types.
+      output.metadata = { integration_surface_rule.metadata.status,
+                          integration_surface_rule.metadata.num_required_points };
+      return output;
+    }
+    return mapping_.template mapToElements<max_num_points>( geometry1, geometry2, integration_surface_rule.getView() );
   }
 
  private:
