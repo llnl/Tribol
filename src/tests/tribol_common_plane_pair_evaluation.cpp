@@ -423,8 +423,8 @@ TEST_P( CommonPlaneTest, balances_rotated_pair_forces_and_moments )
   EXPECT_NEAR( moment, 0.0, tolerance );
 }
 
-// Failed geometry is distinct from valid empty overlap, and insufficient capacity must leave all storage untouched.
-TEST_P( CommonPlaneTest, reports_geometry_and_capacity_without_writing )
+// Failed geometry is distinct from valid empty overlap, and insufficient capacity reports the full required count.
+TEST_P( CommonPlaneTest, reports_geometry_and_capacity_status )
 {
   enum GenerationCase
   {
@@ -436,11 +436,10 @@ TEST_P( CommonPlaneTest, reports_geometry_and_capacity_without_writing )
     InsufficientCapacity,
     NumCases
   };
-  constexpr RealT unwritten = -7.0;
+  // The three-point rule needs more points than this capacity.
+  constexpr int small_capacity = 2;
   ArrayT<QuadratureMetadata> quadrature_metadata( NumCases, NumCases, allocatorId() );
-  ArrayT<RealT> point_storage( 4, 4, allocatorId() );
   const auto quadrature_metadata_view = quadrature_metadata.view();
-  const auto point_storage_view = point_storage.view();
   forAllExec( GetParam(), 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
     // The baseline pair is two oppositely directed, fully overlapping horizontal edges. The alternatives collapse one
     // edge, move the second edge beyond x=2, reverse it to the same direction, or rotate it perpendicular to edge1.
@@ -462,19 +461,14 @@ TEST_P( CommonPlaneTest, reports_geometry_and_capacity_without_writing )
     quadrature_metadata_view[Perpendicular] =
         rule_generator.generate( LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( perpendicular.view() ) )
             .metadata;
-    for ( int i = 0; i < point_storage_view.size(); ++i ) {
-      point_storage_view[i] = unwritten;
-    }
-    // Two points need four normal components, so the normals view starts at the beginning of the marked storage.
-    const PairQuadratureRuleView<1, 1> limited_capacity_rule_view{ { point_storage_view.data() + 1, { 2, 1 } },
-                                                                   { point_storage_view.data() + 1, { 2, 1 } },
-                                                                   { point_storage_view.data() + 1, 2 },
-                                                                   { point_storage_view.data(), { 2, 2 } } };
-    quadrature_metadata_view[InsufficientCapacity] = rule_generator.generate(
-        LinearEdgeGeometry( edge1.view() ), LinearEdgeGeometry( edge2.view() ), limited_capacity_rule_view );
+    const CommonPlaneEdgeMapping mapping{};
+    const LinearEdgeGeometry geometry1( edge1.view() ), geometry2( edge2.view() );
+    const auto integration_surface_rule =
+        EdgeQuadratureRuleGenerator<3>{}.generate( mapping.makeIntegrationSurface( geometry1, geometry2 ) );
+    quadrature_metadata_view[InsufficientCapacity] =
+        mapping.mapToElements<small_capacity>( geometry1, geometry2, integration_surface_rule.getView() ).metadata;
   } );
   const ArrayT<QuadratureMetadata, 1, MemorySpace::Host> host_quadrature_metadata( quadrature_metadata );
-  const ArrayT<RealT, 1, MemorySpace::Host> host_point_storage( point_storage );
   for ( int invalid_geometry : { InvalidFirstGeometry, InvalidSecondGeometry } ) {
     EXPECT_EQ( host_quadrature_metadata[invalid_geometry].status, QuadratureStatus::InvalidGeometry );
     EXPECT_EQ( host_quadrature_metadata[invalid_geometry].num_required_points, 0 );
@@ -485,9 +479,6 @@ TEST_P( CommonPlaneTest, reports_geometry_and_capacity_without_writing )
   }
   EXPECT_EQ( host_quadrature_metadata[InsufficientCapacity].status, QuadratureStatus::InsufficientCapacity );
   EXPECT_EQ( host_quadrature_metadata[InsufficientCapacity].num_required_points, 3 );
-  for ( const auto value : host_point_storage ) {
-    EXPECT_EQ( value, unwritten );
-  }
 }
 
 // Each base rule integrates only the penetrating interval; higher-order rules resolve the varying pressure.

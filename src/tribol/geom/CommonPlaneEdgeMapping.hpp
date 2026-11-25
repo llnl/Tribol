@@ -111,30 +111,35 @@ struct CommonPlaneEdgeMapping {
    *
    * The common line is parameterized by physical distance along its unit tangent. The input weights therefore already
    * include the physical line measure, so this mapping copies them without applying either edge's Jacobian.
+   * @tparam Capacity Point capacity of the returned rule.
    * @param edge1 First current edge.
    * @param edge2 Second current edge.
    * @param reference Physical tangent coordinates and line weights.
-   * @param[out] output Parametric coordinates, physical line weights, and the common-line normal at every point.
-   * @return Success with the initialized count; nonopposing normals give zero points. InvalidGeometry returns zero
-   * points, and InsufficientCapacity reports the full required count. Either failure leaves output untouched.
+   * @return Parametric coordinates, physical line weights, and the common-line normal at every point, with Success and
+   * the initialized count; nonopposing normals give zero points. InvalidGeometry returns zero points, and
+   * InsufficientCapacity reports the full required count. Either failure returns no initialized points.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureMetadata mapToElements( const Geometry1& edge1,
-                                                                            const Geometry2& edge2,
-                                                                            IntegrationSurfaceRuleView<1> reference,
-                                                                            PairQuadratureRuleView<1, 1> output ) const
+  template <IndexT Capacity>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureRule<1, 1, Capacity> mapToElements(
+      const Geometry1& edge1, const Geometry2& edge2, IntegrationSurfaceRuleView<1> reference ) const
   {
+    PairQuadratureRule<1, 1, Capacity> output{};
     if ( !validEdges( edge1, edge2 ) ) {
-      return { QuadratureStatus::InvalidGeometry, 0 };
+      output.metadata = { QuadratureStatus::InvalidGeometry, 0 };
+      return output;
     }
     if ( !opposingNormals( edge1, edge2 ) ) {
-      return { QuadratureStatus::Success, 0 };
+      output.metadata = { QuadratureStatus::Success, 0 };
+      return output;
     }
     const auto num_points = reference.numberOfPoints();
-    if ( output.capacity() < num_points ) {
-      return { QuadratureStatus::InsufficientCapacity, num_points };
+    if ( Capacity < num_points ) {
+      output.metadata = { QuadratureStatus::InsufficientCapacity, num_points };
+      return output;
     }
     if ( num_points == 0 ) {
-      return { QuadratureStatus::Success, 0 };
+      output.metadata = { QuadratureStatus::Success, 0 };
+      return output;
     }
     const auto line = computeCommonPlaneLine( edge1, edge2 );
     const RealT determinant1 = Vector::cross_product( edge1.direction(), line.normal )[2];
@@ -150,7 +155,8 @@ struct CommonPlaneEdgeMapping {
         output.integration_surface_normals( q, component ) = line.normal[component];
       }
     }
-    return { QuadratureStatus::Success, num_points };
+    output.metadata = { QuadratureStatus::Success, num_points };
+    return output;
   }
 
  private:

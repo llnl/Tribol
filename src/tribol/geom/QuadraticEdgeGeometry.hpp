@@ -99,26 +99,28 @@ class QuadraticEdgeGeometry {
     return coefficients;
   }
 
+  /** @brief Unit normal together with a validity flag. */
+  struct UnitNormalResult {
+    Vector normal{};     ///< Unit normal oriented (dy,-dx) when valid; zero otherwise.
+    bool valid = false;  ///< Whether the local tangent has finite components and nonzero length.
+  };
+
   /**
    * @brief Evaluate the directed unit normal when the local tangent is usable.
    * @param parametric_coords Element parametric coordinate.
-   * @param[out] normal Unit normal oriented (dy,-dx) when true; zero when false.
-   * @return Whether the tangent has finite components and nonzero length.
+   * @return Unit normal and whether the local tangent was usable.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE bool unitNormal( MdSpan<const RealT, parametric_dim> parametric_coords,
-                                                           Vector& normal ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE UnitNormalResult
+  unitNormal( MdSpan<const RealT, parametric_dim> parametric_coords ) const
   {
     const auto local_tangent = tangent( parametric_coords );
     const RealT squared_length = local_tangent.dot( local_tangent );
     if ( !std::isfinite( local_tangent[0] ) || !std::isfinite( local_tangent[1] ) || !std::isfinite( squared_length ) ||
          squared_length <= 0.0 ) {
-      normal = Vector{};
-      return false;
+      return {};
     }
     const RealT inverse_length = 1.0 / std::sqrt( squared_length );
-    normal[0] = local_tangent[1] * inverse_length;
-    normal[1] = -local_tangent[0] * inverse_length;
-    return true;
+    return { Vector{ local_tangent[1] * inverse_length, -local_tangent[0] * inverse_length }, true };
   }
 
  private:

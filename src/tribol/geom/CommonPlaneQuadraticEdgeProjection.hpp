@@ -50,14 +50,19 @@ struct CommonPlaneQuadraticEdgeProjection {
   {
     const MdArray<RealT, 1> subelement_coords1{ subelement_coord1 };
     const Point line_point = subelement1.position( subelement_coords1.view() );
-    ProjectedElementCoords result;
-    const bool valid1 = intersect( geometry1, line_point, normal, interval1, result.geom1_parametric_coord );
-    const bool valid2 = intersect( geometry2, line_point, normal, interval2, result.geom2_parametric_coord );
-    result.valid = valid1 && valid2;
-    return result;
+    const auto intersection1 = intersect( geometry1, line_point, normal, interval1 );
+    const auto intersection2 = intersect( geometry2, line_point, normal, interval2 );
+    return { intersection1.parametric_coord, intersection2.parametric_coord,
+             intersection1.valid && intersection2.valid };
   }
 
  private:
+  /** @brief Element parametric coordinate of a line-edge intersection, with a validity flag. */
+  struct Intersection {
+    RealT parametric_coord = 0.0;  ///< Element parametric coordinate of the selected intersection.
+    bool valid = false;            ///< Whether the intersection is finite and inside the element domain [-1, 1].
+  };
+
   /**
    * @brief Solve cross(x(xi) - line_point, direction) = 0 for the root nearest the subelement interval.
    *
@@ -67,12 +72,12 @@ struct CommonPlaneQuadraticEdgeProjection {
    * @param line_point Point on the pairing line.
    * @param direction Unit direction of the pairing line.
    * @param interval Element parametric interval of the subelement that produced the point.
-   * @param[out] parametric_coord Element parametric coordinate of the selected intersection.
-   * @return Whether a finite intersection exists inside the element domain [-1, 1].
+   * @return Selected intersection; invalid unless a finite intersection exists inside the element domain [-1, 1].
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static bool intersect( const QuadraticEdgeGeometry& geometry,
-                                                                 const Point& line_point, const Vector& direction,
-                                                                 SubelementInterval interval, RealT& parametric_coord )
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static Intersection intersect( const QuadraticEdgeGeometry& geometry,
+                                                                         const Point& line_point,
+                                                                         const Vector& direction,
+                                                                         SubelementInterval interval )
   {
     const auto coefficients = geometry.monomialCoefficients();
     // The z component of the cross product of two in-plane vectors is the scalar two-dimensional cross product.
@@ -82,12 +87,12 @@ struct CommonPlaneQuadraticEdgeProjection {
     const RealT c = Vector::cross_product( coefficients.constant - Vector( line_point ), direction )[normal_component];
     const RealT discriminant = b * b - 4.0 * a * c;
     if ( !std::isfinite( discriminant ) || discriminant < 0.0 ) {
-      return false;
+      return {};
     }
     const RealT root_discriminant = std::sqrt( discriminant );
     const RealT q = -0.5 * ( b >= 0.0 ? b + root_discriminant : b - root_discriminant );
     if ( q == 0.0 ) {
-      return false;
+      return {};
     }
     const RealT interval_center = 0.5 * ( interval.lower + interval.upper );
     RealT root = c / q;
@@ -97,8 +102,7 @@ struct CommonPlaneQuadraticEdgeProjection {
         root = far_root;
       }
     }
-    parametric_coord = root;
-    return std::isfinite( root ) && root >= -1.0 && root <= 1.0;
+    return { root, std::isfinite( root ) && root >= -1.0 && root <= 1.0 };
   }
 };
 

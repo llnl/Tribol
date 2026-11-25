@@ -177,23 +177,22 @@ struct IntegrationSurfaceRule {
 };
 
 /**
- * @brief Provide views of quadrature points in each element's parametric coordinates, physical integration weights, and
- * integration-surface normals.
+ * @brief Provide read-only views of quadrature points in each element's parametric coordinates, physical integration
+ * weights, and integration-surface normals.
  *
  * Parametric quadrature-point coordinates locate each point within an element. Contact calculations use them to find
  * the point's physical position and evaluate the element basis there.
  * LinearEdgeGeometry uses one coordinate, xi, with vertices at -1 and 1. Arrays are indexed by point, then parametric
  * coordinate
  * index. Mapping to the second element does not add another Jacobian. Surface elements have codimension one, so each
- * normal has ParametricDim1 + 1 spatial components. The caller's arrays must remain alive while this view is used.
+ * normal has ParametricDim1 + 1 spatial components. The viewed rule must remain alive while this view is used.
  * @tparam ParametricDim1 Number of coordinates used to parameterize geometry1: one for an edge, two for a face.
  * @tparam ParametricDim2 Number of coordinates used to parameterize geometry2: one for an edge, two for a face.
- * @tparam ReadOnly Whether array entries are read-only.
  */
-template <int ParametricDim1, int ParametricDim2, bool ReadOnly = false>
+template <int ParametricDim1, int ParametricDim2>
 struct PairQuadratureRuleView {
-  using Value = std::conditional_t<ReadOnly, const RealT, RealT>;  ///< RealT with the requested write access.
-  static constexpr int spatial_dim = ParametricDim1 + 1;           ///< Spatial components of each normal.
+  using Value = const RealT;                              ///< Read-only entry type.
+  static constexpr int spatial_dim = ParametricDim1 + 1;  ///< Spatial components of each normal.
   ArrayViewT<Value, 2>
       geom1_parametric_coords;  ///< Quadrature-point coordinates in geometry1's element parameterization.
   ArrayViewT<Value, 2>
@@ -202,9 +201,6 @@ struct PairQuadratureRuleView {
   /// Unit normal of the integration surface at each point, along which the mapping paired the two element points; zero
   /// when the mapping does not pair points along a direction.
   ArrayViewT<Value, 2> integration_surface_normals;
-
-  /** @brief Return the available point capacity. @return Number of weight entries. */
-  TRIBOL_HOST_DEVICE IndexT capacity() const { return weights.size(); }
 
   /**
    * @brief View matching coordinate and weight arrays without copying their entries.
@@ -254,21 +250,12 @@ struct PairQuadratureRule {
   MdArray<RealT, Capacity> weights{};  ///< Owned physical integration weights.
   QuadratureMetadata metadata{};       ///< Status and initialized point count.
 
-  /** @brief Return views of all available output storage. @return Writable views valid while this object is alive. */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureRuleView<ParametricDim1, ParametricDim2> getOutputView() &
-  {
-    return { { geom1_parametric_coords.data(), { Capacity, ParametricDim1 } },
-             { geom2_parametric_coords.data(), { Capacity, ParametricDim2 } },
-             { weights.data(), Capacity },
-             { integration_surface_normals.data(), { Capacity, spatial_dim } } };
-  }
-
   /**
    * @brief Return read-only views of the initialized quadrature coordinates and weights.
    * @pre metadata.status is Success and num_required_points does not exceed Capacity.
    * @return Read-only arrays valid while this owner is alive.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureRuleView<ParametricDim1, ParametricDim2, true> getView() const&
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureRuleView<ParametricDim1, ParametricDim2> getView() const&
   {
     assert( metadata.status == QuadratureStatus::Success );
     assert( metadata.num_required_points >= 0 && metadata.num_required_points <= Capacity );
@@ -279,10 +266,8 @@ struct PairQuadratureRule {
              { integration_surface_normals.data(), { num_points, spatial_dim } } };
   }
 
-  /** @brief Prevent returning output views from a temporary rule. */
-  PairQuadratureRuleView<ParametricDim1, ParametricDim2> getOutputView() && = delete;
   /** @brief Prevent returning initialized point views from a temporary rule. */
-  PairQuadratureRuleView<ParametricDim1, ParametricDim2, true> getView() const&& = delete;
+  PairQuadratureRuleView<ParametricDim1, ParametricDim2> getView() const&& = delete;
 };
 
 }  // namespace tribol
