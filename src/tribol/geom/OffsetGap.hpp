@@ -47,9 +47,9 @@ struct OffsetGap {
    * @return Shifted gap, preserving the underlying gap's failure/precondition contract.
    */
   template <typename... Arguments>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT operator()( Arguments&&... arguments ) const
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT computeGap( Arguments&&... arguments ) const
   {
-    return gap( std::forward<Arguments>( arguments )... ) - residual_gap;
+    return gap.computeGap( std::forward<Arguments>( arguments )... ) - residual_gap;
   }
 };
 }  // namespace tribol

@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "tribol.hpp"
+#include "shared/math/ParVector.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/physics/ContactFormulationFactory.hpp"
 #include "tribol/enforcement/PenaltyStiffness.hpp"
@@ -353,8 +354,13 @@ void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_
   if ( !enabled ) {
     if ( cs->getParameters().use_common_plane_formulation ) {
       cs->getParameters().use_common_plane_formulation = false;
+      const bool restore_lor = cs->getParameters().use_quadrature_subdivision;
+      cs->getParameters().use_quadrature_subdivision = false;
       cs->invalidateContactFormulation();
       cs->setMfemJacobianData( nullptr );
+      if ( restore_lor ) {
+        cs->getMfemMeshData()->SetLORFieldTransferEnabled( true );
+      }
       // Mesh re-registration can change pair indices while the formulation is active. Search again before using
       // legacy pair arrays, including schemes that previously fixed their binning.
       cs->setFixedBinning( false );
@@ -369,7 +375,10 @@ void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_
        cs->getParameters().common_plane_compute_jacobian == compute_jacobian ) {
     return;
   }
-  if ( compute_jacobian ) {
+  // A Jacobian-enabled formulation retains MfemJacobianData by reference. Destroy it before replacing transfer data,
+  // then let the next update construct one formulation from the completed configuration.
+  cs->invalidateContactFormulation();
+  if ( compute_jacobian && !cs->getParameters().use_quadrature_subdivision ) {
     cs->getMfemMeshData()->EnableLORJacobianTransfer();
   }
   auto jacobian = compute_jacobian ? std::make_unique<MfemJacobianData>( *cs->getMfemMeshData() ) : nullptr;
@@ -378,9 +387,6 @@ void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_
   }
   cs->getParameters().use_common_plane_formulation = true;
   cs->getParameters().common_plane_compute_jacobian = compute_jacobian;
-  // A Jacobian-enabled formulation retains MfemJacobianData by reference. Destroy it before replacing the transfer
-  // data, then let the next update construct one formulation from the completed configuration.
-  cs->invalidateContactFormulation();
   cs->setMfemJacobianData( std::move( jacobian ) );
 }
 
@@ -440,9 +446,10 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the penalty." );
   const bool uses_formulation = cs->usesContactFormulation();
   if ( uses_formulation ) {
-    const RealT effective_penalty = cs->getContactMethod() == ENERGY_MORTAR
-                                        ? AveragePenaltyStiffness{}( mesh1_penalty, mesh2_penalty )
-                                        : SeriesPenaltyStiffness{}( mesh1_penalty, mesh2_penalty );
+    const RealT effective_penalty =
+        cs->getContactMethod() == ENERGY_MORTAR
+            ? AveragePenaltyStiffness{}.computeEffectiveStiffness( mesh1_penalty, mesh2_penalty )
+            : SeriesPenaltyStiffness{}.computeEffectiveStiffness( mesh1_penalty, mesh2_penalty );
     if ( !detail::isValidPenaltyStiffness( mesh1_penalty ) || !detail::isValidPenaltyStiffness( mesh2_penalty ) ||
          !detail::isValidPenaltyStiffness( effective_penalty ) ) {
       SLIC_ERROR_ROOT( "Contact penalty stiffness must be positive and finite." );
@@ -549,7 +556,8 @@ void setMfemKinematicPenaltyScale( IndexT cs_id, RealT mesh1_scale, RealT mesh2_
     const RealT penalty1 = *data.GetMesh1KinematicConstantPenalty() * mesh1_scale;
     const RealT penalty2 = *data.GetMesh2KinematicConstantPenalty() * mesh2_scale;
     if ( !detail::isValidPenaltyStiffness( penalty1 ) || !detail::isValidPenaltyStiffness( penalty2 ) ||
-         !detail::isValidPenaltyStiffness( SeriesPenaltyStiffness{}( penalty1, penalty2 ) ) ) {
+         !detail::isValidPenaltyStiffness(
+             SeriesPenaltyStiffness{}.computeEffectiveStiffness( penalty1, penalty2 ) ) ) {
       SLIC_ERROR_ROOT( "Contact penalty stiffness must be positive and finite." );
       return;
     }
@@ -638,6 +646,22 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r )
   cs->getMfemMeshData()->GetParentResponse( r );
 }
 
+namespace {
+/**
+ * @brief Deep-copy a cached formulation vector in the memory space that owns its HYPRE data.
+ * @param vector Cached formulation vector.
+ * @return Independent vector whose destruction cannot invalidate the cached vector.
+ */
+mfem::HypreParVector copyResultVector( const mfem::HypreParVector& vector )
+{
+  const auto memory_space = vector.UseDevice() ? shared::ParVectorMemory::Device : shared::ParVectorMemory::Host;
+  shared::detail::HypreMemoryLocationGuard memory_guard( memory_space );
+  // MFEM operators can update the MFEM memory without refreshing HYPRE's data pointer. Refresh it before copying.
+  vector.HypreRead();
+  return vector;
+}
+}  // namespace
+
 mfem::HypreParVector getMfemContactResidual( IndexT cs_id )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -654,10 +678,7 @@ mfem::HypreParVector getMfemContactResidual( IndexT cs_id )
     SLIC_ERROR_ROOT( "No contact residual is available; call update() first." );
     return {};
   }
-  // MFEM device operators update the vector's MFEM memory. Refresh HYPRE's pointer before its copy constructor reads
-  // it.
-  residual->HypreRead();
-  return *residual;
+  return copyResultVector( *residual );
 }
 
 namespace {
@@ -668,7 +689,13 @@ namespace {
  */
 std::unique_ptr<mfem::HypreParMatrix> copyResultMatrix( const std::unique_ptr<mfem::HypreParMatrix>& matrix )
 {
-  return matrix ? std::make_unique<mfem::HypreParMatrix>( *matrix ) : nullptr;
+  if ( !matrix ) {
+    return nullptr;
+  }
+  // Matrix assembly is host-only, while a CUDA-enabled MFEM build copies in HYPRE's device memory class. Move the
+  // cached CSR data to that active memory class before the copy constructor reads it.
+  matrix->HypreRead();
+  return std::make_unique<mfem::HypreParMatrix>( *matrix );
 }
 }  // namespace
 
@@ -843,10 +870,7 @@ mfem::HypreParVector getMfemContactGap( IndexT cs_id )
     SLIC_ERROR_ROOT( "No nodal contact gap is available." );
     return {};
   }
-  // MFEM device operators update the vector's MFEM memory. Refresh HYPRE's pointer before its copy constructor reads
-  // it.
-  gap->HypreRead();
-  return *gap;
+  return copyResultVector( *gap );
 }
 
 mfem::ParGridFunction& getMfemPressure( IndexT cs_id )

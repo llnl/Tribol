@@ -982,6 +982,38 @@ void MfemMeshData::SetLORFactor( int lor_factor )
                                                             retains_lor_jacobian_transfer_ );
 }
 
+void MfemMeshData::SetLORFieldTransferEnabled( bool enabled )
+{
+  if ( enabled == transfers_fields_through_lor_ ) {
+    return;
+  }
+
+  // ParentField update data retains references to the current transfer, so release every field before replacing it.
+  coords_.ClearRedecompField();
+  if ( reference_coords_ ) {
+    reference_coords_->ClearRedecompField();
+  }
+  if ( velocity_ ) {
+    velocity_->ClearRedecompField();
+  }
+  redecomp_response_.reset();
+  update_data_.reset();
+
+  transfers_fields_through_lor_ = enabled;
+  if ( !enabled ) {
+    submesh_lor_xfer_.reset();
+    lor_mesh_.reset();
+    return;
+  }
+
+  const int coordinate_order = coords_.GetParentGridFn().FESpace()->FEColl()->GetOrder();
+  if ( coordinate_order <= 1 ) {
+    return;
+  }
+  const int restored_lor_factor = lor_factor_ > 1 ? lor_factor_ : coordinate_order;
+  SetLORFactor( restored_lor_factor );
+}
+
 void MfemMeshData::EnableLORJacobianTransfer()
 {
   retains_lor_jacobian_transfer_ = true;
@@ -1361,13 +1393,6 @@ MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemS
 
 MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data ) : parent_data_{ parent_data }
 {
-  if ( parent_data.GetParentCoords().ParFESpace()->FEColl()->GetOrder() > 1 ) {
-    SLIC_ERROR_ROOT_IF( parent_data.GetLORMesh() == nullptr,
-                        "Higher order Jacobian support requires an LOR mesh (call MfemMeshData::SetLORFactor)." );
-    SLIC_ERROR_ROOT_IF( parent_data.GetLORMeshFESpace() == nullptr,
-                        "Higher order Jacobian support requires LOR finite element spaces." );
-  }
-
   mfem::Array<int> vdof_list_int;
 
   mfem::SubMeshUtils::BuildVdofToVdofMap( parent_data_.GetSubmeshFESpace(), *parent_data_.GetParentCoords().FESpace(),

@@ -15,9 +15,10 @@ namespace tribol {
  *
  * Rejects exact self-pairs, optionally rejects shared-node pairs, and requires nondegenerate opposing edge normals.
  * Projected overlap is left to quadrature generation. Mesh coordinates are supplied at each call.
- * Geometry checks use the first two connectivity entries as edge endpoints; they do not account for curvature from
- * higher-order nodes. Shared-node rejection compares all finite-element node IDs and requires a common node-numbering
- * space. Candidates and both meshes must use the same allocator, accessible from the selected execution mode.
+ * Linear edges must have opposing normals. Higher-order edges defer orientation and overlap checks to their subdivided
+ * quadrature because endpoint chords can disagree with local curved geometry. Shared-node rejection compares all
+ * finite-element node IDs and requires a common node-numbering space. Candidates and both meshes must use the same
+ * allocator, accessible from the selected execution mode.
  * No face-data preprocessing is required. Temporary storage scales with the candidate count, not all possible pairs.
  */
 class ProjectedEdgeSearch final : public RefinedSearch {

@@ -10,9 +10,10 @@
  * Each integral constructs current geometry inside evaluate(), so differentiation includes the geometry, mapping,
  * and physical weights. A point calculation computes pair geometry data once with computePairGeometryData(geometry1,
  * geometry2), then receives physical points, both element-parametric coordinate views, and that data at each quadrature
- * point. It returns a QuadraturePointValue, whose active flag must retain points with nonzero derivatives even at zero
- * value. The point calculation chooses activation; the traction and energy integrals impose no gap or pressure law.
- * Nodal gap integration retains opening gaps and applies no contact activation.
+ * point. Traction calculations also receive the generated rule's integration-surface normal at the point. It returns a
+ * QuadraturePointValue, whose active flag must retain points with nonzero derivatives even at zero value. The point
+ * calculation chooses activation; the traction and energy integrals impose no gap or pressure law. Nodal gap
+ * integration retains opening gaps and applies no contact activation.
  *
  * Supplied geometries provide Coords, spatial_dim, parametric_dim, and position(parametric_coords). Basis types supply
  * size_basis, parametric_dim, and eval(parametric_coords, values). Only the configured mappings, bases, and point
@@ -48,21 +49,6 @@ template <typename Function, typename Generator>
 using PairGeometryData = std::remove_cvref_t<decltype( std::declval<const Function&>().computePairGeometryData(
     std::declval<const typename Generator::Geometry1&>(), std::declval<const typename Generator::Geometry2&>() ) )>;
 
-/** Common point-call interface used by traction and energy calculations. */
-template <typename Function, typename Generator, typename Value>
-concept PairPointFunction =
-    PairRuleGenerator<Generator> &&
-    requires( const Function& function, const typename Generator::Geometry1& geometry1,
-              const typename Generator::Geometry2& geometry2,
-              MdSpan<const RealT, Generator::Geometry1::parametric_dim> parametric_coords1,
-              MdSpan<const RealT, Generator::Geometry2::parametric_dim> parametric_coords2,
-              const PairGeometryData<Function, Generator>& pair_geometry_data ) {
-      {
-        function( geometry1.position( parametric_coords1 ), geometry2.position( parametric_coords2 ),
-                  parametric_coords1, parametric_coords2, pair_geometry_data )
-      } -> std::same_as<QuadraturePointValue<Value>>;
-    };
-
 }  // namespace detail
 
 /**
@@ -75,7 +61,19 @@ concept PairPointFunction =
  */
 template <typename Function, typename Generator>
 concept PairTractionFunction =
-    detail::PairPointFunction<Function, Generator, MdArray<RealT, Generator::Geometry1::spatial_dim>>;
+    PairRuleGenerator<Generator> &&
+    requires( const Function& function, const typename Generator::Geometry1& geometry1,
+              const typename Generator::Geometry2& geometry2,
+              MdSpan<const RealT, Generator::Geometry1::parametric_dim> parametric_coords1,
+              MdSpan<const RealT, Generator::Geometry2::parametric_dim> parametric_coords2,
+              const typename Generator::Geometry1::Vector& normal,
+              const detail::PairGeometryData<Function, Generator>& pair_geometry_data ) {
+      {
+        function.computeTractionAtQuadraturePoint( geometry1.position( parametric_coords1 ),
+                                                   geometry2.position( parametric_coords2 ), parametric_coords1,
+                                                   parametric_coords2, normal, pair_geometry_data )
+      } -> std::same_as<QuadraturePointValue<MdArray<RealT, Generator::Geometry1::spatial_dim>>>;
+    };
 
 /**
  * @brief Requires pair geometry preparation and scalar energy-density evaluation at one paired quadrature point.
@@ -86,7 +84,18 @@ concept PairTractionFunction =
  * @tparam Generator Pair quadrature generator defining both element geometries.
  */
 template <typename Function, typename Generator>
-concept PairEnergyFunction = detail::PairPointFunction<Function, Generator, RealT>;
+concept PairEnergyFunction = PairRuleGenerator<Generator> &&
+                             requires( const Function& function, const typename Generator::Geometry1& geometry1,
+                                       const typename Generator::Geometry2& geometry2,
+                                       MdSpan<const RealT, Generator::Geometry1::parametric_dim> parametric_coords1,
+                                       MdSpan<const RealT, Generator::Geometry2::parametric_dim> parametric_coords2,
+                                       const detail::PairGeometryData<Function, Generator>& pair_geometry_data ) {
+                               {
+                                 function.computeEnergyAtQuadraturePoint(
+                                     geometry1.position( parametric_coords1 ), geometry2.position( parametric_coords2 ),
+                                     parametric_coords1, parametric_coords2, pair_geometry_data )
+                               } -> std::same_as<QuadraturePointValue<RealT>>;
+                             };
 
 /**
  * @brief Requires pair geometry preparation and scalar gap evaluation at one paired quadrature point.
@@ -105,8 +114,8 @@ concept PairGapFunction = PairRuleGenerator<Generator> &&
                                     MdSpan<const RealT, Generator::Geometry2::parametric_dim> parametric_coords2,
                                     const detail::PairGeometryData<Function, Generator>& pair_geometry_data ) {
                             {
-                              function( geometry1.position( parametric_coords1 ),
-                                        geometry2.position( parametric_coords2 ), pair_geometry_data )
+                              function.computeGap( geometry1.position( parametric_coords1 ),
+                                                   geometry2.position( parametric_coords2 ), pair_geometry_data )
                             } -> std::same_as<RealT>;
                           };
 
@@ -183,9 +192,12 @@ class PairTractionIntegral {
           &points.geom1_parametric_coords( point, 0 ), Geometry1::parametric_dim };
       const MdSpan<const RealT, Geometry2::parametric_dim> parametric_coords2{
           &points.geom2_parametric_coords( point, 0 ), Geometry2::parametric_dim };
-      const auto traction =
-          traction_function_( geometry1.position( parametric_coords1 ), geometry2.position( parametric_coords2 ),
-                              parametric_coords1, parametric_coords2, pair_geometry_data );
+      static_assert( std::remove_cvref_t<decltype( points )>::spatial_dim == Geometry1::spatial_dim );
+      const typename Geometry1::Vector normal( &points.integration_surface_normals( point, 0 ),
+                                               Geometry1::spatial_dim );
+      const auto traction = traction_function_.computeTractionAtQuadraturePoint(
+          geometry1.position( parametric_coords1 ), geometry2.position( parametric_coords2 ), parametric_coords1,
+          parametric_coords2, normal, pair_geometry_data );
       if ( !traction.active ) {
         continue;
       }
@@ -277,9 +289,9 @@ class PairEnergyIntegral {
           &points.geom1_parametric_coords( point, 0 ), Geometry1::parametric_dim };
       const MdSpan<const RealT, Geometry2::parametric_dim> parametric_coords2{
           &points.geom2_parametric_coords( point, 0 ), Geometry2::parametric_dim };
-      const auto energy =
-          energy_function_( geometry1.position( parametric_coords1 ), geometry2.position( parametric_coords2 ),
-                            parametric_coords1, parametric_coords2, pair_geometry_data );
+      const auto energy = energy_function_.computeEnergyAtQuadraturePoint(
+          geometry1.position( parametric_coords1 ), geometry2.position( parametric_coords2 ), parametric_coords1,
+          parametric_coords2, pair_geometry_data );
       if ( !energy.active ) {
         continue;
       }
@@ -367,8 +379,8 @@ class PairNodalGapIntegral {
           &points.geom2_parametric_coords( point, 0 ), Geometry2::parametric_dim };
       MdArray<RealT, num_nodes> basis{};
       NodalBasis::eval( parametric_coords1, basis.view() );
-      const RealT gap = gap_( geometry1.position( parametric_coords1 ), geometry2.position( parametric_coords2 ),
-                              pair_geometry_data );
+      const RealT gap = gap_.computeGap( geometry1.position( parametric_coords1 ),
+                                         geometry2.position( parametric_coords2 ), pair_geometry_data );
       for ( IndexT node = 0; node < num_nodes; ++node ) {
         const RealT area_contribution = points.weights[point] * basis[node];
         pair_nodal_gap.weightedGap( node ) += area_contribution * gap;

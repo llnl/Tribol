@@ -71,24 +71,37 @@ struct SmoothedProjectedEdgeMapping {
    *
    * No overlap search is repeated. Supplied edge1 parametric points are mapped using the current geometry. Co-oriented
    * current geometry contributes zero points even when the supplied integration-surface quadrature is nonempty.
+   * @tparam Capacity Point capacity of the returned rule.
    * @param edge1 Current non-mortar integration edge.
    * @param edge2 Current mortar projection edge.
    * @param integration_surface_rule Quadrature points and weights expressed in edge1's parametric coordinate.
-   * @param [out] output Parametric coordinates on both edges and physical integration weights.
-   * @return Success with the initialized count, InsufficientCapacity with the full count, or InvalidGeometry with zero
-   * points. Invalid geometry and insufficient capacity leave output untouched. Valid zero measure returns zero points.
+   * @return Parametric coordinates on both edges and physical integration weights, with Success and the initialized
+   * count, InsufficientCapacity with the full count, or InvalidGeometry with zero points. Normals are zero because
+   * points are not paired along a common direction. Either failure returns no initialized points. Valid zero measure
+   * returns zero points.
    */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadratureMetadata
-  mapToElements( const Geometry1& edge1, const Geometry2& edge2, IntegrationSurfaceRuleView<1> integration_surface_rule,
-                 PairQuadratureRuleView<1, 1> output ) const
+  template <IndexT Capacity>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairQuadratureRule<1, 1, Capacity> mapToElements(
+      const Geometry1& edge1, const Geometry2& edge2, IntegrationSurfaceRuleView<1> integration_surface_rule ) const
   {
+    PairQuadratureRule<1, 1, Capacity> output{};
     if ( !validEdges( edge1, edge2 ) ) {
-      return { QuadratureStatus::InvalidGeometry, 0 };
+      output.metadata = { QuadratureStatus::InvalidGeometry, 0 };
+      return output;
     }
-    if ( normalsAreCooriented( edge1, edge2 ) ) return { QuadratureStatus::Success, 0 };
+    if ( normalsAreCooriented( edge1, edge2 ) ) {
+      output.metadata = { QuadratureStatus::Success, 0 };
+      return output;
+    }
     const IndexT count = integration_surface_rule.numberOfPoints();
-    if ( output.capacity() < count ) return { QuadratureStatus::InsufficientCapacity, count };
-    if ( count == 0 ) return { QuadratureStatus::Success, 0 };
+    if ( Capacity < count ) {
+      output.metadata = { QuadratureStatus::InsufficientCapacity, count };
+      return output;
+    }
+    if ( count == 0 ) {
+      output.metadata = { QuadratureStatus::Success, 0 };
+      return output;
+    }
     const RealT jacobian = edge1.jacobian();
     for ( IndexT q = 0; q < count; ++q ) {
       const RealT parametric_coord1 = integration_surface_rule.coords( q, 0 );
@@ -96,8 +109,12 @@ struct SmoothedProjectedEdgeMapping {
       output.geom1_parametric_coords( q, 0 ) = parametric_coord1;
       output.geom2_parametric_coords( q, 0 ) = edge2.parametricCoordinate( physical );
       output.weights[q] = integration_surface_rule.weights[q] * jacobian;
+      for ( IndexT component = 0; component < LinearEdgeGeometry::spatial_dim; ++component ) {
+        output.integration_surface_normals( q, component ) = 0.0;
+      }
     }
-    return { QuadratureStatus::Success, count };
+    output.metadata = { QuadratureStatus::Success, count };
+    return output;
   }
 
  private:

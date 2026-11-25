@@ -25,6 +25,10 @@ inline bool in_range( int target, int N )
 
 constexpr int ANY_MESH = -1;
 
+inline constexpr int min_num_quadrature_subdivisions = 1;      ///< Smallest accepted number of uniform subelements.
+inline constexpr int max_num_quadrature_subdivisions = 4;      ///< Fixed-capacity bound on uniform subelements.
+inline constexpr int default_num_quadrature_subdivisions = 2;  ///< Default for quadratic edge geometry.
+
 /*!
  * \brief Enumerates the logging level options
  */
@@ -512,6 +516,9 @@ struct Parameters {
   ///! Requested polynomial degree to integrate exactly.
   ///! The default (5) corresponds to a three-point Gauss-Legendre rule in 1D.
   int quadrature_order = 5;
+  bool use_quadrature_subdivision =
+      false;  ///< Use pair-local quadrature subdivision instead of LOR on quadratic edges.
+  int num_quadrature_subdivisions = default_num_quadrature_subdivisions;  ///< Uniform subelements per quadratic edge.
   RealT residual_gap = 0.0;  ///! Nonnegative gap constraint; positive values enforce separation
 };
 

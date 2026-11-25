@@ -74,7 +74,8 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
  * @note Reports a SLIC error, leaving the selection unchanged, if the method, geometry, penalty, or execution settings
  * are unsupported, or if Jacobian calculation was requested without Enzyme support.
  *
- * Supports 2D MFEM frictionless penalty contact on linear coordinates or higher-order coordinates with LOR subdivision.
+ * Supports 2D MFEM frictionless penalty contact on linear coordinates, higher-order coordinates with LOR subdivision,
+ * or quadratic coordinates with pair-local quadrature subdivision enabled via enableQuadratureSubdivision().
  * Use getMfemContactResidual() and, when requested, getMfemDfDx() after update(), rather than getMfemResponse(). The
  * returned vector is a contact residual; its negative is the physical force returned by legacy Common Plane. Nodal
  * gaps, energy, and timestep output are unsupported.

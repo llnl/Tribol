@@ -30,6 +30,7 @@ namespace {
 constexpr tribol::IndexT integration_mesh_id = 0;
 constexpr tribol::IndexT projected_mesh_id = 1;
 constexpr tribol::IndexT nodes_per_edge = 2;
+constexpr tribol::IndexT quadratic_nodes_per_edge = 3;
 constexpr tribol::RealT edge_gap = 0.1;
 
 using PairIds = std::set<std::pair<tribol::IndexT, tribol::IndexT>>;
@@ -140,6 +141,29 @@ TEST_P( RefinedSearchTest, retains_pairs_without_projected_overlap )
   const auto candidates = copyToExecutionSpace<tribol::InterfacePair>( { { 0, 0 } } );
   tribol::ProjectedEdgeSearch search( GetParam(), false );
   EXPECT_EQ( pairIds( search.filterCandidatePairs( candidates, mesh1.getView(), mesh2.getView() ) ),
+             ( PairIds{ { 0, 0 } } ) );
+}
+
+// Quadratic endpoint chords can have the same orientation even when curved subelements oppose. Keep the pair so
+// subdivision quadrature can perform the local orientation and overlap checks.
+TEST_P( RefinedSearchTest, retains_quadratic_pairs_with_nonopposing_endpoint_chords )
+{
+  // Mesh1 is a straight quadratic edge from (0, 0) to (1, 0) with midpoint (0.5, 0). Mesh2 shares the same endpoint
+  // direction from (0, edge_gap) to (1, edge_gap), but its midpoint at (-1, edge_gap) reverses the first half so a
+  // subdivided subelement still opposes mesh1.
+  const auto x = copyToExecutionSpace<tribol::RealT>( { 0.0, 1.0, 0.5, 0.0, 1.0, -1.0 } );
+  const auto y = copyToExecutionSpace<tribol::RealT>( { 0.0, 0.0, 0.0, edge_gap, edge_gap, edge_gap } );
+  const auto integration_conn = copyToExecutionSpace<tribol::IndexT>( { 0, 1, 2 } );
+  const auto projected_conn = copyToExecutionSpace<tribol::IndexT>( { 3, 4, 5 } );
+  tribol::MeshData integration( integration_mesh_id, integration_conn.size() / quadratic_nodes_per_edge, x.size(),
+                                integration_conn.data(), tribol::EDGE, tribol::QUADRATIC_LAGRANGE, x.data(), y.data(),
+                                nullptr, memorySpace() );
+  tribol::MeshData projected( projected_mesh_id, projected_conn.size() / quadratic_nodes_per_edge, x.size(),
+                              projected_conn.data(), tribol::EDGE, tribol::QUADRATIC_LAGRANGE, x.data(), y.data(),
+                              nullptr, memorySpace() );
+  const auto candidates = copyToExecutionSpace<tribol::InterfacePair>( { { 0, 0 } } );
+  tribol::ProjectedEdgeSearch search( GetParam(), false );
+  EXPECT_EQ( pairIds( search.filterCandidatePairs( candidates, integration.getView(), projected.getView() ) ),
              ( PairIds{ { 0, 0 } } ) );
 }
 

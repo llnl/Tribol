@@ -44,8 +44,10 @@ set(tribol_headers
     geom/OpposingNormalGap.hpp
     geom/OffsetGap.hpp
     geom/CommonPlaneEdgeMapping.hpp
+    geom/CommonPlaneQuadraticEdgeProjection.hpp
     geom/CommonPlaneGap.hpp
     geom/LinearEdgeGeometry.hpp
+    geom/QuadraticEdgeGeometry.hpp
     geom/NodalNormal.hpp
     geom/SmoothedProjectedEdgeMapping.hpp
 
@@ -56,6 +58,7 @@ set(tribol_headers
     integ/PairQuadratureRuleGenerator.hpp
     integ/QuadratureCommon.hpp
     integ/QuadratureRuleGeneratorFactory.hpp
+    integ/SubdividedPairQuadratureRuleGenerator.hpp
 
     interface/mfem_tribol.hpp
     interface/simple_tribol.hpp
