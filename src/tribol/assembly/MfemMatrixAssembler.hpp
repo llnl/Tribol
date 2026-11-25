@@ -238,6 +238,21 @@ MfemMatrixAssembler makeScalarFieldJacobianAssembler( const MfemMeshData& mesh_d
                                                       const MfemSubmeshData& submesh_data,
                                                       const MfemJacobianData& jacobian_data, MeshData::Viewer mesh1,
                                                       MeshData::Viewer mesh2, IndexT num_pairs, int allocator_id );
+/** @brief Configure a nodal submesh field's coordinate Jacobian (scalar or vector) with submesh rows and parent
+ * coordinate columns.
+ * @param mesh_data Displacement spaces and element maps; must outlive the returned assembler.
+ * @param submesh_data Submesh field spaces (vdim >= 1) for the current decomposition; must outlive the assembler.
+ * @param jacobian_data Initialized submesh and parent-coordinate transfer paths.
+ * @param mesh1 Geometry carrying submesh rows. @param mesh2 Second geometry contributing coordinate columns.
+ * @param num_pairs Number of contributing pairs.
+ * @param allocator_id Execution-accessible allocator for element blocks.
+ * @return Matrix assembler with submesh rows and parent displacement columns.
+ * @note Reports a SLIC error if submesh vdims disagree or geometry dimensions do not match the coordinate space.
+ * @note Reports a SLIC error if required storage exceeds the supported index range. */
+MfemMatrixAssembler makeSubmeshFieldJacobianAssembler( const MfemMeshData& mesh_data,
+                                                       const MfemSubmeshData& submesh_data,
+                                                       const MfemJacobianData& jacobian_data, MeshData::Viewer mesh1,
+                                                       MeshData::Viewer mesh2, IndexT num_pairs, int allocator_id );
 }  // namespace detail
 
 }  // namespace tribol

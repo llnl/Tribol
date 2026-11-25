@@ -78,6 +78,7 @@ set(tribol_headers
     mesh/MethodCouplingData.hpp
     mesh/MfemData.hpp
 
+    physics/integrals/FrictionalSingleMortarPairEvaluator.hpp
     physics/integrals/PairIntegrals.hpp
     physics/integrals/SingleMortarPairEvaluator.hpp
 
@@ -89,6 +90,7 @@ set(tribol_headers
     physics/CommonPlaneFormulation.hpp
     physics/ContactFormulation.hpp
     physics/ContactFormulationFactory.hpp
+    physics/FrictionalSingleMortarFormulation.hpp
     physics/Mortar.hpp
     physics/NodalEnergyMortar.hpp
     physics/QuadraturePointEnergyMortar.hpp

@@ -95,7 +95,7 @@ mfem::Array<int> ComputeFormulatedMortarInactiveDualTrueDofs( const MfemMeshData
   mfem::Array<int> dofs;
   for ( int element = 0; element < fes.GetNE(); ++element ) {
     if ( mesh_data.GetBoundaryAttribs1().contains( fes.GetAttribute( element ) ) ) {
-      fes.GetElementDofs( element, dofs );
+      fes.GetElementVDofs( element, dofs );
       for ( const auto dof : dofs ) {
         local_support[mfem::FiniteElementSpace::DecodeDof( dof )] = 1.0;
       }
@@ -357,21 +357,14 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
     std::unique_ptr<mfem::FiniteElementCollection> pressure_fec = std::make_unique<mfem::H1_FECollection>(
         current_coords.FESpace()->FEColl()->GetOrder(), mesh.SpaceDimension() );
     int pressure_vdim = 0;
-    if ( contact_model == FRICTIONLESS )  // only contact model supported with Lagrange multipliers now
-    {
+    if ( contact_model == FRICTIONLESS ) {
       pressure_vdim = 1;
-    }
-    // TODO add the following if they are implemented with Lagrange multipliers:
-    //
-    // 1) contact_model == FRICTION_COULOMB
-    // 2) contact_case == TIED_NORMAL
-    // 3) contact_case == TIED_FULL
-    //
-    // and set pressure_vdim = mesh.SpaceDimension();
-    else {
+    } else if ( contact_model == FRICTION_COULOMB && contact_method == SINGLE_MORTAR ) {
+      pressure_vdim = mesh.SpaceDimension();
+    } else {
       SLIC_ERROR_ROOT(
           "Unsupported contact model. "
-          "Only FRICTIONLESS is supported with Lagrange multipliers." );
+          "Only FRICTIONLESS (or FRICTION_COULOMB with SINGLE_MORTAR) is supported with Lagrange multipliers." );
     }
     // create pressure field on the parent-linked boundary submesh and
     // transfer operators to the redecomp level
@@ -743,6 +736,20 @@ void registerMfemReferenceCoords( IndexT cs_id, const mfem::ParGridFunction& ref
   cs->getMfemMeshData()->SetParentReferenceCoords( reference_coords );
 }
 
+void registerMfemPreviousCoords( IndexT cs_id, const mfem::ParGridFunction& previous_coords )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF(
+      !cs->hasMfemData(),
+      "Coupling scheme does not contain MFEM data. "
+      "Create the coupling scheme using registerMfemCouplingScheme() to register previous-step coordinates." );
+  cs->getMfemMeshData()->SetParentPreviousCoords( previous_coords );
+}
+
 void getMfemResponse( IndexT cs_id, mfem::Vector& r )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -957,6 +964,36 @@ std::unique_ptr<mfem::HypreParMatrix> getMfemWeightedGapJacobian( IndexT cs_id )
   return nullptr;
 }
 
+mfem::HypreParVector getMfemNodalNormals( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
+  const auto& nodal_normals = cs->getContactFormulationResult().nodal_normals;
+  if ( !nodal_normals ) {
+    SLIC_ERROR_ROOT( "No dual-space nodal normals are available." );
+    return {};
+  }
+  return copyResultVector( *nodal_normals );
+}
+
+std::unique_ptr<mfem::HypreParMatrix> getMfemDnDx( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  if ( cs->hasContactFormulation() ) {
+    return copyResultMatrix( cs->getContactFormulationResult().dn_dx );
+  }
+  SLIC_ERROR_ROOT( "getMfemDnDx() is only supported for coupling schemes with a ContactFormulation." );
+  return nullptr;
+}
+
 void getMfemGap( IndexT cs_id, mfem::Vector& g )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -1095,8 +1132,17 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         registerNodalReferenceCoords( mesh_ids[0], xref_ptrs[0], xref_ptrs[1], xref_ptrs[2] );
         registerNodalReferenceCoords( mesh_ids[1], xref_ptrs[0], xref_ptrs[1], xref_ptrs[2] );
       }
+      if ( mfem_data->HasPreviousCoords() ) {
+        auto xprev_ptrs = mfem_data->GetRedecompPreviousCoordsPtrs();
+        registerNodalPreviousCoords( mesh_ids[0], xprev_ptrs[0], xprev_ptrs[1], xprev_ptrs[2] );
+        registerNodalPreviousCoords( mesh_ids[1], xprev_ptrs[0], xprev_ptrs[1], xprev_ptrs[2] );
+      }
       if ( cs.hasMfemSubmeshData() ) {
-        SLIC_ERROR_ROOT_IF( cs.getContactModel() != FRICTIONLESS, "Only frictionless contact is supported." );
+        const bool supported_model =
+            cs.getContactModel() == FRICTIONLESS ||
+            ( cs.getContactModel() == FRICTION_COULOMB && cs.getContactMethod() == SINGLE_MORTAR );
+        SLIC_ERROR_ROOT_IF( !supported_model,
+                            "Only frictionless contact (or FRICTION_COULOMB with SINGLE_MORTAR) is supported." );
         SLIC_ERROR_ROOT_IF( cs.getContactMethod() != SINGLE_MORTAR && cs.getContactMethod() != ENERGY_MORTAR,
                             "Only single mortar or ENERGY_MORTAR contact is supported." );
         auto submesh_data = cs.getMfemSubmeshData();

@@ -660,7 +660,15 @@ bool CouplingScheme::isValidModel()
 
   // check for model and method compatibility issues
   switch ( this->m_contactMethod ) {
-    case SINGLE_MORTAR:
+    case SINGLE_MORTAR: {
+      const bool supported_friction = this->m_contactModel == FRICTION_COULOMB && this->usesSingleMortarFormulation();
+      if ( this->m_contactModel != FRICTIONLESS && this->m_contactModel != NULL_MODEL && !supported_friction ) {
+        this->m_couplingSchemeErrors.cs_model_error = NO_MODEL_IMPLEMENTATION_FOR_REGISTERED_METHOD;
+        return false;
+      }
+      break;
+    }
+
     case ALIGNED_MORTAR:
     case MORTAR_WEIGHTS: {
       if ( this->m_contactModel != FRICTIONLESS && this->m_contactModel != NULL_MODEL ) {

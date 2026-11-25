@@ -9,139 +9,16 @@
 
 #include "tribol/config.hpp"
 #ifdef BUILD_REDECOMP
-#include <cstdint>
 #include <utility>
 #include <vector>
 
+#include "tribol/assembly/AssemblePairs.hpp"
 #include "tribol/assembly/EdgeAveragedNodalNormalAssembler.hpp"
 #include "tribol/physics/ContactFormulation.hpp"
 #include "tribol/physics/integrals/SingleMortarPairEvaluator.hpp"
 #include "tribol/search/PairListBuilder.hpp"
 
 namespace tribol {
-
-namespace detail {
-
-/**
- * @brief Gather non-mortar nodal pressures for one surface element from the Redecomp pressure array.
- * @tparam NumNodes Number of nodes on the surface element.
- * @param mesh1 Current non-mortar mesh supplying global node IDs.
- * @param element_id Local element ID on mesh1.
- * @param pressures Redecomp nodal pressure array indexed by global node ID.
- * @return Nodal pressures on the element.
- */
-template <IndexT NumNodes>
-TRIBOL_HOST_DEVICE MdArray<RealT, NumNodes> gatherElementPressures( MeshData::Viewer mesh1, IndexT element_id,
-                                                                    const RealT* pressures )
-{
-  MdArray<RealT, NumNodes> element_pressures{};
-  for ( IndexT node = 0; node < NumNodes; ++node ) {
-    element_pressures[node] = pressures[mesh1.getGlobalNodeId( element_id, node )];
-  }
-  return element_pressures;
-}
-
-/**
- * @brief Add one pair's nodal weighted gaps to the non-mortar element vector.
- * @tparam NumNodes Number of nodes on geometry1.
- * @param gap_view Element-vector view for weighted gaps.
- * @param redecomp_element1 Redecomp element index for geometry1.
- * @param gaps Nodal weighted gaps for this pair.
- */
-template <IndexT NumNodes>
-TRIBOL_HOST_DEVICE void assembleElementGapVector( ArrayViewT<RealT, 2> gap_view, int redecomp_element1,
-                                                  const MdArray<RealT, NumNodes>& gaps )
-{
-  detail::addElementVector( gap_view, redecomp_element1, NumNodes, 1,
-                            [&]( IndexT node, IndexT ) { return gaps[node]; } );
-}
-
-/**
- * @brief Add one pair's nodal residuals to both geometry1 and geometry2 element vectors.
- * @tparam NumNodes Number of nodes per surface element.
- * @tparam SpatialDim Spatial dimension of the residual vector.
- * @param residual_view Element-vector view for nodal residuals.
- * @param redecomp_element1 Redecomp element index for geometry1.
- * @param redecomp_element2 Redecomp element index for geometry2.
- * @param residuals Pair residuals ordered as geometry1 followed by geometry2.
- */
-template <IndexT NumNodes, IndexT SpatialDim>
-TRIBOL_HOST_DEVICE void assembleElementResidualVectors( ArrayViewT<RealT, 2> residual_view, int redecomp_element1,
-                                                        int redecomp_element2,
-                                                        const MdArray<RealT, 2 * NumNodes * SpatialDim>& residuals )
-{
-  constexpr IndexT size_coords_per_element = NumNodes * SpatialDim;
-  detail::addElementVector( residual_view, redecomp_element1, NumNodes, SpatialDim,
-                            [&]( IndexT node, IndexT d ) { return residuals[node * SpatialDim + d]; } );
-  detail::addElementVector( residual_view, redecomp_element2, NumNodes, SpatialDim, [&]( IndexT node, IndexT d ) {
-    return residuals[size_coords_per_element + node * SpatialDim + d];
-  } );
-}
-
-/**
- * @brief Gather pair coordinates and nodal normals, invoke a per-pair kernel, and check quadrature diagnostics.
- * @tparam Exec Concrete execution mode for the pair loop and reductions.
- * @tparam Integral Single mortar pair integral supplying coordinate dimensions and views.
- * @tparam EvaluatePair Device-callable `(index, pair, coords1, coords2, normals1) -> QuadratureMetadata`.
- * @param pairs Refined candidate pairs in local element numbering.
- * @param mesh1 Current non-mortar mesh.
- * @param mesh2 Current mortar mesh.
- * @param redecomp_normals Normalized nodal normal field on Redecomp.
- * @param comm MPI communicator for reducing quadrature diagnostics.
- * @param evaluate_pair Per-pair evaluation and packing callable.
- * @return True if no rank encountered insufficient quadrature capacity; false after reporting an overflow error.
- */
-template <ExecutionMode Exec, typename Integral, typename EvaluatePair>
-bool runSingleMortarPairLoop( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2,
-                              const mfem::GridFunction& redecomp_normals, MPI_Comm comm, EvaluatePair evaluate_pair )
-{
-  constexpr IndexT num_nodes = Integral::num_nodes1;
-  constexpr IndexT spatial_dim = Integral::spatial_dim;
-  const auto pair_view = pairs.view();
-  const auto* normal_values = redecomp_normals.Read( isOnDevice( Exec ) );
-  const IndexT num_normal_nodes = redecomp_normals.FESpace()->GetNDofs();
-  ReduceMax<Exec, int> insufficient_capacity( 0 );
-  ReduceSum<Exec, std::uint64_t> num_invalid_projections( 0 );
-  forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT index ) {
-    const auto pair = pair_view[index];
-    const auto coords1 = mesh1.getFaceCoords<typename Integral::Coords1>( pair.element_id1_ );
-    const auto coords2 = mesh2.getFaceCoords<typename Integral::Coords2>( pair.element_id2_ );
-    MdArray<RealT, num_nodes, spatial_dim> normals1{};
-    for ( IndexT node = 0; node < num_nodes; ++node ) {
-      const auto node_id = mesh1.getGlobalNodeId( pair.element_id1_, node );
-      for ( IndexT d = 0; d < spatial_dim; ++d ) {
-        normals1( node, d ) = normal_values[d * num_normal_nodes + node_id];
-      }
-    }
-    const QuadratureMetadata metadata = evaluate_pair( index, pair, coords1.view(), coords2.view(), normals1.view() );
-    if ( metadata.status == QuadratureStatus::InsufficientCapacity ) {
-      insufficient_capacity.max( 1 );
-    }
-    if ( metadata.status == QuadratureStatus::InvalidGeometry ) {
-      num_invalid_projections += 1;
-    }
-  } );
-
-  // Report diagnostics on the coupling scheme's root after all ranks have finished evaluating pairs.
-  const auto overflow = static_cast<std::uint64_t>( insufficient_capacity.get() );
-  MdArray<std::uint64_t, 2> quadrature_counts{ overflow, num_invalid_projections.get() };
-  MPI_Allreduce( MPI_IN_PLACE, quadrature_counts.data(), quadrature_counts.size(), MPI_UINT64_T, MPI_SUM, comm );
-  if ( quadrature_counts[0] > 0 ) {
-    reportQuadratureFailure( QuadratureStatus::InsufficientCapacity );
-    return false;
-  }
-  if ( quadrature_counts[1] > 0 ) {
-    int rank = 0;
-    MPI_Comm_rank( comm, &rank );
-    if ( rank == 0 ) {
-      SLIC_WARNING( "Single mortar skipped " << quadrature_counts[1]
-                                             << " pair evaluations with invalid projected geometry." );
-    }
-  }
-  return true;
-}
-
-}  // namespace detail
 
 /**
  * @brief Assemble single mortar gaps, residuals, and frozen-geometry Jacobians (holding weights and normals fixed).
@@ -168,9 +45,12 @@ struct SingleMortarFrozenJacobian {
                                         MeshData::Viewer mesh2, const PairEvaluator& evaluator ) const
   {
     constexpr IndexT num_nodes = PairEvaluator::num_nodes1;
+    constexpr IndexT spatial_dim = PairEvaluator::spatial_dim;
     constexpr IndexT size_geom1_coords = PairEvaluator::size_geom1_coords;
     const auto redecomp_normals =
         detail::assembleEdgeAveragedNodalNormals<Exec, num_nodes>( mesh1, mesh_data, jacobian_data );
+    const auto* normal_values = redecomp_normals.Read( isOnDevice( Exec ) );
+    const IndexT num_normal_nodes = redecomp_normals.FESpace()->GetNDofs();
     const auto allocator_id = pairs.getAllocatorID();
     const auto& field_fes = submesh_data.GetRedecompFESpace();
     const auto map1 = mesh_data.GetElemMap1().view();
@@ -181,12 +61,14 @@ struct SingleMortarFrozenJacobian {
     const auto gap_view = gap.view();
     const auto gap_dx_view = gap_dx.template view<num_nodes, size_geom1_coords, 2>();
 
-    const bool ok = detail::runSingleMortarPairLoop<Exec, PairEvaluator>(
-        pairs, mesh1, mesh2, redecomp_normals, submesh_data.GetSubmeshFESpace().GetComm(),
+    const bool ok = detail::forEachPairChecked<Exec, typename PairEvaluator::Coords1, typename PairEvaluator::Coords2>(
+        pairs, mesh1, mesh2, submesh_data.GetSubmeshFESpace().GetComm(),
         [=] TRIBOL_HOST_DEVICE( IndexT index, const InterfacePair& pair, typename PairEvaluator::Coords1 coords1,
-                                typename PairEvaluator::Coords2 coords2, typename PairEvaluator::Coords1 normals1 ) {
-          const auto values = evaluator.evaluateGaps( coords1, coords2, normals1 );
-          detail::assembleElementGapVector<num_nodes>( gap_view, map1[pair.element_id1_], values.gaps );
+                                typename PairEvaluator::Coords2 coords2 ) {
+          const auto normals1 = detail::gatherRedecompNodalVectors<num_nodes, spatial_dim>(
+              mesh1, pair.element_id1_, normal_values, num_normal_nodes );
+          const auto values = evaluator.evaluateGaps( coords1, coords2, normals1.view() );
+          detail::assembleElementFieldVector<num_nodes, 1>( gap_view, map1[pair.element_id1_], values.gaps );
           gap_dx_view.packPair( index, pair, [&]( IndexT, IndexT row, IndexT column ) {
             return values.frozen_gap_jacobian( row, column );
           } );
@@ -223,6 +105,8 @@ struct SingleMortarFrozenJacobian {
     constexpr IndexT size_geom1_coords = PairEvaluator::size_geom1_coords;
     const auto redecomp_normals =
         detail::assembleEdgeAveragedNodalNormals<Exec, num_nodes>( mesh1, mesh_data, jacobian_data );
+    const auto* normal_values = redecomp_normals.Read( isOnDevice( Exec ) );
+    const IndexT num_normal_nodes = redecomp_normals.FESpace()->GetNDofs();
     const auto redecomp_pressure = submesh_data.TransferTrueDofsToRedecomp( multiplier );
     const auto* pressures = redecomp_pressure.Read( isOnDevice( Exec ) );
     const auto allocator_id = pairs.getAllocatorID();
@@ -239,13 +123,15 @@ struct SingleMortarFrozenJacobian {
     const auto residual_view = residual.view();
     const auto gap_dx_view = gap_dx.template view<num_nodes, size_geom1_coords, 2>();
 
-    const bool ok = detail::runSingleMortarPairLoop<Exec, PairEvaluator>(
-        pairs, mesh1, mesh2, redecomp_normals, submesh_data.GetSubmeshFESpace().GetComm(),
+    const bool ok = detail::forEachPairChecked<Exec, typename PairEvaluator::Coords1, typename PairEvaluator::Coords2>(
+        pairs, mesh1, mesh2, submesh_data.GetSubmeshFESpace().GetComm(),
         [=] TRIBOL_HOST_DEVICE( IndexT index, const InterfacePair& pair, typename PairEvaluator::Coords1 coords1,
-                                typename PairEvaluator::Coords2 coords2, typename PairEvaluator::Coords1 normals1 ) {
-          const auto pressures1 = detail::gatherElementPressures<num_nodes>( mesh1, pair.element_id1_, pressures );
-          const auto values = evaluator.evaluateResiduals( coords1, coords2, normals1, pressures1.view() );
-          detail::assembleElementGapVector<num_nodes>( gap_view, map1[pair.element_id1_], values.gap.gaps );
+                                typename PairEvaluator::Coords2 coords2 ) {
+          const auto normals1 = detail::gatherRedecompNodalVectors<num_nodes, spatial_dim>(
+              mesh1, pair.element_id1_, normal_values, num_normal_nodes );
+          const auto pressures1 = detail::gatherRedecompNodalScalars<num_nodes>( mesh1, pair.element_id1_, pressures );
+          const auto values = evaluator.evaluateResiduals( coords1, coords2, normals1.view(), pressures1.view() );
+          detail::assembleElementFieldVector<num_nodes, 1>( gap_view, map1[pair.element_id1_], values.gap.gaps );
           detail::assembleElementResidualVectors<num_nodes, spatial_dim>( residual_view, map1[pair.element_id1_],
                                                                           map2[pair.element_id2_], values.residuals );
           gap_dx_view.packPair( index, pair, [&]( IndexT, IndexT row, IndexT column ) {
@@ -293,9 +179,12 @@ struct SingleMortarExactJacobian {
                                         MeshData::Viewer mesh2, const PairEvaluator& evaluator ) const
   {
     constexpr IndexT num_nodes = PairEvaluator::num_nodes1;
+    constexpr IndexT spatial_dim = PairEvaluator::spatial_dim;
     constexpr IndexT size_geom1_coords = PairEvaluator::size_geom1_coords;
     const auto normals =
         detail::assembleEdgeAveragedNodalNormalsAndJacobian<Exec, num_nodes>( mesh1, mesh_data, jacobian_data );
+    const auto* normal_values = normals.redecomp_normals.Read( isOnDevice( Exec ) );
+    const IndexT num_normal_nodes = normals.redecomp_normals.FESpace()->GetNDofs();
     const auto allocator_id = pairs.getAllocatorID();
     const auto& coords_fes = *mesh_data.GetRedecompResponse().FESpace();
     const auto& field_fes = submesh_data.GetRedecompFESpace();
@@ -315,13 +204,15 @@ struct SingleMortarExactJacobian {
     const auto gap_dx_view = gap_dx.template view<num_nodes, size_geom1_coords, 2>();
     const auto gap_dn_view = gap_dn.template view<num_nodes, size_geom1_coords, 1>();
 
-    const bool ok = detail::runSingleMortarPairLoop<Exec, PairEvaluator>(
-        pairs, mesh1, mesh2, normals.redecomp_normals, submesh_data.GetSubmeshFESpace().GetComm(),
+    const bool ok = detail::forEachPairChecked<Exec, typename PairEvaluator::Coords1, typename PairEvaluator::Coords2>(
+        pairs, mesh1, mesh2, submesh_data.GetSubmeshFESpace().GetComm(),
         [=] TRIBOL_HOST_DEVICE( IndexT index, const InterfacePair& pair, typename PairEvaluator::Coords1 coords1,
-                                typename PairEvaluator::Coords2 coords2, typename PairEvaluator::Coords1 normals1 ) {
-          const auto differentiated = evaluator.evaluateAndDifferentiateGaps( coords1, coords2, normals1 );
-          detail::assembleElementGapVector<num_nodes>( gap_view, map1[pair.element_id1_],
-                                                       differentiated.evaluation.gaps );
+                                typename PairEvaluator::Coords2 coords2 ) {
+          const auto normals1 = detail::gatherRedecompNodalVectors<num_nodes, spatial_dim>(
+              mesh1, pair.element_id1_, normal_values, num_normal_nodes );
+          const auto differentiated = evaluator.evaluateAndDifferentiateGaps( coords1, coords2, normals1.view() );
+          detail::assembleElementFieldVector<num_nodes, 1>( gap_view, map1[pair.element_id1_],
+                                                            differentiated.evaluation.gaps );
           gap_dx_view.packPair(
               index, pair, [&]( IndexT, IndexT row, IndexT column ) { return differentiated.gap_dx( row, column ); } );
           gap_dn_view.packPair(
@@ -363,6 +254,8 @@ struct SingleMortarExactJacobian {
     constexpr IndexT size_geom1_coords = PairEvaluator::size_geom1_coords;
     const auto normals =
         detail::assembleEdgeAveragedNodalNormalsAndJacobian<Exec, num_nodes>( mesh1, mesh_data, jacobian_data );
+    const auto* normal_values = normals.redecomp_normals.Read( isOnDevice( Exec ) );
+    const IndexT num_normal_nodes = normals.redecomp_normals.FESpace()->GetNDofs();
     const auto redecomp_pressure = submesh_data.TransferTrueDofsToRedecomp( multiplier );
     const auto* pressures = redecomp_pressure.Read( isOnDevice( Exec ) );
     const auto allocator_id = pairs.getAllocatorID();
@@ -402,15 +295,17 @@ struct SingleMortarExactJacobian {
     const auto gap_dn_view = gap_dn.template view<num_nodes, size_geom1_coords, 1>();
     const auto residual_dn_view = residual_dn.template view<size_geom1_coords, size_geom1_coords, 2>();
 
-    const bool ok = detail::runSingleMortarPairLoop<Exec, PairEvaluator>(
-        pairs, mesh1, mesh2, normals.redecomp_normals, submesh_data.GetSubmeshFESpace().GetComm(),
+    const bool ok = detail::forEachPairChecked<Exec, typename PairEvaluator::Coords1, typename PairEvaluator::Coords2>(
+        pairs, mesh1, mesh2, submesh_data.GetSubmeshFESpace().GetComm(),
         [=] TRIBOL_HOST_DEVICE( IndexT index, const InterfacePair& pair, typename PairEvaluator::Coords1 coords1,
-                                typename PairEvaluator::Coords2 coords2, typename PairEvaluator::Coords1 normals1 ) {
-          const auto pressures1 = detail::gatherElementPressures<num_nodes>( mesh1, pair.element_id1_, pressures );
+                                typename PairEvaluator::Coords2 coords2 ) {
+          const auto normals1 = detail::gatherRedecompNodalVectors<num_nodes, spatial_dim>(
+              mesh1, pair.element_id1_, normal_values, num_normal_nodes );
+          const auto pressures1 = detail::gatherRedecompNodalScalars<num_nodes>( mesh1, pair.element_id1_, pressures );
           const auto differentiated =
-              evaluator.evaluateAndDifferentiateResiduals( coords1, coords2, normals1, pressures1.view() );
-          detail::assembleElementGapVector<num_nodes>( gap_view, map1[pair.element_id1_],
-                                                       differentiated.evaluation.gap.gaps );
+              evaluator.evaluateAndDifferentiateResiduals( coords1, coords2, normals1.view(), pressures1.view() );
+          detail::assembleElementFieldVector<num_nodes, 1>( gap_view, map1[pair.element_id1_],
+                                                            differentiated.evaluation.gap.gaps );
           detail::assembleElementResidualVectors<num_nodes, spatial_dim>(
               residual_view, map1[pair.element_id1_], map2[pair.element_id2_], differentiated.evaluation.residuals );
           gap_dx_view.packPair(

@@ -13,6 +13,7 @@
 
 #ifdef BUILD_REDECOMP
 #include <array>
+#include <cstdint>
 #include <utility>
 #include "tribol/assembly/MfemVectorAssembler.hpp"
 #include "tribol/assembly/MfemMatrixAssembler.hpp"
@@ -129,6 +130,145 @@ ContactFormulationResult assembleResidualAndJacobian( const ArrayT<InterfacePair
   result.residual.reset( residual.assemble( Exec ).release() );
   result.df_dx.reset( jacobian.assemble().release() );
   return result;
+}
+
+/**
+ * @brief Gather a scalar nodal field for one surface element from a Redecomp array.
+ * @tparam NumNodes Number of nodes on the surface element.
+ * @param mesh Surface mesh supplying global node IDs.
+ * @param element_id Local element ID within mesh.
+ * @param field_values Redecomp nodal scalar array indexed by global node ID.
+ * @return Nodal scalar values on the element.
+ */
+template <IndexT NumNodes>
+TRIBOL_HOST_DEVICE MdArray<RealT, NumNodes> gatherRedecompNodalScalars( MeshData::Viewer mesh, IndexT element_id,
+                                                                        const RealT* field_values )
+{
+  MdArray<RealT, NumNodes> element_values{};
+  for ( IndexT node = 0; node < NumNodes; ++node ) {
+    element_values[node] = field_values[mesh.getGlobalNodeId( element_id, node )];
+  }
+  return element_values;
+}
+
+/**
+ * @brief Gather a vector nodal field for one surface element from a Redecomp array in MFEM byNODES ordering.
+ * @tparam NumNodes Number of nodes on the surface element.
+ * @tparam NumComponents Number of vector components per node.
+ * @param mesh Surface mesh supplying global node IDs.
+ * @param element_id Local element ID within mesh.
+ * @param field_values Redecomp nodal vector array in MFEM byNODES ordering.
+ * @param num_field_nodes Number of nodes in the Redecomp FE space.
+ * @return Nodal vector values on the element in [node][component] order.
+ */
+template <IndexT NumNodes, IndexT NumComponents>
+TRIBOL_HOST_DEVICE MdArray<RealT, NumNodes, NumComponents> gatherRedecompNodalVectors( MeshData::Viewer mesh,
+                                                                                       IndexT element_id,
+                                                                                       const RealT* field_values,
+                                                                                       IndexT num_field_nodes )
+{
+  MdArray<RealT, NumNodes, NumComponents> element_values{};
+  for ( IndexT node = 0; node < NumNodes; ++node ) {
+    const IndexT node_id = mesh.getGlobalNodeId( element_id, node );
+    for ( IndexT c = 0; c < NumComponents; ++c ) {
+      element_values( node, c ) = field_values[c * num_field_nodes + node_id];
+    }
+  }
+  return element_values;
+}
+
+/**
+ * @brief Add one pair's nodal field entries (scalar or vector) to a geometry1 element vector.
+ * @tparam NumNodes Number of nodes on geometry1.
+ * @tparam NumComponents Number of values per node.
+ * @param field_view Element-vector view for the field.
+ * @param redecomp_element1 Redecomp element index for geometry1.
+ * @param values Nodal field values in [node * NumComponents + component] order.
+ */
+template <IndexT NumNodes, IndexT NumComponents>
+TRIBOL_HOST_DEVICE void assembleElementFieldVector( ArrayViewT<RealT, 2> field_view, int redecomp_element1,
+                                                    const MdArray<RealT, NumNodes * NumComponents>& values )
+{
+  detail::addElementVector( field_view, redecomp_element1, NumNodes, NumComponents,
+                            [&]( IndexT node, IndexT c ) { return values[node * NumComponents + c]; } );
+}
+
+/**
+ * @brief Add one pair's nodal residuals to both geometry1 and geometry2 element vectors.
+ * @tparam NumNodes Number of nodes per surface element.
+ * @tparam SpatialDim Spatial dimension of the residual vector.
+ * @param residual_view Element-vector view for nodal residuals.
+ * @param redecomp_element1 Redecomp element index for geometry1.
+ * @param redecomp_element2 Redecomp element index for geometry2.
+ * @param residuals Pair residuals ordered as geometry1 followed by geometry2.
+ */
+template <IndexT NumNodes, IndexT SpatialDim>
+TRIBOL_HOST_DEVICE void assembleElementResidualVectors( ArrayViewT<RealT, 2> residual_view, int redecomp_element1,
+                                                        int redecomp_element2,
+                                                        const MdArray<RealT, 2 * NumNodes * SpatialDim>& residuals )
+{
+  constexpr IndexT size_coords_per_element = NumNodes * SpatialDim;
+  detail::addElementVector( residual_view, redecomp_element1, NumNodes, SpatialDim,
+                            [&]( IndexT node, IndexT d ) { return residuals[node * SpatialDim + d]; } );
+  detail::addElementVector( residual_view, redecomp_element2, NumNodes, SpatialDim, [&]( IndexT node, IndexT d ) {
+    return residuals[size_coords_per_element + node * SpatialDim + d];
+  } );
+}
+
+/**
+ * @brief Run a fused per-pair evaluation and assembly loop with collective MPI quadrature diagnostics.
+ *
+ * Gathers geometry1 and geometry2 current coordinates for each pair, invokes @p evaluate_pair, and reduces quadrature
+ * overflow and invalid-geometry counts across @p comm after the kernel completes.
+ *
+ * @tparam Exec Concrete execution mode for the pair loop and reductions.
+ * @tparam Coords1 Coordinate view type for geometry1.
+ * @tparam Coords2 Coordinate view type for geometry2.
+ * @tparam EvaluatePair Device-callable `(index, pair, coords1, coords2) -> QuadratureMetadata`.
+ * @param pairs Refined candidate pairs in local element numbering.
+ * @param mesh1 Current first mesh.
+ * @param mesh2 Current second mesh.
+ * @param comm MPI communicator for reducing quadrature diagnostics.
+ * @param evaluate_pair Per-pair evaluation and packing callable.
+ * @return True if no rank encountered insufficient quadrature capacity; false after reporting an overflow error.
+ */
+template <ExecutionMode Exec, typename Coords1, typename Coords2, typename EvaluatePair>
+bool forEachPairChecked( const ArrayT<InterfacePair>& pairs, MeshData::Viewer mesh1, MeshData::Viewer mesh2,
+                         MPI_Comm comm, EvaluatePair evaluate_pair )
+{
+  const auto pair_view = pairs.view();
+  ReduceMax<Exec, int> insufficient_capacity( 0 );
+  ReduceSum<Exec, std::uint64_t> num_invalid_projections( 0 );
+  forAllExec<Exec>( pairs.size(), [=] TRIBOL_HOST_DEVICE( IndexT index ) {
+    const auto pair = pair_view[index];
+    const auto coords1 = mesh1.getFaceCoords<Coords1>( pair.element_id1_ );
+    const auto coords2 = mesh2.getFaceCoords<Coords2>( pair.element_id2_ );
+    const QuadratureMetadata metadata = evaluate_pair( index, pair, coords1.view(), coords2.view() );
+    if ( metadata.status == QuadratureStatus::InsufficientCapacity ) {
+      insufficient_capacity.max( 1 );
+    }
+    if ( metadata.status == QuadratureStatus::InvalidGeometry ) {
+      num_invalid_projections += 1;
+    }
+  } );
+
+  // Report diagnostics on the coupling scheme's root after all ranks have finished evaluating pairs.
+  const auto overflow = static_cast<std::uint64_t>( insufficient_capacity.get() );
+  MdArray<std::uint64_t, 2> quadrature_counts{ overflow, num_invalid_projections.get() };
+  MPI_Allreduce( MPI_IN_PLACE, quadrature_counts.data(), quadrature_counts.size(), MPI_UINT64_T, MPI_SUM, comm );
+  if ( quadrature_counts[0] > 0 ) {
+    reportQuadratureFailure( QuadratureStatus::InsufficientCapacity );
+    return false;
+  }
+  if ( quadrature_counts[1] > 0 ) {
+    int rank = 0;
+    MPI_Comm_rank( comm, &rank );
+    if ( rank == 0 ) {
+      SLIC_WARNING( "Contact pair evaluation skipped " << quadrature_counts[1]
+                                                       << " pair evaluations with invalid projected geometry." );
+    }
+  }
+  return true;
 }
 
 }  // namespace detail

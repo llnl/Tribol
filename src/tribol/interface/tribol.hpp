@@ -405,6 +405,24 @@ void registerNodalInverseMass( IndexT mesh_id, const RealT* inverse_mass_x, cons
 void registerNodalReferenceCoords( IndexT mesh_id, const RealT* xref, const RealT* yref, const RealT* zref = nullptr );
 
 /*!
+ * \brief Registers nodal previous-step coordinates on a mesh.
+ *
+ * \param [in] mesh_id the ID of the contact mesh
+ * \param [in] xprev array consisting of the previous-step coords x-components
+ * \param [in] yprev array consisting of the previous-step coords y-components
+ * \param [in] zprev array consisting of the previous-step coords z-components
+ *
+ * \pre xprev != nullptr
+ * \pre yprev != nullptr
+ * \pre zprev != nullptr (3D only)
+ *
+ * \note A mesh for the given contact surface must have already been registered prior to calling this method via
+ * registerMesh()
+ */
+void registerNodalPreviousCoords( IndexT mesh_id, const RealT* xprev, const RealT* yprev,
+                                  const RealT* zprev = nullptr );
+
+/*!
  * \brief Registers nodal response buffers.
  *
  * \param [in] mesh_id the ID of the contact mesh

@@ -19,6 +19,7 @@
 #include "tribol/geom/CommonPlaneQuadraticEdgeProjection.hpp"
 #include "tribol/geom/LinearQuadGeometry.hpp"
 #include "tribol/geom/MortarFaceMapping.hpp"
+#include "tribol/physics/FrictionalSingleMortarFormulation.hpp"
 #include "tribol/physics/SingleMortarFormulation.hpp"
 #include "tribol/geom/LinearTriangleGeometry.hpp"
 #include "tribol/geom/QuadraticEdgeGeometry.hpp"
@@ -199,12 +200,12 @@ bool validateSingleMortarFormulation( const CouplingScheme& cs, bool exact_jacob
   (void)exact_jacobian;
 #endif
 #ifdef BUILD_REDECOMP
-  if ( !cs.hasMfemData() || !cs.hasMfemSubmeshData() || cs.getContactMethod() != SINGLE_MORTAR ||
-       cs.getContactModel() != FRICTIONLESS || cs.getContactMode() != SURFACE_TO_SURFACE ||
-       cs.getEnforcementMethod() != LAGRANGE_MULTIPLIER || cs.getContactCase() != NO_CASE ||
-       cs.getMeshId1() == cs.getMeshId2() ) {
+  const bool valid_model = cs.getContactModel() == FRICTIONLESS || cs.getContactModel() == FRICTION_COULOMB;
+  if ( !cs.hasMfemData() || !cs.hasMfemSubmeshData() || cs.getContactMethod() != SINGLE_MORTAR || !valid_model ||
+       cs.getContactMode() != SURFACE_TO_SURFACE || cs.getEnforcementMethod() != LAGRANGE_MULTIPLIER ||
+       cs.getContactCase() != NO_CASE || cs.getMeshId1() == cs.getMeshId2() ) {
     SLIC_ERROR_ROOT(
-        "Single mortar formulation requires an MFEM frictionless surface-to-surface scheme with "
+        "Single mortar formulation requires an MFEM frictionless or Coulomb-friction surface-to-surface scheme with "
         "distinct mesh IDs, nodal Lagrange multipliers, and NO_CASE." );
     return false;
   }
@@ -230,6 +231,17 @@ bool validateSingleMortarFormulation( const CouplingScheme& cs, bool exact_jacob
   if ( coords.GetParMesh()->Dimension() != 3 || coords.GetParMesh()->SpaceDimension() != 3 || coords.GetVDim() != 3 ||
        order < 1 || ( order > 1 && !data.GetLORMesh() ) || !data.HasReferenceCoords() ) {
     SLIC_ERROR_ROOT( "Single mortar formulation requires 3D linear or LOR coordinates and reference coordinates." );
+    return false;
+  }
+  const int expected_dual_vdim = cs.getContactModel() == FRICTION_COULOMB ? 3 : 1;
+  if ( cs.getMfemSubmeshData()->GetSubmeshFESpace().GetVDim() != expected_dual_vdim ) {
+    SLIC_ERROR_ROOT( "Single mortar dual submesh vdim does not match the registered contact model." );
+    return false;
+  }
+  if ( cs.getContactModel() == FRICTION_COULOMB && !data.HasPreviousCoords() ) {
+    SLIC_ERROR_ROOT(
+        "Frictional single mortar requires previous-step coordinates registered via "
+        "registerMfemPreviousCoords()." );
     return false;
   }
   for ( const auto attribute : data.GetBoundaryAttribs1() ) {
@@ -297,6 +309,24 @@ std::unique_ptr<ContactFormulation> createSingleMortarForGeometry( CouplingSchem
         PairListBuilder pairs( createCoarseSearch( cs->spatialDim(), cs->getBinningMethod(), Exec,
                                                    cs->getEffectiveBinningProximityScale(), 0.0 ),
                                std::make_unique<ProjectedFaceSearch>( Exec, false ) );
+        if ( cs->getContactModel() == FRICTION_COULOMB ) {
+#ifdef TRIBOL_USE_ENZYME
+          if ( params.single_mortar_exact_jacobian ) {
+            return std::make_unique<FrictionalSingleMortarFormulation<Exec, decltype( rule_generator ),
+                                                                      FrictionalSingleMortarExactJacobian>>(
+                rule_generator,
+                FrictionalSingleMortarExactJacobian{ *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
+                                                     *cs->getMfemJacobianData() },
+                std::move( pairs ) );
+          }
+#endif
+          return std::make_unique<FrictionalSingleMortarFormulation<Exec, decltype( rule_generator ),
+                                                                    FrictionalSingleMortarFrozenJacobian>>(
+              rule_generator,
+              FrictionalSingleMortarFrozenJacobian{ *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
+                                                    *cs->getMfemJacobianData() },
+              std::move( pairs ) );
+        }
 #ifdef TRIBOL_USE_ENZYME
         if ( params.single_mortar_exact_jacobian ) {
           return std::make_unique<SingleMortarFormulation<Exec, decltype( rule_generator ), SingleMortarExactJacobian>>(
