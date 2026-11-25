@@ -5,7 +5,15 @@ All notable changes to this project will be documented in this file
 The format of this file is based on [Keep a
 Changelog](http://keepachangelog.com/en/1.0.0/).
 
-## [Version 0.2.0] - Release date YYYY-MM-DD
+## [Unreleased] - Release date YYYY-MM-DD
+
+### Added
+
+### Fixed
+
+### Changed
+
+## [Version 0.2.0] - Release date 2026-11-24
 
 ### Added
 - Added a flexible `ContactFormulation` interface for developing energy- or residual-based contact methods with shared
@@ -275,3 +283,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Added and/or modified tests for element-based penalty and timestep vote
   features.
 - Added gap-rate tests and modified tests based on associated refactoring.
+
+[Unreleased]:    https://github.com/LLNL/tribol/compare/v0.2.0...develop
+[Version 0.2.0]: https://github.com/LLNL/tribol/compare/v0.1.0...v0.2.0
+[Version 0.1.0]: https://github.com/llnl/tribol/releases/tag/v0.1.0
