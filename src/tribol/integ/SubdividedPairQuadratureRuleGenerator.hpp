@@ -25,6 +25,9 @@ struct SubelementInterval {
    * @brief Map a subelement parametric coordinate affinely into the element.
    * @param subelement_coord Subelement parametric coordinate in [-1, 1].
    * @return Element parametric coordinate in [lower, upper].
+   *
+   * This does a linear interpolation from a subelement coordinate to a surface element coordinate, which may not be in
+   * the same direction as the gap vector.
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE RealT mapToElement( RealT subelement_coord ) const
   {
@@ -63,7 +66,7 @@ concept SubelementPointProjection =
  * @brief Reuse each subelement parametric coordinate affinely in its element.
  *
  * On curved elements, the evaluated element points are offset from the subelement points that the linear rule paired,
- * so their separation is generally not parallel to the subelement pairing direction.
+ * so their gap is generally not parallel to the subelement pairing direction (e.g. the common plane normal).
  */
 struct AffineSubelementMapping {
   /**
@@ -172,6 +175,7 @@ class SubdividedPairQuadratureRuleGenerator {
                               output_point + subelement_rule.metadata.num_required_points };
           return output;
         }
+        // this maps subelement parametric points to contact element parametric points (as defined by projection_)
         for ( IndexT point = 0; point < subelement_rule.metadata.num_required_points; ++point ) {
           const LinearEdgeGeometry::Vector normal( &subelement_rule.integration_surface_normals( point, 0 ),
                                                    LinearEdgeGeometry::spatial_dim );
