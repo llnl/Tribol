@@ -1067,6 +1067,18 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 
   auto& params = m_parameters;
 
+#ifdef BUILD_REDECOMP
+  if ( m_contactMethod == COMMON_PLANE && hasMfemData() && params.enable_timestep_vote &&
+       params.timestep_criteria.nodal_penalty_cfl && getMesh1().getElementType() == TRIANGLE &&
+       ( m_enforcementOptions.penalty_options.constraint_type == KINEMATIC_AND_RATE ||
+         m_contactModel == VISCOUS_TANGENTIAL ) ) {
+    SLIC_ERROR(
+        "Legacy MFEM Common Plane nodal_penalty_cfl does not support damping on triangular faces. "
+        "Set nodal_penalty_cfl = false via setTimestepCriteria() to disable this criterion." );
+    return 1;
+  }
+#endif
+
   // loop over number of interface pairs
   IndexT numPairs = m_interface_pairs.size();
 
@@ -1150,8 +1162,17 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 
   // Compute Tribol timestep vote on the coupling scheme. Every rank participates so parallel reductions remain
   // collective even when some ranks have zero local active pairs.
-  if ( err == 0 && m_parameters.enable_timestep_vote ) {
-    computeTimeStep( dt );
+  if ( m_contactMethod == COMMON_PLANE && m_parameters.enable_timestep_vote ) {
+#ifdef TRIBOL_USE_MPI
+    int mpi_initialized = 0;
+    MPI_Initialized( &mpi_initialized );
+    if ( mpi_initialized ) {
+      MPI_Allreduce( MPI_IN_PLACE, &err, 1, MPI_INT, MPI_MAX, getProblemComm() );
+    }
+#endif
+    if ( err == 0 ) {
+      computeTimeStep( dt );
+    }
   }
 
   // write contact plane output if it is on host
@@ -1422,6 +1443,66 @@ void CouplingScheme::computeTimeStep( RealT& dt )
 
 namespace detail {
 
+#ifdef BUILD_REDECOMP
+namespace {
+
+/** @brief Frozen force coefficients for an active legacy Common Plane pair. */
+struct LegacyCommonPlaneCflPoint {
+  CommonPlanePairBasis force_basis;         ///< Basis used to distribute the contact force.
+  CommonPlanePairBasis velocity_basis;      ///< Basis used to interpolate velocity for damping.
+  axom::primal::Vector<RealT, 3> normal{};  ///< Contact plane unit normal.
+  RealT weighted_stiffness{ 0.0 };          ///< Normal penalty stiffness times overlap measure.
+  RealT weighted_rate_penalty{ 0.0 };       ///< Active gap-rate penalty times overlap measure.
+  RealT tangential_damping{ 0.0 };          ///< Viscous coefficient applied directly to tangential velocity.
+};
+
+/**
+ * @brief Assemble a legacy frozen penalty or damping matrix on MFEM parent true DOFs.
+ * @tparam Exec Concrete execution mode for packing the element blocks.
+ * @tparam Dim Spatial dimension.
+ * @tparam NumNodes Number of nodes per element on each mesh.
+ * @param cs_view Provides the element IDs of the legacy contact planes.
+ * @param points Frozen force coefficients indexed by contact plane.
+ * @param data MFEM mesh and matrix transfer data.
+ * @param damping True to assemble the damping matrix, false to assemble the normal penalty matrix.
+ * @return The assembled matrix on the parent true DOFs.
+ */
+template <ExecutionMode Exec, int Dim, int NumNodes>
+shared::ParSparseMat assembleLegacyCommonPlaneCflMatrix( CouplingScheme::Viewer cs_view,
+                                                         ArrayViewT<const LegacyCommonPlaneCflPoint> points,
+                                                         const MfemParentPenaltyCflData& data, bool damping )
+{
+  constexpr int size_geom_dofs = NumNodes * Dim;
+  auto assembler = makeResidualJacobianAssembler( data.mesh_data, data.transfer_data, cs_view.getMesh1View(),
+                                                  cs_view.getMesh2View(), points.size(), points.getAllocatorID() );
+  const auto matrix_view = assembler.template view<size_geom_dofs, size_geom_dofs, 4>();
+  forAllExec<Exec>( points.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
+    const auto& plane = cs_view.getCompGeomView().getCommonPlane( pair_index );
+    matrix_view.packPair(
+        pair_index, { plane.getCpElementId1(), plane.getCpElementId2() },
+        [=] TRIBOL_HOST_DEVICE( IndexT point_index, IndexT row, IndexT column ) {
+          const auto& point = points[point_index];
+          const auto& column_basis = damping ? point.velocity_basis : point.force_basis;
+          const IndexT row_basis_index = ( row % size_geom_dofs ) / Dim;
+          const IndexT column_basis_index = ( column % size_geom_dofs ) / Dim;
+          const RealT row_value = row < size_geom_dofs ? point.force_basis.geometry1[row_basis_index]
+                                                       : -point.force_basis.geometry2[row_basis_index];
+          const RealT column_value = column < size_geom_dofs ? column_basis.geometry1[column_basis_index]
+                                                             : -column_basis.geometry2[column_basis_index];
+          const RealT normal_product = point.normal[row % Dim] * point.normal[column % Dim];
+          const RealT coefficient =
+              damping ? point.weighted_rate_penalty * normal_product +
+                            point.tangential_damping * ( ( row % Dim == column % Dim ? 1.0 : 0.0 ) - normal_product )
+                      : point.weighted_stiffness * normal_product;
+          return row_value * coefficient * column_value;
+        } );
+  } );
+  return assembler.assemble();
+}
+
+}  // namespace
+#endif  // BUILD_REDECOMP
+
 /**
  * @brief Evaluate active timestep criteria across Common Plane contact pairs on execution mode Exec.
  * @tparam Exec Concrete execution mode for the pair and row-sum reduction kernels.
@@ -1435,20 +1516,25 @@ namespace detail {
  * @param include_damping True when rate penalty or tangential viscous damping is active.
  * @param include_tangential_damping True when tangential viscous damping is active.
  * @param second_dof_offset Offset into row-sum arrays for mesh2 DOFs (0 when meshes share DOFs).
- * @return Unclamped global allowable timestep, or +infinity when no active criterion votes.
+ * @param parent_cfl_data MFEM transfer and parent inverse mass for the nodal CFL vote, when using MFEM.
+ * @return Unclamped global allowable timestep, or +infinity when no criterion votes or after reporting invalid input.
  */
 template <ExecutionMode Exec>
 RealT computeCommonPlaneTimeStep( CouplingScheme::Viewer cs_view, const TimestepCalculator& calculator, RealT dt_in,
                                   IndexT num_pairs, IndexT num_dofs, int allocator_id, int dim, bool include_damping,
-                                  bool include_tangential_damping, IndexT second_dof_offset )
+                                  bool include_tangential_damping, IndexT second_dof_offset,
+                                  const MfemParentPenaltyCflData* parent_cfl_data )
 {
   const TimestepSettings& settings = calculator.settings();
   const TimestepCriteria criteria = settings.active_criteria;
 
-  const bool run_nodal_penalty_cfl = criteria.nodal_penalty_cfl && num_pairs > 0;
+  const bool use_parent_penalty_cfl = parent_cfl_data != nullptr;
+  const bool use_surface_penalty_cfl = criteria.nodal_penalty_cfl && !use_parent_penalty_cfl;
+  const bool compute_local_surface_row_sums = use_surface_penalty_cfl && num_pairs > 0;
   const IndexT size_stiffness_row_sums =
-      run_nodal_penalty_cfl ? axom::utilities::max( static_cast<IndexT>( 1 ), num_dofs ) : 0;
-  const IndexT size_damping_row_sums = ( run_nodal_penalty_cfl && include_damping ) ? size_stiffness_row_sums : 0;
+      compute_local_surface_row_sums ? axom::utilities::max( static_cast<IndexT>( 1 ), num_dofs ) : 0;
+  const IndexT size_damping_row_sums =
+      ( compute_local_surface_row_sums && include_damping ) ? size_stiffness_row_sums : 0;
 
   ArrayT<RealT> stiffness_row_sums_data( size_stiffness_row_sums, size_stiffness_row_sums, allocator_id );
   ArrayT<RealT> damping_row_sums_data( size_damping_row_sums, size_damping_row_sums, allocator_id );
@@ -1456,10 +1542,18 @@ RealT computeCommonPlaneTimeStep( CouplingScheme::Viewer cs_view, const Timestep
   damping_row_sums_data.fill( 0.0 );
   ArrayViewT<RealT> stiffness_row_sums = stiffness_row_sums_data.view();
   ArrayViewT<RealT> damping_row_sums = damping_row_sums_data.view();
-  ArrayT<int> invalid_mass_data( { 0 }, allocator_id );
-  ArrayViewT<int> invalid_mass = invalid_mass_data.view();
+  ArrayT<int> invalid_cfl_data( { 0, 0, 0 }, allocator_id );
+  auto invalid_surface_nodal_data = invalid_cfl_data.view().subspan( 0, 1 );
+  auto invalid_pair_mass = invalid_cfl_data.view().subspan( 1, 1 );
+#ifdef BUILD_REDECOMP
+  auto unsupported_parent_matrix = invalid_cfl_data.view().subspan( 2, 1 );
+  const IndexT num_parent_points = use_parent_penalty_cfl ? num_pairs : 0;
+  ArrayT<LegacyCommonPlaneCflPoint> parent_points( num_parent_points, num_parent_points, allocator_id );
+  auto parent_points_view = parent_points.view();
+#endif
 
-  ReduceMin<Exec, RealT> min_dt( std::numeric_limits<RealT>::infinity() );
+  constexpr RealT no_timestep_vote = std::numeric_limits<RealT>::max();
+  ReduceMin<Exec, RealT> min_dt( no_timestep_vote );
 
   forAllExec<Exec>( num_pairs, [=] TRIBOL_HOST_DEVICE( IndexT i ) {
     auto& cg_view = cs_view.getCompGeomView();
@@ -1473,7 +1567,6 @@ RealT computeCommonPlaneTimeStep( CouplingScheme::Viewer cs_view, const Timestep
 
     constexpr int max_dim = 3;
     constexpr int max_nodes_per_elem = 4;
-    constexpr int max_nodes_per_overlap = 10;
 
     const axom::primal::Vector<RealT, 3> overlap_normal{ plane.m_nX, plane.m_nY, dim == 3 ? plane.m_nZ : 0.0 };
 
@@ -1529,7 +1622,7 @@ RealT computeCommonPlaneTimeStep( CouplingScheme::Viewer cs_view, const Timestep
         pair_data.inv_mass2 =
             computeSurfaceElementNormalInverseMass( m2, index2, overlap_normal, dim, local_invalid_mass );
         if ( local_invalid_mass ) {
-          tribol::atomicMax( &invalid_mass[0], 1 );
+          tribol::atomicMax( &invalid_pair_mass[0], 1 );
         } else {
           pair_data.penalty_stiffness_per_area = penalty_stiff_per_area;
           pair_data.overlap_measure = plane.m_area;
@@ -1545,52 +1638,64 @@ RealT computeCommonPlaneTimeStep( CouplingScheme::Viewer cs_view, const Timestep
         const int num_nodes_per_face1 = static_cast<int>( m1.numberOfNodesPerElement() );
         const int num_nodes_per_face2 = static_cast<int>( m2.numberOfNodesPerElement() );
 
-        RealT xf1[max_dim * max_nodes_per_elem];
-        RealT xf2[max_dim * max_nodes_per_elem];
-        RealT xVert[max_dim * max_nodes_per_overlap];
-        initRealArray( xf1, dim * num_nodes_per_face1, 0.0 );
-        initRealArray( xf2, dim * num_nodes_per_face2, 0.0 );
-        const int num_poly_vert = ( dim == 3 ) ? plane.m_numPolyVert : 2;
-        const int xvert_size = ( dim == 3 ) ? 3 * num_poly_vert : 4;
-        initRealArray( xVert, xvert_size, 0.0 );
-
-        plane.getFace1Coords( &xf1[0], num_nodes_per_face1 );
-        plane.getFace2Coords( &xf2[0], num_nodes_per_face2 );
-        plane.getOverlapVertices( &xVert[0] );
-
-        SurfaceContactElem cntctElem( dim, xf1, xf2, xVert, num_nodes_per_face1, num_poly_vert, &m1, &m2, index1,
-                                      index2 );
-        RealT faceNormal1[max_dim]{ 0.0, 0.0, 0.0 };
-        RealT faceNormal2[max_dim]{ 0.0, 0.0, 0.0 };
-        m1.getFaceNormal( index1, faceNormal1 );
-        m2.getFaceNormal( index2, faceNormal2 );
-        RealT overlap_normal_raw[max_dim]{ overlap_normal[0], overlap_normal[1], overlap_normal[2] };
-        cntctElem.faceNormal1 = faceNormal1;
-        cntctElem.faceNormal2 = faceNormal2;
-        cntctElem.overlapNormal = overlap_normal_raw;
-        cntctElem.overlapArea = plane.m_area;
-
-        RealT phi1[max_nodes_per_elem]{ 0.0, 0.0, 0.0, 0.0 };
-        RealT phi2[max_nodes_per_elem]{ 0.0, 0.0, 0.0, 0.0 };
-        EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( cntctElem, phi1, phi2 );
+        const auto force_basis = computeCommonPlaneForceBasis( plane, m1, m2 );
+        const RealT rate_penalty =
+            pen_options.constraint_type == KINEMATIC_AND_RATE && plane.m_velGap <= 0.0
+                ? computeCommonPlaneRatePenalty( m1, m2, penalty_stiff_per_area, pen_options.rate_calculation )
+                : 0.0;
+        const RealT tangential_damping =
+            include_tangential_damping ? computeCommonPlaneTangentialDamping( m1, m2 ) : 0.0;
+#ifdef BUILD_REDECOMP
+        if ( use_parent_penalty_cfl ) {
+          LegacyCommonPlaneCflPoint point{};
+          // Hold the overlap geometry fixed and use the signed force basis to measure changes in normal separation.
+          point.force_basis = force_basis;
+          point.normal = overlap_normal;
+          point.weighted_stiffness = plane.m_area * penalty_stiff_per_area;
+          point.weighted_rate_penalty = plane.m_area * rate_penalty;
+          point.tangential_damping = tangential_damping;
+          if ( point.weighted_stiffness < 0.0 || !std::isfinite( point.weighted_stiffness ) ||
+               point.weighted_rate_penalty < 0.0 || !std::isfinite( point.weighted_rate_penalty ) ||
+               point.tangential_damping < 0.0 || !std::isfinite( point.tangential_damping ) ) {
+            tribol::atomicMax( &unsupported_parent_matrix[0], 1 );
+          }
+          if ( rate_penalty != 0.0 || tangential_damping != 0.0 ) {
+            // The damped timestep formula assumes a symmetric, positive semidefinite damping matrix.
+            // Check that the velocity interpolation and the force weights agree at the overlap centroid.
+            const int num_velocity_nodes = GetNumFaceNodes( dim, LINEAR_LAGRANGE );
+            if ( num_nodes_per_face1 != num_velocity_nodes || num_nodes_per_face2 != num_velocity_nodes ) {
+              tribol::atomicMax( &unsupported_parent_matrix[0], 2 );
+              return;
+            }
+            point.velocity_basis = computeCommonPlaneVelocityBasis( plane, num_velocity_nodes );
+            constexpr RealT basis_tolerance = 1.0e-10;
+            for ( int basis_index = 0; basis_index < num_velocity_nodes; ++basis_index ) {
+              const RealT difference1 =
+                  point.velocity_basis.geometry1[basis_index] - force_basis.geometry1[basis_index];
+              const RealT difference2 =
+                  point.velocity_basis.geometry2[basis_index] - force_basis.geometry2[basis_index];
+              if ( !( std::abs( difference1 ) <= basis_tolerance && std::abs( difference2 ) <= basis_tolerance ) ) {
+                tribol::atomicMax( &unsupported_parent_matrix[0], 2 );
+                return;
+              }
+            }
+          }
+          parent_points_view[i] = point;
+          return;
+        }
+#endif
 
         TimestepNodalPenaltyPointData cfl_point;
         cfl_point.integration_weight = plane.m_area;
         cfl_point.penalty_stiffness = penalty_stiff_per_area;
-        if ( pen_options.constraint_type == KINEMATIC_AND_RATE && plane.m_velGap <= 0.0 ) {
-          cfl_point.normal_rate_penalty =
-              detail::computeCommonPlaneRatePenalty( m1, m2, penalty_stiff_per_area, pen_options.rate_calculation );
-        }
-        if ( include_tangential_damping ) {
-          cfl_point.tangential_viscous_coeff =
-              0.5 * ( m1.getElementData().m_viscous_damping_coeff + m2.getElementData().m_viscous_damping_coeff );
-        }
+        cfl_point.normal_rate_penalty = rate_penalty;
+        cfl_point.tangential_viscous_coeff = tangential_damping;
         cfl_point.contact_normal = overlap_normal;
         cfl_point.spatial_dim = dim;
         cfl_point.size_basis[0] = num_nodes_per_face1;
         cfl_point.size_basis[1] = num_nodes_per_face2;
         for ( int a = 0; a < num_nodes_per_face1; ++a ) {
-          cfl_point.basis_values[0][a] = phi1[a];
+          cfl_point.basis_values[0][a] = force_basis.geometry1[a];
           const IndexT node_id = m1.getGlobalNodeId( index1, a );
           for ( int d = 0; d < dim; ++d ) {
             cfl_point.inverse_mass[0][a][d] = m1.getInverseMass( node_id, d );
@@ -1598,21 +1703,22 @@ RealT computeCommonPlaneTimeStep( CouplingScheme::Viewer cs_view, const Timestep
           }
         }
         for ( int b = 0; b < num_nodes_per_face2; ++b ) {
-          cfl_point.basis_values[1][b] = phi2[b];
+          cfl_point.basis_values[1][b] = force_basis.geometry2[b];
           const IndexT node_id = m2.getGlobalNodeId( index2, b );
           for ( int d = 0; d < dim; ++d ) {
             cfl_point.inverse_mass[1][b][d] = m2.getInverseMass( node_id, d );
             cfl_point.dof_indices[1][b][d] = second_dof_offset + node_id * dim + d;
           }
         }
-        calculator.accumulateNodalPenaltyPoint( cfl_point, stiffness_row_sums, damping_row_sums, invalid_mass );
+        calculator.accumulateNodalPenaltyPoint( cfl_point, stiffness_row_sums, damping_row_sums,
+                                                invalid_surface_nodal_data );
       }
     }
   } );
 
   RealT local_stiffness_bound = 0.0;
   RealT local_damping_bound = 0.0;
-  if ( run_nodal_penalty_cfl ) {
+  if ( compute_local_surface_row_sums ) {
     ReduceMax<Exec, RealT> max_stiffness( 0.0 );
     ReduceMax<Exec, RealT> max_damping( 0.0 );
     const bool has_damping_sums = size_damping_row_sums > 0;
@@ -1626,16 +1732,16 @@ RealT computeCommonPlaneTimeStep( CouplingScheme::Viewer cs_view, const Timestep
     local_damping_bound = max_damping.get();
   }
 
-  ArrayT<int, 1, MemorySpace::Host> invalid_mass_host( invalid_mass_data );
-  int global_invalid_mass = invalid_mass_host[0];
+  ArrayT<int, 1, MemorySpace::Host> invalid_cfl_host( invalid_cfl_data );
   RealT global_stiffness_bound = local_stiffness_bound;
   RealT global_damping_bound = local_damping_bound;
   RealT global_dt = min_dt.get();
 
 #ifdef TRIBOL_USE_MPI
   if ( settings.use_mpi ) {
-    MPI_Allreduce( MPI_IN_PLACE, &global_invalid_mass, 1, MPI_INT, MPI_MAX, settings.communicator );
-    if ( criteria.nodal_penalty_cfl ) {
+    MPI_Allreduce( MPI_IN_PLACE, invalid_cfl_host.data(), invalid_cfl_host.size(), MPI_INT, MPI_MAX,
+                   settings.communicator );
+    if ( use_surface_penalty_cfl ) {
       RealT bounds[2]{ global_stiffness_bound, global_damping_bound };
       MPI_Allreduce( MPI_IN_PLACE, bounds, 2, MPI_DOUBLE, MPI_SUM, settings.communicator );
       global_stiffness_bound = bounds[0];
@@ -1645,10 +1751,45 @@ RealT computeCommonPlaneTimeStep( CouplingScheme::Viewer cs_view, const Timestep
   }
 #endif
 
-  if ( global_invalid_mass != 0 ) {
-    SLIC_ERROR_ROOT( "CouplingScheme::computeCommonPlaneTimeStep(): inverse diagonal mass data are invalid." );
+  if ( !calculator.validateSurfaceCflData( invalid_cfl_host[0] != 0, invalid_cfl_host[1] != 0 ) ) {
     return std::numeric_limits<RealT>::infinity();
   }
+
+#ifdef BUILD_REDECOMP
+  if ( use_parent_penalty_cfl ) {
+    if ( invalid_cfl_host[2] != 0 ) {
+      const char* reason = invalid_cfl_host[2] == 2
+                               ? "Legacy Common Plane velocity interpolation and force weights must agree for a "
+                                 "symmetric damping matrix."
+                               : "Legacy Common Plane penalty and damping coefficients must be finite and nonnegative.";
+      SLIC_ERROR( reason << " Set nodal_penalty_cfl = false via setTimestepCriteria() to disable this criterion." );
+      return std::numeric_limits<RealT>::infinity();
+    }
+    const auto assemble = [&]( bool damping ) {
+      if ( dim == 2 ) {
+        return assembleLegacyCommonPlaneCflMatrix<Exec, 2, 2>( cs_view, parent_points_view, *parent_cfl_data, damping );
+      }
+      if ( cs_view.getMesh1View().numberOfNodesPerElement() == 3 ) {
+        return assembleLegacyCommonPlaneCflMatrix<Exec, 3, 3>( cs_view, parent_points_view, *parent_cfl_data, damping );
+      }
+      return assembleLegacyCommonPlaneCflMatrix<Exec, 3, 4>( cs_view, parent_points_view, *parent_cfl_data, damping );
+    };
+    const auto penalty_matrix = assemble( false );
+    const auto penalty_bound = computeParentPenaltyRowSumBound( penalty_matrix.get(), parent_cfl_data->mesh_data );
+    if ( !penalty_bound ) {
+      return std::numeric_limits<RealT>::infinity();
+    }
+    global_stiffness_bound = *penalty_bound;
+    if ( include_damping ) {
+      const auto damping_matrix = assemble( true );
+      const auto damping_bound = computeParentPenaltyRowSumBound( damping_matrix.get(), parent_cfl_data->mesh_data );
+      if ( !damping_bound ) {
+        return std::numeric_limits<RealT>::infinity();
+      }
+      global_damping_bound = *damping_bound;
+    }
+  }
+#endif
 
   if ( criteria.nodal_penalty_cfl ) {
     const RealT nodal_penalty_dt = calculator.finalizeNodalPenaltyCfl( global_stiffness_bound, global_damping_bound );
@@ -1657,7 +1798,7 @@ RealT computeCommonPlaneTimeStep( CouplingScheme::Viewer cs_view, const Timestep
     }
   }
 
-  return global_dt;
+  return global_dt == no_timestep_vote ? std::numeric_limits<RealT>::infinity() : global_dt;
 }
 
 }  // namespace detail
@@ -1680,7 +1821,19 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 #endif
 
   const TimestepCalculator calculator( settings );
-  if ( !calculator.anyEnabled() || !calculator.validateRequiredFields( mesh1.getView(), mesh2.getView() ) ) {
+  const detail::MfemParentPenaltyCflData* parent_cfl_data = nullptr;
+  bool use_parent_penalty_cfl = false;
+#ifdef BUILD_REDECOMP
+  use_parent_penalty_cfl = settings.active_criteria.nodal_penalty_cfl && hasMfemData();
+  std::optional<detail::MfemParentPenaltyCflData> transfer_data;
+  if ( use_parent_penalty_cfl && getMfemMeshData()->HasRedecompMesh() ) {
+    transfer_data.emplace( detail::prepareMfemParentPenaltyCfl( *this ) );
+    parent_cfl_data = &*transfer_data;
+  }
+#endif
+  if ( !calculator.anyEnabled() ||
+       ( use_parent_penalty_cfl && !calculator.validateParentPenaltyCflData( parent_cfl_data ) ) ||
+       !calculator.validateRequiredFields( mesh1.getView(), mesh2.getView(), use_parent_penalty_cfl ) ) {
     dt = std::numeric_limits<RealT>::infinity();
     return;
   }
@@ -1705,7 +1858,7 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
   dt = dispatchExecutionMode( getExecutionMode(), [&]<ExecutionMode Exec>() {
     return detail::computeCommonPlaneTimeStep<Exec>( getView(), calculator, dt_in, num_pairs, num_dofs, allocator_id,
                                                      dim, include_damping, include_tangential_damping,
-                                                     second_dof_offset );
+                                                     second_dof_offset, parent_cfl_data );
   } );
 }
 

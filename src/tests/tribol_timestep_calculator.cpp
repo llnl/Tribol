@@ -6,7 +6,7 @@
 /**
  * @file
  * @brief Unit tests for individual timestep criteria, composable TimestepCalculator selection, and portable ReduceMin
- * reductions across enabled execution backends.
+ * reductions across enabled execution backends. Check diagnostics for missing parent CFL data.
  */
 
 #include <cmath>
@@ -17,8 +17,11 @@
 
 #include "axom/slic.hpp"
 #include "ExecutionTest.hpp"
+#include "SlicErrorTest.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/Reductions.hpp"
+#include "tribol/integ/EdgeQuadratureRuleGenerator.hpp"
+#include "tribol/physics/CommonPlaneFormulation.hpp"
 #include "tribol/physics/timestep/TimestepCalculator.hpp"
 
 namespace {
@@ -161,7 +164,7 @@ TEST( TimestepCalculatorTest, nodal_penalty_cfl_handles_signed_basis_damping_and
   pt.integration_weight = 0.5;
   pt.penalty_stiffness = 10.0;
   pt.normal_rate_penalty = 2.0;
-  pt.tangential_viscous_coeff = 0.0;
+  pt.tangential_viscous_coeff = 2.0;
   pt.contact_normal[0] = 0.0;
   pt.contact_normal[1] = -1.0;
   pt.spatial_dim = 2;
@@ -200,7 +203,9 @@ TEST( TimestepCalculatorTest, nodal_penalty_cfl_handles_signed_basis_damping_and
 
   // normal_abs_sum = |0.75|*1*2 + |-0.25|*1*0 + |0.5|*1*1 + |0.5|*1*1 = 1.5 + 0 + 0.5 + 0.5 = 2.5.
   // Max DOF is slot 0: 2 * (0.5 * 10.0) * (0.75 * 2.0) * 2.5 = 10.0 * 1.5 * 2.5 = 37.5.
-  // Damping max DOF is slot 0: 2 * (0.5 * 2.0) * (0.75 * 2.0) * 2.5 = 2.0 * 1.5 * 2.5 = 7.5.
+  // Normal damping on slot 0 is 7.5. Tangential damping on slots 4 and 5 uses no overlap weight.
+  EXPECT_NEAR( damping_sums[0], 7.5, 1.0e-12 );
+  EXPECT_NEAR( damping_sums[4], 2.0 * 2.0 * 1.5 * 2.5, 1.0e-12 );
   RealT max_k = 0.0;
   RealT max_c = 0.0;
   for ( IndexT i = 0; i < stiffness_sums.size(); ++i ) {
@@ -208,10 +213,10 @@ TEST( TimestepCalculatorTest, nodal_penalty_cfl_handles_signed_basis_damping_and
     max_c = std::max( max_c, damping_sums[i] );
   }
   EXPECT_NEAR( max_k, 37.5, 1.0e-12 );
-  EXPECT_NEAR( max_c, 7.5, 1.0e-12 );
+  EXPECT_NEAR( max_c, 15.0, 1.0e-12 );
 
   const RealT dt_cfl = NodalPenaltyCflTimestepCriterion::finalizeFromBounds( max_k, max_c, settings );
-  const RealT expected_omega = std::sqrt( 37.5 + 0.25 * 7.5 * 7.5 ) + 0.5 * 7.5;
+  const RealT expected_omega = std::sqrt( 37.5 + 0.25 * 15.0 * 15.0 ) + 0.5 * 15.0;
   EXPECT_NEAR( dt_cfl, 1.8 / expected_omega, 1.0e-12 );
 }
 
@@ -255,6 +260,25 @@ TEST( TimestepCalculatorTest, runtime_criteria_toggles_control_active_checks )
     EXPECT_NEAR( calc.evaluatePenetrationCriteria( point, 1.0 ), 0.3 * 0.25 / 3.0, 1.0e-12 );
     EXPECT_TRUE( std::isinf( calc.evaluatePairSpringMassCfl( pair ) ) );
   }
+}
+
+// The formulation must report a missing parent transfer even when this rank has no candidate pairs.
+TEST( TimestepCalculatorTest, enabled_nodal_cfl_requires_parent_data )
+{
+  using namespace tribol;
+  using RuleGenerator = PairQuadratureRuleGenerator<CommonPlaneEdgeMapping, EdgeQuadratureRuleGenerator<1>>;
+  using Basis = BasisFunction<EDGE, LINEAR_LAGRANGE>;
+  const PairTractionIntegral<RuleGenerator, CommonPlanePenaltyTraction<>, Basis> integral( RuleGenerator{}, { 1.0 } );
+  MeshData mesh( 0, 0, 0, nullptr, EDGE, LINEAR_LAGRANGE, nullptr, nullptr, nullptr, MemorySpace::Host );
+  const ArrayT<InterfacePair> pairs;
+  TimestepSettings settings;
+  settings.active_criteria = { false, false, true, false };
+  EXPECT_SLIC_ERROR( TimestepCalculator( settings )
+                         .compute<ExecutionMode::Sequential>( pairs, mesh.getView(), mesh.getView(), integral ) );
+  settings.active_criteria.nodal_penalty_cfl = false;
+  EXPECT_FALSE( TimestepCalculator( settings )
+                    .compute<ExecutionMode::Sequential>( pairs, mesh.getView(), mesh.getView(), integral )
+                    .has_value() );
 }
 
 }  // namespace

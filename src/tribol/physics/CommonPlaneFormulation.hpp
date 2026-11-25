@@ -199,7 +199,7 @@ class CommonPlaneFormulation final : public ContactFormulation {
    * @param residual_outputs Configured output policy, retained by value.
    * @param pair_builder Owned pair search composition.
    * @param timestep_settings Optional timestep voting settings (std::nullopt disables timestep voting).
-   * @param parent_cfl_data MFEM transfer and mass data for nodal penalty CFL with LOR geometry, when needed.
+   * @param parent_cfl_data MFEM transfer and mass data required for nodal penalty CFL.
    */
   CommonPlaneFormulation( PairRuleGenerator rule_generator, RealT penalty, GapDefinition gap,
                           ResidualOutputs residual_outputs, PairListBuilder pair_builder,
@@ -227,7 +227,7 @@ class CommonPlaneFormulation final : public ContactFormulation {
     auto result = residual_outputs_.template computeResidual<Exec>( pairs, mesh1, mesh2, pair_integral_ );
     if ( timestep_settings_.has_value() ) {
       result.time_step = TimestepCalculator( *timestep_settings_ )
-                             .template compute<Exec>( pairs, mesh1, mesh2, pair_integral_, inputs.dt, false,
+                             .template compute<Exec>( pairs, mesh1, mesh2, pair_integral_, inputs.dt,
                                                       parent_cfl_data_ ? &*parent_cfl_data_ : nullptr );
     }
     return result;
@@ -240,8 +240,7 @@ class CommonPlaneFormulation final : public ContactFormulation {
   const ResidualOutputs residual_outputs_;  ///< Owns the selected assembly behavior -- residual or residual + jacobian
   PairListBuilder pair_builder_;            ///< Owned search composition.
   std::optional<TimestepSettings> timestep_settings_;  ///< Present when allowable timestep voting is enabled.
-  std::optional<detail::MfemParentPenaltyCflData>
-      parent_cfl_data_;  ///< Present for nodal penalty CFL with LOR geometry.
+  std::optional<detail::MfemParentPenaltyCflData> parent_cfl_data_;  ///< Required when nodal penalty CFL is enabled.
 };
 #endif
 

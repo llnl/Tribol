@@ -2190,6 +2190,9 @@ class MfemJacobianData {
    */
   void UpdateJacobianXfer();
 
+  /** @brief Return whether the transfer to parent true DOFs has been initialized. */
+  bool HasParentPath() const { return update_data_ != nullptr; }
+
   /**
    * @brief Assemble a solver-visible Jacobian on caller-provided final FE spaces
    *

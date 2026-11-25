@@ -7,6 +7,9 @@
 #define SRC_TRIBOL_PHYSICS_COMMONPLANE_HPP_
 
 #include "Physics.hpp"
+#include "tribol/common/MdArray.hpp"
+#include "tribol/geom/CompGeom.hpp"
+#include "tribol/integ/Integration.hpp"
 #include "tribol/mesh/MeshData.hpp"
 
 namespace tribol {
@@ -45,6 +48,81 @@ TRIBOL_HOST_DEVICE inline RealT ComputePenaltyStiffnessPerArea( const RealT K1_o
 }  // end ComputePenaltyStiffnessPerArea
 
 namespace detail {
+
+/** @brief Legacy Common Plane basis values for an edge, triangle, or quadrilateral pair. */
+struct CommonPlanePairBasis {
+  static constexpr int max_num_nodes = 4;     ///< Largest number of FE nodes on a legacy contact face.
+  MdArray<RealT, max_num_nodes> geometry1{};  ///< Basis values for the first contacting geometry.
+  MdArray<RealT, max_num_nodes> geometry2{};  ///< Basis values for the second contacting geometry.
+};
+
+/**
+ * @brief Evaluate the basis values that distribute the legacy Common Plane force at the overlap centroid.
+ * @param plane Legacy contact plane, with adjacent surface coordinates and overlap vertices already calculated.
+ * @param mesh1 First surface mesh view.
+ * @param mesh2 Second surface mesh view.
+ * @return Basis values for both geometries, with zero entries beyond each element's basis size.
+ */
+TRIBOL_HOST_DEVICE inline CommonPlanePairBasis computeCommonPlaneForceBasis( const CommonPlanePair& plane,
+                                                                             const MeshData::Viewer& mesh1,
+                                                                             const MeshData::Viewer& mesh2 )
+{
+  constexpr int max_dimension = 3;
+  constexpr int max_num_overlap_vertices = 10;
+  constexpr int max_num_nodes = CommonPlanePairBasis::max_num_nodes;
+  const int dim = plane.m_dim;
+  const int num_nodes = mesh1.numberOfNodesPerElement();
+  const int num_overlap_vertices = dim == 3 ? plane.m_numPolyVert : 2;
+  const IndexT element1 = plane.getCpElementId1();
+  const IndexT element2 = plane.getCpElementId2();
+  RealT coords1[max_dimension * max_num_nodes]{};
+  RealT coords2[max_dimension * max_num_nodes]{};
+  RealT overlap_coords[max_dimension * max_num_overlap_vertices]{};
+  plane.getFace1Coords( coords1, num_nodes );
+  plane.getFace2Coords( coords2, num_nodes );
+  plane.getOverlapVertices( overlap_coords );
+
+  RealT normal1[max_dimension]{};
+  RealT normal2[max_dimension]{};
+  RealT overlap_normal[max_dimension]{ plane.m_nX, plane.m_nY, dim == 3 ? plane.m_nZ : 0.0 };
+  mesh1.getFaceNormal( element1, normal1 );
+  mesh2.getFaceNormal( element2, normal2 );
+  SurfaceContactElem element( dim, coords1, coords2, overlap_coords, num_nodes, num_overlap_vertices, &mesh1, &mesh2,
+                              element1, element2 );
+  element.faceNormal1 = normal1;
+  element.faceNormal2 = normal2;
+  element.overlapNormal = overlap_normal;
+  element.overlapArea = plane.m_area;
+
+  CommonPlanePairBasis basis;
+  EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( element, basis.geometry1.data(), basis.geometry2.data() );
+  return basis;
+}
+
+/**
+ * @brief Evaluate the legacy Common Plane velocity basis on both faces at the points that define the gap.
+ * @param plane Legacy contact plane with the projected overlap centroid on each face.
+ * @param num_nodes Number of nodes used by the legacy velocity interpolation on each face.
+ * @return Basis values for both geometries, with zero entries beyond each element's basis size.
+ */
+TRIBOL_HOST_DEVICE inline CommonPlanePairBasis computeCommonPlaneVelocityBasis( const CommonPlanePair& plane,
+                                                                                int num_nodes )
+{
+  constexpr int max_dimension = 3;
+  constexpr int max_num_nodes = CommonPlanePairBasis::max_num_nodes;
+  RealT coords1[max_dimension * max_num_nodes]{};
+  RealT coords2[max_dimension * max_num_nodes]{};
+  plane.getFace1Coords( coords1, num_nodes );
+  plane.getFace2Coords( coords2, num_nodes );
+  const RealT z1 = plane.m_dim == 3 ? plane.m_cZf1 : 0.0;
+  const RealT z2 = plane.m_dim == 3 ? plane.m_cZf2 : 0.0;
+  CommonPlanePairBasis basis;
+  for ( int basis_index = 0; basis_index < num_nodes; ++basis_index ) {
+    EvalBasis( coords1, plane.m_cXf1, plane.m_cYf1, z1, num_nodes, basis_index, basis.geometry1[basis_index] );
+    EvalBasis( coords2, plane.m_cXf2, plane.m_cYf2, z2, num_nodes, basis_index, basis.geometry2[basis_index] );
+  }
+  return basis;
+}
 
 /**
  * @brief Compute the effective series kinematic penalty stiffness per unit area for one Common Plane face pair.
@@ -108,6 +186,18 @@ TRIBOL_HOST_DEVICE inline RealT computeCommonPlaneRatePenalty( const MeshData::V
     default:
       return 0.0;
   }
+}
+
+/**
+ * @brief Compute the coefficient applied to the legacy Common Plane tangential velocity gap.
+ * @param mesh1 First surface mesh view.
+ * @param mesh2 Second surface mesh view.
+ * @return Mean registered viscous damping coefficient for the two surfaces.
+ */
+TRIBOL_HOST_DEVICE inline RealT computeCommonPlaneTangentialDamping( const MeshData::Viewer& mesh1,
+                                                                     const MeshData::Viewer& mesh2 )
+{
+  return 0.5 * ( mesh1.getElementData().m_viscous_damping_coeff + mesh2.getElementData().m_viscous_damping_coeff );
 }
 
 }  // namespace detail

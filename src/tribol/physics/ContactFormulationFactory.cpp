@@ -165,15 +165,8 @@ std::unique_ptr<ContactFormulation> createCommonPlaneForRuleGenerator( CouplingS
     settings.communicator = cs->getMfemMeshData()->GetParentCoords().ParFESpace()->GetComm();
     settings.use_mpi = true;
     timestep_settings = settings;
-    auto& mesh_data = *cs->getMfemMeshData();
-    if ( settings.active_criteria.nodal_penalty_cfl && mesh_data.GetLORMesh() ) {
-      if ( !cs->hasMfemJacobianData() ) {
-        mesh_data.EnableLORJacobianTransfer();
-        auto transfer_data = std::make_unique<MfemJacobianData>( mesh_data );
-        transfer_data->UpdateJacobianXfer();
-        cs->setMfemJacobianData( std::move( transfer_data ) );
-      }
-      parent_cfl_data.emplace( mesh_data, *cs->getMfemJacobianData() );
+    if ( settings.active_criteria.nodal_penalty_cfl && cs->getMfemMeshData()->HasRedecompMesh() ) {
+      parent_cfl_data.emplace( detail::prepareMfemParentPenaltyCfl( *cs ) );
     }
   }
   if ( cs->getParameters().common_plane_compute_jacobian ) {

@@ -915,7 +915,7 @@ TEST_F( CommonPlaneTest, cfl_pair_spring_mass_asymmetric_and_rigid )
 
 TEST_F( CommonPlaneTest, missing_inverse_mass_reports_slic_error )
 {
-  // Enabling nodal_penalty_cfl without registering inverse mass must report a SLIC error rather than silently skipping.
+  // Each surface CFL criterion must report a SLIC error when the inverse masses it requires are missing.
   this->m_mesh.mortarMeshId = 0;
   this->m_mesh.nonmortarMeshId = 1;
 
@@ -926,12 +926,12 @@ TEST_F( CommonPlaneTest, missing_inverse_mass_reports_slic_error )
   parameters.const_penalty = 8.0;
   parameters.dt = 1.0;
   parameters.enable_timestep_vote = true;
-  parameters.timestep_criteria = nodal_penalty_cfl_only_criteria;
-
-  EXPECT_SLIC_ERROR( this->m_mesh.tribolSetupAndUpdate( tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS,
-                                                        tribol::NO_CASE, false, parameters ) );
-
-  tribol::finalize();
+  for ( const auto criteria : { nodal_penalty_cfl_only_criteria, pair_spring_mass_cfl_only_criteria } ) {
+    parameters.timestep_criteria = criteria;
+    EXPECT_SLIC_ERROR( this->m_mesh.tribolSetupAndUpdate( tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS,
+                                                          tribol::NO_CASE, false, parameters ) );
+    tribol::finalize();
+  }
 }
 
 int main( int argc, char* argv[] )

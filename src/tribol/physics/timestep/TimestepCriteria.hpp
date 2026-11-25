@@ -73,7 +73,7 @@ struct TimestepNodalPenaltyPointData {
   RealT integration_weight{ 0.0 };                  ///< Physical integration weight (length in 2D, area in 3D).
   RealT penalty_stiffness{ 0.0 };                   ///< Normal penalty stiffness per unit overlap measure.
   RealT normal_rate_penalty{ 0.0 };                 ///< Active normal gap-rate penalty coefficient (0 when inactive).
-  RealT tangential_viscous_coeff{ 0.0 };            ///< Tangential viscous damping coefficient (0 when inactive).
+  RealT tangential_viscous_coeff{ 0.0 };            ///< Tangential damping coefficient applied without overlap weight.
   axom::primal::Vector<RealT, 3> contact_normal{};  ///< Unit contact normal at the integration point.
   int spatial_dim{ 3 };                             ///< Spatial dimension (2 or 3).
   int size_basis[2]{ 0, 0 };                        ///< Basis size on geometry1 and geometry2.
@@ -120,6 +120,7 @@ TRIBOL_HOST_DEVICE inline RealT computeSurfaceElementNormalInverseMass(
 {
   const IndexT num_nodes = mesh.numberOfNodesPerElement();
   RealT total_mass = 0.0;
+  bool constrained = false;
   for ( IndexT node = 0; node < num_nodes; ++node ) {
     const IndexT node_id = mesh.getGlobalNodeId( element_id, node );
     RealT normal_inv_mass = 0.0;
@@ -132,12 +133,13 @@ TRIBOL_HOST_DEVICE inline RealT computeSurfaceElementNormalInverseMass(
       normal_inv_mass += contact_normal[d] * contact_normal[d] * inv_m;
     }
     if ( normal_inv_mass == 0.0 ) {
-      // Constrained DOF along the contact normal corresponds to infinite effective mass.
-      return 0.0;
+      // A constrained node makes the effective mass infinite. Still validate the other nodes' inverse masses.
+      constrained = true;
+    } else {
+      total_mass += 1.0 / normal_inv_mass;
     }
-    total_mass += 1.0 / normal_inv_mass;
   }
-  return total_mass > 0.0 ? 1.0 / total_mass : 0.0;
+  return !constrained && total_mass > 0.0 ? 1.0 / total_mass : 0.0;
 }
 
 /**
@@ -292,7 +294,6 @@ struct NodalPenaltyCflTimestepCriterion {
 
     const RealT stiffness_scale = point.integration_weight * point.penalty_stiffness;
     const RealT normal_damping_scale = point.integration_weight * point.normal_rate_penalty;
-    const RealT tangential_damping_scale = point.integration_weight * point.tangential_viscous_coeff;
     const IndexT stiffness_size = stiffness_row_sums.size();
 
     for ( int surface = 0; surface < 2; ++surface ) {
@@ -313,7 +314,7 @@ struct NodalPenaltyCflTimestepCriterion {
           if ( accumulate_damping ) {
             const RealT damping_contrib =
                 normal_damping_scale * abs_normal_coeff * normal_abs_sum +
-                ( include_tangential ? tangential_damping_scale * abs_basis * sqrt_inv_m * tangential_abs_sums[d]
+                ( include_tangential ? point.tangential_viscous_coeff * abs_basis * sqrt_inv_m * tangential_abs_sums[d]
                                      : 0.0 );
             if ( damping_contrib > 0.0 ) {
               tribol::atomicAdd( &damping_row_sums[dof], damping_contrib );

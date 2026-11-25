@@ -8,8 +8,27 @@
 #ifdef BUILD_REDECOMP
 
 #include <cstring>
+#include <limits>
+
+#include "tribol/mesh/CouplingScheme.hpp"
 
 namespace tribol::detail {
+
+MfemParentPenaltyCflData prepareMfemParentPenaltyCfl( CouplingScheme& scheme )
+{
+  auto& mesh_data = *scheme.getMfemMeshData();
+  if ( !scheme.hasMfemJacobianData() ) {
+    if ( mesh_data.GetLORMesh() ) {
+      mesh_data.EnableLORJacobianTransfer();
+    }
+    scheme.setMfemJacobianData( std::make_unique<MfemJacobianData>( mesh_data ) );
+  }
+  auto& transfer_data = *scheme.getMfemJacobianData();
+  if ( !transfer_data.HasParentPath() ) {
+    transfer_data.UpdateJacobianXfer();
+  }
+  return { mesh_data, transfer_data };
+}
 
 std::optional<RealT> computeParentPenaltyRowSumBound( const mfem::HypreParMatrix& penalty_matrix,
                                                       const MfemMeshData& mesh_data )
@@ -39,9 +58,10 @@ std::optional<RealT> computeParentPenaltyRowSumBound( const mfem::HypreParMatrix
   }
   MPI_Allreduce( MPI_IN_PLACE, &invalid_mass, 1, MPI_INT, MPI_MAX, penalty_matrix.GetComm() );
   if ( invalid_mass ) {
-    SLIC_ERROR_ROOT(
-        "Common Plane LOR nodal penalty CFL requires finite, nonnegative inverse diagonal masses "
-        "on the parent coordinate finite-element space." );
+    SLIC_ERROR(
+        "nodal_penalty_cfl requires finite, nonnegative inverse diagonal masses on the parent coordinate "
+        "finite-element space. Correct the field registered via registerMfemInverseMass(), or set "
+        "nodal_penalty_cfl = false via setTimestepCriteria()." );
     return std::nullopt;
   }
 
@@ -52,9 +72,20 @@ std::optional<RealT> computeParentPenaltyRowSumBound( const mfem::HypreParMatrix
   const auto* mass_scales = sqrt_inverse_mass.HostRead();
   RealT bound = 0.0;
   for ( int dof = 0; dof < row_sums.Size(); ++dof ) {
-    bound = std::max( bound, mass_scales[dof] * sums[dof] );
+    const RealT row_sum = mass_scales[dof] * sums[dof];
+    if ( !std::isfinite( row_sum ) ) {
+      bound = std::numeric_limits<RealT>::infinity();
+      break;
+    }
+    bound = std::max( bound, row_sum );
   }
   MPI_Allreduce( MPI_IN_PLACE, &bound, 1, MPI_DOUBLE, MPI_MAX, penalty_matrix.GetComm() );
+  if ( !std::isfinite( bound ) ) {
+    SLIC_ERROR(
+        "nodal_penalty_cfl produced a nonfinite mass-scaled row sum on parent true DOFs. Check the penalty "
+        "coefficients and inverse masses, or set nodal_penalty_cfl = false via setTimestepCriteria()." );
+    return std::nullopt;
+  }
   return bound;
 }
 
