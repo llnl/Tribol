@@ -656,7 +656,8 @@ TEST( CommonPlaneTraction, applies_penalty_along_supplied_normal )
   const MdArray<RealT, 1> parametric_coords{ 0.0 };
   constexpr RealT penalty = 2.0;
   const CommonPlanePenaltyTraction<CommonPlaneGap> traction{ penalty };
-  const CommonPlanePenaltyTraction<CommonPlaneGap>::PairGeometryData pair_geometry_data{};
+  const CommonPlanePenaltyTraction<CommonPlaneGap>::PairGeometryData<LinearEdgeGeometry, LinearEdgeGeometry>
+      pair_geometry_data{};
 
   const auto compressive = traction.computeTractionAtQuadraturePoint(
       point1, point2, parametric_coords.view(), parametric_coords.view(), downward_normal, pair_geometry_data );
@@ -675,7 +676,8 @@ TEST( CommonPlaneTraction, applies_penalty_along_supplied_normal )
   EXPECT_FALSE( offset_traction
                     .computeTractionAtQuadraturePoint(
                         point1, point2, parametric_coords.view(), parametric_coords.view(), downward_normal,
-                        CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>::PairGeometryData{} )
+                        CommonPlanePenaltyTraction<OffsetGap<CommonPlaneGap>>::PairGeometryData<LinearEdgeGeometry,
+                                                                                                LinearEdgeGeometry>{} )
                     .active );
 }
 

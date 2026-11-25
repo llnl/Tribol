@@ -34,19 +34,20 @@ struct CommonPlanePenaltyTraction {
   RealT penalty;        ///< Fixed penalty stiffness per area.
   GapDefinition gap{};  ///< Owned gap configuration.
 
-  /** @brief No pair geometry is needed because each point supplies its integration-surface normal. */
+  /** @brief Empty tag carrying the pair's element geometry types without storing geometry data. */
+  template <typename Geometry1, typename Geometry2>
   struct PairGeometryData {};
 
   /**
-   * @brief Prepare no pair geometry.
+   * @brief Prepare an empty geometry tag for the current pair.
    * @tparam Geometry1 First surface-element geometry type.
    * @tparam Geometry2 Second surface-element geometry type.
    * @param geometry1 First current surface-element geometry, unused.
    * @param geometry2 Second current surface-element geometry, unused.
-   * @return Empty pair geometry data.
+   * @return Empty pair geometry tag.
    */
   template <typename Geometry1, typename Geometry2>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairGeometryData computePairGeometryData(
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE PairGeometryData<Geometry1, Geometry2> computePairGeometryData(
       const Geometry1& TRIBOL_UNUSED_PARAM( geometry1 ), const Geometry2& TRIBOL_UNUSED_PARAM( geometry2 ) ) const
   {
     return {};
@@ -55,34 +56,34 @@ struct CommonPlanePenaltyTraction {
   /**
    * @brief Compute penalty traction along the integration-surface normal; zero gap retains the compressive-side
    * derivative.
-   * @tparam Point Physical point type.
-   * @tparam Vector Physical vector type.
-   * @tparam ParametricDim1 Number of parametric coordinates on geometry1.
-   * @tparam ParametricDim2 Number of parametric coordinates on geometry2.
+   * @tparam Geometry1 First surface-element geometry type.
+   * @tparam Geometry2 Second surface-element geometry type.
    * @param point1 Physical point on geometry1.
    * @param point2 Physical point on geometry2.
    * @param parametric_coords1 Element parametric coordinate on geometry1, unused.
    * @param parametric_coords2 Element parametric coordinate on geometry2, unused.
    * @param normal Unit integration-surface normal along which the rule paired the two points.
-   * @param pair_geometry_data Empty pair geometry data, unused.
+   * @param pair_geometry_data Empty pair geometry tag, unused.
    * @return Active compressive traction penalty * gap * normal; separated points return inactive.
    */
-  template <typename Point, typename Vector, IndexT ParametricDim1, IndexT ParametricDim2>
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadraturePointValue<MdArray<RealT, Point::DIMENSION>>
-  computeTractionAtQuadraturePoint( const Point& point1, const Point& point2,
-                                    MdSpan<const RealT, ParametricDim1> TRIBOL_UNUSED_PARAM( parametric_coords1 ),
-                                    MdSpan<const RealT, ParametricDim2> TRIBOL_UNUSED_PARAM( parametric_coords2 ),
-                                    const Vector& normal,
-                                    const PairGeometryData& TRIBOL_UNUSED_PARAM( pair_geometry_data ) ) const
+  template <typename Geometry1, typename Geometry2>
+  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE QuadraturePointValue<MdArray<RealT, Geometry1::spatial_dim>>
+  computeTractionAtQuadraturePoint(
+      const typename Geometry1::Point& point1, const typename Geometry2::Point& point2,
+      MdSpan<const RealT, Geometry1::parametric_dim> TRIBOL_UNUSED_PARAM( parametric_coords1 ),
+      MdSpan<const RealT, Geometry2::parametric_dim> TRIBOL_UNUSED_PARAM( parametric_coords2 ),
+      const typename Geometry1::Vector& normal,
+      const PairGeometryData<Geometry1, Geometry2>& TRIBOL_UNUSED_PARAM( pair_geometry_data ) ) const
   {
+    static_assert( Geometry1::spatial_dim == Geometry2::spatial_dim );
     const RealT scalar_gap = gap.computeGap( point1, point2, normal );
     if ( scalar_gap > 0.0 ) {
       return {};
     }
-    QuadraturePointValue<MdArray<RealT, Point::DIMENSION>> result;
+    QuadraturePointValue<MdArray<RealT, Geometry1::spatial_dim>> result;
     result.active = true;
     const RealT pressure = penalty * scalar_gap;
-    for ( IndexT component = 0; component < Point::DIMENSION; ++component ) {
+    for ( IndexT component = 0; component < Geometry1::spatial_dim; ++component ) {
       result.value[component] = pressure * normal[component];
     }
     return result;

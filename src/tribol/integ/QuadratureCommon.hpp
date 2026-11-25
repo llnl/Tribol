@@ -183,14 +183,14 @@ struct IntegrationSurfaceRule {
  * Parametric quadrature-point coordinates locate each point within an element. Contact calculations use them to find
  * the point's physical position and evaluate the element basis there.
  * LinearEdgeGeometry uses one coordinate, xi, with vertices at -1 and 1. Arrays are indexed by point, then parametric
- * coordinate
- * index. Mapping to the second element does not add another Jacobian. Surface elements have codimension one, so each
- * normal has ParametricDim1 + 1 spatial components. The viewed rule must remain alive while this view is used.
+ * coordinate index. Mapping to the second element does not add another Jacobian. Surface elements have codimension one,
+ * so each normal has ParametricDim1 + 1 spatial components. The viewed rule must remain alive while this view is used.
  * @tparam ParametricDim1 Number of coordinates used to parameterize geometry1: one for an edge, two for a face.
  * @tparam ParametricDim2 Number of coordinates used to parameterize geometry2: one for an edge, two for a face.
  */
 template <int ParametricDim1, int ParametricDim2>
 struct PairQuadratureRuleView {
+  static_assert( ParametricDim1 == ParametricDim2 );
   using Value = const RealT;                              ///< Read-only entry type.
   static constexpr int spatial_dim = ParametricDim1 + 1;  ///< Spatial components of each normal.
   ArrayViewT<Value, 2>
@@ -237,6 +237,7 @@ struct PairQuadratureRuleView {
  */
 template <int ParametricDim1, int ParametricDim2, IndexT Capacity>
 struct PairQuadratureRule {
+  static_assert( ParametricDim1 == ParametricDim2 );
   static constexpr int spatial_dim = ParametricDim1 + 1;  ///< Spatial components of each normal.
   MdArray<RealT, Capacity, ParametricDim1>
       geom1_parametric_coords{};  ///< Quadrature-point coordinates in geometry1's element parameterization.

@@ -284,7 +284,7 @@ TEST( SubdividedPairQuadrature, projects_paired_points_onto_curved_edges_along_c
       SubdividedPairQuadratureRuleGenerator<QuadraticEdgeGeometry, LinearRule, max_num_quadrature_subdivisions,
                                             CommonPlaneQuadraticEdgeProjection>;
   // Edge1 bulges upward toward edge2, which is tilted and bulges downward, so the curved edges interpenetrate. One
-  // subdivision makes each edge's chord the only subelement, so the test can form the pairing normal directly.
+  // subdivision makes each edge's chord the only subelement, so the test can compute the common-plane normal directly.
   const MdArray<RealT, 3, 2> coords1{ MdArray<RealT, 2>{ 1.0, 0.0 }, MdArray<RealT, 2>{ -1.0, 0.0 },
                                       MdArray<RealT, 2>{ 0.05, 0.12 } };
   const MdArray<RealT, 3, 2> coords2{ MdArray<RealT, 2>{ -0.9, 0.1 }, MdArray<RealT, 2>{ 0.9, 0.0 },
@@ -307,7 +307,8 @@ TEST( SubdividedPairQuadrature, projects_paired_points_onto_curved_edges_along_c
   ASSERT_EQ( projected.metadata.num_required_points, affine.metadata.num_required_points );
   ASSERT_GT( projected.metadata.num_required_points, 0 );
 
-  // Component of each pair's separation perpendicular to the pairing normal.
+  // Component of the vector between the two paired quadrature points perpendicular to the common-plane normal.
+  // Zero means the two curved-edge points lie on the same line along the common-plane normal.
   const auto tangentialSeparation = [&]( const auto& rule, IndexT point ) {
     const MdArray<RealT, 1> parametric_coords1{ rule.geom1_parametric_coords( point, 0 ) };
     const MdArray<RealT, 1> parametric_coords2{ rule.geom2_parametric_coords( point, 0 ) };

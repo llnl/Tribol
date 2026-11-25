@@ -20,9 +20,9 @@ namespace tribol {
  * normal.
  *
  * A Common Plane subelement rule pairs two subelement points on a line parallel to the subelement pair's common-plane
- * normal and stores that normal with the point. This policy intersects the same line with each quadratic edge, so the
- * evaluated element points are separated exactly along the stored normal. A traction along that normal then produces
- * no net moment. The intersection solves a scalar quadratic equation in closed form.
+ * normal and stores that normal with the point. This projection intersects the same line with each quadratic edge, so
+ * the evaluated element points are separated exactly along the stored normal. A traction along that normal then
+ * produces no net moment. The intersection solves a scalar quadratic equation in closed form.
  */
 struct CommonPlaneQuadraticEdgeProjection {
   using Vector = QuadraticEdgeGeometry::Vector;  ///< Physical vector.
@@ -30,28 +30,20 @@ struct CommonPlaneQuadraticEdgeProjection {
 
   /**
    * @brief Intersect the subelement pairing line with both quadratic edges.
-   * @param geometry1 First quadratic edge.
-   * @param geometry2 Second quadratic edge.
-   * @param subelement1 Linear subelement of geometry1 that produced the point.
-   * @param subelement2 Linear subelement of geometry2 that produced the point, unused.
-   * @param interval1 Element parametric interval of subelement1, used to select the intersection.
-   * @param interval2 Element parametric interval of subelement2, used to select the intersection.
-   * @param subelement_coord1 Point's parametric coordinate on subelement1.
-   * @param subelement_coord2 Point's parametric coordinate on subelement2, unused because both subelement points lie on
-   * the same pairing line.
+   * @param point1 First subelement point (provides geometry1, subelement1, interval1, and coordinate on subelement1).
+   * @param point2 Second subelement point (provides geometry2 and interval2; both subelement points lie on the same
+   * pairing line).
    * @param normal Unit integration-surface normal along which the subelement rule paired the point.
    * @return Element coordinates of both intersections; invalid when either line misses its edge inside [-1, 1].
    */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE ProjectedElementCoords
-  mapToElements( const QuadraticEdgeGeometry& geometry1, const QuadraticEdgeGeometry& geometry2,
-                 const LinearEdgeGeometry& subelement1, const LinearEdgeGeometry& TRIBOL_UNUSED_PARAM( subelement2 ),
-                 SubelementInterval interval1, SubelementInterval interval2, RealT subelement_coord1,
-                 RealT TRIBOL_UNUSED_PARAM( subelement_coord2 ), const Vector& normal ) const
+  mapToElements( const SubelementPoint<QuadraticEdgeGeometry>& point1,
+                 const SubelementPoint<QuadraticEdgeGeometry>& point2, const Vector& normal ) const
   {
-    const MdArray<RealT, 1> subelement_coords1{ subelement_coord1 };
-    const Point line_point = subelement1.position( subelement_coords1.view() );
-    const auto intersection1 = intersect( geometry1, line_point, normal, interval1 );
-    const auto intersection2 = intersect( geometry2, line_point, normal, interval2 );
+    const MdArray<RealT, 1> subelement_coords1{ point1.subelement_coord };
+    const Point line_point = point1.subelement.position( subelement_coords1.view() );
+    const auto intersection1 = intersect( point1.element, line_point, normal, point1.interval );
+    const auto intersection2 = intersect( point2.element, line_point, normal, point2.interval );
     return { intersection1.parametric_coord, intersection2.parametric_coord,
              intersection1.valid && intersection2.valid };
   }
@@ -88,6 +80,9 @@ struct CommonPlaneQuadraticEdgeProjection {
     const RealT discriminant = b * b - 4.0 * a * c;
     if ( !std::isfinite( discriminant ) || discriminant < 0.0 ) {
       return {};
+    }
+    if ( b == 0.0 && c == 0.0 ) {
+      return { 0.0, a != 0.0 };
     }
     const RealT root_discriminant = std::sqrt( discriminant );
     const RealT q = -0.5 * ( b >= 0.0 ? b + root_discriminant : b - root_discriminant );
