@@ -8,10 +8,21 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Unreleased] - Release date YYYY-MM-DD
 
 ### Added
+- Added opt-in quadratic Lagrange edge support to composed 2D MFEM frictionless penalty Common Plane contact through
+  `enableQuadratureSubdivision()`. The API accepts one to four uniform subelements per edge and defaults to two. While
+  enabled, Common Plane bypasses LOR field transfer, assembles residuals and Enzyme coordinate Jacobians directly on the
+  higher-order Redecomp submesh, and distributes traction with quadratic basis functions. Disabling subdivision restores
+  the LOR transfer path. Energy Mortar does not yet use this setting.
+- Added `SubdividedPairQuadratureRuleGenerator`, which uniformly subdivides parent-edge parametric domains, applies a
+  configurable linear pair rule to each subelement pair, and maps accepted quadrature points back to the parent
+  elements.
 
 ### Fixed
 
 ### Changed
+- Quadratic Common Plane subdivision now evaluates paired points on the curved parent edges along each linearized
+  subelement pair's common-plane normal while retaining the subelement rule's physical weights. Refined search defers
+  higher-order edge orientation and overlap decisions to this pair-local quadrature.
 
 ## [Version 0.2.0] - Release date 2026-11-24
 
