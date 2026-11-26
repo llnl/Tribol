@@ -86,16 +86,17 @@ MfemMatrixAssembler makeResidualJacobianAssembler( const MfemMeshData& mesh_data
   const MfemMatrixSpace space{ jacobian_data.ParentPath(), coordinate_space };
   return { space, space, std::move( blocks ), num_pairs, allocator_id };
 }
-MfemMatrixAssembler makeScalarFieldJacobianAssembler( const MfemMeshData& mesh_data,
-                                                      const MfemSubmeshData& submesh_data,
-                                                      const MfemJacobianData& jacobian_data, MeshData::Viewer mesh1,
-                                                      MeshData::Viewer mesh2, IndexT num_pairs, int allocator_id )
+MfemMatrixAssembler makeSubmeshFieldJacobianAssembler( const MfemMeshData& mesh_data,
+                                                       const MfemSubmeshData& submesh_data,
+                                                       const MfemJacobianData& jacobian_data, MeshData::Viewer mesh1,
+                                                       MeshData::Viewer mesh2, IndexT num_pairs, int allocator_id )
 {
   const auto& coordinates = *mesh_data.GetRedecompResponse().FESpace();
   const auto& field = submesh_data.GetRedecompFESpace();
-  if ( field.GetVDim() != 1 || submesh_data.GetSubmeshFESpace().GetVDim() != 1 || mesh1.spatialDim() <= 0 ||
-       mesh1.spatialDim() != coordinates.GetVDim() || mesh2.spatialDim() != coordinates.GetVDim() ) {
-    SLIC_ERROR( "Scalar field Jacobian assembly requires scalar rows and matching coordinate dimensions." );
+  if ( field.GetVDim() < 1 || field.GetVDim() != submesh_data.GetSubmeshFESpace().GetVDim() ||
+       mesh1.spatialDim() <= 0 || mesh1.spatialDim() != coordinates.GetVDim() ||
+       mesh2.spatialDim() != coordinates.GetVDim() ) {
+    SLIC_ERROR( "Submesh field Jacobian assembly requires matching submesh vdims and coordinate dimensions." );
   }
   const IndexT nodes1 = mesh1.numberOfNodesPerElement();
   const auto& map1 = mesh_data.GetElemMap1();
@@ -107,6 +108,17 @@ MfemMatrixAssembler makeScalarFieldJacobianAssembler( const MfemMeshData& mesh_d
                map1, map2 } },
            num_pairs,
            allocator_id };
+}
+MfemMatrixAssembler makeScalarFieldJacobianAssembler( const MfemMeshData& mesh_data,
+                                                      const MfemSubmeshData& submesh_data,
+                                                      const MfemJacobianData& jacobian_data, MeshData::Viewer mesh1,
+                                                      MeshData::Viewer mesh2, IndexT num_pairs, int allocator_id )
+{
+  if ( submesh_data.GetRedecompFESpace().GetVDim() != 1 || submesh_data.GetSubmeshFESpace().GetVDim() != 1 ) {
+    SLIC_ERROR( "Scalar field Jacobian assembly requires scalar rows." );
+  }
+  return makeSubmeshFieldJacobianAssembler( mesh_data, submesh_data, jacobian_data, mesh1, mesh2, num_pairs,
+                                            allocator_id );
 }
 }  // namespace detail
 

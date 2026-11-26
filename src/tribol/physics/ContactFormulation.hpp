@@ -40,6 +40,8 @@ struct ContactFormulationResult {
   std::unique_ptr<mfem::HypreParMatrix> weighted_gap_jacobian;  ///< Weighted-gap coordinate Jacobian; penalty opening
                                                                 ///< rows are zeroed, without normalization.
   std::unique_ptr<mfem::HypreParMatrix> df_dp;  ///< Derivative of the contact residual with respect to LM values.
+  std::unique_ptr<mfem::HypreParVector> nodal_normals;  ///< Unit nodal normals on dual true DOFs, when defined.
+  std::unique_ptr<mfem::HypreParMatrix> dn_dx;          ///< Derivative of nodal_normals with respect to coordinates.
 #endif
 };
 

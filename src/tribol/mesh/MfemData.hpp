@@ -692,6 +692,30 @@ class MfemMeshData {
   std::vector<const RealT*> GetRedecompReferenceCoordsPtrs() const { return reference_coords_->GetRedecompFieldPtrs(); }
 
   /**
+   * @brief Sets a new previous-step coordinate grid function on the parent mesh
+   *
+   * @param previous_coords Previous-step coordinate grid function on the parent mesh
+   */
+  void SetParentPreviousCoords( const mfem::ParGridFunction& previous_coords );
+
+  /**
+   * @brief Determine if a previous-step coords grid function has been set
+   *
+   * @return true: Previous-step coords grid function has been set
+   * @return false: Previous-step coords grid function has not been set
+   */
+  bool HasPreviousCoords() const { return previous_coords_ != nullptr; }
+
+  /**
+   * @brief Get pointers to component arrays of the previous-step coords on the RedecompMesh
+   *
+   * @return std::vector<const RealT*> of length 3
+   *
+   * @note The third entry is nullptr in two dimensions
+   */
+  std::vector<const RealT*> GetRedecompPreviousCoordsPtrs() const { return previous_coords_->GetRedecompFieldPtrs(); }
+
+  /**
    * @brief Build a new redecomp mesh and update grid functions on the redecomp mesh
    *
    * @param binning_proximity_scale Element length multiplier for coarse binning and proximity detection inclusion. This
@@ -1433,6 +1457,11 @@ class MfemMeshData {
    * @brief Contains reference coords grid function and transfer operators if set; nullptr otherwise
    */
   std::unique_ptr<ParentField> reference_coords_;
+
+  /**
+   * @brief Contains previous-step coords grid function and transfer operators if set; nullptr otherwise
+   */
+  std::unique_ptr<ParentField> previous_coords_;
 
   /**
    * @brief Submesh grid function to temporarily hold values being transferred

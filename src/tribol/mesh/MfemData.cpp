@@ -766,6 +766,15 @@ void MfemMeshData::SetParentReferenceCoords( const mfem::ParGridFunction& refere
   }
 }
 
+void MfemMeshData::SetParentPreviousCoords( const mfem::ParGridFunction& previous_coords )
+{
+  if ( previous_coords_ ) {
+    previous_coords_->SetParentGridFn( previous_coords );
+  } else {
+    previous_coords_ = std::make_unique<ParentField>( previous_coords );
+  }
+}
+
 bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks, bool force_new_redecomp,
                                        RealT residual_gap )
 {
@@ -844,6 +853,9 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
 
   if ( reference_coords_ ) {
     reference_coords_->UpdateField( update_data_->vector_xfer_, use_device_ );
+  }
+  if ( previous_coords_ ) {
+    previous_coords_->UpdateField( update_data_->vector_xfer_, use_device_ );
   }
   if ( velocity_ ) {
     velocity_->UpdateField( update_data_->vector_xfer_, use_device_ );
@@ -1007,6 +1019,9 @@ void MfemMeshData::ClearRedecompData()
   coords_.ClearRedecompField();
   if ( reference_coords_ ) {
     reference_coords_->ClearRedecompField();
+  }
+  if ( previous_coords_ ) {
+    previous_coords_->ClearRedecompField();
   }
   if ( velocity_ ) {
     velocity_->ClearRedecompField();
@@ -1381,8 +1396,8 @@ mfem::GridFunction MfemSubmeshData::TransferTrueDofsToRedecomp( const mfem::Vect
   auto* fes = const_cast<mfem::ParFiniteElementSpace*>( &GetSubmeshFESpace() );
   mfem::GridFunction result( const_cast<mfem::FiniteElementSpace*>( &GetRedecompFESpace() ) );
   result = 0.0;
-  if ( fes->GetVDim() != 1 || true_dofs.Size() != fes->GetTrueVSize() ) {
-    SLIC_ERROR( "Scalar field vector length must match the submesh true DOFs." );
+  if ( fes->GetVDim() < 1 || true_dofs.Size() != fes->GetTrueVSize() ) {
+    SLIC_ERROR( "Submesh field vector length must match the submesh true DOFs." );
     return result;
   }
   mfem::ParGridFunction field( fes );

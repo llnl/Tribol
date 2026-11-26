@@ -244,6 +244,20 @@ class MeshData {
     TRIBOL_HOST_DEVICE const MultiViewArrayView<const RealT>& getReferencePosition() const { return m_ref_position; }
 
     /**
+     * @brief Is the previous-step position vector populated?
+     *
+     * @return true if non-empty; false otherwise
+     */
+    TRIBOL_HOST_DEVICE bool hasPreviousPosition() const { return !m_prev_position.empty(); }
+
+    /**
+     * @brief Get the nodal previous-step position array views
+     *
+     * @return array view of the nodal previous-step position arrays
+     */
+    TRIBOL_HOST_DEVICE const MultiViewArrayView<const RealT>& getPreviousPosition() const { return m_prev_position; }
+
+    /**
      * @brief Is the displacement vector populated?
      *
      * @return true if non-empty; false otherwise
@@ -475,6 +489,9 @@ class MeshData {
     /// Array of views of nodal reference position data
     const MultiViewArrayView<const RealT> m_ref_position;
 
+    /// Array of views of nodal previous-step position data
+    const MultiViewArrayView<const RealT> m_prev_position;
+
     /// Array of views of nodal displacement data
     const MultiViewArrayView<const RealT> m_disp;
 
@@ -672,6 +689,23 @@ class MeshData {
   bool hasReferencePosition() const { return !m_ref_position.empty(); }
 
   /**
+   * @brief Set the pointers to the nodal previous-step position data
+   *
+   * @param xprev array of x-components of the nodal previous-step position
+   * @param yprev array of y-components of the nodal previous-step position
+   * @param zprev array of z-components of the nodal previous-step position
+   */
+  void setPreviousPosition( const RealT* xprev, const RealT* yprev, const RealT* zprev );
+
+  /**
+   * @brief Is the previous-step position vector populated?
+   *
+   * @return true vector is non-empty
+   * @return false vector is empty
+   */
+  bool hasPreviousPosition() const { return !m_prev_position.empty(); }
+
+  /**
    * @brief Set the pointers to the nodal displacement data
    *
    * @param ux array of x-components of the nodal displacement
@@ -778,12 +812,13 @@ class MeshData {
   MeshElemData m_element_data;   ///< method/enforcement specific element data
 
   // Nodal field data
-  MultiArrayView<const RealT> m_position;      ///< Coordinates of nodes in mesh
-  MultiArrayView<const RealT> m_ref_position;  ///< Reference coordinates of nodes in mesh
-  MultiArrayView<const RealT> m_disp;          ///< Nodal displacements
-  MultiArrayView<const RealT> m_vel;           ///< Nodal velocity
-  MultiArrayView<const RealT> m_inv_mass;      ///< Component-wise nodal inverse diagonal mass
-  MultiArrayView<RealT> m_response;            ///< Nodal responses (forces)
+  MultiArrayView<const RealT> m_position;       ///< Coordinates of nodes in mesh
+  MultiArrayView<const RealT> m_ref_position;   ///< Reference coordinates of nodes in mesh
+  MultiArrayView<const RealT> m_prev_position;  ///< Previous-step coordinates of nodes in mesh
+  MultiArrayView<const RealT> m_disp;           ///< Nodal displacements
+  MultiArrayView<const RealT> m_vel;            ///< Nodal velocity
+  MultiArrayView<const RealT> m_inv_mass;       ///< Component-wise nodal inverse diagonal mass
+  MultiArrayView<RealT> m_response;             ///< Nodal responses (forces)
 
   ArrayT<RealT, 2> m_node_n;  ///< Outward unit node normals
 

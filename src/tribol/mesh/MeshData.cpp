@@ -233,6 +233,12 @@ void MeshData::setReferencePosition( const RealT* xref, const RealT* yref, const
 }
 
 //------------------------------------------------------------------------------
+void MeshData::setPreviousPosition( const RealT* xprev, const RealT* yprev, const RealT* zprev )
+{
+  m_prev_position = createNodalVector( xprev, yprev, zprev );
+}
+
+//------------------------------------------------------------------------------
 void MeshData::setVelocity( const RealT* vx, const RealT* vy, const RealT* vz )
 {
   m_vel = createNodalVector( vx, vy, vz );
@@ -613,6 +619,7 @@ MeshData::Viewer::Viewer( MeshData& mesh )
       m_allocator_id( mesh.m_allocator_id ),
       m_position( mesh.m_position ),
       m_ref_position( mesh.m_ref_position ),
+      m_prev_position( mesh.m_prev_position ),
       m_disp( mesh.m_disp ),
       m_vel( mesh.m_vel ),
       m_inv_mass( mesh.m_inv_mass ),

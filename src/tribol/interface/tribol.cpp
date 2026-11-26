@@ -632,11 +632,24 @@ void registerNodalReferenceCoords( IndexT mesh_id, const RealT* xref, const Real
 {
   auto mesh = MeshManager::getInstance().findData( mesh_id );
 
-  SLIC_ERROR_ROOT_IF( !mesh, "tribol::registerNodalVelocities(): " << "no mesh with id, " << mesh_id << "exists." );
+  SLIC_ERROR_ROOT_IF( !mesh,
+                      "tribol::registerNodalReferenceCoords(): " << "no mesh with id, " << mesh_id << " exists." );
 
   mesh->setReferencePosition( xref, yref, zref );
 
 }  // end registerNodalReferenceCoords()
+
+//------------------------------------------------------------------------------
+void registerNodalPreviousCoords( IndexT mesh_id, const RealT* xprev, const RealT* yprev, const RealT* zprev )
+{
+  auto mesh = MeshManager::getInstance().findData( mesh_id );
+
+  SLIC_ERROR_ROOT_IF( !mesh,
+                      "tribol::registerNodalPreviousCoords(): " << "no mesh with id, " << mesh_id << " exists." );
+
+  mesh->setPreviousPosition( xprev, yprev, zprev );
+
+}  // end registerNodalPreviousCoords()
 
 //------------------------------------------------------------------------------
 void registerNodalResponse( IndexT mesh_id, RealT* rx, RealT* ry, RealT* rz )

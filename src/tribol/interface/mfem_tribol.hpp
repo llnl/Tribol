@@ -299,6 +299,18 @@ void registerMfemInverseMass( IndexT cs_id, const mfem::ParGridFunction& inverse
 void registerMfemReferenceCoords( IndexT cs_id, const mfem::ParGridFunction& reference_coords );
 
 /**
+ * @brief Registers previous-step converged coordinates on an MFEM mesh-defined coupling scheme
+ *
+ * Required by frictional single mortar formulations to calculate incremental tangential slip.
+ *
+ * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
+ *
+ * @param [in] cs_id The ID of the coupling scheme with the MFEM mesh
+ * @param [in] previous_coords MFEM previous-step coordinate ParGridFunction defined over the parent mesh
+ */
+void registerMfemPreviousCoords( IndexT cs_id, const mfem::ParGridFunction& previous_coords );
+
+/**
  * @brief Returns the response (RHS) vector to a given mfem::Vector
  *
  * @note This is stored as a dual vector, meaning the shared DOFs must be summed over all ranks to obtain their value.
@@ -393,6 +405,29 @@ std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp( IndexT cs_id );
  * @return Unique pointer to MFEM HypreParMatrix
  */
 std::unique_ptr<mfem::HypreParMatrix> getMfemWeightedGapJacobian( IndexT cs_id );
+
+/**
+ * @brief Return unit nodal normals on dual submesh true DOFs for formulations that expose them
+ *
+ * For frictional single mortar, returns unit edge-averaged nodal normals on the 3D dual submesh true DOFs (transferred
+ * and renormalized on the higher-order dual submesh when LOR is active).
+ *
+ * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme() and evaluated with update()
+ * @param [in] cs_id The ID of the coupling scheme with the MFEM mesh
+ * @return mfem::HypreParVector Unit nodal normal vector on the dual submesh true DOFs
+ */
+mfem::HypreParVector getMfemNodalNormals( IndexT cs_id );
+
+/**
+ * @brief Get the derivative of the dual-space nodal normals with respect to parent displacement coordinates
+ *
+ * Returns a deep copy of the latest result; returns null if it was not calculated (for example in frozen-geometry
+ * mode).
+ *
+ * @param cs_id Coupling scheme id with a registered MFEM mesh
+ * @return Unique pointer to MFEM HypreParMatrix
+ */
+std::unique_ptr<mfem::HypreParMatrix> getMfemDnDx( IndexT cs_id );
 
 /**
  * @brief Returns a legacy-method gap vector to a given mfem::Vector
