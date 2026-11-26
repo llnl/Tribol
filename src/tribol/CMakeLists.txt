@@ -44,9 +44,12 @@ set(tribol_headers
     geom/OpposingNormalGap.hpp
     geom/OffsetGap.hpp
     geom/CommonPlaneEdgeMapping.hpp
+    geom/CommonPlaneFaceMapping.hpp
     geom/CommonPlaneQuadraticEdgeProjection.hpp
     geom/CommonPlaneGap.hpp
     geom/LinearEdgeGeometry.hpp
+    geom/LinearQuadGeometry.hpp
+    geom/LinearTriangleGeometry.hpp
     geom/QuadraticEdgeGeometry.hpp
     geom/NodalNormal.hpp
     geom/SmoothedProjectedEdgeMapping.hpp
@@ -56,6 +59,7 @@ set(tribol_headers
     integ/FE.hpp
     integ/Integration.hpp
     integ/PairQuadratureRuleGenerator.hpp
+    integ/PolygonQuadratureRuleGenerator.hpp
     integ/QuadratureCommon.hpp
     integ/QuadratureRuleGeneratorFactory.hpp
     integ/SubdividedPairQuadratureRuleGenerator.hpp
@@ -93,6 +97,7 @@ set(tribol_headers
     search/InterfacePairFinder.hpp
     search/RefinedSearch.hpp
     search/ProjectedEdgeSearch.hpp
+    search/ProjectedFaceSearch.hpp
     search/PairListBuilder.hpp
 
     utils/Algorithm.hpp
@@ -138,6 +143,7 @@ set(tribol_sources
     search/CoarseSearchFactory.cpp
     search/InterfacePairFinder.cpp
     search/ProjectedEdgeSearch.cpp
+    search/ProjectedFaceSearch.cpp
 
     utils/ContactPlaneOutput.cpp
     utils/Math.cpp
