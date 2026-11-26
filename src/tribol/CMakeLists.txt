@@ -12,6 +12,7 @@ endif()
 set(tribol_headers
 
     assembly/AssemblePairs.hpp
+    assembly/EdgeAveragedNodalNormalAssembler.hpp
     assembly/ElementBlockStorage.hpp
     assembly/EnzymePairDerivative.hpp
     assembly/EvaluatePairs.hpp
@@ -45,6 +46,9 @@ set(tribol_headers
     geom/OffsetGap.hpp
     geom/CommonPlaneEdgeMapping.hpp
     geom/CommonPlaneFaceMapping.hpp
+    geom/EdgeAveragedNodalNormalKernel.hpp
+    geom/MortarFaceMapping.hpp
+    geom/ProjectedPolygon.hpp
     geom/CommonPlaneQuadraticEdgeProjection.hpp
     geom/CommonPlaneGap.hpp
     geom/LinearEdgeGeometry.hpp
@@ -75,6 +79,7 @@ set(tribol_headers
     mesh/MfemData.hpp
 
     physics/integrals/PairIntegrals.hpp
+    physics/integrals/SingleMortarPairEvaluator.hpp
 
     physics/timestep/TimestepCalculator.hpp
     physics/timestep/TimestepCriteria.hpp
@@ -87,6 +92,7 @@ set(tribol_headers
     physics/Mortar.hpp
     physics/NodalEnergyMortar.hpp
     physics/QuadraturePointEnergyMortar.hpp
+    physics/SingleMortarFormulation.hpp
     physics/Physics.hpp
 
     search/CoarseSearch.hpp

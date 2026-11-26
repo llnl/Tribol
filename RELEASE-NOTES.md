@@ -8,6 +8,12 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Unreleased] - Release date YYYY-MM-DD
 
 ### Added
+- Added opt-in MFEM 3D single mortar through `setMfemUseSingleMortarFormulation()` for linear triangle and
+  quadrilateral contact surfaces, including LOR transfer for higher-order parent meshes. Register the non-mortar
+  integration surface as mesh1 and initialize the nodal pressure through `getMfemContactPressure()`. Approximate
+  mode returns displacement-pressure coupling and a frozen-geometry weighted-gap Jacobian. Exact mode also returns
+  the residual coordinate Jacobian and uses Enzyme. CUDA exact mode requires Clang-CUDA and HIP exact mode requires
+  Clang/ROCm with Enzyme.
 - Added opt-in 3D MFEM frictionless constant-penalty Common Plane support through `setMfemUseCommonPlaneFormulation()`
   for linear and LOR-subdivided higher-order triangle and quadrilateral contact meshes, including `ResidualOnly`,
   Enzyme `ResidualAndJacobian`, `setQuadratureOrder()` (order 0-1 overlap centroid; order 2-5 positive-weight
@@ -33,6 +39,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   elements.
 
 ### Fixed
+- Assembled LOR Jacobians now use MFEM's restriction to select coarse true DOFs before projection. This keeps the
+  Jacobian consistent with field transfer when the contact submesh has shared DOFs.
 
 ### Changed
 - **Breaking changes to Common Plane timestep voting**:

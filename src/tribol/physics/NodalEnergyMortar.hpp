@@ -58,8 +58,8 @@ EnergyMortarNodalQuantities evaluateAndAssembleNodalQuantities( const ArrayT<Int
                                                                 const MfemSubmeshData& submesh_data,
                                                                 const MfemJacobianData& jacobian_data )
 {
-  using PairNodalGap = typename PairFunction::PairNodalGap;
-  constexpr IndexT num_nodes = PairFunction::num_nodes;
+  using PairNodalGap = typename PairFunction::Result;
+  constexpr IndexT num_nodes = PairNodalGap::num_nodes;
   constexpr IndexT size_coords = PairFunction::size_coords;
   static_assert( PairFunction::size_values == 2 * num_nodes );
   auto buffer = evaluatePairValuesAndJacobians<Exec>( pairs, mesh1, mesh2, pair_function );
@@ -101,8 +101,8 @@ shared::ParSparseMat assembleWeightedNodalHessian( const ArrayT<InterfacePair>& 
                                                    const MfemMeshData& mesh_data, const MfemJacobianData& jacobian_data,
                                                    WeightReader read_weights )
 {
-  using PairNodalGap = typename PairFunction::PairNodalGap;
-  constexpr IndexT num_nodes = PairFunction::num_nodes;
+  using PairNodalGap = typename PairFunction::Result;
+  constexpr IndexT num_nodes = PairNodalGap::num_nodes;
   static_assert( PairFunction::size_values == 2 * num_nodes );
   const IndexT num_pairs = pairs.size();
   const auto pairs_view = pairs.view();
@@ -331,8 +331,8 @@ struct NodalLagrangeMultiplierEnforcement {
 /**
  * @brief Nodal Energy Mortar with enforcement selected by a policy object.
  *
- * Uses PairNodalGapIntegral with a linear Lagrange basis on geometry1, then applies enforcement after weighted gaps and
- * tributary areas are assembled.
+ * Uses PairIntegral with NodalGapIntegrand and a linear Lagrange basis on geometry1, then applies enforcement after
+ * weighted gaps and tributary areas are assembled.
  * @tparam Exec Concrete execution mode for search, evaluation, and assembly kernels.
  * @tparam PairRuleGenerator Generates quadrature points and physical weights for the current edge pair.
  * @tparam GapDefinition Geometric or offset alignment-corrected gap.
@@ -357,7 +357,8 @@ class NodalEnergyMortar final : public ContactFormulation {
       : mesh_data_( mesh_data ),
         submesh_data_( submesh_data ),
         jacobian_data_( jacobian_data ),
-        pair_integral_( std::move( rule_generator ), std::move( gap ) ),
+        pair_integral_( std::move( rule_generator ),
+                        NodalGapIntegrand<GapDefinition, BasisFunction<EDGE, LINEAR_LAGRANGE>>{ std::move( gap ) } ),
         enforcement_( std::move( enforcement ) ),
         pair_builder_( std::move( pair_builder ) )
   {
@@ -401,7 +402,7 @@ class NodalEnergyMortar final : public ContactFormulation {
   const MfemMeshData& mesh_data_;          ///< Displacement transfer data referenced for this formulation's lifetime.
   const MfemSubmeshData& submesh_data_;    ///< Scalar transfer data referenced for this formulation's lifetime.
   const MfemJacobianData& jacobian_data_;  ///< Matrix transfer data referenced for this formulation's lifetime.
-  const PairNodalGapIntegral<PairRuleGenerator, GapDefinition, BasisFunction<EDGE, LINEAR_LAGRANGE>>
+  const PairIntegral<PairRuleGenerator, NodalGapIntegrand<GapDefinition, BasisFunction<EDGE, LINEAR_LAGRANGE>>>
       pair_integral_;              ///< Integrates weighted gaps and tributary areas before contact enforcement.
   const Enforcement enforcement_;  ///< Owns enforcement-specific validation and output assembly.
   PairListBuilder pair_builder_;   ///< Owned pair search.

@@ -33,6 +33,14 @@ namespace detail {
  * unsupported, Redecomp is unavailable, or Jacobian calculation was requested without Enzyme.
  */
 bool validateCommonPlaneFormulation( CouplingScheme& cs, bool compute_jacobian );
+
+/**
+ * @brief Check that an MFEM single mortar scheme can use the formulation.
+ * @param cs Registered coupling scheme.
+ * @param exact_jacobian Whether to differentiate weights and normals.
+ * @return True when the registered configuration is supported. Reports a SLIC error and returns false otherwise.
+ */
+bool validateSingleMortarFormulation( const CouplingScheme& cs, bool exact_jacobian );
 }  // namespace detail
 
 }  // namespace tribol

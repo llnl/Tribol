@@ -155,14 +155,15 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
  * \param [in] cs_id Registered coupling scheme ID
  * \param [in] order Nonnegative total polynomial degree to integrate exactly
  *
- * On an edge the degree concerns one parent coordinate; on a surface it is the total degree in both parent
- * coordinates. Each rule family selects enough points to meet the requested degree. The complete point count may
- * also depend on overlap geometry and subdivision. This does not promise exact integration of a curved physical
+ * On an edge the degree concerns one parametric coordinate. On a surface it is the total degree in both
+ * parametric coordinates. Each rule family selects enough points to meet the requested degree. The complete point count
+ * may also depend on overlap geometry and subdivision. This does not promise exact integration of a curved physical
  * mapping or a nonpolynomial contact integrand.
  *
- * Supported for ENERGY_MORTAR and ContactFormulation-based COMMON_PLANE linear edges, with orders 0-5: orders 0-1 use
- * one Gauss-Legendre point, 2-3 use two, and 4-5 use three. The default is order 5, preserving three-point integration.
- * An existing formulation is rebuilt. Unsupported orders or methods are rejected without changing the scheme.
+ * Supported for ENERGY_MORTAR and opted-in COMMON_PLANE and SINGLE_MORTAR, with orders 0-5. For linear edges, orders
+ * 0-1 use one Gauss-Legendre point, 2-3 use two, and 4-5 use three. The default is order 5 for Energy Mortar and Common
+ * Plane. Single mortar defaults to order 4, which uses the six-point triangle rule on each overlap polygon triangle. An
+ * existing formulation is rebuilt. Unsupported orders or methods are rejected without changing the scheme.
  */
 void setQuadratureOrder( IndexT cs_id, int order );
 
@@ -206,6 +207,7 @@ void setExplicitIntegratorStabilityFactor( IndexT cs_id, RealT stability_factor 
  * \note the area fraction under consideration is the ratio of the
  *       contact overlap with the largest of the two consituent
  *       faces. A default ratio is provided by Tribol.
+ * @note The single mortar formulation compares projected overlap to the smaller projected element area.
  */
 void setContactAreaFrac( IndexT cs_id, RealT frac );
 
@@ -279,6 +281,8 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
  *
  * @note Configure the residual gap after registering the coupling scheme and before its first update. For MFEM
  * coupling schemes, this must precede the first call to updateMfemParallelDecomposition().
+ * @note For SINGLE_MORTAR, this setting applies to the legacy calculation. The MFEM single mortar formulation uses
+ * the unshifted geometric gap.
  * @note Reports a SLIC error, leaving the coupling scheme unchanged, if the residual gap is negative or nonfinite.
  */
 void setResidualGap( IndexT cs_id, RealT residual_gap );

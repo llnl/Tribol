@@ -43,8 +43,8 @@ using tribol::LinearTriangleGeometry;
 using tribol::MdArray;
 using tribol::MemorySpace;
 using tribol::MeshData;
+using tribol::PairIntegral;
 using tribol::PairQuadratureRuleGenerator;
-using tribol::PairTractionIntegral;
 using tribol::PolygonCentroidQuadratureRuleGenerator;
 using tribol::PolygonQuadratureRuleGenerator;
 using tribol::PolygonQuadratureSurface;
@@ -52,6 +52,7 @@ using tribol::ProjectedFaceSearch;
 using tribol::QUAD;
 using tribol::QuadratureStatus;
 using tribol::RealT;
+using tribol::TractionIntegrand;
 using tribol::TRIANGLE;
 
 // LinearTriangleGeometry maps vertices, centroid, unit normal, and recovers exact parametric coordinates along a
@@ -253,17 +254,18 @@ TEST( CommonPlane3DMappingTest, clipping_edge_cases_and_invalid_geometry )
 }
 
 #ifdef TRIBOL_USE_ENZYME
-// Verify 3D PairTractionIntegral residual and Enzyme coordinate Jacobian against centered finite differences for
-// linear triangles, planar quads, warped quads, and a planar crossing perturbed into a warped crossing.
+// Verify 3D PairIntegral with TractionIntegrand residual and Enzyme coordinate Jacobian against centered finite
+// differences for linear triangles, planar quads, warped quads, and a planar crossing perturbed into a warped crossing.
 template <typename Geometry, typename Basis, int Order>
 void verify3DPairJacobianAgainstFiniteDiff( const RealT* coords1_data, const RealT* coords2_data, RealT penalty,
                                             RealT rel_tol = 1.0e-6 )
 {
   const CommonPlaneFaceMapping<Geometry> mapping{};
   tribol::createWithQuadratureRuleGenerator( Order, mapping, [&]( auto rule_generator ) {
-    using PairFunction =
-        PairTractionIntegral<decltype( rule_generator ), CommonPlanePenaltyTraction<CommonPlaneGap>, Basis>;
-    const PairFunction pair_function( rule_generator, { penalty, CommonPlaneGap{} } );
+    using RuleGenerator = decltype( rule_generator );
+    using Integrand = TractionIntegrand<CommonPlanePenaltyTraction<CommonPlaneGap>, Basis>;
+    using PairFunction = PairIntegral<RuleGenerator, Integrand>;
+    const PairFunction pair_function( rule_generator, Integrand{ { penalty, CommonPlaneGap{} } } );
 
     constexpr IndexT n1 = Geometry::num_nodes;
     constexpr IndexT n2 = Geometry::num_nodes;

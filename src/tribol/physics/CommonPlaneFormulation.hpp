@@ -134,7 +134,8 @@ struct CommonPlanePenaltyTraction {
 /**
  * @brief Common Plane pair search followed by the configured residual evaluation and assembly.
  *
- * Uses PairTractionIntegral with CommonPlanePenaltyTraction and the configured residual basis on both edges.
+ * Uses PairIntegral with TractionIntegrand, CommonPlanePenaltyTraction, and the configured residual basis on both
+ * surface elements.
  * @tparam Exec Concrete execution mode for search, evaluation, and assembly kernels.
  * @tparam PairRuleGenerator Generates quadrature points, physical weights, and integration-surface normals for the
  * current edge pair.
@@ -161,7 +162,9 @@ class CommonPlaneFormulation final : public ContactFormulation {
                           ResidualOutputs residual_outputs, PairListBuilder pair_builder,
                           std::optional<TimestepSettings> timestep_settings = std::nullopt,
                           std::optional<detail::MfemParentPenaltyCflData> parent_cfl_data = std::nullopt )
-      : pair_integral_( std::move( rule_generator ), { penalty, std::move( gap ) } ),
+      : pair_integral_( std::move( rule_generator ),
+                        TractionIntegrand<CommonPlanePenaltyTraction<GapDefinition>, ResidualBasis>{
+                            { penalty, std::move( gap ) } } ),
         residual_outputs_( std::move( residual_outputs ) ),
         pair_builder_( std::move( pair_builder ) ),
         timestep_settings_( timestep_settings ),
@@ -190,8 +193,8 @@ class CommonPlaneFormulation final : public ContactFormulation {
   }
 
  private:
-  const PairTractionIntegral<PairRuleGenerator, CommonPlanePenaltyTraction<GapDefinition>, ResidualBasis>
-      pair_integral_;  ///< Integrates the fixed Common Plane penalty traction with the configured edge basis.
+  const PairIntegral<PairRuleGenerator, TractionIntegrand<CommonPlanePenaltyTraction<GapDefinition>, ResidualBasis>>
+      pair_integral_;  ///< Integrates the fixed Common Plane penalty traction with the configured residual basis.
   const ResidualOutputs residual_outputs_;  ///< Owns the selected assembly behavior -- residual or residual + jacobian
   PairListBuilder pair_builder_;            ///< Owned search composition.
   std::optional<TimestepSettings> timestep_settings_;  ///< Present when allowable timestep voting is enabled.

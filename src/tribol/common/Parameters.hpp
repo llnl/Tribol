@@ -507,6 +507,9 @@ struct TimestepCriteria {
   }
 };
 
+/// Polynomial degree of the six-point triangle rule used by single mortar.
+inline constexpr int default_single_mortar_quadrature_order = 4;
+
 /*!
  * \brief Coupling scheme parameters struct
  */
@@ -543,9 +546,14 @@ struct Parameters {
   bool auto_contact_check = false;  ///! True if auto-contact checks should be enabled
 
   EnforcementLocation enforcement_location =
-      EnforcementLocation::QuadraturePoint;   ///! Defaults to quadrature-point enforcement
-  bool use_common_plane_formulation = false;  ///< Opt in to composed MFEM Common Plane assembly.
-  bool common_plane_compute_jacobian = true;  ///< Whether the Common Plane formulation calculates df_dx.
+      EnforcementLocation::QuadraturePoint;    ///! Defaults to quadrature-point enforcement
+  bool use_common_plane_formulation = false;   ///< Opt in to composed MFEM Common Plane assembly.
+  bool common_plane_compute_jacobian = true;   ///< Whether the Common Plane formulation calculates df_dx.
+  bool use_single_mortar_formulation = false;  ///< Opt in to ContactFormulation-based MFEM single mortar.
+  bool single_mortar_exact_jacobian = true;    ///< Include derivatives of the quadrature and nodal normals.
+  int single_mortar_quadrature_order = default_single_mortar_quadrature_order;  ///< Integration rule degree.
+  EnforcementLocation single_mortar_legacy_enforcement_location = EnforcementLocation::QuadraturePoint;
+  ///< Enforcement location to restore when leaving the formulation.
   ///! Requested polynomial degree to integrate exactly.
   ///! The default (5) corresponds to a three-point Gauss-Legendre rule in 1D.
   int quadrature_order = 5;

@@ -11,6 +11,8 @@
 #include <limits>
 #include <utility>
 
+#include "redecomp/transfer/TransferByElements.hpp"
+
 namespace tribol {
 MfemVectorAssembler::MfemVectorAssembler( MfemVectorSpace space, std::vector<MfemVectorBlock> blocks )
     : space_( std::move( space ) ), blocks_( std::move( blocks ) )
@@ -65,6 +67,35 @@ shared::ParVector MfemVectorAssembler::assemble( ExecutionMode execution_mode ) 
 }
 
 namespace detail {
+MfemElementVectorAssembler::MfemElementVectorAssembler( const MfemJacobianPath& path,
+                                                        const mfem::FiniteElementSpace& redecomp_fes, int allocator_id )
+    : path_( path ),
+      mesh_( dynamic_cast<const redecomp::RedecompMesh&>( *redecomp_fes.GetMesh() ) ),
+      element_values_( { mesh_.GetNE(), redecomp_fes.GetTypicalFE()->GetDof() * redecomp_fes.GetVDim() }, allocator_id )
+{
+  element_values_.fill( 0.0 );
+}
+
+shared::ParVector MfemElementVectorAssembler::assemble() const
+{
+  shared::detail::HypreMemoryLocationGuard memory_guard( shared::ParVectorMemory::Host );
+  mfem::Vector local_values( path_.surface_fes->GetVSize() );
+  local_values = 0.0;
+  const Array2D<RealT, MemorySpace::Host> host_values( element_values_ );
+  redecomp::TransferByElements{}.AddElementContributions( mesh_, *path_.surface_fes, host_values.view(), local_values );
+
+  shared::ParVector result( const_cast<mfem::ParFiniteElementSpace*>( path_.final_fes ) );
+  // Apply the transfers in reverse order to sum the element values on the final true DOFs.
+  for ( std::size_t i = path_.ops.size(); i-- > 1; ) {
+    const auto& op = path_.ops[i].get();
+    mfem::Vector previous_values( op.Width() );
+    op.MultTranspose( local_values, previous_values );
+    local_values = std::move( previous_values );
+  }
+  path_.ops.front()->MultTranspose( local_values, result.get() );
+  return result;
+}
+
 MfemVectorAssembler makeResidualVectorAssembler( const MfemMeshData& data, MeshData::Viewer mesh1,
                                                  MeshData::Viewer mesh2 )
 {

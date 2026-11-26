@@ -76,6 +76,18 @@ void TDofsListByVDim( const mfem::ParFiniteElementSpace& fes, int vdim, mfem::Ar
   }
 }
 
+/**
+ * @brief Copy MFEM's restriction from the parallel mesh's local DOFs to its true DOFs.
+ * @param fes Space used by the coarse side of MFEM's LOR transfer.
+ * @return Parallel matrix that selects the owned values from a conforming field.
+ */
+shared::ParSparseMat BuildTrueDofRestriction( const mfem::ParFiniteElementSpace& fes )
+{
+  mfem::SparseMatrix restriction( *fes.GetRestrictionMatrix() );
+  return shared::ParSparseMat( fes.GetComm(), fes.GlobalTrueVSize(), fes.GlobalVSize(), fes.GetTrueDofOffsets(),
+                               fes.GetDofOffsets(), std::move( restriction ) );
+}
+
 shared::ParSparseMat BuildTrueDofExtract( const mfem::ParFiniteElementSpace& vec_fes,
                                           const mfem::ParFiniteElementSpace& scalar_fes, int vdim )
 {
@@ -196,24 +208,14 @@ shared::ParSparseMat HoToLorTransferMat::Assemble() const
       "This build expects mfem::L2ProjectionGridTransfer::L2ProjectionH1Space(use_ea=false) to store R as a "
       "mfem::HypreParMatrix." );
 
-  const mfem::HypreParMatrix* P_ho_scalar = ho_scalar_fes_.Dof_TrueDof_Matrix();
-  SLIC_ERROR_ROOT_IF( P_ho_scalar == nullptr, "Null HO scalar Dof_TrueDof_Matrix() in LOR transfer build." );
-  std::unique_ptr<mfem::HypreParMatrix> P_ho_scalar_T( P_ho_scalar->Transpose() );
-  SLIC_ERROR_ROOT_IF( P_ho_scalar_T == nullptr, "Failed to transpose HO scalar Dof_TrueDof_Matrix()." );
-
+  // MFEM selects the coarse true DOFs before projection. Summing their shared copies would change the projection.
+  const auto coarse_restriction = BuildTrueDofRestriction( ho_fes_ );
   if ( ho_fes_.GetVDim() == 1 ) {
-    shared::ParSparseMatView P_ho_T_view( P_ho_scalar_T.get() );
-    return P_lor * ( *R_true_owned ) * P_ho_T_view;
+    return P_lor * ( *R_true_owned ) * coarse_restriction;
   }
 
   const int vdim = ho_fes_.GetVDim();
-  shared::ParSparseMatView P_lor_vec( const_cast<mfem::HypreParMatrix*>( lor_fes_.Dof_TrueDof_Matrix() ) );
-
-  const mfem::HypreParMatrix* P_ho_vec = ho_fes_.Dof_TrueDof_Matrix();
-  SLIC_ERROR_ROOT_IF( P_ho_vec == nullptr, "Null HO vector Dof_TrueDof_Matrix() in LOR transfer build." );
-  std::unique_ptr<mfem::HypreParMatrix> P_ho_vec_T( P_ho_vec->Transpose() );
-  SLIC_ERROR_ROOT_IF( P_ho_vec_T == nullptr, "Failed to transpose HO vector Dof_TrueDof_Matrix()." );
-  shared::ParSparseMatView R_ho_vec( P_ho_vec_T.get() );
+  shared::ParSparseMatView P_lor_vec( lor_fes_.Dof_TrueDof_Matrix() );
 
   std::unique_ptr<shared::ParSparseMat> R_vec_true;
   for ( int d = 0; d < vdim; ++d ) {
@@ -231,7 +233,7 @@ shared::ParSparseMat HoToLorTransferMat::Assemble() const
     }
   }
 
-  return P_lor_vec * ( *R_vec_true ) * R_ho_vec;
+  return P_lor_vec * ( *R_vec_true ) * coarse_restriction;
 }
 
 SubmeshParentTransferMat::SubmeshParentTransferMat( const mfem::ParFiniteElementSpace& submesh_fes,
@@ -988,6 +990,8 @@ void MfemMeshData::SetLORFactor( int lor_factor )
         "LOR factor not changed." );
     return;
   }
+  ClearRedecompData();
+  submesh_lor_xfer_.reset();
   lor_factor_ = lor_factor;
   // note: calls ParMesh's move ctor
   lor_mesh_ = std::make_unique<mfem::ParMesh>(
@@ -997,12 +1001,8 @@ void MfemMeshData::SetLORFactor( int lor_factor )
                                                             retains_lor_jacobian_transfer_ );
 }
 
-void MfemMeshData::SetLORFieldTransferEnabled( bool enabled )
+void MfemMeshData::ClearRedecompData()
 {
-  if ( enabled == transfers_fields_through_lor_ ) {
-    return;
-  }
-
   // ParentField update data retains references to the current transfer, so release every field before replacing it.
   coords_.ClearRedecompField();
   if ( reference_coords_ ) {
@@ -1016,7 +1016,15 @@ void MfemMeshData::SetLORFieldTransferEnabled( bool enabled )
   }
   redecomp_response_.reset();
   update_data_.reset();
+}
 
+void MfemMeshData::SetLORFieldTransferEnabled( bool enabled )
+{
+  if ( enabled == transfers_fields_through_lor_ ) {
+    return;
+  }
+
+  ClearRedecompData();
   transfers_fields_through_lor_ = enabled;
   if ( !enabled ) {
     submesh_lor_xfer_.reset();
@@ -1344,9 +1352,9 @@ MfemSubmeshData::MfemSubmeshData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_
 
 void MfemSubmeshData::SetLORMesh( mfem::ParMesh* lor_mesh )
 {
+  update_data_.reset();
   submesh_lor_xfer_ =
       lor_mesh ? std::make_unique<SubmeshLORTransfer>( *submesh_pressure_.ParFESpace(), *lor_mesh ) : nullptr;
-  update_data_.reset( nullptr );
 }
 
 void MfemSubmeshData::UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_mesh, bool new_redecomp )
@@ -1468,6 +1476,10 @@ MfemJacobianData::UpdateData::UpdateData( const MfemMeshData& parent_data, const
     parent_path_.surface_fes = &parent_data.GetSubmeshFESpace();
   }
 
+  surface_path_.surface_fes = parent_path_.surface_fes;
+  surface_path_.final_fes = surface_path_.surface_fes;
+  surface_path_.ops.emplace_back( surface_path_.final_fes->Dof_TrueDof_Matrix() );
+
   if ( dual_data ) {
     const auto& submesh_data = *dual_data;
     submesh_path_.final_fes = &submesh_data.GetSubmeshFESpace();
@@ -1516,6 +1528,8 @@ const MfemJacobianPath& MfemJacobianData::SubmeshPath() const
   SLIC_ERROR_ROOT_IF( submesh_data_ == nullptr, "SubmeshPath() requires pressure/gap transfer data." );
   return update_data_->submesh_path_;
 }
+
+const MfemJacobianPath& MfemJacobianData::SurfacePath() const { return GetUpdateData().surface_path_; }
 
 shared::ParSparseMat MfemJacobianData::GetMfemJacobian(
     const mfem::ParFiniteElementSpace* row_final_fes, const mfem::ParFiniteElementSpace* col_final_fes,

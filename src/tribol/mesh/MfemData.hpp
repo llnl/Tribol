@@ -1588,6 +1588,9 @@ class MfemMeshData {
   /**
    * @brief Execution mode for Tribol
    */
+  /** @brief Release fields and transfer data that reference the current Redecomp mesh. */
+  void ClearRedecompData();
+
   ExecutionMode exec_mode_;
 
   /**
@@ -2227,6 +2230,13 @@ class MfemJacobianData {
    */
   const MfemJacobianPath& SubmeshPath() const;
 
+  /**
+   * @brief Get the transfer from linear surface true DOFs to local DOFs on the same mesh.
+   * @return Path on the LOR or linear boundary submesh space.
+   * @pre UpdateJacobianXfer() has been called.
+   */
+  const MfemJacobianPath& SurfacePath() const;
+
  private:
   /**
    * @brief Creates and stores data that changes when the redecomp mesh is updated
@@ -2251,6 +2261,8 @@ class MfemJacobianData {
      * @brief Transfer pathway for submesh-final Jacobians
      */
     MfemJacobianPath submesh_path_;
+
+    MfemJacobianPath surface_path_;  ///< Transfer for normal values on the linear surface.
   };
 
   /**

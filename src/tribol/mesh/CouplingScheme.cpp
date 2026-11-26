@@ -998,11 +998,9 @@ int CouplingScheme::checkExecutionModeData()
   }
   this->m_allocator_id = this->m_mesh1->getAllocatorId();
 
-  if ( m_contactMethod != COMMON_PLANE && m_contactMethod != ENERGY_MORTAR ) {
+  if ( m_contactMethod != COMMON_PLANE && !usesContactFormulation() ) {
     if ( m_exec_mode != ExecutionMode::Sequential ) {
-      SLIC_WARNING_ROOT(
-          "Only sequential execution on host supported for contact methods other than COMMON_PLANE and "
-          "ENERGY_MORTAR." );
+      SLIC_WARNING_ROOT( "This contact method requires sequential execution on the host." );
       this->m_couplingSchemeErrors.cs_execution_mode_error = ExecutionModeError::INCOMPATIBLE_METHOD;
       err = 1;
     }
@@ -1059,6 +1057,11 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
     inputs.multiplier = m_contact_multiplier.get();
 #endif
     m_formulation_result = m_formulation->computeNodalResiduals( getMesh1().getView(), getMesh2().getView(), inputs );
+#ifdef BUILD_REDECOMP
+    if ( usesSingleMortarFormulation() && !m_formulation_result.residual ) {
+      return 1;
+    }
+#endif
     if ( m_parameters.enable_timestep_vote ) {
       dt = m_formulation_result.time_step.value_or( std::numeric_limits<RealT>::infinity() );
     }
@@ -1232,6 +1235,9 @@ mfem::HypreParVector& CouplingScheme::getContactMultiplier()
     }
     updateEnergyMortarTransferData();
   }
+  if ( !m_contact_multiplier && usesSingleMortarFormulation() ) {
+    updateContactMultiplier();
+  }
   if ( !m_contact_multiplier ) {
     SLIC_ERROR_ROOT( "No contact multiplier input is available." );
   }
@@ -1280,7 +1286,7 @@ void CouplingScheme::updateEnergyMortarTransferData()
 void CouplingScheme::buildContactFormulation()
 {
   if ( !usesContactFormulation() ) {
-    SLIC_ERROR_ROOT( "Contact formulation construction requires Energy Mortar or opted-in Common Plane." );
+    SLIC_ERROR_ROOT( "Contact formulation construction requires a formulation-enabled coupling scheme." );
     return;
   }
 #ifdef BUILD_REDECOMP
@@ -1305,10 +1311,16 @@ bool CouplingScheme::init()
     this->m_isValid = true;
     // Status 2 selects a usable but nonoptimal execution mode, so only status 1 prevents initialization.
     if ( !setMeshPointers() || checkExecutionModeData() == 1 ) {
+      if ( usesSingleMortarFormulation() ) {
+        invalidateContactFormulation();
+      }
       return false;
     }
     if ( m_formulation_state != ContactFormulationState::Current || !m_formulation ) {
       buildContactFormulation();
+    }
+    if ( usesSingleMortarFormulation() && !m_formulation ) {
+      return false;
     }
   } else {
     if ( m_formulation_state != ContactFormulationState::Disabled || m_formulation ) {

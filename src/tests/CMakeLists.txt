@@ -20,6 +20,7 @@ set( tribol_tests
      tribol_basis_function.cpp
      tribol_check_tpl.cpp
      tribol_common_plane_3d.cpp
+     tribol_single_mortar_pair_evaluation.cpp
      tribol_common_plane_pair_evaluation.cpp
      tribol_common_plane_penalty.cpp
      tribol_common_plane_gap_rate.cpp
@@ -92,6 +93,7 @@ if(TRIBOL_USE_ENZYME)
   target_compile_options(tribol_energy_mortar_pair_evaluation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
   target_compile_options(tribol_common_plane_pair_evaluation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
   target_compile_options(tribol_common_plane_3d_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
+  target_compile_options(tribol_single_mortar_pair_evaluation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
 endif()
 
 #------------------------------------------------------------------------------
@@ -186,6 +188,7 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
   set( combined_tests
       tribol_mfem_residual_and_jacobian_assembly.cpp
       tribol_mfem_common_plane_formulation.cpp
+      tribol_mfem_single_mortar_formulation.cpp
       tribol_mfem_data.cpp
       tribol_mfem_common_plane.cpp
       tribol_mfem_mortar_lm.cpp
@@ -231,6 +234,9 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
     # Direct residual evaluators instantiate Enzyme's geometry derivatives in this translation unit.
     target_compile_options(tribol_mfem_common_plane_formulation_test PRIVATE "$<$<CONFIG:Debug>:-O2>")
   endif()
+
+  blt_add_test(NAME tribol_mfem_single_mortar_formulation
+      COMMAND tribol_mfem_single_mortar_formulation_test NUM_MPI_TASKS 1)
 
   blt_add_test(NAME tribol_mfem_common_plane_formulation
       COMMAND tribol_mfem_common_plane_formulation_test NUM_MPI_TASKS 1)

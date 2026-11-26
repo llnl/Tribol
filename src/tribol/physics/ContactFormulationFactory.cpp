@@ -18,6 +18,8 @@
 #include "tribol/geom/CommonPlaneFaceMapping.hpp"
 #include "tribol/geom/CommonPlaneQuadraticEdgeProjection.hpp"
 #include "tribol/geom/LinearQuadGeometry.hpp"
+#include "tribol/geom/MortarFaceMapping.hpp"
+#include "tribol/physics/SingleMortarFormulation.hpp"
 #include "tribol/geom/LinearTriangleGeometry.hpp"
 #include "tribol/geom/QuadraticEdgeGeometry.hpp"
 #include "tribol/geom/SmoothedProjectedEdgeMapping.hpp"
@@ -40,7 +42,7 @@ namespace {
  * @return TRIANGLE or QUAD if all contact submesh faces share that type; UNDEFINED_ELEMENT if mixed, unsupported, or
  * empty across all ranks.
  */
-InterfaceElementType resolveCommonPlane3DSurfaceElementType( const MfemMeshData& data )
+InterfaceElementType resolve3DSurfaceElementType( const MfemMeshData& data )
 {
   const auto& submesh = data.GetSubmesh();
   int has_types[3]{ 0, 0, 0 };  // [0]: triangle, [1]: quad, [2]: unsupported
@@ -69,6 +71,8 @@ InterfaceElementType resolveCommonPlane3DSurfaceElementType( const MfemMeshData&
 
 template <ExecutionMode Exec>
 std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs );
+template <ExecutionMode Exec>
+std::unique_ptr<ContactFormulation> createSingleMortar( CouplingScheme* cs );
 #ifdef TRIBOL_USE_ENZYME
 template <ExecutionMode Exec>
 std::unique_ptr<ContactFormulation> createEnergyMortar( CouplingScheme* cs );
@@ -90,6 +94,16 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
 #ifdef BUILD_REDECOMP
     return dispatchExecutionMode( cs->getExecutionMode(),
                                   [&]<ExecutionMode Exec>() { return createCommonPlane<Exec>( cs ); } );
+#endif
+  }
+
+  if ( cs->usesSingleMortarFormulation() ) {
+    if ( !detail::validateSingleMortarFormulation( *cs, cs->getParameters().single_mortar_exact_jacobian ) ) {
+      return nullptr;
+    }
+#ifdef BUILD_REDECOMP
+    return dispatchExecutionMode( cs->getExecutionMode(),
+                                  [&]<ExecutionMode Exec>() { return createSingleMortar<Exec>( cs ); } );
 #endif
   }
 
@@ -145,7 +159,7 @@ bool validateCommonPlaneFormulation( CouplingScheme& cs, bool compute_jacobian )
     return false;
   }
   if ( spatial_dim == 3 ) {
-    const InterfaceElementType face_type = resolveCommonPlane3DSurfaceElementType( data );
+    const InterfaceElementType face_type = resolve3DSurfaceElementType( data );
     if ( face_type != TRIANGLE && face_type != QUAD ) {
       SLIC_ERROR_ROOT(
           "3D Common Plane requires a contact submesh with exclusively triangle or exclusively quadrilateral faces." );
@@ -173,6 +187,77 @@ bool validateCommonPlaneFormulation( CouplingScheme& cs, bool compute_jacobian )
   return false;
 #endif
 }
+
+bool validateSingleMortarFormulation( const CouplingScheme& cs, bool exact_jacobian )
+{
+#ifndef TRIBOL_USE_ENZYME
+  if ( exact_jacobian ) {
+    SLIC_ERROR_ROOT( "The exact single mortar Jacobian requires Enzyme." );
+    return false;
+  }
+#else
+  (void)exact_jacobian;
+#endif
+#ifdef BUILD_REDECOMP
+  if ( !cs.hasMfemData() || !cs.hasMfemSubmeshData() || cs.getContactMethod() != SINGLE_MORTAR ||
+       cs.getContactModel() != FRICTIONLESS || cs.getContactMode() != SURFACE_TO_SURFACE ||
+       cs.getEnforcementMethod() != LAGRANGE_MULTIPLIER || cs.getContactCase() != NO_CASE ||
+       cs.getMeshId1() == cs.getMeshId2() ) {
+    SLIC_ERROR_ROOT(
+        "Single mortar formulation requires an MFEM frictionless surface-to-surface scheme with "
+        "distinct mesh IDs, nodal Lagrange multipliers, and NO_CASE." );
+    return false;
+  }
+  switch ( cs.getRegisteredExecutionMode() ) {
+    case ExecutionMode::Sequential:
+#ifdef TRIBOL_USE_OPENMP
+    case ExecutionMode::OpenMP:
+#endif
+#ifdef TRIBOL_USE_CUDA
+    case ExecutionMode::Cuda:
+#endif
+#ifdef TRIBOL_USE_HIP
+    case ExecutionMode::Hip:
+#endif
+      break;
+    default:
+      SLIC_ERROR_ROOT( "The requested single mortar execution mode is unavailable in this build." );
+      return false;
+  }
+  const auto& data = *cs.getMfemMeshData();
+  const auto& coords = *data.GetParentCoords().ParFESpace();
+  const int order = coords.FEColl()->GetOrder();
+  if ( coords.GetParMesh()->Dimension() != 3 || coords.GetParMesh()->SpaceDimension() != 3 || coords.GetVDim() != 3 ||
+       order < 1 || ( order > 1 && !data.GetLORMesh() ) || !data.HasReferenceCoords() ) {
+    SLIC_ERROR_ROOT( "Single mortar formulation requires 3D linear or LOR coordinates and reference coordinates." );
+    return false;
+  }
+  for ( const auto attribute : data.GetBoundaryAttribs1() ) {
+    if ( data.GetBoundaryAttribs2().contains( attribute ) ) {
+      SLIC_ERROR_ROOT( "Single mortar formulation requires disjoint boundary attributes." );
+      return false;
+    }
+  }
+  if ( resolve3DSurfaceElementType( data ) == UNDEFINED_ELEMENT ) {
+    SLIC_ERROR_ROOT(
+        "Single mortar formulation requires globally uniform triangular or quadrilateral surface elements." );
+    return false;
+  }
+  const auto& params = cs.getParameters();
+  if ( params.single_mortar_quadrature_order < minimum_supported_quadrature_order ||
+       params.single_mortar_quadrature_order > maximum_supported_quadrature_order ||
+       !std::isfinite( params.overlap_area_frac ) || params.overlap_area_frac < 0.0 ) {
+    SLIC_ERROR_ROOT( "Single mortar formulation requires a supported quadrature order and finite overlap fraction." );
+    return false;
+  }
+  return true;
+#else
+  (void)cs;
+  SLIC_ERROR_ROOT( "Single mortar formulation requires Redecomp." );
+  return false;
+#endif
+}
+
 }  // namespace detail
 
 #ifdef BUILD_REDECOMP
@@ -192,6 +277,59 @@ PairListBuilder makePairListBuilder( CouplingScheme& cs )
   return { createCoarseSearch( cs.spatialDim(), cs.getBinningMethod(), Exec, cs.getEffectiveBinningProximityScale(),
                                cs.getParameters().residual_gap ),
            std::move( refined_search ) };
+}
+
+/**
+ * @brief Construct single mortar with the selected geometry and integration rule.
+ * @tparam Exec Execution mode for the element and pair kernels.
+ * @tparam Geometry Linear surface geometry for both elements in a pair.
+ * @param cs Validated scheme with coordinate and pressure transfer data.
+ * @return Formulation using the requested Jacobian mode.
+ */
+template <ExecutionMode Exec, typename Geometry>
+std::unique_ptr<ContactFormulation> createSingleMortarForGeometry( CouplingScheme* cs )
+{
+  const auto& params = cs->getParameters();
+  const detail::MortarFaceMapping<Geometry> mapping{ params.overlap_area_frac };
+  return createWithQuadratureRuleGenerator(
+      params.single_mortar_quadrature_order, mapping,
+      [&]( auto rule_generator ) -> std::unique_ptr<ContactFormulation> {
+        PairListBuilder pairs( createCoarseSearch( cs->spatialDim(), cs->getBinningMethod(), Exec,
+                                                   cs->getEffectiveBinningProximityScale(), 0.0 ),
+                               std::make_unique<ProjectedFaceSearch>( Exec, false ) );
+#ifdef TRIBOL_USE_ENZYME
+        if ( params.single_mortar_exact_jacobian ) {
+          return std::make_unique<SingleMortarFormulation<Exec, decltype( rule_generator ), SingleMortarExactJacobian>>(
+              rule_generator,
+              SingleMortarExactJacobian{ *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
+                                         *cs->getMfemJacobianData() },
+              std::move( pairs ) );
+        }
+#endif
+        return std::make_unique<SingleMortarFormulation<Exec, decltype( rule_generator ), SingleMortarFrozenJacobian>>(
+            rule_generator,
+            SingleMortarFrozenJacobian{ *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData() },
+            std::move( pairs ) );
+      } );
+}
+
+/**
+ * @brief Construct single mortar for the uniform element type in the contact submesh.
+ * @tparam Exec Execution mode for search and evaluation.
+ * @param cs Validated scheme with initialized decomposition and transfer data.
+ * @return Configured formulation, or null when the decomposition is missing.
+ */
+template <ExecutionMode Exec>
+std::unique_ptr<ContactFormulation> createSingleMortar( CouplingScheme* cs )
+{
+  if ( !cs->hasMfemJacobianData() || !cs->getMfemJacobianData()->HasParentPath() ) {
+    SLIC_ERROR_ROOT( "Update MFEM parallel decomposition before evaluating single mortar." );
+    return nullptr;
+  }
+  if ( resolve3DSurfaceElementType( *cs->getMfemMeshData() ) == TRIANGLE ) {
+    return createSingleMortarForGeometry<Exec, LinearTriangleGeometry>( cs );
+  }
+  return createSingleMortarForGeometry<Exec, LinearQuadGeometry>( cs );
 }
 
 /**
@@ -264,7 +402,7 @@ std::unique_ptr<ContactFormulation> createCommonPlane( CouplingScheme* cs )
       detail::checkedPenaltyStiffness( SeriesPenaltyStiffness{}.computeEffectiveStiffness( penalty1, penalty2 ) );
   const int spatial_dim = data.GetParentCoords().ParFESpace()->GetParMesh()->SpaceDimension();
   if ( spatial_dim == 3 ) {
-    const InterfaceElementType face_type = resolveCommonPlane3DSurfaceElementType( data );
+    const InterfaceElementType face_type = resolve3DSurfaceElementType( data );
     if ( face_type == TRIANGLE ) {
       return createWithQuadratureRuleGenerator(
           cs->getParameters().quadrature_order, CommonPlaneFaceMapping<LinearTriangleGeometry>{},

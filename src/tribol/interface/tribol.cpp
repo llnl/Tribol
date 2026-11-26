@@ -202,6 +202,10 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location )
     SLIC_ERROR_ROOT( "Common Plane requires quadrature-point enforcement." );
     return;
   }
+  if ( cs->usesSingleMortarFormulation() && location != EnforcementLocation::Nodal ) {
+    SLIC_ERROR_ROOT( "Single mortar formulation requires nodal Lagrange multiplier enforcement." );
+    return;
+  }
   if ( location != EnforcementLocation::Nodal && location != EnforcementLocation::QuadraturePoint ) {
     SLIC_ERROR_ROOT( "Unsupported enforcement location." );
     return;
@@ -223,17 +227,18 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location )
 void setQuadratureOrder( IndexT cs_id, int order )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-  if ( !cs ||
-       ( cs->getContactMethod() != ENERGY_MORTAR &&
-         !( cs->getContactMethod() == COMMON_PLANE && cs->getParameters().use_common_plane_formulation ) ) ||
-       order < minimum_supported_quadrature_order || order > maximum_supported_quadrature_order ) {
-    SLIC_ERROR_ROOT( "setQuadratureOrder requires ENERGY_MORTAR or opted-in COMMON_PLANE and an order from "
+  if ( !cs || !cs->usesContactFormulation() || order < minimum_supported_quadrature_order ||
+       order > maximum_supported_quadrature_order ) {
+    SLIC_ERROR_ROOT( "setQuadratureOrder requires a contact formulation and an order from "
                      << minimum_supported_quadrature_order << " through " << maximum_supported_quadrature_order
                      << "." );
     return;
   }
-  if ( cs->getParameters().quadrature_order != order ) {
-    cs->getParameters().quadrature_order = order;
+  auto& params = cs->getParameters();
+  auto& quadrature_order =
+      cs->usesSingleMortarFormulation() ? params.single_mortar_quadrature_order : params.quadrature_order;
+  if ( quadrature_order != order ) {
+    quadrature_order = order;
     cs->invalidateContactFormulation();
   }
 }
@@ -337,7 +342,12 @@ void setContactAreaFrac( IndexT cs_id, RealT frac )
     SLIC_DEBUG_ROOT( "tribol::setContactAreaFrac(): area fraction <= 0.0; " << "setting to default 1.e-8." );
     frac = 1.e-8;
   }
-  cs->getParameters().overlap_area_frac = frac;
+  if ( cs->getParameters().overlap_area_frac != frac ) {
+    cs->getParameters().overlap_area_frac = frac;
+    if ( cs->usesSingleMortarFormulation() ) {
+      cs->invalidateContactFormulation();
+    }
+  }
 
 }  // end setPenaltyScale()
 
@@ -1033,6 +1043,7 @@ int update( int cycle, RealT t, RealT& dt )
     if ( !cs.init() ) {
       SLIC_WARNING_ROOT( "tribol::update(): skipping invalid CouplingScheme " << cs_pair.first
                                                                               << ". Please see warnings." );
+      err_cs = err_cs || cs.usesSingleMortarFormulation();
       continue;
     }
 
@@ -1043,7 +1054,8 @@ int update( int cycle, RealT t, RealT& dt )
     // apply the coupling scheme. Note, there are appropriate guards against zero
     // element meshes, or null-mesh coupling schemes
     RealT cs_dt = dt_in;
-    err_cs = cs.apply( cycle, t, cs_dt );
+    const int apply_error = cs.apply( cycle, t, cs_dt );
+    err_cs = err_cs || apply_error != 0;
 
     if ( cs.getParameters().enable_timestep_vote ) {
       any_voting_scheme = true;
@@ -1052,7 +1064,7 @@ int update( int cycle, RealT t, RealT& dt )
       }
     }
 
-    if ( err_cs != 0 ) {
+    if ( apply_error != 0 ) {
       SLIC_WARNING( "tribol::update(): coupling scheme " << cs_pair.first << " returned with an error." );
     }
 

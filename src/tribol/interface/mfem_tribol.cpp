@@ -80,6 +80,52 @@ mfem::Array<int> ComputeSingleMortarInactiveDualTrueDofs( const MfemMeshData& me
   return mortar_tdof_list;
 }
 
+/**
+ * @brief Find dual true DOFs with no support on the non-mortar integration surface.
+ * @param mesh_data Contact submesh and attributes of mesh1.
+ * @param submesh_data Scalar pressure space on the full boundary submesh.
+ * @return Locally owned true DOFs supported only on the mortar surface.
+ */
+mfem::Array<int> ComputeFormulatedMortarInactiveDualTrueDofs( const MfemMeshData& mesh_data,
+                                                              const MfemSubmeshData& submesh_data )
+{
+  const auto& fes = submesh_data.GetSubmeshFESpace();
+  mfem::Vector local_support( fes.GetVSize() );
+  local_support = 0.0;
+  mfem::Array<int> dofs;
+  for ( int element = 0; element < fes.GetNE(); ++element ) {
+    if ( mesh_data.GetBoundaryAttribs1().contains( fes.GetAttribute( element ) ) ) {
+      fes.GetElementDofs( element, dofs );
+      for ( const auto dof : dofs ) {
+        local_support[mfem::FiniteElementSpace::DecodeDof( dof )] = 1.0;
+      }
+    }
+  }
+  shared::detail::HypreMemoryLocationGuard guard( shared::ParVectorMemory::Host );
+  shared::ParVector support( const_cast<mfem::ParFiniteElementSpace*>( &fes ) );
+  auto* prolongation = fes.Dof_TrueDof_Matrix();
+  prolongation->HostRead();
+  prolongation->MultTranspose( local_support, support.get() );
+  mfem::Array<int> inactive;
+  for ( int dof = 0; dof < support.size(); ++dof ) {
+    if ( support[dof] == 0.0 ) {
+      inactive.Append( dof );
+    }
+  }
+  return inactive;
+}
+
+/**
+ * @brief Restore the legacy gap and pressure fields on mesh2 after updating or leaving its decomposition.
+ * @param cs Legacy single mortar scheme with initialized MFEM submesh transfer data.
+ */
+void RegisterLegacyMortarFields( CouplingScheme& cs )
+{
+  auto& submesh = *cs.getMfemSubmeshData();
+  registerMortarGaps( cs.getMeshId2(), submesh.GetRedecompGapPtrs()[0] );
+  registerMortarPressures( cs.getMeshId2(), submesh.GetRedecompPressurePtrs()[0] );
+}
+
 std::vector<PackedPairJacobianContribs> BuildPackedPairJacobianContribs(
     const MfemJacobianData& jac_data, const MfemMeshData& mesh_data, const MfemSubmeshData& submesh_data,
     const MethodData& method_data, const std::vector<std::pair<BlockSpace, BlockSpace>>& contribs )
@@ -390,6 +436,58 @@ void setMfemUseCommonPlaneFormulation( IndexT cs_id, bool enabled, bool compute_
   cs->setMfemJacobianData( std::move( jacobian ) );
 }
 
+void setMfemUseSingleMortarFormulation( IndexT cs_id, bool enabled, bool exact_jacobian )
+{
+  auto* cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  if ( !cs || cs->getContactMethod() != SINGLE_MORTAR || !cs->hasMfemData() ) {
+    SLIC_ERROR_ROOT( "Register an MFEM SINGLE_MORTAR scheme before selecting its formulation." );
+    return;
+  }
+  auto& params = cs->getParameters();
+  auto& mesh_data = *cs->getMfemMeshData();
+  if ( !enabled ) {
+    if ( cs->usesSingleMortarFormulation() ) {
+      params.use_single_mortar_formulation = false;
+      params.enforcement_location = params.single_mortar_legacy_enforcement_location;
+      cs->invalidateContactFormulation();
+      cs->clearContactMultiplier();
+      const auto& options = cs->getEnforcementOptions().lm_implicit_options;
+      const bool legacy_jacobian =
+          options.enforcement_option_set && ( options.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ||
+                                              options.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN );
+      if ( !legacy_jacobian ) {
+        cs->setMfemJacobianData( nullptr );
+      }
+      if ( mesh_data.HasRedecompMesh() ) {
+        RegisterLegacyMortarFields( *cs );
+      }
+      cs->setFixedBinning( false );
+      cs->setBinned( false );
+    }
+    return;
+  }
+
+  if ( !detail::validateSingleMortarFormulation( *cs, exact_jacobian ) ) {
+    return;
+  }
+  if ( cs->usesSingleMortarFormulation() && params.single_mortar_exact_jacobian == exact_jacobian ) {
+    return;
+  }
+  if ( !cs->usesSingleMortarFormulation() ) {
+    auto jacobian = std::make_unique<MfemJacobianData>( mesh_data, *cs->getMfemSubmeshData() );
+    if ( mesh_data.HasRedecompMesh() ) {
+      jacobian->UpdateJacobianXfer();
+    }
+    cs->setMfemJacobianData( std::move( jacobian ) );
+    params.single_mortar_legacy_enforcement_location = params.enforcement_location;
+    params.enforcement_location = EnforcementLocation::Nodal;
+    params.use_single_mortar_formulation = true;
+    cs->getContactMultiplier();
+  }
+  params.single_mortar_exact_jacobian = exact_jacobian;
+  cs->invalidateContactFormulation();
+}
+
 void setMfemLORFactor( IndexT cs_id, int lor_factor )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -402,6 +500,12 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the LOR factor." );
   const bool uses_formulation = cs->usesContactFormulation();
   const auto* previous_lor = cs->getMfemMeshData()->GetLORMesh();
+  const bool had_jacobian_data = cs->hasMfemJacobianData();
+  if ( cs->usesSingleMortarFormulation() && previous_lor && lor_factor > 1 ) {
+    cs->invalidateContactFormulation();
+    cs->setMfemJacobianData( nullptr );
+    cs->getMfemSubmeshData()->SetLORMesh( nullptr );
+  }
   cs->getMfemMeshData()->SetLORFactor( lor_factor );
   if ( previous_lor == cs->getMfemMeshData()->GetLORMesh() ) {
     return;
@@ -413,7 +517,7 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
   if ( cs->getMfemSubmeshData() ) {
     cs->getMfemSubmeshData()->SetLORMesh( cs->getMfemMeshData()->GetLORMesh() );
   }
-  if ( cs->hasMfemJacobianData() ) {
+  if ( had_jacobian_data ) {
     cs->setMfemJacobianData( cs->hasMfemSubmeshData() ? std::make_unique<MfemJacobianData>( *cs->getMfemMeshData(),
                                                                                             *cs->getMfemSubmeshData() )
                                                       : std::make_unique<MfemJacobianData>( *cs->getMfemMeshData() ) );
@@ -720,37 +824,44 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
                       "getMfemBlockJacobian() is not supported for coupling schemes with penalty enforcement. "
                       "Use getMfemDfDx() instead." );
 
-  if ( cs->hasContactFormulation() ) {
+  const bool single_mortar = cs->usesSingleMortarFormulation();
+  if ( cs->hasContactFormulation() || single_mortar ) {
     const auto& result = cs->getContactFormulationResult();
-    if ( !result.df_dx ) {
+    if ( ( single_mortar && ( !result.df_dp || !result.weighted_gap_jacobian ) ) ||
+         ( !single_mortar && !result.df_dx ) ) {
       SLIC_ERROR_ROOT( "No contact Jacobian is available; call update() first." );
       return nullptr;
     }
-    auto DfDx = copyResultMatrix( result.df_dx );
-    auto DfDp = copyResultMatrix( result.df_dp );
-    auto DgDx = copyResultMatrix( result.weighted_gap_jacobian );
+    auto df_dx = copyResultMatrix( result.df_dx );
+    auto df_dp = copyResultMatrix( result.df_dp );
+    auto dg_dx = copyResultMatrix( result.weighted_gap_jacobian );
 
-    // Determine sizes
-    mfem::Array<int> offsets( 3 );
-    offsets[0] = 0;
-    offsets[1] = DfDx->Height();  // Residual rows (displacement dofs)
-    offsets[2] = offsets[1] + ( DfDp ? DfDp->Width() : DgDx ? DgDx->Height() : 0 );  // Pressure cols (pressure dofs)
-
-    auto blockOp = std::make_unique<mfem::BlockOperator>( offsets );
-    if ( DfDx ) {
-      blockOp->SetBlock( 0, 0, DfDx.release() );
+    const int size_displacement =
+        single_mortar ? cs->getMfemMeshData()->GetParentCoords().ParFESpace()->GetTrueVSize() : df_dx->Height();
+    const int size_pressure = single_mortar ? cs->getMfemSubmeshData()->GetSubmeshFESpace().GetTrueVSize()
+                                            : ( df_dp   ? df_dp->Width()
+                                                : dg_dx ? dg_dx->Height()
+                                                        : 0 );
+    auto block = std::make_unique<mfem::BlockOperator>( BuildSolverOffsets( 1, size_displacement, size_pressure ) );
+    block->owns_blocks = 1;
+    if ( df_dx ) {
+      block->SetBlock( 0, 0, df_dx.release() );
     }
-    if ( DfDp ) {
-      blockOp->SetBlock( 0, 1, DfDp.release() );
+    if ( df_dp ) {
+      block->SetBlock( 0, 1, df_dp.release() );
     }
-    if ( DgDx ) {
-      blockOp->SetBlock( 1, 0, DgDx.release() );
+    if ( dg_dx ) {
+      block->SetBlock( 1, 0, dg_dx.release() );
     }
-    // 1,1 block (DgDp) is implicitly zero for standard contact
-
-    // Manually set ownership to avoid leaks, as BlockOperator owns nothing by default
-    blockOp->owns_blocks = 1;
-    return blockOp;
+    if ( single_mortar ) {
+      const auto& dual_fes = cs->getMfemSubmeshData()->GetSubmeshFESpace();
+      const auto inactive =
+          ComputeFormulatedMortarInactiveDualTrueDofs( *cs->getMfemMeshData(), *cs->getMfemSubmeshData() );
+      auto constraints = shared::ParSparseMat::diagonalMatrix( dual_fes.GetComm(), dual_fes.GlobalTrueVSize(),
+                                                               dual_fes.GetTrueDofOffsets(), 1.0, inactive, false );
+      block->SetBlock( 1, 1, constraints.release() );
+    }
+    return block;
   }
 
   SparseMode sparse_mode = cs->getEnforcementOptions().lm_implicit_options.sparse_mode;
@@ -941,7 +1052,7 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
       if ( mfem_data->GetLORFactor() > 1 ) {
         effective_binning_proximity *= static_cast<RealT>( mfem_data->GetLORFactor() );
       }
-      auto residual_gap = cs.getParameters().residual_gap;
+      const auto residual_gap = cs.usesSingleMortarFormulation() ? 0.0 : cs.getParameters().residual_gap;
       if ( cs.getParameters().enable_timestep_vote && cs.getParameters().timestep_criteria.requiresElementThickness() &&
            !mfem_data->HasElemThickness() ) {
         mfem_data->ComputeElementThicknesses();
@@ -992,17 +1103,14 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         // updates submesh-native grid functions and transfer operators on
         // the new redecomp mesh
         submesh_data->UpdateMfemSubmeshData( mfem_data->GetRedecompMesh(), new_redecomp );
-        if ( cs.getContactMethod() == SINGLE_MORTAR ) {
-          // Legacy single mortar reads gap and pressure through MeshData. Contact formulations return their outputs
-          // directly and do not write these redecomposed fields.
-          const auto nonmortar_mesh_id = mesh_ids[1];
-          auto g_ptrs = submesh_data->GetRedecompGapPtrs();
-          registerMortarGaps( nonmortar_mesh_id, g_ptrs[0] );
-          auto p_ptrs = submesh_data->GetRedecompPressurePtrs();
-          registerMortarPressures( nonmortar_mesh_id, p_ptrs[0] );
+        if ( cs.getContactMethod() == SINGLE_MORTAR && !cs.usesSingleMortarFormulation() ) {
+          RegisterLegacyMortarFields( cs );
         }
       }
       if ( cs.hasMfemJacobianData() && new_redecomp ) {
+        if ( cs.usesSingleMortarFormulation() ) {
+          cs.invalidateContactFormulation();
+        }
         cs.getMfemJacobianData()->UpdateJacobianXfer();
       }
       auto& penalty_opts = cs.getEnforcementOptions().penalty_options;

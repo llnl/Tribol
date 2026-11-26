@@ -15,7 +15,7 @@
 #include "axom/core/utilities/Utilities.hpp"
 #include "tribol/common/Enzyme.hpp"
 #include "tribol/common/MdArray.hpp"
-#include "tribol/integ/QuadratureCommon.hpp"
+#include "tribol/geom/ProjectedPolygon.hpp"
 
 namespace tribol {
 
@@ -65,21 +65,9 @@ struct CommonPlaneFaceMapping {
     Vector normal = normal2 - normal1;
     normal /= std::sqrt( normal.dot( normal ) );
 
-    // Cross normal with the coordinate axis least aligned with it to form a smooth, nondegenerate in-plane basis.
-    const RealT ax = std::abs( normal[0] );
-    const RealT ay = std::abs( normal[1] );
-    const RealT az = std::abs( normal[2] );
-    Vector ref_axis{ 1.0, 0.0, 0.0 };
-    if ( ay <= ax && ay <= az ) {
-      ref_axis = Vector{ 0.0, 1.0, 0.0 };
-    } else if ( az <= ax && az <= ay ) {
-      ref_axis = Vector{ 0.0, 0.0, 1.0 };
-    }
-    Vector e1 = Vector::cross_product( ref_axis, normal );
-    e1 /= std::sqrt( e1.dot( e1 ) );
-    const Vector e2 = Vector::cross_product( normal, e1 );
+    const auto basis = detail::makePlaneBasis( normal );
     const Point origin = Point::lerp( geometry1.centroid(), geometry2.centroid(), 0.5 );
-    return { origin, normal, e1, e2 };
+    return { origin, normal, basis.e1, basis.e2 };
   }
 
   /**
@@ -115,52 +103,32 @@ struct CommonPlaneFaceMapping {
       return { {}, 0, false };
     }
     const RealT char_len = std::sqrt( char_len_sq );
-    const RealT plane_tol = on_line_tolerance_ * char_len;
-    const RealT dup_tol_sq = ( duplicate_vertex_tolerance_ * char_len ) * ( duplicate_vertex_tolerance_ * char_len );
+    const RealT plane_tol = detail::projected_polygon_on_line_tolerance * char_len;
+    const RealT dup_tol_sq = ( detail::projected_polygon_duplicate_vertex_tolerance * char_len ) *
+                             ( detail::projected_polygon_duplicate_vertex_tolerance * char_len );
 
     // Project both faces into common-plane (e1, e2) coordinates and ensure both polygons are CCW.
-    Polygon2D poly1{};
+    detail::Polygon2D poly1{};
     poly1.num_vertices = Geometry1::num_vertices;
     for ( IndexT v = 0; v < Geometry1::num_vertices; ++v ) {
       const Vector rel( plane.origin, geometry1.vertex( v ) );
       poly1.vertices( v, 0 ) = rel.dot( plane.e1 );
       poly1.vertices( v, 1 ) = rel.dot( plane.e2 );
     }
-    ensureCounterClockwise( poly1 );
+    detail::ensureCounterClockwise( poly1 );
 
-    Polygon2D poly2{};
+    detail::Polygon2D poly2{};
     poly2.num_vertices = Geometry2::num_vertices;
     for ( IndexT v = 0; v < Geometry2::num_vertices; ++v ) {
       const Vector rel( plane.origin, geometry2.vertex( v ) );
       poly2.vertices( v, 0 ) = rel.dot( plane.e1 );
       poly2.vertices( v, 1 ) = rel.dot( plane.e2 );
     }
-    ensureCounterClockwise( poly2 );
+    detail::ensureCounterClockwise( poly2 );
 
-    // Clip poly1 against each CCW edge of poly2 using Sutherland-Hodgman.
-    Polygon2D overlap = poly1;
-    for ( IndexT edge = 0; edge < poly2.num_vertices; ++edge ) {
-      const IndexT next_edge = ( edge + 1 < poly2.num_vertices ) ? ( edge + 1 ) : 0;
-      const RealT ax = poly2.vertices( edge, 0 );
-      const RealT ay = poly2.vertices( edge, 1 );
-      const RealT bx = poly2.vertices( next_edge, 0 );
-      const RealT by = poly2.vertices( next_edge, 1 );
-      const RealT ex = bx - ax;
-      const RealT ey = by - ay;
-      const RealT edge_len_sq = ex * ex + ey * ey;
-      if ( edge_len_sq <= dup_tol_sq ) {
-        return { {}, 0, true };
-      }
-      const RealT inv_edge_len = RealT{ 1.0 } / std::sqrt( edge_len_sq );
-      // Outward normal of CCW edge A->B is (ey, -ex) / |AB|; inside is f(u, v) <= 0.
-      const RealT nx = ey * inv_edge_len;
-      const RealT ny = -ex * inv_edge_len;
-      const RealT offset = -( nx * ax + ny * ay );
-
-      overlap = clipAgainstHalfPlane( overlap, nx, ny, offset, plane_tol, dup_tol_sq );
-      if ( overlap.num_vertices < 3 ) {
-        return { {}, 0, true };
-      }
+    auto overlap = detail::intersectProjectedPolygons( poly1, poly2, plane_tol, dup_tol_sq );
+    if ( overlap.num_vertices < 3 ) {
+      return { {}, 0, true };
     }
 
     // Check affine average-plane gap g_avg(u, v) = s1(u, v) - s2(u, v) across the overlap vertices.
@@ -189,15 +157,16 @@ struct CommonPlaneFaceMapping {
       const RealT grad_norm = std::sqrt( gu * gu + gv * gv );
       if ( grad_norm > 0.0 ) {
         const RealT inv_grad = RealT{ 1.0 } / grad_norm;
-        overlap = clipAgainstHalfPlane( overlap, gu * inv_grad, gv * inv_grad, g0 * inv_grad, plane_tol, dup_tol_sq );
+        overlap =
+            detail::clipAgainstHalfPlane( overlap, gu * inv_grad, gv * inv_grad, g0 * inv_grad, plane_tol, dup_tol_sq );
         if ( overlap.num_vertices < 3 ) {
           return { {}, 0, true };
         }
       }
     }
 
-    const RealT overlap_area = signedPolygonArea( overlap );
-    const RealT min_area = minimum_area_fraction_ * char_len_sq;
+    const RealT overlap_area = detail::signedPolygonArea( overlap );
+    const RealT min_area = detail::projected_polygon_minimum_area_fraction * char_len_sq;
     if ( !std::isfinite( overlap_area ) || overlap_area <= min_area ) {
       return { {}, 0, true };
     }
@@ -276,150 +245,7 @@ struct CommonPlaneFaceMapping {
   }
 
  private:
-  static constexpr IndexT max_vertices_ = PolygonQuadratureSurface::max_num_vertices;
-  static constexpr RealT on_line_tolerance_ = 1.0e-13;  ///< Relative on-line band for half-plane clipping.
-  static constexpr RealT duplicate_vertex_tolerance_ =
-      1.0e-12;                                                 ///< Relative tolerance for merging coincident vertices.
-  static constexpr RealT minimum_area_fraction_ = 1.0e-14;     ///< Relative minimum overlap polygon area.
   static constexpr RealT minimum_normal_alignment_ = 1.0e-12;  ///< Minimum |n . n_k| for average-plane gap solve.
-
-  /** @brief Fixed-capacity 2D polygon scratch buffer for Sutherland-Hodgman clipping. */
-  struct Polygon2D {
-    MdArray<RealT, max_vertices_, 2> vertices{};  ///< 2D vertices in (e1, e2) coordinates.
-    IndexT num_vertices{ 0 };                     ///< Active vertex count.
-  };
-
-  /**
-   * @brief Compute the signed area of a 2D polygon using the shoelace formula.
-   * @param poly 2D polygon.
-   * @return Positive area for CCW orientation, negative for CW.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static RealT signedPolygonArea( const Polygon2D& poly )
-  {
-    if ( poly.num_vertices < 3 ) {
-      return 0.0;
-    }
-    RealT twice_area = 0.0;
-    for ( IndexT v = 0; v < poly.num_vertices; ++v ) {
-      const IndexT next_v = ( v + 1 < poly.num_vertices ) ? ( v + 1 ) : 0;
-      twice_area +=
-          poly.vertices( v, 0 ) * poly.vertices( next_v, 1 ) - poly.vertices( next_v, 0 ) * poly.vertices( v, 1 );
-    }
-    return RealT{ 0.5 } * twice_area;
-  }
-
-  /**
-   * @brief Reverse vertex order in place if the 2D polygon has negative signed area.
-   * @param poly 2D polygon to orient counter-clockwise.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void ensureCounterClockwise( Polygon2D& poly )
-  {
-    if ( signedPolygonArea( poly ) < 0.0 ) {
-      for ( IndexT i = 0; i < poly.num_vertices / 2; ++i ) {
-        const IndexT j = poly.num_vertices - 1 - i;
-        const RealT tx = poly.vertices( i, 0 );
-        const RealT ty = poly.vertices( i, 1 );
-        poly.vertices( i, 0 ) = poly.vertices( j, 0 );
-        poly.vertices( i, 1 ) = poly.vertices( j, 1 );
-        poly.vertices( j, 0 ) = tx;
-        poly.vertices( j, 1 ) = ty;
-      }
-    }
-  }
-
-  /**
-   * @brief Append a 2D vertex to poly unless it duplicates the previous vertex or exceeds capacity.
-   * @param poly Output polygon.
-   * @param x First coordinate.
-   * @param y Second coordinate.
-   * @param dup_tol_sq Squared distance threshold for deduplication.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static void appendVertex( Polygon2D& poly, RealT x, RealT y,
-                                                                    RealT dup_tol_sq )
-  {
-    if ( poly.num_vertices > 0 ) {
-      const RealT dx = x - poly.vertices( poly.num_vertices - 1, 0 );
-      const RealT dy = y - poly.vertices( poly.num_vertices - 1, 1 );
-      if ( dx * dx + dy * dy <= dup_tol_sq ) {
-        return;
-      }
-    }
-    if ( poly.num_vertices < max_vertices_ ) {
-      poly.vertices( poly.num_vertices, 0 ) = x;
-      poly.vertices( poly.num_vertices, 1 ) = y;
-      ++poly.num_vertices;
-    }
-  }
-
-  /**
-   * @brief Clip a 2D polygon against the half-plane nx * u + ny * v + offset <= 0.
-   *
-   * Vertices within [-plane_tol, +plane_tol] are classified as on-the-line (inside) so nearly-parallel edges resting
-   * on the clipping line do not trigger 0/0 intersections, and intersections are only emitted on strict sign changes.
-   *
-   * @param input Input 2D polygon.
-   * @param nx First component of the unit outward normal of the half-plane.
-   * @param ny Second component of the unit outward normal of the half-plane.
-   * @param offset Half-plane constant offset.
-   * @param plane_tol Scale-relative on-line band tolerance.
-   * @param dup_tol_sq Squared distance threshold for deduplicating consecutive vertices.
-   * @return Clipped 2D polygon.
-   */
-  TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE static Polygon2D clipAgainstHalfPlane( const Polygon2D& input, RealT nx,
-                                                                                 RealT ny, RealT offset,
-                                                                                 RealT plane_tol, RealT dup_tol_sq )
-  {
-    Polygon2D output{};
-    if ( input.num_vertices < 3 ) {
-      return output;
-    }
-
-    for ( IndexT i = 0; i < input.num_vertices; ++i ) {
-      const IndexT j = ( i + 1 < input.num_vertices ) ? ( i + 1 ) : 0;
-      const RealT ax = input.vertices( i, 0 );
-      const RealT ay = input.vertices( i, 1 );
-      const RealT bx = input.vertices( j, 0 );
-      const RealT by = input.vertices( j, 1 );
-
-      const RealT fa = nx * ax + ny * ay + offset;
-      const RealT fb = nx * bx + ny * by + offset;
-
-      const bool a_strictly_out = fa > plane_tol;
-      const bool b_strictly_out = fb > plane_tol;
-      const bool a_strictly_in = fa < -plane_tol;
-      const bool b_strictly_in = fb < -plane_tol;
-
-      if ( !a_strictly_out && !b_strictly_out ) {
-        // Both inside or on the line: emit B.
-        appendVertex( output, bx, by, dup_tol_sq );
-      } else if ( a_strictly_in && b_strictly_out ) {
-        // Strictly leaving: emit intersection only.
-        const RealT t = axom::utilities::clampVal( fa / ( fa - fb ), RealT{ 0.0 }, RealT{ 1.0 } );
-        appendVertex( output, ax + t * ( bx - ax ), ay + t * ( by - ay ), dup_tol_sq );
-      } else if ( a_strictly_out && b_strictly_in ) {
-        // Strictly entering: emit intersection then B.
-        const RealT t = axom::utilities::clampVal( fa / ( fa - fb ), RealT{ 0.0 }, RealT{ 1.0 } );
-        appendVertex( output, ax + t * ( bx - ax ), ay + t * ( by - ay ), dup_tol_sq );
-        appendVertex( output, bx, by, dup_tol_sq );
-      } else if ( a_strictly_out && !b_strictly_out ) {
-        // Entering onto the line (|fb| <= plane_tol): emit B only.
-        appendVertex( output, bx, by, dup_tol_sq );
-      }
-      // If |fa| <= plane_tol and b_strictly_out, A was already emitted on the previous edge; emit nothing.
-    }
-
-    // Wrap-around deduplication between last and first vertex.
-    while ( output.num_vertices > 1 ) {
-      const RealT dx = output.vertices( output.num_vertices - 1, 0 ) - output.vertices( 0, 0 );
-      const RealT dy = output.vertices( output.num_vertices - 1, 1 ) - output.vertices( 0, 1 );
-      if ( dx * dx + dy * dy <= dup_tol_sq ) {
-        --output.num_vertices;
-      } else {
-        break;
-      }
-    }
-    return output;
-  }
 };
 
 }  // namespace tribol

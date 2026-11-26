@@ -187,9 +187,10 @@ static_assert( !PairTractionFunction<PenaltyEnergy, ProjectedEdgeRuleGenerator> 
 static_assert( !PairEnergyFunction<OpposingNormalGap, ProjectedEdgeRuleGenerator> );
 
 // Energy and nodal-integral functions accept two coordinate views with fixed sizes.
-static_assert( PairFunctionType<PairEnergyIntegral<ProjectedEdgeRuleGenerator, PenaltyEnergy>> );
-static_assert( PairFunctionType<PairNodalGapIntegral<ProjectedEdgeRuleGenerator, OpposingNormalGap,
-                                                     BasisFunction<EDGE, LINEAR_LAGRANGE>>> );
+static_assert( PairFunctionType<PairIntegral<ProjectedEdgeRuleGenerator, EnergyIntegrand<PenaltyEnergy>>> );
+static_assert(
+    PairFunctionType<PairIntegral<ProjectedEdgeRuleGenerator,
+                                  NodalGapIntegrand<OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>>> );
 
 /** @brief One-coordinate geometry caching a nonlinear coordinate expression. */
 struct SquaredCoordinateGeometry {
@@ -256,8 +257,8 @@ void checkParallelIntegrals( ExecutionMode mode, int allocator )
 {
   using RuleGenerator =
       PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<NumPoints>>;
-  using Energy = PairEnergyIntegral<RuleGenerator, PenaltyEnergyDensity<OpposingNormalGap>>;
-  using Nodal = PairNodalGapIntegral<RuleGenerator, OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
+  using Energy = PairIntegral<RuleGenerator, EnergyIntegrand<PenaltyEnergyDensity<OpposingNormalGap>>>;
+  using Nodal = PairIntegral<RuleGenerator, NodalGapIntegrand<OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>>;
   ArrayT<ParallelIntegralResult> integral_results( 1, 1, allocator );
   const auto integral_result_view = integral_results.view();
   forAllExec( mode, 1, [=] TRIBOL_HOST_DEVICE( IndexT ) {
@@ -265,8 +266,10 @@ void checkParallelIntegrals( ExecutionMode mode, int allocator )
     const MdArray<RealT, 2, 2> coordinates1{ MdArray<RealT, 2>{ 0.0, 0.0 }, MdArray<RealT, 2>{ 2.0, 0.0 } };
     const MdArray<RealT, 2, 2> coordinates2{ MdArray<RealT, 2>{ 3.0, 0.1 }, MdArray<RealT, 2>{ -1.0, 0.1 } };
     const RuleGenerator rule_generator( SmoothedProjectedEdgeMapping{ 0.0 } );
-    integral_result_view[0] = { Energy{ rule_generator, { 4.0 } }.evaluate( coordinates1.view(), coordinates2.view() ),
-                                Nodal{ rule_generator }.evaluate( coordinates1.view(), coordinates2.view() ) };
+    integral_result_view[0] = {
+        Energy{ rule_generator, EnergyIntegrand<PenaltyEnergyDensity<OpposingNormalGap>>{ { 4.0 } } }.evaluate(
+            coordinates1.view(), coordinates2.view() ),
+        Nodal{ rule_generator }.evaluate( coordinates1.view(), coordinates2.view() ) };
   } );
   const ArrayT<ParallelIntegralResult, 1, MemorySpace::Host> host_integral_results( integral_results );
   ASSERT_EQ( host_integral_results[0].energy.quadrature_metadata.status, QuadratureStatus::Success );
@@ -275,7 +278,7 @@ void checkParallelIntegrals( ExecutionMode mode, int allocator )
   EXPECT_NEAR( host_integral_results[0].energy.energy, 0.04, tolerance );
   EXPECT_TRUE( host_integral_results[0].energy.has_active_points );
   ASSERT_EQ( host_integral_results[0].nodal.quadrature_metadata.status, QuadratureStatus::Success );
-  for ( IndexT node = 0; node < Nodal::num_nodes; ++node ) {
+  for ( IndexT node = 0; node < Nodal::Result::num_nodes; ++node ) {
     EXPECT_NEAR( host_integral_results[0].nodal.weightedGap( node ), -0.1, tolerance );
     EXPECT_NEAR( host_integral_results[0].nodal.tributaryArea( node ), 1.0, tolerance );
   }
@@ -294,8 +297,10 @@ TEST( EnergyMortarPairValues, residual_gap_shifts_nodal_integrals_and_activates_
 {
   using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>;
   using Gap = OffsetGap<OpposingNormalGap>;
-  using Nodal = PairNodalGapIntegral<RuleGenerator, Gap, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
-  using Energy = PairEnergyIntegral<RuleGenerator, PenaltyEnergyDensity<Gap>>;
+  using NodalIntegrand = NodalGapIntegrand<Gap, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
+  using EnergyIntegrandT = EnergyIntegrand<PenaltyEnergyDensity<Gap>>;
+  using Nodal = PairIntegral<RuleGenerator, NodalIntegrand>;
+  using Energy = PairIntegral<RuleGenerator, EnergyIntegrandT>;
   constexpr RealT separation = 0.1;
   constexpr RealT residual_gap = 0.15;
   constexpr RealT penalty = 3.0;
@@ -306,22 +311,23 @@ TEST( EnergyMortarPairValues, residual_gap_shifts_nodal_integrals_and_activates_
   const typename Nodal::Coords1 coords1{ coordinates.data(), Nodal::size_geom1_coords };
   const typename Nodal::Coords2 coords2{ coordinates.data() + Nodal::size_geom1_coords, Nodal::size_geom2_coords };
   const RuleGenerator rule_generator{ SmoothedProjectedEdgeMapping{ 0.0 } };
-  const Nodal without_offset{ rule_generator, Gap{ OpposingNormalGap{}, 0.0 } };
-  const Nodal with_offset{ rule_generator, Gap{ OpposingNormalGap{}, residual_gap } };
+  const Nodal without_offset{ rule_generator, NodalIntegrand{ Gap{ OpposingNormalGap{}, 0.0 } } };
+  const Nodal with_offset{ rule_generator, NodalIntegrand{ Gap{ OpposingNormalGap{}, residual_gap } } };
   const auto baseline = without_offset.evaluate( coords1, coords2 );
   const auto shifted = with_offset.evaluate( coords1, coords2 );
   ASSERT_EQ( baseline.quadrature_metadata.status, QuadratureStatus::Success );
   ASSERT_EQ( shifted.quadrature_metadata.status, QuadratureStatus::Success );
   ASSERT_TRUE( baseline.has_active_points );
   ASSERT_TRUE( shifted.has_active_points );
-  for ( IndexT node = 0; node < Nodal::num_nodes; ++node ) {
+  for ( IndexT node = 0; node < Nodal::Result::num_nodes; ++node ) {
     EXPECT_NEAR( shifted.tributaryArea( node ), baseline.tributaryArea( node ), comparison_tolerance );
     EXPECT_NEAR( shifted.weightedGap( node ),
                  baseline.weightedGap( node ) - residual_gap * baseline.tributaryArea( node ), comparison_tolerance );
   }
 
-  const Energy open_energy{ rule_generator, { penalty, Gap{ OpposingNormalGap{}, 0.0 } } };
-  const Energy active_energy{ rule_generator, { penalty, Gap{ OpposingNormalGap{}, residual_gap } } };
+  const Energy open_energy{ rule_generator, EnergyIntegrandT{ { penalty, Gap{ OpposingNormalGap{}, 0.0 } } } };
+  const Energy active_energy{ rule_generator,
+                              EnergyIntegrandT{ { penalty, Gap{ OpposingNormalGap{}, residual_gap } } } };
   const auto open = open_energy.evaluate( coords1, coords2 );
   const auto active = active_energy.evaluate( coords1, coords2 );
   ASSERT_EQ( open.quadrature_metadata.status, QuadratureStatus::Success );
@@ -336,7 +342,7 @@ TEST( EnergyMortarPairValues, residual_gap_shifts_nodal_integrals_and_activates_
 TEST( EnergyMortarPairValues, preserves_normal_gap_for_very_short_valid_edge )
 {
   using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<3>>;
-  using Nodal = PairNodalGapIntegral<RuleGenerator, OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
+  using Nodal = PairIntegral<RuleGenerator, NodalGapIntegrand<OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>>;
   constexpr RealT edge_length = 1.0e-13;
   constexpr RealT separation = 0.25;
   constexpr RealT comparison_tolerance = 1.0e-12;
@@ -348,7 +354,7 @@ TEST( EnergyMortarPairValues, preserves_normal_gap_for_very_short_valid_edge )
                                       { coordinates.data() + Nodal::size_geom1_coords, Nodal::size_geom2_coords } );
   ASSERT_EQ( result.quadrature_metadata.status, QuadratureStatus::Success );
   ASSERT_TRUE( result.has_active_points );
-  for ( IndexT node = 0; node < Nodal::num_nodes; ++node ) {
+  for ( IndexT node = 0; node < Nodal::Result::num_nodes; ++node ) {
     ASSERT_GT( result.tributaryArea( node ), 0.0 );
     EXPECT_NEAR( result.weightedGap( node ) / result.tributaryArea( node ), -separation, comparison_tolerance );
   }
@@ -525,8 +531,10 @@ void checkRuleGeneratorFiniteDifferences()
   constexpr RealT smoothing_fraction = 0.2;
   const RuleGenerator rule_generator{ SmoothedProjectedEdgeMapping{ smoothing_fraction } };
   const Gap gap{ {}, 0.05 };
-  const PairEnergyIntegral<RuleGenerator, PenaltyEnergyDensity<Gap>> energy{ rule_generator, { 7.0, gap } };
-  const PairNodalGapIntegral<RuleGenerator, Gap, BasisFunction<EDGE, LINEAR_LAGRANGE>> nodal{ rule_generator, gap };
+  const PairIntegral<RuleGenerator, EnergyIntegrand<PenaltyEnergyDensity<Gap>>> energy{
+      rule_generator, EnergyIntegrand<PenaltyEnergyDensity<Gap>>{ { 7.0, gap } } };
+  const PairIntegral<RuleGenerator, NodalGapIntegrand<Gap, BasisFunction<EDGE, LINEAR_LAGRANGE>>> nodal{
+      rule_generator, NodalGapIntegrand<Gap, BasisFunction<EDGE, LINEAR_LAGRANGE>>{ gap } };
   // The two oblique, oppositely directed edges overlap only through their interiors, placing both projected endpoints
   // inside the smoothing regions rather than on an exact endpoint branch.
   const MdArray<RealT, decltype( energy )::size_coords> coordinates{ 0.0, 0.0, 1.7, 0.1, 1.6, 0.25, 0.25, 0.15 };
@@ -583,22 +591,22 @@ concept CanEvaluateScalarPairs =
     requires { &evaluatePairValuesJacobiansAndHessians<ExecutionMode::Sequential, Function>; };
 
 // Scalar pair evaluation accepts energy outputs and rejects vector nodal integrals at its interface.
+using SinglePointRuleGenerator =
+    PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>;
+static_assert( CanEvaluateScalarPairs<
+               PairIntegral<SinglePointRuleGenerator, EnergyIntegrand<PenaltyEnergyDensity<OpposingNormalGap>>>> );
 static_assert(
-    CanEvaluateScalarPairs<
-        PairEnergyIntegral<PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>,
-                           PenaltyEnergyDensity<OpposingNormalGap>>> );
-static_assert(
-    !CanEvaluateScalarPairs<
-        PairNodalGapIntegral<PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<1>>,
-                             OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>> );
+    !CanEvaluateScalarPairs<PairIntegral<SinglePointRuleGenerator,
+                                         NodalGapIntegrand<OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>>> );
 
 // Both evaluations must return values and quadrature status for active, open, zero-gap, and invalid pairs. A rigid
 // vertical edge translation has analytic derivatives; zero gap retains activation and the compressive Hessian.
 TEST_P( EnergyMortarPairEvaluationTest, energy_evaluation_returns_values_jacobians_and_hessians )
 {
   using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
-  using Function = PairEnergyIntegral<RuleGenerator, PenaltyEnergyDensity<OpposingNormalGap>>;
-  const Function function{ RuleGenerator{ SmoothedProjectedEdgeMapping{ 0.0 } }, { 4.0 } };
+  using Integrand = EnergyIntegrand<PenaltyEnergyDensity<OpposingNormalGap>>;
+  using Function = PairIntegral<RuleGenerator, Integrand>;
+  const Function function{ RuleGenerator{ SmoothedProjectedEdgeMapping{ 0.0 } }, Integrand{ { 4.0 } } };
   // Mesh1 contains one horizontal edge at y=0. Mesh2 contains four longer, oppositely directed candidates: a
   // penetrating edge at y=0.1, an open edge at y=-0.1, a coincident edge, and a collapsed edge at the origin.
   const auto x1 = copyToExecutionSpace<RealT>( { 0.0, 2.0 } );
@@ -910,8 +918,9 @@ struct VectorPolynomialPairFunction : ScalarPolynomialPairFunction {
 TEST_P( EnergyMortarPairEvaluationTest, open_nodal_integrals_keep_values_and_jacobians )
 {
   using RuleGenerator = PairQuadratureRuleGenerator<SmoothedProjectedEdgeMapping, EdgeQuadratureRuleGenerator<2>>;
-  using Function = PairNodalGapIntegral<RuleGenerator, OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>;
-  using PairNodalGap = Function::PairNodalGap;
+  using Function =
+      PairIntegral<RuleGenerator, NodalGapIntegrand<OpposingNormalGap, BasisFunction<EDGE, LINEAR_LAGRANGE>>>;
+  using PairNodalGap = Function::Result;
   using DerivativeResult = PairValueJacobian<PairNodalGap, Function::size_coords>;
   ArrayT<DerivativeResult> derivative_results( 1, 1, allocatorId() );
   const auto derivative_result_view = derivative_results.view();
@@ -926,7 +935,7 @@ TEST_P( EnergyMortarPairEvaluationTest, open_nodal_integrals_keep_values_and_jac
   const auto& derivative_result = host_derivative_results[0];
   ASSERT_EQ( derivative_result.pair_value.quadrature_metadata.status, QuadratureStatus::Success );
   EXPECT_TRUE( derivative_result.pair_value.has_active_points );
-  for ( IndexT node = 0; node < Function::num_nodes; ++node ) {
+  for ( IndexT node = 0; node < PairNodalGap::num_nodes; ++node ) {
     const IndexT gap_row = PairNodalGap::weightedGapIndex( node );
     const IndexT area_row = PairNodalGap::tributaryAreaIndex( node );
     EXPECT_NEAR( derivative_result.pair_value.weightedGap( node ), 0.1, tolerance );
