@@ -288,6 +288,15 @@ void TestMesh::clear( bool keepCoords )
     this->nonmortar_element_thickness = nullptr;
   }
 
+  this->inv_mx1.clear();
+  this->inv_my1.clear();
+  this->inv_mz1.clear();
+  this->inv_mx2.clear();
+  this->inv_my2.clear();
+  this->inv_mz2.clear();
+  this->registered_inverse_mass1 = false;
+  this->registered_inverse_mass2 = false;
+
 }  // end TestMesh::clear()
 
 //------------------------------------------------------------------------------
@@ -843,6 +852,28 @@ void TestMesh::allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY,
 }  // end TestMesh::allocateAndSetVelocities()
 
 //------------------------------------------------------------------------------
+void TestMesh::allocateAndSetNodalInverseMass( IndexT mesh_id, RealT inv_mx, RealT inv_my, RealT inv_mz )
+{
+  SLIC_ERROR_IF( this->mortarMeshId == this->nonmortarMeshId,
+                 "TestMesh::allocateAndSetNodalInverseMass(): please set unique mortarMeshId and nonmortarMeshId prior "
+                 "to calling this routine." );
+
+  if ( mesh_id == this->mortarMeshId ) {
+    this->inv_mx1.assign( static_cast<size_t>( this->numTotalNodes ), inv_mx );
+    this->inv_my1.assign( static_cast<size_t>( this->numTotalNodes ), inv_my );
+    this->inv_mz1.assign( static_cast<size_t>( this->numTotalNodes ), inv_mz );
+    this->registered_inverse_mass1 = true;
+  } else if ( mesh_id == this->nonmortarMeshId ) {
+    this->inv_mx2.assign( static_cast<size_t>( this->numTotalNodes ), inv_mx );
+    this->inv_my2.assign( static_cast<size_t>( this->numTotalNodes ), inv_my );
+    this->inv_mz2.assign( static_cast<size_t>( this->numTotalNodes ), inv_mz );
+    this->registered_inverse_mass2 = true;
+  } else {
+    SLIC_ERROR( "TestMesh::allocateAndSetNodalInverseMass(): not a valid mesh id." );
+  }
+}
+
+//------------------------------------------------------------------------------
 void TestMesh::allocateAndSetBulkModulus( IndexT mesh_id, RealT val )
 {
   // Check that mesh ids are the same. The TestMesh class was built around
@@ -993,6 +1024,16 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
     registerNodalVelocities( this->nonmortarMeshId, this->vx2, this->vy2, this->vz2 );
   }
 
+  if ( registered_inverse_mass1 ) {
+    registerNodalInverseMass( this->mortarMeshId, this->inv_mx1.data(), this->inv_my1.data(),
+                              this->dim == 3 ? this->inv_mz1.data() : nullptr );
+  }
+
+  if ( registered_inverse_mass2 ) {
+    registerNodalInverseMass( this->nonmortarMeshId, this->inv_mx2.data(), this->inv_my2.data(),
+                              this->dim == 3 ? this->inv_mz2.data() : nullptr );
+  }
+
   // register nodal pressure and nodal gap array for the nonmortar mesh
   // for mortar based methods
   switch ( method ) {
@@ -1085,7 +1126,8 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
 
   enableTimestepVote( csIndex, params.enable_timestep_vote );
   setTimestepPenFrac( csIndex, params.timestep_pen_frac );
-  setTimestepScale( csIndex, params.timestep_scale );
+  setTimestepCriteria( csIndex, params.timestep_criteria );
+  setExplicitIntegratorStabilityFactor( csIndex, params.explicit_integrator_stability_factor );
 
   // if enforcement is penalty, register penalty parameters
   if ( enforcement == PENALTY ) {

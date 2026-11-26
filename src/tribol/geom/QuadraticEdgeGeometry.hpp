@@ -32,8 +32,8 @@ class QuadraticEdgeGeometry {
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE explicit QuadraticEdgeGeometry( Coords coords )
   {
     for ( IndexT node = 0; node < num_nodes; ++node ) {
-      for ( IndexT component = 0; component < spatial_dim; ++component ) {
-        coords_( node, component ) = coords( node, component );
+      for ( IndexT d = 0; d < spatial_dim; ++d ) {
+        coords_( node, d ) = coords( node, d );
       }
     }
   }
@@ -45,10 +45,10 @@ class QuadraticEdgeGeometry {
     MdArray<RealT, num_nodes> values{};
     Basis::eval( parametric_coords, values.view() );
     Point point;
-    for ( IndexT component = 0; component < spatial_dim; ++component ) {
-      point[component] = 0.0;
+    for ( IndexT d = 0; d < spatial_dim; ++d ) {
+      point[d] = 0.0;
       for ( IndexT node = 0; node < num_nodes; ++node ) {
-        point[component] += values[node] * coords_( node, component );
+        point[d] += values[node] * coords_( node, d );
       }
     }
     return point;
@@ -61,10 +61,10 @@ class QuadraticEdgeGeometry {
     MdArray<RealT, num_nodes, parametric_dim> derivatives{};
     Basis::evalParametricDerivatives( parametric_coords, derivatives.view() );
     Vector result;
-    for ( IndexT component = 0; component < spatial_dim; ++component ) {
-      result[component] = 0.0;
+    for ( IndexT d = 0; d < spatial_dim; ++d ) {
+      result[d] = 0.0;
       for ( IndexT node = 0; node < num_nodes; ++node ) {
-        result[component] += derivatives( node, 0 ) * coords_( node, component );
+        result[d] += derivatives( node, 0 ) * coords_( node, d );
       }
     }
     return result;
@@ -88,13 +88,13 @@ class QuadraticEdgeGeometry {
     constexpr IndexT second_endpoint = 1;
     constexpr IndexT midpoint = 2;
     MonomialCoefficients coefficients;
-    for ( IndexT component = 0; component < spatial_dim; ++component ) {
-      const RealT first = coords_( first_endpoint, component );
-      const RealT second = coords_( second_endpoint, component );
-      const RealT middle = coords_( midpoint, component );
-      coefficients.constant[component] = middle;
-      coefficients.linear[component] = 0.5 * ( second - first );
-      coefficients.quadratic[component] = 0.5 * ( first + second ) - middle;
+    for ( IndexT d = 0; d < spatial_dim; ++d ) {
+      const RealT first = coords_( first_endpoint, d );
+      const RealT second = coords_( second_endpoint, d );
+      const RealT middle = coords_( midpoint, d );
+      coefficients.constant[d] = middle;
+      coefficients.linear[d] = 0.5 * ( second - first );
+      coefficients.quadratic[d] = 0.5 * ( first + second ) - middle;
     }
     return coefficients;
   }

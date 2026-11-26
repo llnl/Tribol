@@ -179,17 +179,23 @@ void setQuadratureOrder( IndexT cs_id, int order );
 void enableQuadratureSubdivision( IndexT cs_id, bool enabled,
                                   int num_subdivisions = default_num_quadrature_subdivisions );
 
-/*!
- *
- * \brief sets the timestep scale factor applied to the timestep vote
- *
- * \param [in] cs_id coupling scheme id
- * \param [in] scale the scale factor applied to the timestep vote
- *
- * \pre scale > 0
- *
+/**
+ * @brief Select which allowable-timestep criteria are active when timestep voting is enabled.
+ * @param cs_id Registered coupling scheme ID.
+ * @param criteria Struct of boolean flags selecting active criteria.
  */
-void setTimestepScale( IndexT cs_id, RealT scale );
+void setTimestepCriteria( IndexT cs_id, TimestepCriteria criteria );
+
+/**
+ * @brief Set the dimensionless stability factor for explicit penalty CFL timestep criteria.
+ *
+ * Tribol divides this factor by the conservative contact frequency bound. For central difference, the default
+ * undamped stability factor is 2.0.
+ *
+ * @param cs_id Registered coupling scheme ID.
+ * @param stability_factor Positive finite dimensionless explicit-integrator stability factor.
+ */
+void setExplicitIntegratorStabilityFactor( IndexT cs_id, RealT stability_factor );
 
 /*!
  * \brief Sets the area fraction for inclusion of a contact overlap
@@ -362,6 +368,19 @@ void registerNodalDisplacements( IndexT mesh_id, const RealT* dx, const RealT* d
  * registerMesh()
  */
 void registerNodalVelocities( IndexT mesh_id, const RealT* vx, const RealT* vy, const RealT* vz = nullptr );
+
+/**
+ * @brief Register component-wise inverse diagonal nodal masses on a contact surface.
+ *
+ * Zero entries represent constrained velocity degrees of freedom with infinite effective mass.
+ *
+ * @param mesh_id ID of the registered contact mesh.
+ * @param inverse_mass_x Array of x-component inverse diagonal nodal masses.
+ * @param inverse_mass_y Array of y-component inverse diagonal nodal masses.
+ * @param inverse_mass_z Array of z-component inverse diagonal nodal masses (3D only).
+ */
+void registerNodalInverseMass( IndexT mesh_id, const RealT* inverse_mass_x, const RealT* inverse_mass_y,
+                               const RealT* inverse_mass_z = nullptr );
 
 /*!
  * \brief Registers nodal reference coords on the contact surface. Reference coordinates refer to the original mesh

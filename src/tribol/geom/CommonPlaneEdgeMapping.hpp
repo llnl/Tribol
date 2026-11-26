@@ -151,8 +151,8 @@ struct CommonPlaneEdgeMapping {
       output.geom2_parametric_coords( q, 0 ) =
           2.0 * Vector::cross_product( Vector( edge2.origin(), point ), line.normal )[2] / determinant2 - 1.0;
       output.weights[q] = reference.weights[q];
-      for ( IndexT component = 0; component < LinearEdgeGeometry::spatial_dim; ++component ) {
-        output.integration_surface_normals( q, component ) = line.normal[component];
+      for ( IndexT d = 0; d < LinearEdgeGeometry::spatial_dim; ++d ) {
+        output.integration_surface_normals( q, d ) = line.normal[d];
       }
     }
     output.metadata = { QuadratureStatus::Success, num_points };

@@ -856,6 +856,36 @@ class MfemMeshData {
   std::vector<const RealT*> GetRedecompVelocityPtrs() const { return velocity_->GetRedecompFieldPtrs(); }
 
   /**
+   * @brief Add/replace the parent component-wise inverse diagonal mass grid function
+   *
+   * @param inverse_mass Component-wise inverse diagonal mass grid function on the parent mesh
+   */
+  void SetParentInverseMass( const mfem::ParGridFunction& inverse_mass );
+
+  /**
+   * @brief Determine if an inverse diagonal mass grid function has been set
+   *
+   * @return true: Inverse diagonal mass grid function has been set
+   * @return false: Inverse diagonal mass grid function has not been set
+   */
+  bool HasInverseMass() const { return inverse_mass_ != nullptr; }
+
+  /** @brief Return the registered parent inverse diagonal mass, or nullptr if it has not been registered. */
+  const mfem::ParGridFunction* GetParentInverseMass() const
+  {
+    return inverse_mass_ ? &inverse_mass_->GetParentGridFn() : nullptr;
+  }
+
+  /**
+   * @brief Get pointers to component arrays of the inverse diagonal mass on the RedecompMesh
+   *
+   * @return std::vector<const RealT*> of length 3
+   *
+   * @note The third entry is nullptr in two dimensions
+   */
+  std::vector<const RealT*> GetRedecompInverseMassPtrs() const { return inverse_mass_->GetRedecompFieldPtrs(); }
+
+  /**
    * @brief Clears all kinematic and rate penalty data
    */
   void ClearAllPenaltyData();
@@ -1192,9 +1222,25 @@ class MfemMeshData {
   bool IsLORFieldTransferEnabled() const { return transfers_fields_through_lor_; }
 
   /**
+   * @brief Determine if element thicknesses have been computed
+   *
+   * @return true: Element thicknesses have been computed
+   * @return false: Element thicknesses have not been computed
+   */
+  bool HasElemThickness() const { return elem_thickness_ != nullptr; }
+
+  /**
    * @brief Computes element thicknesses for volume elements attached to the contact surface
    */
   void ComputeElementThicknesses();
+
+  /**
+   * @brief Determine if material moduli have been set
+   *
+   * @return true: Material moduli have been set
+   * @return false: Material moduli have not been set
+   */
+  bool HasMaterialModulus() const { return material_modulus_ != nullptr; }
 
   /**
    * @brief Compute material modulus field at each element
@@ -1426,6 +1472,12 @@ class MfemMeshData {
    * nullptr otherwise
    */
   std::unique_ptr<ParentField> velocity_;
+
+  /**
+   * @brief Contains component-wise inverse diagonal mass grid function and transfer operators if set;
+   * nullptr otherwise
+   */
+  std::unique_ptr<ParentField> inverse_mass_;
 
   /**
    * @brief Kinematic constant contact penalty for the first Tribol registered mesh
@@ -2137,6 +2189,9 @@ class MfemJacobianData {
    * @brief Builds new transfer data after a new redecomp mesh has been built
    */
   void UpdateJacobianXfer();
+
+  /** @brief Return whether the transfer to parent true DOFs has been initialized. */
+  bool HasParentPath() const { return update_data_ != nullptr; }
 
   /**
    * @brief Assemble a solver-visible Jacobian on caller-provided final FE spaces

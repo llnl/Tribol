@@ -71,7 +71,10 @@ set(tribol_headers
     mesh/MfemData.hpp
 
     physics/integrals/PairIntegrals.hpp
-    
+
+    physics/timestep/TimestepCalculator.hpp
+    physics/timestep/TimestepCriteria.hpp
+
     physics/AlignedMortar.hpp
     physics/CommonPlane.hpp
     physics/CommonPlaneFormulation.hpp
@@ -129,6 +132,8 @@ set(tribol_sources
     physics/Mortar.cpp
     physics/NodalEnergyMortar.cpp
     physics/Physics.cpp
+
+    physics/timestep/TimestepCalculator.cpp
      
     search/CoarseSearchFactory.cpp
     search/InterfacePairFinder.cpp

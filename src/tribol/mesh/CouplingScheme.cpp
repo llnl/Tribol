@@ -27,10 +27,13 @@
 #include "tribol/utils/Math.hpp"
 #include "tribol/search/InterfacePairFinder.hpp"
 #include "tribol/common/Parameters.hpp"
+#include "tribol/physics/CommonPlane.hpp"
 #include "tribol/physics/Physics.hpp"
 #include "tribol/physics/ContactFormulationFactory.hpp"
+#include "tribol/physics/timestep/TimestepCalculator.hpp"
 
 #include "tribol/integ/FE.hpp"
+#include "tribol/integ/Integration.hpp"
 namespace tribol {
 
 //------------------------------------------------------------------------------
@@ -1051,17 +1054,30 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
     }
     // The formulation performs the search and gap calculations needed to compute the residual from the current mesh.
     ContactFormulationInputs inputs;
+    inputs.dt = dt;
 #ifdef BUILD_REDECOMP
     inputs.multiplier = m_contact_multiplier.get();
 #endif
     m_formulation_result = m_formulation->computeNodalResiduals( getMesh1().getView(), getMesh2().getView(), inputs );
-    if ( m_formulation_result.time_step ) {
-      dt = *m_formulation_result.time_step;
+    if ( m_parameters.enable_timestep_vote ) {
+      dt = m_formulation_result.time_step.value_or( std::numeric_limits<RealT>::infinity() );
     }
     return 0;
   }
 
   auto& params = m_parameters;
+
+#ifdef BUILD_REDECOMP
+  if ( m_contactMethod == COMMON_PLANE && hasMfemData() && params.enable_timestep_vote &&
+       params.timestep_criteria.nodal_penalty_cfl && getMesh1().getElementType() == TRIANGLE &&
+       ( m_enforcementOptions.penalty_options.constraint_type == KINEMATIC_AND_RATE ||
+         m_contactModel == VISCOUS_TANGENTIAL ) ) {
+    SLIC_ERROR(
+        "Legacy MFEM Common Plane nodal_penalty_cfl does not support damping on triangular faces. "
+        "Set nodal_penalty_cfl = false via setTimestepCriteria() to disable this criterion." );
+    return 1;
+  }
+#endif
 
   // loop over number of interface pairs
   IndexT numPairs = m_interface_pairs.size();
@@ -1144,9 +1160,19 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   SLIC_WARNING_IF( err != 0, "CouplingScheme::apply(): error in ApplyInterfacePhysics for " << "coupling scheme, "
                                                                                             << this->m_id << "." );
 
-  // compute Tribol timestep vote on the coupling scheme
-  if ( err == 0 && getNumActivePairs() > 0 ) {
-    computeTimeStep( dt );
+  // Compute Tribol timestep vote on the coupling scheme. Every rank participates so parallel reductions remain
+  // collective even when some ranks have zero local active pairs.
+  if ( m_contactMethod == COMMON_PLANE && m_parameters.enable_timestep_vote ) {
+#ifdef TRIBOL_USE_MPI
+    int mpi_initialized = 0;
+    MPI_Initialized( &mpi_initialized );
+    if ( mpi_initialized ) {
+      MPI_Allreduce( MPI_IN_PLACE, &err, 1, MPI_INT, MPI_MAX, getProblemComm() );
+    }
+#endif
+    if ( err == 0 ) {
+      computeTimeStep( dt );
+    }
   }
 
   // write contact plane output if it is on host
@@ -1391,40 +1417,23 @@ void CouplingScheme::allocateMethodData()
 //------------------------------------------------------------------------------
 void CouplingScheme::computeTimeStep( RealT& dt )
 {
-  if ( dt < 1.e-8 ) {
-    // current timestep too small for Tribol vote. Leave unchanged and return
+  if ( !m_parameters.enable_timestep_vote ) {
+    return;
+  }
+  if ( !m_parameters.timestep_criteria.anyEnabled() ) {
+    dt = std::numeric_limits<RealT>::infinity();
     return;
   }
 
-  // make sure velocities are registered
-  if ( !m_mesh1->hasVelocity() || !m_mesh2->hasVelocity() ) {
-    if ( m_mesh1->numberOfElements() > 0 && m_mesh2->numberOfElements() > 0 ) {
-      // invalid registration of nodal velocities for non-null meshes
-      dt = -1.0;
-      return;
-    } else {
-      // at least one null mesh with allowable null velocities; don't modify dt
-      return;
-    }
-  }
-
-  // if we are here we have registered velocities for non-null meshes
-  // and can compute the timestep vote
   switch ( m_contactMethod ) {
     case SINGLE_MORTAR:
-      // no-op
-      break;
     case ALIGNED_MORTAR:
-      // no-op
-      break;
     case MORTAR_WEIGHTS:
       // no-op
       break;
     case COMMON_PLANE:
       if ( m_enforcementMethod == PENALTY ) {
-        if ( m_parameters.enable_timestep_vote ) {
-          this->computeCommonPlaneTimeStep( dt );
-        }
+        this->computeCommonPlaneTimeStep( dt );
       }
       break;
     default:
@@ -1432,394 +1441,425 @@ void CouplingScheme::computeTimeStep( RealT& dt )
   }  // end-switch
 }
 
+namespace detail {
+
+#ifdef BUILD_REDECOMP
+namespace {
+
+/** @brief Frozen force coefficients for an active legacy Common Plane pair. */
+struct LegacyCommonPlaneCflPoint {
+  CommonPlanePairBasis force_basis;         ///< Basis used to distribute the contact force.
+  CommonPlanePairBasis velocity_basis;      ///< Basis used to interpolate velocity for damping.
+  axom::primal::Vector<RealT, 3> normal{};  ///< Contact plane unit normal.
+  RealT weighted_stiffness{ 0.0 };          ///< Normal penalty stiffness times overlap measure.
+  RealT weighted_rate_penalty{ 0.0 };       ///< Active gap-rate penalty times overlap measure.
+  RealT tangential_damping{ 0.0 };          ///< Viscous coefficient applied directly to tangential velocity.
+};
+
+/**
+ * @brief Assemble a legacy frozen penalty or damping matrix on MFEM parent true DOFs.
+ * @tparam Exec Concrete execution mode for packing the element blocks.
+ * @tparam Dim Spatial dimension.
+ * @tparam NumNodes Number of nodes per element on each mesh.
+ * @param cs_view Provides the element IDs of the legacy contact planes.
+ * @param points Frozen force coefficients indexed by contact plane.
+ * @param data MFEM mesh and matrix transfer data.
+ * @param damping True to assemble the damping matrix, false to assemble the normal penalty matrix.
+ * @return The assembled matrix on the parent true DOFs.
+ */
+template <ExecutionMode Exec, int Dim, int NumNodes>
+shared::ParSparseMat assembleLegacyCommonPlaneCflMatrix( CouplingScheme::Viewer cs_view,
+                                                         ArrayViewT<const LegacyCommonPlaneCflPoint> points,
+                                                         const MfemParentPenaltyCflData& data, bool damping )
+{
+  constexpr int size_geom_dofs = NumNodes * Dim;
+  auto assembler = makeResidualJacobianAssembler( data.mesh_data, data.transfer_data, cs_view.getMesh1View(),
+                                                  cs_view.getMesh2View(), points.size(), points.getAllocatorID() );
+  const auto matrix_view = assembler.template view<size_geom_dofs, size_geom_dofs, 4>();
+  forAllExec<Exec>( points.size(), [=] TRIBOL_HOST_DEVICE( IndexT pair_index ) {
+    const auto& plane = cs_view.getCompGeomView().getCommonPlane( pair_index );
+    matrix_view.packPair(
+        pair_index, { plane.getCpElementId1(), plane.getCpElementId2() },
+        [=] TRIBOL_HOST_DEVICE( IndexT point_index, IndexT row, IndexT column ) {
+          const auto& point = points[point_index];
+          const auto& column_basis = damping ? point.velocity_basis : point.force_basis;
+          const IndexT row_basis_index = ( row % size_geom_dofs ) / Dim;
+          const IndexT column_basis_index = ( column % size_geom_dofs ) / Dim;
+          const RealT row_value = row < size_geom_dofs ? point.force_basis.geometry1[row_basis_index]
+                                                       : -point.force_basis.geometry2[row_basis_index];
+          const RealT column_value = column < size_geom_dofs ? column_basis.geometry1[column_basis_index]
+                                                             : -column_basis.geometry2[column_basis_index];
+          const RealT normal_product = point.normal[row % Dim] * point.normal[column % Dim];
+          const RealT coefficient =
+              damping ? point.weighted_rate_penalty * normal_product +
+                            point.tangential_damping * ( ( row % Dim == column % Dim ? 1.0 : 0.0 ) - normal_product )
+                      : point.weighted_stiffness * normal_product;
+          return row_value * coefficient * column_value;
+        } );
+  } );
+  return assembler.assemble();
+}
+
+}  // namespace
+#endif  // BUILD_REDECOMP
+
+/**
+ * @brief Evaluate active timestep criteria across Common Plane contact pairs on execution mode Exec.
+ * @tparam Exec Concrete execution mode for the pair and row-sum reduction kernels.
+ * @param cs_view Coupling scheme device view supplying CompGeom common planes and mesh views.
+ * @param calculator Timestep calculator holding active criteria and parameters.
+ * @param dt_in Incoming simulation timestep for velocity projection (<= 0 disables velocity projection).
+ * @param num_pairs Number of active Common Plane pairs.
+ * @param num_dofs Number of local DOF slots for nodal penalty CFL row-sum accumulation.
+ * @param allocator_id Umpire allocator ID matching the execution space.
+ * @param dim Spatial dimension (2 or 3).
+ * @param include_damping True when rate penalty or tangential viscous damping is active.
+ * @param include_tangential_damping True when tangential viscous damping is active.
+ * @param second_dof_offset Offset into row-sum arrays for mesh2 DOFs (0 when meshes share DOFs).
+ * @param parent_cfl_data MFEM transfer and parent inverse mass for the nodal CFL vote, when using MFEM.
+ * @return Unclamped global allowable timestep, or +infinity when no criterion votes or after reporting invalid input.
+ */
+template <ExecutionMode Exec>
+RealT computeCommonPlaneTimeStep( CouplingScheme::Viewer cs_view, const TimestepCalculator& calculator, RealT dt_in,
+                                  IndexT num_pairs, IndexT num_dofs, int allocator_id, int dim, bool include_damping,
+                                  bool include_tangential_damping, IndexT second_dof_offset,
+                                  const MfemParentPenaltyCflData* parent_cfl_data )
+{
+  const TimestepSettings& settings = calculator.settings();
+  const TimestepCriteria criteria = settings.active_criteria;
+
+  const bool use_parent_penalty_cfl = parent_cfl_data != nullptr;
+  const bool use_surface_penalty_cfl = criteria.nodal_penalty_cfl && !use_parent_penalty_cfl;
+  const bool compute_local_surface_row_sums = use_surface_penalty_cfl && num_pairs > 0;
+  const IndexT size_stiffness_row_sums =
+      compute_local_surface_row_sums ? axom::utilities::max( static_cast<IndexT>( 1 ), num_dofs ) : 0;
+  const IndexT size_damping_row_sums =
+      ( compute_local_surface_row_sums && include_damping ) ? size_stiffness_row_sums : 0;
+
+  ArrayT<RealT> stiffness_row_sums_data( size_stiffness_row_sums, size_stiffness_row_sums, allocator_id );
+  ArrayT<RealT> damping_row_sums_data( size_damping_row_sums, size_damping_row_sums, allocator_id );
+  stiffness_row_sums_data.fill( 0.0 );
+  damping_row_sums_data.fill( 0.0 );
+  ArrayViewT<RealT> stiffness_row_sums = stiffness_row_sums_data.view();
+  ArrayViewT<RealT> damping_row_sums = damping_row_sums_data.view();
+  ArrayT<int> invalid_cfl_data( { 0, 0, 0 }, allocator_id );
+  auto invalid_surface_nodal_data = invalid_cfl_data.view().subspan( 0, 1 );
+  auto invalid_pair_mass = invalid_cfl_data.view().subspan( 1, 1 );
+#ifdef BUILD_REDECOMP
+  auto unsupported_parent_matrix = invalid_cfl_data.view().subspan( 2, 1 );
+  const IndexT num_parent_points = use_parent_penalty_cfl ? num_pairs : 0;
+  ArrayT<LegacyCommonPlaneCflPoint> parent_points( num_parent_points, num_parent_points, allocator_id );
+  auto parent_points_view = parent_points.view();
+#endif
+
+  constexpr RealT no_timestep_vote = std::numeric_limits<RealT>::max();
+  ReduceMin<Exec, RealT> min_dt( no_timestep_vote );
+
+  forAllExec<Exec>( num_pairs, [=] TRIBOL_HOST_DEVICE( IndexT i ) {
+    auto& cg_view = cs_view.getCompGeomView();
+    auto& plane = cg_view.getCommonPlane( i );
+
+    const auto& m1 = cs_view.getMesh1View();
+    const auto& m2 = cs_view.getMesh2View();
+
+    const IndexT index1 = plane.getCpElementId1();
+    const IndexT index2 = plane.getCpElementId2();
+
+    constexpr int max_dim = 3;
+    constexpr int max_nodes_per_elem = 4;
+
+    const axom::primal::Vector<RealT, 3> overlap_normal{ plane.m_nX, plane.m_nY, dim == 3 ? plane.m_nZ : 0.0 };
+
+    if ( criteria.requiresVelocity() ) {
+      StackArrayT<RealT, max_dim * max_nodes_per_elem> x1;
+      StackArrayT<RealT, max_dim * max_nodes_per_elem> v1;
+      m1.getFaceCoords( index1, x1 );
+      m1.getFaceVelocities( index1, v1 );
+
+      StackArrayT<RealT, max_dim * max_nodes_per_elem> x2;
+      StackArrayT<RealT, max_dim * max_nodes_per_elem> v2;
+      m2.getFaceCoords( index2, x2 );
+      m2.getFaceVelocities( index2, v2 );
+
+      StackArrayT<RealT, max_dim> vel_f1;
+      StackArrayT<RealT, max_dim> vel_f2;
+      initRealArray( vel_f1, dim, 0.0 );
+      initRealArray( vel_f2, dim, 0.0 );
+
+      const RealT cZf1 = ( dim == 3 ) ? plane.m_cZf1 : 0.0;
+      const RealT cZf2 = ( dim == 3 ) ? plane.m_cZf2 : 0.0;
+      GalerkinEval( x1, plane.m_cXf1, plane.m_cYf1, cZf1, LINEAR_LAGRANGE, PHYSICAL, dim, dim, v1, vel_f1 );
+      GalerkinEval( x2, plane.m_cXf2, plane.m_cYf2, cZf2, LINEAR_LAGRANGE, PHYSICAL, dim, dim, v2, vel_f2 );
+
+      TimestepPointData point_data;
+      point_data.point1 = { plane.m_cXf1, plane.m_cYf1, cZf1 };
+      point_data.point2 = { plane.m_cXf2, plane.m_cYf2, cZf2 };
+      point_data.contact_normal = overlap_normal;
+      for ( int d = 0; d < dim; ++d ) {
+        point_data.vel1[d] = vel_f1[d];
+        point_data.vel2[d] = vel_f2[d];
+      }
+      point_data.thickness1 = m1.getElementData().m_thickness[index1];
+      point_data.thickness2 = m2.getElementData().m_thickness[index2];
+      point_data.in_contact = plane.m_inContact;
+
+      const RealT dt_point = calculator.evaluatePenetrationCriteria( point_data, dt_in );
+      if ( std::isfinite( dt_point ) && dt_point > 0.0 ) {
+        min_dt.min( dt_point );
+      }
+    }
+
+    if ( plane.m_inContact && criteria.requiresInverseMass() && plane.m_area > 0.0 ) {
+      RealT penalty_stiff_per_area = 0.0;
+      const auto& pen_options = cs_view.getEnforcementOptions().penalty_options;
+      detail::computeCommonPlanePenaltyStiffnessPerArea( m1, m2, pen_options, index1, index2, penalty_stiff_per_area );
+
+      if ( criteria.pair_spring_mass_cfl ) {
+        bool local_invalid_mass = false;
+        TimestepPairSpringMassData pair_data;
+        pair_data.inv_mass1 =
+            computeSurfaceElementNormalInverseMass( m1, index1, overlap_normal, dim, local_invalid_mass );
+        pair_data.inv_mass2 =
+            computeSurfaceElementNormalInverseMass( m2, index2, overlap_normal, dim, local_invalid_mass );
+        if ( local_invalid_mass ) {
+          tribol::atomicMax( &invalid_pair_mass[0], 1 );
+        } else {
+          pair_data.penalty_stiffness_per_area = penalty_stiff_per_area;
+          pair_data.overlap_measure = plane.m_area;
+          pair_data.in_contact = true;
+          const RealT dt_pair = calculator.evaluatePairSpringMassCfl( pair_data );
+          if ( std::isfinite( dt_pair ) && dt_pair > 0.0 ) {
+            min_dt.min( dt_pair );
+          }
+        }
+      }
+
+      if ( criteria.nodal_penalty_cfl ) {
+        const int num_nodes_per_face1 = static_cast<int>( m1.numberOfNodesPerElement() );
+        const int num_nodes_per_face2 = static_cast<int>( m2.numberOfNodesPerElement() );
+
+        const auto force_basis = computeCommonPlaneForceBasis( plane, m1, m2 );
+        const RealT rate_penalty =
+            pen_options.constraint_type == KINEMATIC_AND_RATE && plane.m_velGap <= 0.0
+                ? computeCommonPlaneRatePenalty( m1, m2, penalty_stiff_per_area, pen_options.rate_calculation )
+                : 0.0;
+        const RealT tangential_damping =
+            include_tangential_damping ? computeCommonPlaneTangentialDamping( m1, m2 ) : 0.0;
+#ifdef BUILD_REDECOMP
+        if ( use_parent_penalty_cfl ) {
+          LegacyCommonPlaneCflPoint point{};
+          // Hold the overlap geometry fixed and use the signed force basis to measure changes in normal separation.
+          point.force_basis = force_basis;
+          point.normal = overlap_normal;
+          point.weighted_stiffness = plane.m_area * penalty_stiff_per_area;
+          point.weighted_rate_penalty = plane.m_area * rate_penalty;
+          point.tangential_damping = tangential_damping;
+          if ( point.weighted_stiffness < 0.0 || !std::isfinite( point.weighted_stiffness ) ||
+               point.weighted_rate_penalty < 0.0 || !std::isfinite( point.weighted_rate_penalty ) ||
+               point.tangential_damping < 0.0 || !std::isfinite( point.tangential_damping ) ) {
+            tribol::atomicMax( &unsupported_parent_matrix[0], 1 );
+          }
+          if ( rate_penalty != 0.0 || tangential_damping != 0.0 ) {
+            // The damped timestep formula assumes a symmetric, positive semidefinite damping matrix.
+            // Check that the velocity interpolation and the force weights agree at the overlap centroid.
+            const int num_velocity_nodes = GetNumFaceNodes( dim, LINEAR_LAGRANGE );
+            if ( num_nodes_per_face1 != num_velocity_nodes || num_nodes_per_face2 != num_velocity_nodes ) {
+              tribol::atomicMax( &unsupported_parent_matrix[0], 2 );
+              return;
+            }
+            point.velocity_basis = computeCommonPlaneVelocityBasis( plane, num_velocity_nodes );
+            constexpr RealT basis_tolerance = 1.0e-10;
+            for ( int basis_index = 0; basis_index < num_velocity_nodes; ++basis_index ) {
+              const RealT difference1 =
+                  point.velocity_basis.geometry1[basis_index] - force_basis.geometry1[basis_index];
+              const RealT difference2 =
+                  point.velocity_basis.geometry2[basis_index] - force_basis.geometry2[basis_index];
+              if ( !( std::abs( difference1 ) <= basis_tolerance && std::abs( difference2 ) <= basis_tolerance ) ) {
+                tribol::atomicMax( &unsupported_parent_matrix[0], 2 );
+                return;
+              }
+            }
+          }
+          parent_points_view[i] = point;
+          return;
+        }
+#endif
+
+        TimestepNodalPenaltyPointData cfl_point;
+        cfl_point.integration_weight = plane.m_area;
+        cfl_point.penalty_stiffness = penalty_stiff_per_area;
+        cfl_point.normal_rate_penalty = rate_penalty;
+        cfl_point.tangential_viscous_coeff = tangential_damping;
+        cfl_point.contact_normal = overlap_normal;
+        cfl_point.spatial_dim = dim;
+        cfl_point.size_basis[0] = num_nodes_per_face1;
+        cfl_point.size_basis[1] = num_nodes_per_face2;
+        for ( int a = 0; a < num_nodes_per_face1; ++a ) {
+          cfl_point.basis_values[0][a] = force_basis.geometry1[a];
+          const IndexT node_id = m1.getGlobalNodeId( index1, a );
+          for ( int d = 0; d < dim; ++d ) {
+            cfl_point.inverse_mass[0][a][d] = m1.getInverseMass( node_id, d );
+            cfl_point.dof_indices[0][a][d] = node_id * dim + d;
+          }
+        }
+        for ( int b = 0; b < num_nodes_per_face2; ++b ) {
+          cfl_point.basis_values[1][b] = force_basis.geometry2[b];
+          const IndexT node_id = m2.getGlobalNodeId( index2, b );
+          for ( int d = 0; d < dim; ++d ) {
+            cfl_point.inverse_mass[1][b][d] = m2.getInverseMass( node_id, d );
+            cfl_point.dof_indices[1][b][d] = second_dof_offset + node_id * dim + d;
+          }
+        }
+        calculator.accumulateNodalPenaltyPoint( cfl_point, stiffness_row_sums, damping_row_sums,
+                                                invalid_surface_nodal_data );
+      }
+    }
+  } );
+
+  RealT local_stiffness_bound = 0.0;
+  RealT local_damping_bound = 0.0;
+  if ( compute_local_surface_row_sums ) {
+    ReduceMax<Exec, RealT> max_stiffness( 0.0 );
+    ReduceMax<Exec, RealT> max_damping( 0.0 );
+    const bool has_damping_sums = size_damping_row_sums > 0;
+    forAllExec<Exec>( size_stiffness_row_sums, [=] TRIBOL_HOST_DEVICE( IndexT dof ) {
+      max_stiffness.max( stiffness_row_sums[dof] );
+      if ( has_damping_sums ) {
+        max_damping.max( damping_row_sums[dof] );
+      }
+    } );
+    local_stiffness_bound = max_stiffness.get();
+    local_damping_bound = max_damping.get();
+  }
+
+  ArrayT<int, 1, MemorySpace::Host> invalid_cfl_host( invalid_cfl_data );
+  RealT global_stiffness_bound = local_stiffness_bound;
+  RealT global_damping_bound = local_damping_bound;
+  RealT global_dt = min_dt.get();
+
+#ifdef TRIBOL_USE_MPI
+  if ( settings.use_mpi ) {
+    MPI_Allreduce( MPI_IN_PLACE, invalid_cfl_host.data(), invalid_cfl_host.size(), MPI_INT, MPI_MAX,
+                   settings.communicator );
+    if ( use_surface_penalty_cfl ) {
+      RealT bounds[2]{ global_stiffness_bound, global_damping_bound };
+      MPI_Allreduce( MPI_IN_PLACE, bounds, 2, MPI_DOUBLE, MPI_SUM, settings.communicator );
+      global_stiffness_bound = bounds[0];
+      global_damping_bound = bounds[1];
+    }
+    MPI_Allreduce( MPI_IN_PLACE, &global_dt, 1, MPI_DOUBLE, MPI_MIN, settings.communicator );
+  }
+#endif
+
+  if ( !calculator.validateSurfaceCflData( invalid_cfl_host[0] != 0, invalid_cfl_host[1] != 0 ) ) {
+    return std::numeric_limits<RealT>::infinity();
+  }
+
+#ifdef BUILD_REDECOMP
+  if ( use_parent_penalty_cfl ) {
+    if ( invalid_cfl_host[2] != 0 ) {
+      const char* reason = invalid_cfl_host[2] == 2
+                               ? "Legacy Common Plane velocity interpolation and force weights must agree for a "
+                                 "symmetric damping matrix."
+                               : "Legacy Common Plane penalty and damping coefficients must be finite and nonnegative.";
+      SLIC_ERROR( reason << " Set nodal_penalty_cfl = false via setTimestepCriteria() to disable this criterion." );
+      return std::numeric_limits<RealT>::infinity();
+    }
+    const auto assemble = [&]( bool damping ) {
+      if ( dim == 2 ) {
+        return assembleLegacyCommonPlaneCflMatrix<Exec, 2, 2>( cs_view, parent_points_view, *parent_cfl_data, damping );
+      }
+      if ( cs_view.getMesh1View().numberOfNodesPerElement() == 3 ) {
+        return assembleLegacyCommonPlaneCflMatrix<Exec, 3, 3>( cs_view, parent_points_view, *parent_cfl_data, damping );
+      }
+      return assembleLegacyCommonPlaneCflMatrix<Exec, 3, 4>( cs_view, parent_points_view, *parent_cfl_data, damping );
+    };
+    const auto penalty_matrix = assemble( false );
+    const auto penalty_bound = computeParentPenaltyRowSumBound( penalty_matrix.get(), parent_cfl_data->mesh_data );
+    if ( !penalty_bound ) {
+      return std::numeric_limits<RealT>::infinity();
+    }
+    global_stiffness_bound = *penalty_bound;
+    if ( include_damping ) {
+      const auto damping_matrix = assemble( true );
+      const auto damping_bound = computeParentPenaltyRowSumBound( damping_matrix.get(), parent_cfl_data->mesh_data );
+      if ( !damping_bound ) {
+        return std::numeric_limits<RealT>::infinity();
+      }
+      global_damping_bound = *damping_bound;
+    }
+  }
+#endif
+
+  if ( criteria.nodal_penalty_cfl ) {
+    const RealT nodal_penalty_dt = calculator.finalizeNodalPenaltyCfl( global_stiffness_bound, global_damping_bound );
+    if ( std::isfinite( nodal_penalty_dt ) && nodal_penalty_dt > 0.0 ) {
+      global_dt = std::min( global_dt, nodal_penalty_dt );
+    }
+  }
+
+  return global_dt == no_timestep_vote ? std::numeric_limits<RealT>::infinity() : global_dt;
+}
+
+}  // namespace detail
+
 //------------------------------------------------------------------------------
 void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 {
-  // note: the timestep vote is based on a maximum allowable interpenetration
-  // approach checking current gaps and then performing a velocity projection.
-  // This timestep vote is not derived from a stability analysis and does not
-  // account for the spring stiffness in a CFL-like timestep constraint.
-  // The timestep vote in this routine is intended to avoid missing contact or
-  // inadequately resolving contact by detecting 'too much' interpenetration.
-  // To do this, the first check is a 'gap check' where the current gap is
-  // checked against a fraction of the element-thicknesses. The second check
-  // assumes zero gap, and then does a velocity projection followed by the
-  // 'gap check' using this new, projected gap.
-
   auto& mesh1 = getMesh1();
   auto& mesh2 = getMesh2();
 
-  // check if the element thicknesses have been set. This is now
-  // regardless of exact penalty calculation type, since element
-  // thicknesses are required for auto contact even if a constant
-  // penalty is used
-  if ( !mesh1.getElementData().m_is_element_thickness_set || !mesh2.getElementData().m_is_element_thickness_set ) {
+  TimestepSettings settings;
+  settings.active_criteria = m_parameters.timestep_criteria;
+  settings.pen_frac = m_parameters.timestep_pen_frac;
+  settings.explicit_integrator_stability_factor = m_parameters.explicit_integrator_stability_factor;
+#ifdef TRIBOL_USE_MPI
+  int mpi_initialized = 0;
+  MPI_Initialized( &mpi_initialized );
+  settings.communicator = getProblemComm();
+  settings.use_mpi = ( mpi_initialized != 0 );
+#endif
+
+  const TimestepCalculator calculator( settings );
+  const detail::MfemParentPenaltyCflData* parent_cfl_data = nullptr;
+  bool use_parent_penalty_cfl = false;
+#ifdef BUILD_REDECOMP
+  use_parent_penalty_cfl = settings.active_criteria.nodal_penalty_cfl && hasMfemData();
+  std::optional<detail::MfemParentPenaltyCflData> transfer_data;
+  if ( use_parent_penalty_cfl && getMfemMeshData()->HasRedecompMesh() ) {
+    transfer_data.emplace( detail::prepareMfemParentPenaltyCfl( *this ) );
+    parent_cfl_data = &*transfer_data;
+  }
+#endif
+  if ( !calculator.anyEnabled() ||
+       ( use_parent_penalty_cfl && !calculator.validateParentPenaltyCflData( parent_cfl_data ) ) ||
+       !calculator.validateRequiredFields( mesh1.getView(), mesh2.getView(), use_parent_penalty_cfl ) ) {
+    dt = std::numeric_limits<RealT>::infinity();
     return;
   }
 
-  RealT proj_ratio = m_parameters.timestep_pen_frac;
-  // int num_sides = 2; // always 2 sides in a single coupling scheme
-  int dim = spatialDim();
+  const int dim = spatialDim();
+  bool meshes_share_dofs = ( m_mesh_id1 == m_mesh_id2 );
+#ifdef BUILD_REDECOMP
+  meshes_share_dofs = meshes_share_dofs || hasMfemData();
+#endif
+  const IndexT first_dof_count = mesh1.numberOfNodes() * dim;
+  const IndexT second_dof_count = mesh2.numberOfNodes() * dim;
+  const IndexT second_dof_offset = meshes_share_dofs ? 0 : first_dof_count;
+  const IndexT num_pairs = getNumActivePairs();
+  const IndexT num_dofs = meshes_share_dofs ? axom::utilities::max( first_dof_count, second_dof_count )
+                                            : first_dof_count + second_dof_count;
+  const int allocator_id = getAllocatorId();
+  const RealT dt_in = dt > 0.0 ? dt : 0.0;
+  const bool include_damping = ( m_enforcementOptions.penalty_options.constraint_type == KINEMATIC_AND_RATE ) ||
+                               ( m_contactModel == VISCOUS_TANGENTIAL );
+  const bool include_tangential_damping = ( m_contactModel == VISCOUS_TANGENTIAL );
 
-  // Loop over each contact plane. Even if pair is not in contact, we still do a
-  // velocity projection for that proximate face-pair to see if interpenetration
-  // next cycle 'may' be too much. Note, if a contact plane exists, then it is a
-  // contact candidate. For this calculation, we want to compute a timestep for
-  // all candidates, not necessarily ones that are deemed to be in contact per
-  // the gap constraint.
-  auto cs_view = getView();
-  ArrayT<RealT> dt_temp_data( { dt, dt }, getAllocatorId() );
-  ArrayViewT<RealT> dt_temp = dt_temp_data;
-  // [0]: exceed_max_gap1, [1]: exceed_max_gap2, [2]: neg_dt_gap_msg, [3]: neg_dt_vel_proj_msg
-  ArrayT<IndexT> msg_data( { static_cast<IndexT>( false ), static_cast<IndexT>( false ), static_cast<IndexT>( false ),
-                             static_cast<IndexT>( false ) },
-                           getAllocatorId() );
-  ArrayViewT<IndexT> msg = msg_data;
-  // Note: A true reduction would be more efficient here.
-  // However, it is not currently implemented because forAllExec would need
-  // to know the execution mode at compile time to instantiate the correct reducer.
-  forAllExec( getExecutionMode(), getNumActivePairs(),
-              [cs_view, dim, proj_ratio, msg, dt_temp, dt] TRIBOL_HOST_DEVICE( IndexT i ) {
-                auto& cg_view = cs_view.getCompGeomView();
-                auto& plane = cg_view.getCommonPlane( i );
-
-                auto& mesh1 = cs_view.getMesh1View();
-                auto& mesh2 = cs_view.getMesh2View();
-
-                // get pair indices
-                IndexT index1 = plane.getCpElementId1();
-                IndexT index2 = plane.getCpElementId2();
-
-                constexpr int max_dim = 3;
-                constexpr int max_nodes_per_elem = 4;
-                StackArrayT<RealT, max_dim * max_nodes_per_elem> x1;
-                StackArrayT<RealT, max_dim * max_nodes_per_elem> v1;
-                mesh1.getFaceCoords( index1, x1 );
-                mesh1.getFaceVelocities( index1, v1 );
-
-                StackArrayT<RealT, max_dim * max_nodes_per_elem> x2;
-                StackArrayT<RealT, max_dim * max_nodes_per_elem> v2;
-                mesh2.getFaceCoords( index2, x2 );
-                mesh2.getFaceVelocities( index2, v2 );
-
-                /////////////////////////////////////////////////////////////
-                // calculate face velocities at projected overlap centroid //
-                /////////////////////////////////////////////////////////////
-                StackArrayT<RealT, max_dim> vel_f1;
-                StackArrayT<RealT, max_dim> vel_f2;
-                initRealArray( vel_f1, dim, 0.0 );
-                initRealArray( vel_f2, dim, 0.0 );
-
-                // interpolate nodal velocity at overlap centroid as projected
-                // onto face 1
-                RealT cXf1 = plane.m_cXf1;
-                RealT cYf1 = plane.m_cYf1;
-                RealT cZf1 = ( dim == 3 ) ? plane.m_cZf1 : 0.;
-                GalerkinEval( x1, cXf1, cYf1, cZf1, LINEAR_LAGRANGE, PHYSICAL, dim, dim, v1, vel_f1 );
-                // interpolate nodal velocity at overlap centroid as projected
-                // onto face 2
-                RealT cXf2 = plane.m_cXf2;
-                RealT cYf2 = plane.m_cYf2;
-                RealT cZf2 = ( dim == 3 ) ? plane.m_cZf2 : 0.;
-                GalerkinEval( x2, cXf2, cYf2, cZf2, LINEAR_LAGRANGE, PHYSICAL, dim, dim, v2, vel_f2 );
-
-                ////////////////////////////////////////////////
-                //                                            //
-                // Compute Timestep Vote Based on a Few Cases //
-                //                                            //
-                ////////////////////////////////////////////////
-
-                ///////////////////////////////////////////////
-                // compute data common to all timestep votes //
-                ///////////////////////////////////////////////
-
-                // compute velocity projections:
-                // compute the dot product between the face velocities
-                // at the overlap-centroid-to-face projected centroid and each
-                // face's outward unit normal AND the overlap normal.
-                RealT v1_dot_n, v2_dot_n, v1_dot_n1, v2_dot_n2;
-                RealT overlapNormal[max_dim];
-                overlapNormal[0] = plane.m_nX;
-                overlapNormal[1] = plane.m_nY;
-                if ( dim == 3 ) {
-                  overlapNormal[2] = plane.m_nZ;
-                }
-
-                // get face normals
-                RealT fn1[max_dim], fn2[max_dim];
-                mesh1.getFaceNormal( index1, fn1 );
-                mesh2.getFaceNormal( index2, fn2 );
-
-                // compute projections
-                v1_dot_n = dotProd( vel_f1, overlapNormal, dim );
-                v2_dot_n = dotProd( vel_f2, overlapNormal, dim );
-                v1_dot_n1 = dotProd( vel_f1, fn1, dim );
-                v2_dot_n2 = dotProd( vel_f2, fn2, dim );
-
-                // Keep debug print statements. This routine is still in the testing phase
-                // std::cout << "face 1 normal: " << fn1[0] << ", " << fn1[1] << ", " << fn1[2] << std::endl;
-                // std::cout << "face 2 normal: " << fn2[0] << ", " << fn2[1] << ", " << fn2[2] << std::endl;
-                // std::cout << " " << std::endl;
-                // std::cout << "face 1 vel: " << vel_f1[0] << ", " << vel_f1[1] << ", " << vel_f1[2] << std::endl;
-                // std::cout << "face 2 vel: " << vel_f2[0] << ", " << vel_f2[1] << ", " << vel_f2[2] << std::endl;
-                // std::cout << " " << std::endl;
-                // std::cout << "First v1_dot_n1 calc: " << v1_dot_n1 << std::endl;
-                // std::cout << "First v2_dot_n2 calc: " << v2_dot_n2 << std::endl;
-                // std::cout << "First v1_dot_n: " << v1_dot_n << std::endl;
-                // std::cout << "First v2_dot_n: " << v2_dot_n << std::endl;
-
-                // add tiny amount to velocity projections to avoid division by zero.
-                // Note that if these projections are close to zero, there may be
-                // stationary interactions or tangential motion. In this case, any
-                // timestep estimate will be very large, and not control the simulation
-                RealT tiny = 1.e-12;
-                RealT tiny1 = ( v1_dot_n >= 0. ) ? tiny : -1. * tiny;
-                RealT tiny2 = ( v2_dot_n >= 0. ) ? tiny : -1. * tiny;
-                v1_dot_n += tiny1;
-                v2_dot_n += tiny2;
-                // reset tiny velocity based on face normal projections.
-                tiny1 = ( v1_dot_n1 >= 0. ) ? tiny : -1. * tiny;
-                tiny2 = ( v2_dot_n2 >= 0. ) ? tiny : -1. * tiny;
-                v1_dot_n1 += tiny1;
-                v2_dot_n2 += tiny2;
-
-                // Keep debug print statements. This routine is still in the testing phase
-                // std::cout << "Second v1_dot_n1 calc: " << v1_dot_n1 << std::endl;
-                // std::cout << "Second v2_dot_n2 calc: " << v2_dot_n2 << std::endl;
-                // std::cout << "Second v1_dot_n: " << v1_dot_n << std::endl;
-                // std::cout << "Second v2_dot_n: " << v2_dot_n << std::endl;
-
-                // get volume element thicknesses associated with each face in this pair
-                RealT t1 = mesh1.getElementData().m_thickness[index1];
-                RealT t2 = mesh2.getElementData().m_thickness[index2];
-
-                // compute the existing gap vector (recall gap is x1-x2 by convention)
-                RealT gapVec[max_dim];
-                gapVec[0] = plane.m_cXf1 - plane.m_cXf2;
-                gapVec[1] = plane.m_cYf1 - plane.m_cYf2;
-                if ( dim == 3 ) {
-                  gapVec[2] = plane.m_cZf1 - plane.m_cZf2;
-                }
-
-                // compute the dot product between gap vector and the outward unit face normals.
-                RealT gap_f1_n1 = dotProd( gapVec, fn1, dim );
-                RealT gap_f2_n2 = dotProd( gapVec, fn2, dim );
-
-                RealT dt1 = 1.e6;                          // initialize as large number
-                RealT dt2 = 1.e6;                          // initialize as large number
-                RealT alpha = cs_view.getTimestepScale();  // multiplier on timestep estimate
-                bool dt1_check1 = false;
-                bool dt2_check1 = false;
-                bool dt1_vel_check = false;
-                bool dt2_vel_check = false;
-
-                // maximum allowable interpenetration in the normal direction of each element
-                RealT max_delta1 = proj_ratio * t1;
-                RealT max_delta2 = proj_ratio * t2;
-
-                // Separation or interpenetration trigger for check 1 and 2:
-                // check if there is further interpen or separation based on the
-                // velocity projection in the direction of the common-plane normal,
-                // which is in the direction of face-2 normal.
-                // The two cases are:
-                // if v1*n < 0 there is interpen
-                // if v2*n > 0 there is interpen
-                //
-                // Note: we compare strictly to 0. here since a 'tiny' value was
-                // appropriately added to the velocity projections, which is akin
-                // to some tolerancing effect
-                dt1_vel_check = ( v1_dot_n < 0. ) ? true : false;
-                dt2_vel_check = ( v2_dot_n > 0. ) ? true : false;
-
-                //////////////////////////////////////////////////////////////////////////
-                // Check 1. Current interpenetration gap exceeds max allowable interpen //
-                //////////////////////////////////////////////////////////////////////////
-
-                // check if face-pair is in contact (i.e. gap < gap_tol), which is determined
-                // in Common Plane ApplyNormal<>() routine
-                if ( plane.m_inContact ) {
-                  // compute the difference between the 'face-gaps' and the max allowable
-                  // interpen as a function of element thickness. Note, we have to use the
-                  // gap projected onto the outward unit face-normal to check against the
-                  // max allowable gap as a factor of the thickness in the element normal
-                  // direction
-                  RealT delta1 = max_delta1 - gap_f1_n1;  // >0 not exceeding max allowable
-                  RealT delta2 = max_delta2 + gap_f2_n2;  // >0 not exceeding max allowable
-
-                  auto exceed_max_gap1 = ( delta1 < 0. ) ? true : false;
-                  auto exceed_max_gap2 = ( delta2 < 0. ) ? true : false;
-
-                  // if velocity projection indicates further interpenetration, and the gaps
-                  // EXCEED max allowable, then compute time step estimates to reduce overlap
-                  dt1_check1 = ( dt1_vel_check ) ? exceed_max_gap1 : false;
-                  dt2_check1 = ( dt2_vel_check ) ? exceed_max_gap2 : false;
-
-                  tribol::atomicMax( &msg[0], static_cast<IndexT>( exceed_max_gap1 ) );
-                  tribol::atomicMax( &msg[1], static_cast<IndexT>( exceed_max_gap2 ) );
-
-                  // compute dt for face 1 and 2 based on the velocity and gap projections onto
-                  // the face-normals for faces where currect gap exceeds max allowable gap.
-                  //
-                  // NOTE:
-                  //
-                  // This calculation RESETS the current gap to be g = 0, and computes a timestep
-                  // such that the velocity projection of the overlap-to-face projected overlap
-                  // centroid does not exceed the max allowable gap.
-                  //
-                  // This avoid a timestep crash in the case that the current gap barely exceeds
-                  // the max allowable and also allows a soft contact response with interpen
-                  // in excess of the max allowable gap without causing timestep crashes.
-                  //
-                  // v1_dot_n1 > 0 and v2_dot_n2 > 0 for further interpen
-                  dt1 = ( dt1_check1 ) ? alpha * max_delta1 / v1_dot_n1 : dt1;
-                  dt2 = ( dt2_check1 ) ? alpha * max_delta2 / v2_dot_n2 : dt2;
-
-                  // Keep debug print statements. This routine is still in the testing phase
-                  // std::cout << "dt1_check1, delta1 and v1_dot_n1: " << dt1_check1 << ", " << max_delta1 << ", " <<
-                  // v1_dot_n1 << std::endl; std::cout << "dt2_check1, delta2 and v2_dot_n2: " << dt2_check1 << ", " <<
-                  // max_delta2 << ", " << v2_dot_n2 << std::endl; std::cout << "dt1 and dt2: " << dt1 << ", " << dt2 <<
-                  // std::endl;
-
-                  // update dt_temp1 only for positive dt1 and/or dt2
-                  if ( dt1 > 0. ) {
-                    tribol::atomicMin( &dt_temp[0], axom::utilities::min( dt1, 1.e6 ) );
-                  }
-                  if ( dt2 > 0. ) {
-                    tribol::atomicMin( &dt_temp[0], axom::utilities::min( 1.e6, dt2 ) );
-                  }
-
-                  if ( dt1 < 0. || dt2 < 0. ) {
-                    tribol::atomicMax( &msg[2], static_cast<IndexT>( true ) );
-                  }
-                }  // end case 1
-
-                ////////////////////////////////////////////////////////////////////////
-                // 2. Velocity projection exceeds max interpenetration                //
-                //                                                                    //
-                //    Note: This is performed for all contact candidates even if they //
-                //          are not 'in contact' per the common-plane method. Every   //
-                //          contact candidate has a contact plane                     //
-                ////////////////////////////////////////////////////////////////////////
-
-                {
-                  // compute the delta between the velocity projection of each face-projected
-                  // common plane centroid location
-                  //
-                  // First project each face-projected common plane centroid using linear velocity
-                  // projection as approximation of configuration next cycle
-                  RealT proj_delta_x1 = plane.m_cXf1 + dt * vel_f1[0];
-                  RealT proj_delta_y1 = plane.m_cYf1 + dt * vel_f1[1];
-                  RealT proj_delta_z1 = 0.;
-
-                  RealT proj_delta_x2 = plane.m_cXf2 + dt * vel_f2[0];
-                  RealT proj_delta_y2 = plane.m_cYf2 + dt * vel_f2[1];
-                  RealT proj_delta_z2 = 0.;
-
-                  // Second compute the amount of interpenetration as the difference between the two
-                  // velocity projected points
-                  RealT proj_delta_x1_fixed = proj_delta_x1;
-                  RealT proj_delta_y1_fixed = proj_delta_y1;
-
-                  proj_delta_x1 -= proj_delta_x2;
-                  proj_delta_y1 -= proj_delta_y2;
-
-                  proj_delta_x2 -= proj_delta_x1_fixed;
-                  proj_delta_y2 -= proj_delta_y1_fixed;
-
-                  // compute the dot product between each face's delta and the OTHER
-                  // face's outward unit normal. This is the magnitude of interpenetration
-                  // of one face's projected overlap-centroid in the 'thickness-direction'
-                  // of the other face (with whom in may be in contact currently, or in
-                  // a velocity projected sense).
-                  RealT proj_delta_n_1 = proj_delta_x1 * fn2[0] + proj_delta_y1 * fn2[1];
-                  RealT proj_delta_n_2 = proj_delta_x2 * fn1[0] + proj_delta_y2 * fn1[1];
-
-                  if ( dim == 3 ) {
-                    // project the z-component
-                    proj_delta_z1 = plane.m_cZf1 + dt * vel_f1[2];
-                    proj_delta_z2 = plane.m_cZf2 + dt * vel_f2[2];
-
-                    RealT proj_delta_z1_fixed = proj_delta_z1;
-
-                    // compute difference between each projected point
-                    proj_delta_z1 -= proj_delta_z2;
-                    proj_delta_z2 -= proj_delta_z1_fixed;
-
-                    // add the z-component of the projection onto the face normal
-                    proj_delta_n_1 += proj_delta_z1 * fn2[2];
-                    proj_delta_n_2 += proj_delta_z2 * fn1[2];
-                  }
-
-                  // Reset the dt velocity check only for faces with continued interpen that exceeds the
-                  // max allowable gap AND where the current gap did NOT exceed that face's max allowable
-                  // gap per check 1 (would result in same dt calc).
-                  //
-                  // Note:
-                  // If proj_delta_n_i < 0, (i=1,2) there is interpen from the velocity projection.
-                  // Check this interpen against the maximum allowable to determine if a velocity projection
-                  // timestep estimate is still required.
-                  if ( dt1_vel_check && !dt1_check1 )  // continued interpen
-                  {
-                    dt1_vel_check = ( proj_delta_n_1 < 0. )
-                                        ? ( ( std::abs( proj_delta_n_1 ) > max_delta1 ) ? true : false )
-                                        : false;
-                  }
-
-                  if ( dt2_vel_check && !dt2_check1 )  // continued interpen
-                  {
-                    dt2_vel_check = ( proj_delta_n_2 < 0. )
-                                        ? ( ( std::abs( proj_delta_n_2 ) > max_delta2 ) ? true : false )
-                                        : false;
-                  }
-
-                  // compute velocity projection based dt (check 2) using a RESET gap (g=0) such that
-                  // the velocity projected gap does not exceed the max allowable gap. This avoid timestep
-                  // crashes for velocity projected gaps slightly in excess of the max allowable and still
-                  // allows for a soft contact response without a timestep crash.
-                  //
-                  // v1_dot_n1 > 0 and v2_dot_n2 > 0 for further interpen
-                  dt1 = ( dt1_vel_check ) ? alpha * max_delta1 / v1_dot_n1 : dt1;
-                  dt2 = ( dt2_vel_check ) ? alpha * max_delta2 / v2_dot_n2 : dt2;
-
-                  // Keep debug print statements. This routine is still in the testing phase
-                  // std::cout << "dt1_vel_check, (proj_delta_n_1+max_delta1), v1_dot_n1: " << dt1_vel_check << ", "
-                  //          << proj_delta_n_1+max_delta1 << ", " << v1_dot_n1 << std::endl;
-                  // std::cout << "dt2_vel_check, (proj_delta_n_2+max_delta2), v2_dot_n2: " << dt2_vel_check << ", "
-                  //          << proj_delta_n_2+max_delta2 << ", " << v2_dot_n2 << std::endl;
-                  // std::cout << "dt1 and dt2: " << dt1 << ", " << dt2 << std::endl;
-
-                  // update dt_temp2 only for positive dt1 and/or dt2
-                  if ( dt1 > 0. ) {
-                    tribol::atomicMin( &dt_temp[1], axom::utilities::min( dt1, 1.e6 ) );
-                  }
-                  if ( dt2 > 0. ) {
-                    tribol::atomicMin( &dt_temp[1], axom::utilities::min( 1.e6, dt2 ) );
-                  }
-                  if ( dt1 < 0. || dt2 < 0. ) {
-                    tribol::atomicMax( &msg[3], static_cast<IndexT>( true ) );
-                  }
-
-                }  // end check 2
-              } );
-
-  // print general messages once
-  // Can we output this message on root? SRW
-  ArrayT<IndexT, 1, MemorySpace::Host> msg_host( msg_data );
-  SLIC_DEBUG_IF( msg_host[0] || msg_host[1], "tribol::computeCommonPlaneTimeStep(): "
-                                                 << "there are locations where mesh overlap may be too large. "
-                                                 << "Cannot provide timestep vote. Reduce timestep and/or increase "
-                                                 << "penalty." );
-
-  SLIC_DEBUG_IF( msg_host[2], "tribol::computeCommonPlaneTimeStep():  "
-                                  << "one or more face-pairs have a negative timestep vote based on "
-                                  << "maximum gap check." );
-
-  SLIC_DEBUG_IF( msg_host[3], "tribol::computeCommonPlaneTimeStep(): "
-                                  << "one or more face-pairs have a negative timestep vote based on "
-                                  << "velocity projection calculation." );
-
-  ArrayT<RealT, 1, MemorySpace::Host> dt_temp_host( dt_temp_data );
-  dt = axom::utilities::min( dt_temp_host[0], dt_temp_host[1] );
+  dt = dispatchExecutionMode( getExecutionMode(), [&]<ExecutionMode Exec>() {
+    return detail::computeCommonPlaneTimeStep<Exec>( getView(), calculator, dt_in, num_pairs, num_dofs, allocator_id,
+                                                     dim, include_damping, include_tangential_damping,
+                                                     second_dof_offset, parent_cfl_data );
+  } );
 }
 
 //------------------------------------------------------------------------------

@@ -846,14 +846,12 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
   if ( velocity_ ) {
     velocity_->UpdateField( update_data_->vector_xfer_, use_device_ );
   }
+  if ( inverse_mass_ ) {
+    inverse_mass_->UpdateField( update_data_->vector_xfer_, use_device_ );
+  }
   TRIBOL_MARK_END( "Copy fields to Redecomp mesh" );
 
-  if ( rebuilt && elem_thickness_ ) {
-    if ( !material_modulus_ ) {
-      SLIC_ERROR_ROOT(
-          "Kinematic element penalty requires material modulus information. "
-          "Call registerMfemMaterialModulus() to set this." );
-    }
+  if ( elem_thickness_ && ( rebuilt || !tribol_elem_thickness_1_ ) ) {
     TRIBOL_MARK_BEGIN( "Copy element thickness to Redecomp mesh" );
     redecomp::RedecompTransfer redecomp_xfer;
     // set element thickness on redecomp mesh
@@ -883,6 +881,14 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
                 [tribol_t2_view, redecomp_t_view, elem_map2_view] TRIBOL_HOST_DEVICE( int i ) {
                   tribol_t2_view[i] = redecomp_t_view[elem_map2_view[i]];
                 } );
+    TRIBOL_MARK_END( "Copy element thickness to Redecomp mesh" );
+  }
+
+  if ( material_modulus_ && ( rebuilt || !tribol_material_modulus_1_ ) ) {
+    TRIBOL_MARK_BEGIN( "Copy material modulus to Redecomp mesh" );
+    redecomp::RedecompTransfer redecomp_xfer;
+    ArrayViewT<const int> elem_map1_view( GetElemMap1() );
+    ArrayViewT<const int> elem_map2_view( GetElemMap2() );
     // set material modulus on redecomp mesh
     redecomp_material_modulus_ =
         std::make_unique<mfem::QuadratureFunction>( new mfem::QuadratureSpace( &GetRedecompMesh(), 0 ) );
@@ -895,7 +901,7 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
         GetElemMap1().size(), GetElemMap1().empty() ? 1 : GetElemMap1().size(), allocator_id_ );
     auto redecomp_m_view = redecomp_material_modulus_->Read( use_device_ );
     ArrayViewT<RealT> tribol_m1_view( *tribol_material_modulus_1_ );
-    // NOTE: this assumes 1 thickness value per element. This is NOT true, in general, for mfem::QuadratureFunction.
+    // NOTE: this assumes 1 modulus value per element. This is NOT true, in general, for mfem::QuadratureFunction.
     forAllExec( exec_mode_, GetElemMap1().size(),
                 [tribol_m1_view, redecomp_m_view, elem_map1_view] TRIBOL_HOST_DEVICE( int i ) {
                   tribol_m1_view[i] = redecomp_m_view[elem_map1_view[i]];
@@ -903,12 +909,12 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
     tribol_material_modulus_2_ = std::make_unique<ArrayT<RealT>>(
         GetElemMap2().size(), GetElemMap2().empty() ? 1 : GetElemMap2().size(), allocator_id_ );
     ArrayViewT<RealT> tribol_m2_view( *tribol_material_modulus_2_ );
-    // NOTE: this assumes 1 thickness value per element. This is NOT true, in general, for mfem::QuadratureFunction.
+    // NOTE: this assumes 1 modulus value per element. This is NOT true, in general, for mfem::QuadratureFunction.
     forAllExec( exec_mode_, GetElemMap2().size(),
                 [tribol_m2_view, redecomp_m_view, elem_map2_view] TRIBOL_HOST_DEVICE( int i ) {
                   tribol_m2_view[i] = redecomp_m_view[elem_map2_view[i]];
                 } );
-    TRIBOL_MARK_END( "Copy element thickness to Redecomp mesh" );
+    TRIBOL_MARK_END( "Copy material modulus to Redecomp mesh" );
   }
 
   return rebuilt;
@@ -925,6 +931,15 @@ void MfemMeshData::SetParentVelocity( const mfem::ParGridFunction& velocity )
     velocity_->SetParentGridFn( velocity );
   } else {
     velocity_ = std::make_unique<ParentField>( velocity );
+  }
+}
+
+void MfemMeshData::SetParentInverseMass( const mfem::ParGridFunction& inverse_mass )
+{
+  if ( inverse_mass_ ) {
+    inverse_mass_->SetParentGridFn( inverse_mass );
+  } else {
+    inverse_mass_ = std::make_unique<ParentField>( inverse_mass );
   }
 }
 
@@ -995,6 +1010,9 @@ void MfemMeshData::SetLORFieldTransferEnabled( bool enabled )
   }
   if ( velocity_ ) {
     velocity_->ClearRedecompField();
+  }
+  if ( inverse_mass_ ) {
+    inverse_mass_->ClearRedecompField();
   }
   redecomp_response_.reset();
   update_data_.reset();
@@ -1130,6 +1148,8 @@ void MfemMeshData::ComputeElementThicknesses()
   } else {
     elem_thickness_ = std::move( submesh_thickness );
   }
+  tribol_elem_thickness_1_.reset();
+  tribol_elem_thickness_2_.reset();
 }
 
 void MfemMeshData::SetMaterialModulus( mfem::Coefficient& modulus_field )

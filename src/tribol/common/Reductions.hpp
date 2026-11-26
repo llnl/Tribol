@@ -25,6 +25,18 @@ template <ExecutionMode Exec, typename T>
 using ReduceMax = axom::ReduceMax<typename toAxomExecSpace<Exec>::type, T>;
 
 /**
+ * @brief Find the minimum of an initial value and contributions from a parallel loop.
+ *
+ * Construct with an initial value, capture by value in a forAllExec<Exec>() loop, and call min(value) for each
+ * contribution. After the loop completes, get() returns the minimum on the host. An empty loop returns the initial
+ * value. For example, ReduceMin<Exec, RealT> can collect the smallest allowable timestep across element pairs.
+ * @tparam Exec Enabled concrete execution mode, matching the loop; Dynamic is unsupported.
+ * @tparam T Scalar type being reduced.
+ */
+template <ExecutionMode Exec, typename T>
+using ReduceMin = axom::ReduceMin<typename toAxomExecSpace<Exec>::type, T>;
+
+/**
  * @brief Sum an initial value and contributions from a parallel loop.
  *
  * Construct with an initial value, capture by value in a forAllExec<Exec>() loop, and add contributions with +=.

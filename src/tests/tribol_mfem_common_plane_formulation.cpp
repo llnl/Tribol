@@ -9,7 +9,8 @@
  *
  * Tests cover formulation selection and rebuilding, residual and Jacobian modes, quadrature and penalty settings,
  * quadratic 2D meshes evaluated without low-order refinement (and restoring LOR when disabled), and MPI ranks without
- * contact elements. Pair-level quadrature and derivatives are tested separately.
+ * contact elements. Timestep tests compare parent-space bounds for the formulation and legacy penalty force laws,
+ * including LOR transfer and legacy damping. Pair-level quadrature and derivatives are tested separately.
  */
 #include <cmath>
 #include <limits>
@@ -1160,6 +1161,374 @@ TEST( CommonPlaneSelection, evaluates_quadratic_residuals_and_jacobians_with_sub
 
   finalize();
 }
+
+/** @brief Build two unit-width quadrilaterals with aligned opposing contact edges.
+ * @param penetration Positive normal overlap between the contact edges.
+ * @return Mesh with the lower body and its contact edge assigned attribute 1 and the upper body and edge attribute 2.
+ */
+mfem::Mesh makeFlatTimestepContactPatch( RealT penetration )
+{
+  constexpr int spatial_dim = 2;
+  const RealT lower_edge_y = 1.0 + 0.5 * penetration;
+  const RealT upper_edge_y = 1.0 - 0.5 * penetration;
+  mfem::Mesh serial_mesh( spatial_dim, 8, 2, 2 );
+  serial_mesh.AddVertex( 0.0, 0.0 );
+  serial_mesh.AddVertex( 1.0, 0.0 );
+  serial_mesh.AddVertex( 1.0, lower_edge_y );
+  serial_mesh.AddVertex( 0.0, lower_edge_y );
+  serial_mesh.AddVertex( 0.0, upper_edge_y );
+  serial_mesh.AddVertex( 1.0, upper_edge_y );
+  serial_mesh.AddVertex( 1.0, 2.0 );
+  serial_mesh.AddVertex( 0.0, 2.0 );
+  const int lower_quad[4] = { 0, 1, 2, 3 };
+  const int upper_quad[4] = { 4, 5, 6, 7 };
+  serial_mesh.AddQuad( lower_quad, 1 );
+  serial_mesh.AddQuad( upper_quad, 2 );
+  const int lower_edge[2] = { 3, 2 };
+  const int upper_edge[2] = { 4, 5 };
+  serial_mesh.AddBdrSegment( lower_edge, 1 );
+  serial_mesh.AddBdrSegment( upper_edge, 2 );
+  serial_mesh.FinalizeQuadMesh( 1, 0, true );
+  return serial_mesh;
+}
+
+// CommonPlaneFormulation computes allowable timesteps for nodal penalty CFL, pair spring-mass CFL, velocity projection,
+// and combined criteria, and reports a SLIC error when an enabled criterion is missing its required fields.
+TEST( MfemCommonPlaneTimestepTest, computes_composable_cfl_and_velocity_timesteps )
+{
+  constexpr IndexT coupling_scheme_id = 0;
+  constexpr int lower_mesh_id = 0;
+  constexpr int upper_mesh_id = 1;
+  constexpr int lower_contact_attribute = 1;
+  constexpr int upper_contact_attribute = 2;
+  constexpr int spatial_dim = 2;
+  constexpr int linear_order = 1;
+
+  auto serial_mesh = makeFlatTimestepContactPatch( 0.02 );
+  mfem::ParMesh parallel_mesh( MPI_COMM_WORLD, serial_mesh );
+  mfem::H1_FECollection fe_collection( linear_order, spatial_dim );
+  mfem::ParFiniteElementSpace coord_space( &parallel_mesh, &fe_collection, spatial_dim, mfem::Ordering::byNODES );
+  mfem::ParGridFunction coords( &coord_space );
+  parallel_mesh.GetNodes( coords );
+
+  // Uniform inverse diagonal mass = 0.25 on both blocks (sqrt(inv_m) = 0.5).
+  mfem::ParGridFunction inv_mass( &coord_space );
+  inv_mass = 0.25;
+
+  // Approaching velocities: lower block (attribute 1) +vy = 10.0, upper block (attribute 2) -vy = -10.0.
+  mfem::ParGridFunction velocity( &coord_space );
+  mfem::Vector lower_vel( { 0.0, 10.0 } );
+  mfem::Vector upper_vel( { 0.0, -10.0 } );
+  mfem::VectorConstantCoefficient lower_vel_coeff( lower_vel );
+  mfem::VectorConstantCoefficient upper_vel_coeff( upper_vel );
+  mfem::PWVectorCoefficient vel_coeff( spatial_dim );
+  vel_coeff.UpdateCoefficient( 1, lower_vel_coeff );
+  vel_coeff.UpdateCoefficient( 2, upper_vel_coeff );
+  velocity.ProjectCoefficient( vel_coeff );
+
+  registerMfemCouplingScheme( coupling_scheme_id, lower_mesh_id, upper_mesh_id, parallel_mesh, coords,
+                              { lower_contact_attribute }, { upper_contact_attribute }, SURFACE_TO_SURFACE, NO_CASE,
+                              COMMON_PLANE, FRICTIONLESS, PENALTY, BINNING_GRID, ExecutionMode::Sequential );
+  // Series penalty = 8 * 8 / (8 + 8) = 4.0.
+  setMfemKinematicConstantPenalty( coupling_scheme_id, 8.0, 8.0 );
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false );
+  setQuadratureOrder( coupling_scheme_id, 1 );  // Single midpoint quadrature point (phi = 0.5 on both endpoints).
+
+  // Enabling nodal_penalty_cfl without registering inverse mass must report a SLIC error.
+  enableTimestepVote( coupling_scheme_id, true );
+  setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ false, false, true, false } );
+  updateMfemParallelDecomposition( 1, true );
+  RealT dt = 10.0;
+  EXPECT_SLIC_ERROR( update( coupling_scheme_id, 0.0, dt ) );
+  setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ false, false, false, true } );
+  EXPECT_SLIC_ERROR( update( coupling_scheme_id, 0.0, dt ) );
+  setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ false, false, true, false } );
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, false );
+  updateMfemParallelDecomposition( 1, true );
+  EXPECT_SLIC_ERROR( update( coupling_scheme_id, 0.0, dt ) );
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false );
+
+  // Register inverse mass and verify exact analytical nodal penalty CFL timestep (returned unclamped even when dt_in <
+  // dt_vote).
+  registerMfemInverseMass( coupling_scheme_id, inv_mass );
+  setExplicitIntegratorStabilityFactor( coupling_scheme_id, 2.0 );
+  updateMfemParallelDecomposition( 1, true );
+  dt = 0.5;
+  ASSERT_EQ( update( coupling_scheme_id, 0.0, dt ), 0 );
+  // Single midpoint quadrature on 2-node edges: w = 1.0, k_pen = 4.0, phi = 0.5 at all 4 nodes, sqrt(inv_m) = 0.5.
+  // normal_abs_sum = 4 * (0.5 * 0.5) = 1.0. Each y-DOF row sum = (1.0 * 4.0) * (0.5 * 0.5) * 1.0 = 1.0.
+  // dt_cfl = 2.0 / sqrt(1.0) = 2.0.
+  EXPECT_NEAR( dt, 2.0, 1.0e-10 );
+
+  // Switch to pair_spring_mass_cfl only: each 2-node edge has total mass = 2 * (1/0.25) = 8.0 -> inv_m = 0.125.
+  // stiffness_bound = 4.0 * 1.0 * (0.125 + 0.125) = 1.0 -> dt = 2.0 / sqrt(1.0) = 2.0.
+  setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ false, false, false, true } );
+  dt = 0.5;
+  ASSERT_EQ( update( coupling_scheme_id, 0.0, dt ), 0 );
+  EXPECT_NEAR( dt, 2.0, 1.0e-10 );
+
+  // When voting is enabled but no criteria are active, dt must be set to +infinity.
+  setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ false, false, false, false } );
+  dt = 1.0;
+  ASSERT_EQ( update( coupling_scheme_id, 0.0, dt ), 0 );
+  EXPECT_TRUE( std::isinf( dt ) );
+
+  // Register velocity and enable current_gap + velocity_projection + nodal_penalty_cfl; velocity projection (dt ~
+  // 0.015) is tighter than nodal penalty CFL (dt = 2.0) and must govern.
+  registerMfemVelocity( coupling_scheme_id, velocity );
+  setTimestepPenFrac( coupling_scheme_id, 0.3 );
+  setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ true, true, true, false } );
+  updateMfemParallelDecomposition( 1, true );
+  dt = 10.0;
+  ASSERT_EQ( update( coupling_scheme_id, 0.0, dt ), 0 );
+  // Element thickness is ~1.01 on both blocks; relative closing speed is 20.0 -> dt_vel = 0.3 * 1.01 / 20.0 = 0.01515.
+  EXPECT_NEAR( dt, 0.3 * 1.01 / 20.0, 1.0e-3 );
+
+  // Verify disabling timestep voting leaves dt unchanged.
+  enableTimestepVote( coupling_scheme_id, false );
+  dt = 10.0;
+  ASSERT_EQ( update( coupling_scheme_id, 0.0, dt ), 0 );
+  EXPECT_EQ( dt, 10.0 );
+
+  finalize();
+}
+
+/** @brief Run the parent-space LOR CFL case on each host execution mode. */
+class MfemCommonPlaneLorCflTest : public testing::TestWithParam<ExecutionMode> {};
+
+// Eight LOR elements per quadratic edge expose the difference between the LOR and parent CFL bounds. Unequal masses
+// exercise local and remote columns of the parent penalty matrix when the two bodies are on different MPI ranks.
+TEST_P( MfemCommonPlaneLorCflTest, computes_penalty_cfl_on_parent_true_dofs )
+{
+  constexpr IndexT coupling_scheme_id = 0;
+  constexpr int lower_mesh_id = 0;
+  constexpr int upper_mesh_id = 1;
+  constexpr int lower_attribute = 1;
+  constexpr int upper_attribute = 2;
+  constexpr int spatial_dim = 2;
+  constexpr int quadratic_order = 2;
+  constexpr int lor_factor = 8;
+  constexpr RealT stability_factor = 2.0;
+  constexpr RealT lower_inverse_mass = 1.0;
+  constexpr RealT upper_inverse_mass = 0.25;
+
+  auto serial_mesh = makeFlatTimestepContactPatch( 2.0e-6 );
+  mfem::ParMesh parallel_mesh( MPI_COMM_WORLD, serial_mesh );
+  parallel_mesh.SetCurvature( quadratic_order );
+  mfem::H1_FECollection fe_collection( quadratic_order, spatial_dim );
+  mfem::ParFiniteElementSpace coord_space( &parallel_mesh, &fe_collection, spatial_dim, mfem::Ordering::byNODES );
+  mfem::ParGridFunction coords( &coord_space );
+  parallel_mesh.GetNodes( coords );
+
+  mfem::ParGridFunction inverse_mass( &coord_space );
+  mfem::VectorConstantCoefficient lower_mass( mfem::Vector( { 0.0, lower_inverse_mass } ) );
+  mfem::VectorConstantCoefficient upper_mass( mfem::Vector( { 0.0, upper_inverse_mass } ) );
+  mfem::PWVectorCoefficient inverse_mass_coefficient( spatial_dim );
+  inverse_mass_coefficient.UpdateCoefficient( lower_attribute, lower_mass );
+  inverse_mass_coefficient.UpdateCoefficient( upper_attribute, upper_mass );
+  inverse_mass.ProjectCoefficient( inverse_mass_coefficient );
+
+  registerMfemCouplingScheme( coupling_scheme_id, lower_mesh_id, upper_mesh_id, parallel_mesh, coords,
+                              { lower_attribute }, { upper_attribute }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE,
+                              FRICTIONLESS, PENALTY, BINNING_GRID, GetParam() );
+  setMfemKinematicConstantPenalty( coupling_scheme_id, 8.0, 8.0 );
+  setMfemLORFactor( coupling_scheme_id, lor_factor );
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false );
+  setQuadratureOrder( coupling_scheme_id, three_point_polynomial_order );
+  registerMfemInverseMass( coupling_scheme_id, inverse_mass );
+  setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ false, false, true, false } );
+  setExplicitIntegratorStabilityFactor( coupling_scheme_id, stability_factor );
+  updateMfemParallelDecomposition( 1, true );
+
+  // Enable voting after decomposition to exercise construction of the matrix transfer in residual-only mode.
+  enableTimestepVote( coupling_scheme_id, true );
+  RealT dt = 10.0;
+  ASSERT_EQ( update( 0, 0.0, dt ), 0 );
+
+  // For one side, the signed matrix 4 * T^T M_LOR T has largest absolute row sum 185/72 at the midpoint.
+  // M_LOR integrates products of linear basis functions over the projected intervals. The endpoint intervals have
+  // length 1/12 and the six interior intervals length 1/8. T is the lumped L2 projection of the quadratic basis.
+  // Scaling the same-side and opposite-side blocks gives the lower midpoint the largest mass-normalized row sum.
+  constexpr RealT one_surface_row_sum = 185.0 / 72.0;
+  const RealT expected_bound = one_surface_row_sum * std::sqrt( lower_inverse_mass ) *
+                               ( std::sqrt( lower_inverse_mass ) + std::sqrt( upper_inverse_mass ) );
+  EXPECT_NEAR( dt, stability_factor / std::sqrt( expected_bound ), 1.0e-10 );
+  const auto& scheme = CouplingSchemeManager::getInstance().at( coupling_scheme_id );
+  EXPECT_EQ( scheme.getContactFormulationResult().df_dx, nullptr );
+
+  // The legacy single-point rule integrates the dominant row sum exactly on each aligned LOR interval.
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, false );
+  updateMfemParallelDecomposition( 1, true );
+  dt = 10.0;
+  ASSERT_EQ( update( 1, 0.0, dt ), 0 );
+  EXPECT_NEAR( dt, stability_factor / std::sqrt( expected_bound ), 1.0e-10 );
+
+  // The native quadratic rule uses the original unit-length edges and still prepares a parent matrix transfer.
+  setMfemUseCommonPlaneFormulation( coupling_scheme_id, true, false );
+  enableQuadratureSubdivision( coupling_scheme_id, true );
+  updateMfemParallelDecomposition( 1, true );
+  dt = 10.0;
+  ASSERT_EQ( update( 2, 0.0, dt ), 0 );
+  constexpr RealT native_surface_row_sum = 8.0 / 3.0;
+  const RealT native_bound = native_surface_row_sum * std::sqrt( lower_inverse_mass ) *
+                             ( std::sqrt( lower_inverse_mass ) + std::sqrt( upper_inverse_mass ) );
+  EXPECT_NEAR( dt, stability_factor / std::sqrt( native_bound ), 1.0e-10 );
+  EXPECT_TRUE( scheme.hasMfemJacobianData() );
+
+  // With every parent DOF fixed, the mass-normalized operator is zero and the CFL criterion gives no finite vote.
+  inverse_mass = 0.0;
+  registerMfemInverseMass( coupling_scheme_id, inverse_mass );
+  updateMfemParallelDecomposition( 1 );
+  dt = 10.0;
+  ASSERT_EQ( update( 3, 0.0, dt ), 0 );
+  EXPECT_TRUE( std::isinf( dt ) ) << "Timestep vote was " << dt;
+
+  finalize();
+}
+
+// Rotate a partial-overlap patch so both displacement components contribute to the normal penalty matrix. The
+// overlap length is one half, so normal rate penalty and tangential damping must use different integration scaling.
+TEST( MfemCommonPlaneTimestepTest, matches_legacy_force_and_damped_cfl_for_oblique_partial_overlap )
+{
+  constexpr IndexT coupling_scheme_id = 0;
+  constexpr int lower_attribute = 1;
+  constexpr int upper_attribute = 2;
+  constexpr int spatial_dim = 2;
+  constexpr RealT penetration = 0.02;
+  constexpr RealT overlap_length = 0.5;
+  constexpr RealT upper_offset = 0.1;
+  constexpr RealT tangent_x = 0.8;
+  constexpr RealT tangent_y = 0.6;
+  constexpr RealT penalty = 4.0;
+  constexpr RealT stability_factor = 2.0;
+
+  auto serial_mesh = makeFlatTimestepContactPatch( penetration );
+  constexpr int num_vertices_per_body = 4;
+  for ( int vertex = 0; vertex < serial_mesh.GetNV(); ++vertex ) {
+    auto* coords = serial_mesh.GetVertex( vertex );
+    const RealT x = vertex < num_vertices_per_body ? coords[0] : upper_offset + overlap_length * coords[0];
+    const RealT y = coords[1];
+    coords[0] = tangent_x * x - tangent_y * y;
+    coords[1] = tangent_y * x + tangent_x * y;
+  }
+  mfem::ParMesh parallel_mesh( MPI_COMM_WORLD, serial_mesh );
+  mfem::H1_FECollection fe_collection( 1, spatial_dim );
+  mfem::ParFiniteElementSpace coord_space( &parallel_mesh, &fe_collection, spatial_dim, mfem::Ordering::byNODES );
+  mfem::ParGridFunction coords( &coord_space );
+  parallel_mesh.GetNodes( coords );
+  mfem::ParGridFunction inverse_mass( &coord_space );
+  inverse_mass = 1.0;
+  mfem::ParGridFunction velocity( &coord_space );
+  const mfem::Vector normal( { -tangent_y, tangent_x } );
+  mfem::VectorConstantCoefficient normal_field( normal );
+  mfem::VectorConstantCoefficient zero_field( mfem::Vector( { 0.0, 0.0 } ) );
+  mfem::PWVectorCoefficient upper_normal_field( spatial_dim );
+  upper_normal_field.UpdateCoefficient( lower_attribute, zero_field );
+  upper_normal_field.UpdateCoefficient( upper_attribute, normal_field );
+  mfem::ParGridFunction upper_normal( &coord_space );
+  upper_normal.ProjectCoefficient( upper_normal_field );
+  velocity = upper_normal;
+  velocity *= -1.0;
+
+  registerMfemCouplingScheme( coupling_scheme_id, 0, 1, parallel_mesh, coords, { lower_attribute }, { upper_attribute },
+                              SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE, VISCOUS_TANGENTIAL, PENALTY, BINNING_GRID,
+                              ExecutionMode::Sequential );
+  setMfemKinematicConstantPenalty( coupling_scheme_id, 2.0 * penalty, 2.0 * penalty );
+  setMfemViscousDampingCoeff( coupling_scheme_id, 0.0, 0.0 );
+  registerMfemVelocity( coupling_scheme_id, velocity );
+  registerMfemInverseMass( coupling_scheme_id, inverse_mass );
+  setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ false, false, true, false } );
+  enableTimestepVote( coupling_scheme_id, true );
+
+  const auto run_contact = [&]() {
+    updateMfemParallelDecomposition( 1, true );
+    RealT dt = 10.0;
+    EXPECT_EQ( update( 0, 0.0, dt ), 0 );
+    return dt;
+  };
+  const auto read_force = [&]() {
+    mfem::Vector force( coord_space.GetVSize() );
+    force = 0.0;
+    getMfemResponse( coupling_scheme_id, force );
+    return force;
+  };
+
+  // At the centroid (0.35 along the lower edge), the largest basis value is 0.65. The signed normal gap row
+  // has absolute sum 2 * (0.6 + 0.8), since the basis functions sum to one on each side.
+  const RealT max_basis = 1.0 - ( upper_offset + 0.5 * overlap_length );
+  const RealT stiffness_bound = overlap_length * penalty * max_basis * tangent_x * 2.0 * ( tangent_x + tangent_y );
+  EXPECT_NEAR( run_contact(), stability_factor / std::sqrt( stiffness_bound ), 1.0e-10 );
+
+  // A uniform normal shift of the upper body changes only the gap. Compare the resulting force change with the
+  // normal penalty matrix action along that displacement.
+  const auto initial_force = read_force();
+  constexpr RealT displacement = 1.0e-4;
+  coords.Add( displacement, upper_normal );
+  run_contact();
+  auto force_error = read_force();
+  force_error.Add( -( 1.0 - displacement / penetration ), initial_force );
+  EXPECT_LT( std::sqrt( mfem::InnerProduct( MPI_COMM_WORLD, force_error, force_error ) ), 1.0e-10 );
+
+  // Matching the weighted normal rate and tangential coefficients makes the velocity projection the identity.
+  // The tangential force is scaled by the coefficient alone, while the normal rate force also uses overlap length.
+  constexpr RealT damping_coefficient = 1.0;
+  setMfemRateConstantPenalty( coupling_scheme_id, damping_coefficient / overlap_length,
+                              damping_coefficient / overlap_length );
+  setMfemViscousDampingCoeff( coupling_scheme_id, damping_coefficient, damping_coefficient );
+  const RealT damping_bound = damping_coefficient * 2.0 * max_basis;
+  const RealT half_damping_bound = 0.5 * damping_bound;
+  EXPECT_NEAR( run_contact(),
+               stability_factor /
+                   ( std::sqrt( stiffness_bound + half_damping_bound * half_damping_bound ) + half_damping_bound ),
+               1.0e-10 );
+  finalize();
+}
+
+// Two unit quadrilateral faces exercise the legacy parent matrix assembly with three displacement components.
+TEST( MfemCommonPlaneTimestepTest, computes_legacy_nodal_cfl_for_quadrilateral_faces )
+{
+  constexpr IndexT coupling_scheme_id = 0;
+  constexpr int lower_contact_attribute = 6;
+  constexpr int upper_contact_attribute = 7;
+  constexpr int spatial_dim = 3;
+  constexpr RealT penalty = 8.0;
+  auto mesh_builder = shared::MeshBuilder::Unify(
+      { shared::MeshBuilder::CubeMesh( 1, 1, 1 ), shared::MeshBuilder::CubeMesh( 1, 1, 1 )
+                                                      .translate( { 0.0, 0.0, 0.99 } )
+                                                      .updateBdrAttrib( 1, upper_contact_attribute )
+                                                      .updateBdrAttrib( lower_contact_attribute, 8 ) } );
+  mfem::ParMesh parallel_mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, std::move( mesh_builder ) );
+  mfem::H1_FECollection fe_collection( 1, spatial_dim );
+  mfem::ParFiniteElementSpace coord_space( &parallel_mesh, &fe_collection, spatial_dim, mfem::Ordering::byNODES );
+  mfem::ParGridFunction coords( &coord_space );
+  parallel_mesh.GetNodes( coords );
+  mfem::ParGridFunction inverse_mass( &coord_space );
+  inverse_mass = 1.0;
+
+  registerMfemCouplingScheme( coupling_scheme_id, 0, 1, parallel_mesh, coords, { lower_contact_attribute },
+                              { upper_contact_attribute }, SURFACE_TO_SURFACE, NO_CASE, COMMON_PLANE, FRICTIONLESS,
+                              PENALTY, BINNING_GRID, ExecutionMode::Sequential );
+  setMfemKinematicConstantPenalty( coupling_scheme_id, penalty, penalty );
+  registerMfemInverseMass( coupling_scheme_id, inverse_mass );
+  setTimestepCriteria( coupling_scheme_id, TimestepCriteria{ false, false, true, false } );
+  enableTimestepVote( coupling_scheme_id, true );
+  updateMfemParallelDecomposition( 1, true );
+
+  RealT dt = 10.0;
+  ASSERT_EQ( update( 0, 0.0, dt ), 0 );
+  // Each centroid basis value is 0.25, and the absolute values of the signed gap weights sum to 2.0.
+  const RealT stiffness_bound = ( 0.5 * penalty ) * 0.25 * 2.0;
+  EXPECT_NEAR( dt, 2.0 / std::sqrt( stiffness_bound ), 1.0e-10 );
+  finalize();
+}
+
+INSTANTIATE_TEST_SUITE_P( execution_modes, MfemCommonPlaneLorCflTest,
+                          testing::Values( ExecutionMode::Sequential
+#ifdef TRIBOL_USE_OPENMP
+                                           ,
+                                           ExecutionMode::OpenMP
+#endif
+                                           ) );
 
 INSTANTIATE_TEST_SUITE_P( quadrature, MfemCommonPlaneTest,
                           testing::Values( one_point_polynomial_order, two_point_polynomial_order,

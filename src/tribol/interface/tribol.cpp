@@ -6,6 +6,7 @@
 #include "tribol.hpp"
 
 #include <cmath>
+#include <limits>
 #include "axom/slic/interface/slic.hpp"
 
 // Tribol includes
@@ -180,7 +181,12 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac )
     return;
   }
 
-  cs->getParameters().timestep_pen_frac = frac;
+  if ( cs->getParameters().timestep_pen_frac != frac ) {
+    cs->getParameters().timestep_pen_frac = frac;
+    if ( cs->usesContactFormulation() ) {
+      cs->invalidateContactFormulation();
+    }
+  }
 
 }  // end setTimestepPenFrac()
 
@@ -261,11 +267,9 @@ void enableQuadratureSubdivision( IndexT cs_id, bool enabled, int num_subdivisio
   }
   if ( mode_changed ) {
     auto& mesh_data = *cs->getMfemMeshData();
-    const bool rebuild_jacobian = cs->hasMfemJacobianData();
-    if ( rebuild_jacobian ) {
-      cs->setMfemJacobianData( nullptr );
-    }
-    if ( !enabled && cs->getParameters().common_plane_compute_jacobian ) {
+    const bool rebuild_jacobian = cs->getParameters().common_plane_compute_jacobian;
+    cs->setMfemJacobianData( nullptr );
+    if ( !enabled && rebuild_jacobian ) {
       mesh_data.EnableLORJacobianTransfer();
     }
     mesh_data.SetLORFieldTransferEnabled( !enabled );
@@ -284,20 +288,40 @@ void enableQuadratureSubdivision( IndexT cs_id, bool enabled, int num_subdivisio
 }
 
 //------------------------------------------------------------------------------
-void setTimestepScale( IndexT cs_id, RealT scale )
+void setTimestepCriteria( IndexT cs_id, TimestepCriteria criteria )
 {
-  if ( scale <= 0. ) {
-    // Don't set the timestep_scale.  This will use default
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF(
+      !cs, "tribol::setTimestepCriteria(): call tribol::registerCouplingScheme() prior to calling this routine." );
+
+  if ( !( cs->getParameters().timestep_criteria == criteria ) ) {
+    cs->getParameters().timestep_criteria = criteria;
+    if ( cs->usesContactFormulation() ) {
+      cs->invalidateContactFormulation();
+    }
+  }
+}
+
+//------------------------------------------------------------------------------
+void setExplicitIntegratorStabilityFactor( IndexT cs_id, RealT stability_factor )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::setExplicitIntegratorStabilityFactor(): call tribol::registerCouplingScheme() prior to "
+                      "calling this routine." );
+  if ( !std::isfinite( stability_factor ) || stability_factor <= 0.0 ) {
+    SLIC_ERROR_ROOT( "tribol::setExplicitIntegratorStabilityFactor(): stability factor must be finite and positive." );
     return;
   }
 
-  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-
-  // check to see if coupling scheme exists
-  SLIC_ERROR_ROOT_IF(
-      !cs, "tribol::setTimestepScale(): call tribol::registerCouplingScheme() " << "prior to calling this routine." );
-
-  cs->getParameters().timestep_scale = scale;
+  if ( cs->getParameters().explicit_integrator_stability_factor != stability_factor ) {
+    cs->getParameters().explicit_integrator_stability_factor = stability_factor;
+    if ( cs->usesContactFormulation() ) {
+      cs->invalidateContactFormulation();
+    }
+  }
 }
 //------------------------------------------------------------------------------
 void setContactAreaFrac( IndexT cs_id, RealT frac )
@@ -486,7 +510,12 @@ void enableTimestepVote( IndexT cs_id, const bool enable )
   SLIC_ERROR_ROOT_IF(
       !cs, "tribol::enableTimestepVote(): call tribol::registerCouplingScheme() " << "prior to calling this routine." );
 
-  cs->getParameters().enable_timestep_vote = enable;
+  if ( cs->getParameters().enable_timestep_vote != enable ) {
+    cs->getParameters().enable_timestep_vote = enable;
+    if ( cs->usesContactFormulation() ) {
+      cs->invalidateContactFormulation();
+    }
+  }
 
 }  // end enableTimestepVote()
 
@@ -561,6 +590,31 @@ void registerNodalVelocities( IndexT mesh_id, const RealT* vx, const RealT* vy, 
   mesh->setVelocity( vx, vy, vz );
 
 }  // end registerNodalVelocities()
+
+//------------------------------------------------------------------------------
+void registerNodalInverseMass( IndexT mesh_id, const RealT* inverse_mass_x, const RealT* inverse_mass_y,
+                               const RealT* inverse_mass_z )
+{
+  auto mesh = MeshManager::getInstance().findData( mesh_id );
+
+  SLIC_ERROR_ROOT_IF( !mesh, "tribol::registerNodalInverseMass(): no mesh with id " << mesh_id << " exists." );
+
+  mesh->getNodalFields().m_is_inverse_mass_set = true;
+
+  if ( mesh->numberOfNodes() > 0 && ( inverse_mass_x == nullptr || inverse_mass_y == nullptr ) ) {
+    mesh->getNodalFields().m_is_inverse_mass_set = false;
+    SLIC_ERROR_ROOT( "tribol::registerNodalInverseMass(): x and y inverse mass pointers must be non-null." );
+    return;
+  }
+
+  if ( mesh->numberOfNodes() > 0 && mesh->spatialDim() == 3 && inverse_mass_z == nullptr ) {
+    mesh->getNodalFields().m_is_inverse_mass_set = false;
+    SLIC_ERROR_ROOT( "tribol::registerNodalInverseMass(): z inverse mass pointer must be non-null for a 3D mesh." );
+    return;
+  }
+
+  mesh->setInverseMass( inverse_mass_x, inverse_mass_y, inverse_mass_z );
+}
 
 //------------------------------------------------------------------------------
 void registerNodalReferenceCoords( IndexT mesh_id, const RealT* xref, const RealT* yref, const RealT* zref )
@@ -957,6 +1011,9 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
 int update( int cycle, RealT t, RealT& dt )
 {
   bool err_cs = false;
+  const RealT dt_in = dt;
+  bool any_voting_scheme = false;
+  RealT min_dt_vote = std::numeric_limits<RealT>::infinity();
 
   /////////////////////////////////////////////////////////////////////////
   //                                                                     //
@@ -984,13 +1041,25 @@ int update( int cycle, RealT t, RealT& dt )
 
     // apply the coupling scheme. Note, there are appropriate guards against zero
     // element meshes, or null-mesh coupling schemes
-    err_cs = cs.apply( cycle, t, dt );
+    RealT cs_dt = dt_in;
+    err_cs = cs.apply( cycle, t, cs_dt );
+
+    if ( cs.getParameters().enable_timestep_vote ) {
+      any_voting_scheme = true;
+      if ( cs_dt < min_dt_vote ) {
+        min_dt_vote = cs_dt;
+      }
+    }
 
     if ( err_cs != 0 ) {
       SLIC_WARNING( "tribol::update(): coupling scheme " << cs_pair.first << " returned with an error." );
     }
 
   }  // end of coupling scheme loop
+
+  if ( any_voting_scheme ) {
+    dt = min_dt_vote;
+  }
 
   return err_cs;
 

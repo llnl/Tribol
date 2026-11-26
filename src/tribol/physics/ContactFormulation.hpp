@@ -49,6 +49,8 @@ struct ContactFormulationResult {
  * Formulations read these values during the call and retain none of them. A formulation ignores inputs it does not use.
  */
 struct ContactFormulationInputs {
+  /// Current simulation timestep used by velocity-projection timestep voting, when provided.
+  std::optional<RealT> dt;
 #ifdef BUILD_REDECOMP
   /// Lagrange multiplier values on dual true DOFs. Required by Lagrange multiplier formulations; must remain alive for
   /// the duration of the call.

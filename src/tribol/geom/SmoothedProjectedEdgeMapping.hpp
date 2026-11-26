@@ -109,8 +109,8 @@ struct SmoothedProjectedEdgeMapping {
       output.geom1_parametric_coords( q, 0 ) = parametric_coord1;
       output.geom2_parametric_coords( q, 0 ) = edge2.parametricCoordinate( physical );
       output.weights[q] = integration_surface_rule.weights[q] * jacobian;
-      for ( IndexT component = 0; component < LinearEdgeGeometry::spatial_dim; ++component ) {
-        output.integration_surface_normals( q, component ) = 0.0;
+      for ( IndexT d = 0; d < LinearEdgeGeometry::spatial_dim; ++d ) {
+        output.integration_surface_normals( q, d ) = 0.0;
       }
     }
     output.metadata = { QuadratureStatus::Success, count };
