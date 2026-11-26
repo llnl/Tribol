@@ -8,14 +8,6 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Unreleased] - Release date YYYY-MM-DD
 
 ### Added
-
-### Fixed
-
-### Changed
-
-## [Version 0.2.0] - Release date 2026-11-24
-
-### Added
 - Added opt-in 3D MFEM frictionless constant-penalty Common Plane support through `setMfemUseCommonPlaneFormulation()`
   for linear and LOR-subdivided higher-order triangle and quadrilateral contact meshes, including `ResidualOnly`,
   Enzyme `ResidualAndJacobian`, `setQuadratureOrder()` (order 0-1 overlap centroid; order 2-5 positive-weight
@@ -31,6 +23,36 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   quadrilateral faces with matching velocity interpolation and force basis weights at the overlap centroid.
   Unsupported or incomplete inputs report a SLIC error with instructions to disable the affected criterion through
   `setTimestepCriteria()`.
+- Added opt-in quadratic Lagrange edge support to composed 2D MFEM frictionless penalty Common Plane contact through
+  `enableQuadratureSubdivision()`. The API accepts one to four uniform subelements per edge and defaults to two. While
+  enabled, Common Plane bypasses LOR field transfer, assembles residuals and Enzyme coordinate Jacobians directly on the
+  higher-order Redecomp submesh, and distributes traction with quadratic basis functions. Disabling subdivision restores
+  the LOR transfer path. Energy Mortar does not yet use this setting.
+- Added `SubdividedPairQuadratureRuleGenerator`, which uniformly subdivides parent-edge parametric domains, applies a
+  configurable linear pair rule to each subelement pair, and maps accepted quadrature points back to the parent
+  elements.
+
+### Fixed
+
+### Changed
+- **Breaking changes to Common Plane timestep voting**:
+  - Removed `setTimestepScale()` and `Parameters::timestep_scale`; callers should apply any safety factor to the
+    returned timestep directly, or set the explicit CFL stability factor via `setExplicitIntegratorStabilityFactor()`.
+  - Enabled `nodal_penalty_cfl` by default when `enableTimestepVote()` is active. Schemes with timestep voting enabled
+    must now register component-wise inverse diagonal nodal masses via `registerNodalInverseMass()` or
+    `registerMfemInverseMass()`, or disable `nodal_penalty_cfl` through `setTimestepCriteria()`. Missing required fields
+    now report a `SLIC_ERROR` instead of returning a negative timestep vote.
+  - Current-gap and velocity-projection timestep criteria now use the frame-invariant relative closing velocity along
+    the contact normal and the minimum element thickness of the contacting pair rather than per-side velocities and
+    normals. Stationary or separating pairs no longer vote a finite timestep, and `update()` no longer caps votes at
+    `1.0e6` or rejects votes below `1.0e-8` (when no criterion votes, `dt` is left unchanged).
+- Quadratic Common Plane subdivision now evaluates paired points on the curved parent edges along each linearized
+  subelement pair's common-plane normal while retaining the subelement rule's physical weights. Refined search defers
+  higher-order edge orientation and overlap decisions to this pair-local quadrature.
+
+## [Version 0.2.0] - Release date 2026-11-24
+
+### Added
 - Added a flexible `ContactFormulation` interface for developing energy- or residual-based contact methods with shared
   search, differentiation, and assembly. Pair evaluation and assembly support Sequential, OpenMP, CUDA, and HIP;
   CUDA differentiation requires Clang-CUDA. Common Plane and Energy Mortar use this interface alongside legacy methods.
@@ -96,17 +118,6 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
-- **Breaking changes to Common Plane timestep voting**:
-  - Removed `setTimestepScale()` and `Parameters::timestep_scale`; callers should apply any safety factor to the
-    returned timestep directly, or set the explicit CFL stability factor via `setExplicitIntegratorStabilityFactor()`.
-  - Enabled `nodal_penalty_cfl` by default when `enableTimestepVote()` is active. Schemes with timestep voting enabled
-    must now register component-wise inverse diagonal nodal masses via `registerNodalInverseMass()` or
-    `registerMfemInverseMass()`, or disable `nodal_penalty_cfl` through `setTimestepCriteria()`. Missing required fields
-    now report a `SLIC_ERROR` instead of returning a negative timestep vote.
-  - Current-gap and velocity-projection timestep criteria now use the frame-invariant relative closing velocity along
-    the contact normal and the minimum element thickness of the contacting pair rather than per-side velocities and
-    normals. Stationary or separating pairs no longer vote a finite timestep, and `update()` no longer caps votes at
-    `1.0e6` or rejects votes below `1.0e-8` (when no criterion votes, `dt` is left unchanged).
 - Renamed `getMfemContactForce()` to `getMfemContactResidual()` to distinguish the contact residual from physical force.
 - Numerical coordinates, fields, matrix entries, and parameters consistently use `RealT` across Tribol, shared helpers,
   Redecomp, examples, and tests. Public C++ declarations retain their existing types because `RealT` aliases `double`;
