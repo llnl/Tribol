@@ -3,7 +3,9 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-/** @file @brief Nodal Energy Mortar integrals, penalty and Lagrange multiplier enforcement, and contact formulations.
+/**
+ * @file
+ * @brief Nodal Energy Mortar integrals, penalty and Lagrange multiplier enforcement, and contact formulations.
  */
 #ifndef SRC_TRIBOL_PHYSICS_NODALENERGYMORTAR_HPP_
 #define SRC_TRIBOL_PHYSICS_NODALENERGYMORTAR_HPP_

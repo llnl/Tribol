@@ -3,7 +3,10 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-/** @file @brief Pack rectangular element-pair matrices and transfer independent row and column spaces to true DOFs. */
+/**
+ * @file
+ * @brief Pack rectangular element-pair matrices and transfer independent row and column spaces to true DOFs.
+ */
 #ifndef SRC_TRIBOL_ASSEMBLY_MFEMMATRIXASSEMBLER_HPP_
 #define SRC_TRIBOL_ASSEMBLY_MFEMMATRIXASSEMBLER_HPP_
 

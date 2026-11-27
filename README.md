@@ -22,8 +22,8 @@ needed when using Tribol. The command to install development tools is
 ```
 python3 scripts/uberenv/uberenv.py --project-json=scripts/spack/devtools.json --spack-env-file=scripts/spack/configs/<platform>/spack.yaml --prefix=../tribol_devtools
 ```
-where `<platform>` is one of `blueos_3_ppc64le_ib_p9`, `linux_ubuntu_24`, `toss_4_x86_64_ib`, or
-`toss_4_x86_64_ib_cray`. Please verify `scripts/spack/configs/<platform>/spack.yaml` matches your system configuration.
+where `<platform>` is one of `linux_ubuntu_24`, `toss_4_x86_64_ib`, or `toss_4_x86_64_ib_cray`. Please verify
+`scripts/spack/configs/<platform>/spack.yaml` matches your system configuration.
 
 ### Installing dependencies
 
@@ -40,10 +40,10 @@ See additional options by running
 python3 scripts/uberenv/uberenv.py --help
 ```
 
-Tribol is tested on three platforms: 
-- Ubuntu 24.04 LTS (via Windows WSL 2)
+Tribol is tested on:
+- Ubuntu 24.04 LTS
 - TOSS 4
-- BlueOS
+- TOSS 4 Cray
 
 See `scripts/spack/packages/tribol/package.py` for possible variants in the spack spec. The file
 `scripts/spack/specs.json` lists spack specs which are known to build successfully on different platforms.  Note the
@@ -71,7 +71,7 @@ to build Tribol.
 
 The Tribol contact physics library requires:
 - CMake 3.14 or higher
-- C++17 compiler
+- C++20 compiler
 - MPI
 - mfem
 - axom

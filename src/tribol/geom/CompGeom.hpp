@@ -179,6 +179,12 @@ class ContactPlanePair : public CompGeomPair {
   TRIBOL_HOST_DEVICE inline virtual FaceGeomException checkEdgePair(
       const MeshData::Viewer& TRIBOL_UNUSED_PARAM( mesh1 ), const MeshData::Viewer& TRIBOL_UNUSED_PARAM( mesh2 ) ) = 0;
 
+  /*!
+   * \brief Compute contact plane normal, point, local basis, and area tolerance for this pair.
+   *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
+   */
   TRIBOL_HOST_DEVICE inline void computePlaneData( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
   {
     computeNormal( mesh1, mesh2 );
@@ -189,14 +195,43 @@ class ContactPlanePair : public CompGeomPair {
     }
   }
 
+  /*!
+   * \brief Get mesh1 face coordinates stored on this contact plane pair.
+   *
+   * \param [out] x1 output coordinate array
+   * \param [in] num_coords number of scalar coordinates to write
+   */
   TRIBOL_HOST_DEVICE inline void getFace1Coords( RealT* x1, int num_coords ) const;
 
+  /*!
+   * \brief Get mesh2 face coordinates stored on this contact plane pair.
+   *
+   * \param [out] x2 output coordinate array
+   * \param [in] num_coords number of scalar coordinates to write
+   */
   TRIBOL_HOST_DEVICE inline void getFace2Coords( RealT* x2, int num_coords ) const;
 
+  /*!
+   * \brief Get projected mesh1 face coordinates stored on this contact plane pair.
+   *
+   * \param [out] x1_proj output projected coordinate array
+   * \param [in] num_coords number of scalar coordinates to write
+   */
   TRIBOL_HOST_DEVICE inline void getFace1ProjectedCoords( RealT* x1_proj, int num_coords ) const;
 
+  /*!
+   * \brief Get projected mesh2 face coordinates stored on this contact plane pair.
+   *
+   * \param [out] x2_proj output projected coordinate array
+   * \param [in] num_coords number of scalar coordinates to write
+   */
   TRIBOL_HOST_DEVICE inline void getFace2ProjectedCoords( RealT* x2_proj, int num_coords ) const;
 
+  /*!
+   * \brief Get the contact plane normal.
+   *
+   * \param [out] normal output normal array
+   */
   TRIBOL_HOST_DEVICE inline void getContactPlaneNormal( RealT* normal ) const
   {
     normal[0] = m_nX;
@@ -206,6 +241,11 @@ class ContactPlanePair : public CompGeomPair {
     }
   }
 
+  /*!
+   * \brief Get overlap vertices stored on this contact plane pair.
+   *
+   * \param [out] overlap_verts output overlap vertex coordinate array
+   */
   TRIBOL_HOST_DEVICE inline void getOverlapVertices( RealT* overlap_verts ) const;
 
   /*!
@@ -269,6 +309,7 @@ class ContactPlanePair : public CompGeomPair {
    * \param [in] pZ global z coordinate of point
    * \param [in,out] pLX local x coordinate of point on contact plane
    * \param [in,out] pLY local y coordinate of point on contact plane
+   * \param [in] size unused size argument retained for legacy API compatibility
    *
    * \note Overloaded member function to compute local coordinates of
    *  a single point on the contact plane
@@ -503,7 +544,7 @@ class CommonPlanePair : public ContactPlanePair {
    * \param [in] mesh2 mesh data viewer for mesh 2
    * \param [in] faceId1 face id for face belonging to mesh 1
    * \param [in] faceId2 face id for face belonging to mesh 2
-   * \param [in] auto_contact_pen_frac Allowable interpenetration as a fraction of element thickness for auto-contact
+   * \param [in] params contact parameters containing the allowable auto-contact interpenetration fraction
    * \param [in] gap the contact plane gap
    *
    * \return true if the gap exceeds the max allowable interpenetration

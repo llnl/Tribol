@@ -10,7 +10,11 @@ RECURSIVE = YES
 GENERATE_XML = YES
 USE_MATHJAX = YES
 MATHJAX_RELPATH = https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2
-FILE_PATTERNS += *.md *.markdown *.cpp *.hpp
+FILE_PATTERNS = *.md *.markdown *.hpp
+EXCLUDE_PATTERNS += */src/tests/* \
+                    */src/examples/* \
+                    */src/tribol/interface/c_fortran/* \
+                    */src/tribol/utils/TestUtils.hpp
 TAB_SIZE               = 2
 INLINE_INHERITED_MEMB  = YES
 BUILTIN_STL_SUPPORT    = YES
@@ -25,4 +29,13 @@ HAVE_DOT               = YES
 #CALLER_GRAPH          = YES
 INTERACTIVE_SVG        = YES
 DISTRIBUTE_GROUP_DOC   = YES
-EXTRACT_PRIVATE        = YES
+EXTRACT_PRIVATE        = NO
+HIDE_UNDOC_MEMBERS     = YES
+HIDE_UNDOC_CLASSES     = YES
+ENABLE_PREPROCESSING  = YES
+MACRO_EXPANSION       = YES
+EXPAND_ONLY_PREDEF    = YES
+PREDEFINED           += TRIBOL_UNUSED_PARAM(x)=x \
+                        AXOM_UNUSED_PARAM(x)=x \
+                        TRIBOL_HOST_DEVICE= \
+                        TRIBOL_ENZYME_INLINE=

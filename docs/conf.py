@@ -11,8 +11,32 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
-import sys
-import os
+import sys, os
+
+# Call doxygen in ReadtheDocs
+read_the_docs_build = os.environ.get('READTHEDOCS', None) == 'True'
+if read_the_docs_build:
+
+    # Modify Doxyfile for ReadTheDocs compatibility
+    with open('./doxygen/Doxyfile.in', 'r') as f:
+        fdata = f.read()
+    fdata = fdata.replace('@PROJECT_SOURCE_DIR@', os.path.abspath('../..'))
+    with open('./doxygen/Doxyfile.in', 'w') as f:
+        f.write(fdata)
+
+    if 'READTHEDOCS_OUTPUT' in os.environ:
+        _output_dir = os.environ.get('READTHEDOCS_OUTPUT')
+    else:
+        print("ERROR: Could not determine READTHEDOCS_OUTPUT from environment")
+        sys.exit(1)
+    _doxygen_output_dir = os.path.join(_output_dir, "html", "doxygen")
+    os.makedirs(_doxygen_output_dir, exist_ok=True)
+    with open('./doxygen/Doxyfile.in', 'a') as f:
+        f.write("\nOUTPUT_DIRECTORY={0}".format(_doxygen_output_dir))
+
+    # Call doxygen
+    from subprocess import call
+    call(['doxygen', "./doxygen/Doxyfile.in"])
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -24,24 +48,20 @@ import os
 # If your documentation needs a minimal Sphinx version, state it here.
 #needs_sphinx = '1.0'
 
-# Add any Sphinx extension module names here, as strings. They can be
-# extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
-# ones.
-extensions = [
-    'sphinx.ext.graphviz',
-    'sphinx.ext.autodoc',
-    'sphinx.ext.doctest',
-    'sphinx.ext.todo',
-    'sphinx.ext.coverage',
-    'sphinx.ext.mathjax',
-]
-
-# Get current directory
-conf_directory = os.path.dirname(os.path.realpath(__file__))
+# Add any Sphinx extension module names here, as strings. They can be extensions
+# coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
+extensions = ['sphinx.ext.autodoc',
+              'sphinx.ext.doctest',
+              'sphinx.ext.todo',
+              'sphinx.ext.mathjax',
+              'sphinx.ext.ifconfig']
+if read_the_docs_build:
+    # Note: The Spack Sphinx does not have this extension and I think its only
+    # used in RTD
+    extensions.append('sphinxcontrib.jquery')
 
 # Add any paths that contain templates here, relative to this directory.
-templates_path = [os.path.join(conf_directory, 'docs/sphinx/_templates')]
-
+templates_path = ['_templates']
 
 # The suffix of source filenames.
 source_suffix = '.rst'
@@ -141,20 +161,19 @@ else:
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = [os.path.join(conf_directory, 'docs/sphinx/_static')]
+html_static_path = ['_static/']
 
-# Add any extra paths that contain custom files (such as robots.txt or
-# .htaccess) here, relative to this directory. These files are copied
-# directly to the root of the documentation.
-#html_extra_path = []
+def setup(app):
+   app.add_css_file("theme_overrides.css")
 
 # If not '', a 'Last updated on:' timestamp is inserted at every page bottom,
 # using the given strftime format.
 #html_last_updated_fmt = '%b %d, %Y'
 
-# If true, SmartyPants will be used to convert quotes and dashes to
-# typographically correct entities.
-#html_use_smartypants = True
+# If true, the Docutils Smart Quotes transform, originally based on SmartyPants
+# (limited to English) and currently applying to many languages, will be used to convert
+# quotes and dashes to typographically correct entities. Default: True.
+smartquotes = False
 
 # Custom sidebar templates, maps document names to template names.
 #html_sidebars = {}
@@ -270,4 +289,3 @@ texinfo_documents = [
 
 # If true, do not generate a @detailmenu in the "Top" node's menu.
 #texinfo_no_detailmenu = False
-

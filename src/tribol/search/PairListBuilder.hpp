@@ -3,7 +3,10 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-/** @file @brief Composition of coarse and refined searches for current contact pairs. */
+/**
+ * @file
+ * @brief Composition of coarse and refined searches for current contact pairs.
+ */
 #ifndef SRC_TRIBOL_SEARCH_PAIRLISTBUILDER_HPP_
 #define SRC_TRIBOL_SEARCH_PAIRLISTBUILDER_HPP_
 

@@ -9,6 +9,4 @@ if (DOXYGEN_FOUND)
   add_subdirectory(doxygen)
 endif()
 
-if (SPHINX_FOUND)
-  add_subdirectory(sphinx)
-endif()
+blt_add_sphinx_target( TARGET tribol_docs )

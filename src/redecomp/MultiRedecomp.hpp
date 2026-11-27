@@ -31,6 +31,8 @@ class MultiRedecomp {
    * @note This constructor builds the Partitioner object based on the method
    * passed. If no method is passed, a RCB Partitioner is constructed.
    *
+   * @param dim Spatial dimension of the parent meshes
+   * @param comm MPI communicator used for redecomposition
    * @param method The method of redecomposition
    * @param ghost_len_multiplier Multiplier for the ghost element layer (base
    * value set by the approximate largest element size)
